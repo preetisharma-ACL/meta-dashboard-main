@@ -1,16 +1,19 @@
 import { For, Show, createMemo, createSignal } from "solid-js";
 import { DateRangeFilter } from "../components/DateRangeFilter";
 import { A } from "@solidjs/router";
+import { useLocation } from "@solidjs/router";
 
 /* ================= STATIC PROJECT INFO ================= */
 
-const project = {
-    name: "Godrej Arden",
-    location: "Greater Noida",
-    propertyType: "Residential Apartment",
-    campaignManager: "Rishabh Pandey",
-    model: "Hybrid",
-};
+// const project = {
+//     name: "Godrej Arden",
+//     location: "Greater Noida",
+//     propertyType: "Residential Apartment",
+//     campaignManager: "Rishabh Pandey",
+//     model: "Hybrid",
+// };
+
+
 
 const leadStats = {
     total: 65,
@@ -19,6 +22,8 @@ const leadStats = {
 };
 
 export default function ProjectDetails() {
+    const location = useLocation();
+    const project = location.state?.project;
     const today = new Date();
 
     /* ================= FILTER STATES ================= */
@@ -293,16 +298,19 @@ export default function ProjectDetails() {
         <div class="space-y-6 m-4">
 
             {/* ================= PROJECT OVERVIEW ================= */}
-            <section class="bg-white dark:bg-gray-900 border rounded-xl p-4">
-                <h2 class="text-lg font-semibold mb-4">Project Overview</h2>
-                <div class="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
-                    <Info label="Project Name" value={project.name} />
-                    <Info label="Location" value={project.location} />
-                    <Info label="Property Type" value={project.propertyType} />
-                    <Info label="Campaign Manager" value={project.campaignManager} />
-                    <Info label="Model" value={project.model} badge />
-                </div>
-            </section>
+            <Show when={project} fallback={<p>No project selected</p>}>
+                <section class="bg-white dark:bg-gray-900 border rounded-xl p-4">
+                    <h2 class="text-lg font-semibold mb-4">Project Overview</h2>
+                    <div class="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+                        <Info label="Project Name" value={project?.name} />
+                        <Info label="Location" value={project?.location} />
+                        <Info label="Property Type" value={project?.type} />
+                        <Info label="Priority" value={project?.priority} />
+                        <Info label="Project Control" value={project?.projectControl} />
+                        <Info label="Project Pricing & Typology" value={project?.summary} />
+                    </div>
+                </section>
+            </Show>
 
             {/* ================= FILTERS ================= */}
             <div class="flex flex-wrap gap-2 items-center">
@@ -395,7 +403,7 @@ export default function ProjectDetails() {
 function Info(props) {
     return (
         <div>
-            <p class="text-xs text-gray-500">{props.label}</p>
+            <p class="text-sm text-gray-400">{props.label}</p>
             <p class="font-medium">{props.value}</p>
         </div>
     );

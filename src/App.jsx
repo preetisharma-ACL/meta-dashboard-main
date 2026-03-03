@@ -21,6 +21,7 @@ import { useSidebar } from './context/SidebarContext';
 import ProjectDetails from './pages/ProjectDetails';
 import ClientDashboard from './pages/ClientDashboard';
 import CampaignDetails from './pages/CampaignDetails';
+import AddProject from './pages/AddProjects';
 
 function Layout(props) {
   const { isCollapsed } = useSidebar();
@@ -48,6 +49,7 @@ function App() {
         <Router>
           {/* <Route path="/" component={() => <Layout><Dashboard /></Layout>} /> */}
           <Route path="/" component={() => <Layout><ClientDashboard /></Layout>} />
+          <Route path="/add-project" component={() => <Layout><AddProject /></Layout>} />
           <Route path="/accounts" component={() => <Layout><Accounts /></Layout>} />
           <Route path="/contacts" component={() => <Layout><Contacts /></Layout>} />
           <Route path="/leads" component={() => <Layout><Leads /></Layout>} />

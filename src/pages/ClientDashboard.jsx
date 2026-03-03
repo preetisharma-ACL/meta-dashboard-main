@@ -1,12 +1,22 @@
-import { For, Show, createMemo, createSignal } from "solid-js";
+import { For, Show, createSignal, createMemo } from "solid-js";
 import Swal from "sweetalert2";
 import godrejlogo from "../assets/project-logo/dlf.png";
 import birlalogo from "../assets/project-logo/godrej.png";
 import prestigelogo from "../assets/project-logo/prestige.png";
 import { A, } from "@solidjs/router";
 export default function ClientDashboard() {
+
+    const [statusFilter, setStatusFilter] = createSignal("all");
+    const [searchText, setSearchText] = createSignal("");
+    const [showColumnFilter, setShowColumnFilter] = createSignal(false);
+    const [selectedColumns, setSelectedColumns] = createSignal([]);
+    const [sortType, setSortType] = createSignal("");
+
     const [viewType, setViewType] = createSignal("table"); // "grid" | "table"
+    const storedProjects =
+        JSON.parse(localStorage.getItem("projects")) || [];
     const [projects, setProjects] = createSignal([
+        ...storedProjects,
         {
             id: 1,
             name: "Birla Trimaya",
@@ -15,6 +25,7 @@ export default function ClientDashboard() {
             budget: 100000,
             leadsgenerated: 10,
             type: "Residential",
+            uploaddocument: null,
             activeCampaigns: 3,
             pausedCampaigns: 1,
             status: "active",
@@ -32,6 +43,7 @@ export default function ClientDashboard() {
             budget: 95000,
             leadsgenerated: 10,
             type: "Residential",
+            uploaddocument: null,
             activeCampaigns: 2,
             pausedCampaigns: 2,
             status: "active",
@@ -49,6 +61,7 @@ export default function ClientDashboard() {
             budget: 85000,
             leadsgenerated: 10,
             type: "Residential",
+            uploaddocument: null,
             activeCampaigns: 1,
             pausedCampaigns: 2,
             status: "active",
@@ -66,6 +79,7 @@ export default function ClientDashboard() {
             budget: 98000,
             leadsgenerated: 10,
             type: "Residential",
+            uploaddocument: null,
             activeCampaigns: 1,
             pausedCampaigns: 1,
             status: "active",
@@ -83,6 +97,7 @@ export default function ClientDashboard() {
             budget: 90000,
             leadsgenerated: 10,
             type: "Residential",
+            uploaddocument: null,
             activeCampaigns: 1,
             pausedCampaigns: 2,
             status: "paused",
@@ -100,6 +115,7 @@ export default function ClientDashboard() {
             budget: 92000,
             leadsgenerated: 10,
             type: "Residential",
+            uploaddocument: null,
             activeCampaigns: 1,
             pausedCampaigns: 2,
             status: "active",
@@ -138,6 +154,56 @@ export default function ClientDashboard() {
             }
         });
     };
+    const filteredProjects = createMemo(() => {
+        let data = [...projects()];
+
+        // STATUS FILTER
+        if (statusFilter() !== "all") {
+            data = data.filter(p => p.status === statusFilter());
+        }
+
+        // SEARCH FILTER
+        if (searchText()) {
+            data = data.filter(p =>
+                p.name.toLowerCase().includes(searchText().toLowerCase())
+            );
+        }
+
+        // SORTING
+        switch (sortType()) {
+            case "budget":
+                data.sort((a, b) => b.budget - a.budget);
+                break;
+
+            case "leads":
+                data.sort((a, b) => b.leadsgenerated - a.leadsgenerated);
+                break;
+
+            case "activeCampaigns":
+                data.sort((a, b) => b.activeCampaigns - a.activeCampaigns);
+                break;
+
+            case "budgetPerCPL":
+                data.sort((a, b) => (b.budget / b.cpl) - (a.budget / a.cpl));
+                break;
+
+            case "cplHigh":
+                data.sort((a, b) => b.cpl - a.cpl);
+                break;
+
+            case "cplLow":
+                data.sort((a, b) => a.cpl - b.cpl);
+                break;
+        }
+
+        return data;
+    });
+    const handleClearFilters = () => {
+        setStatusFilter("all");
+        setSearchText("");
+        setSortType("");
+        setSelectedColumns([]);
+    };
     return (
         <section class="w-full px-4 sm:px-6 lg:px-8 py-6">
 
@@ -153,6 +219,13 @@ export default function ClientDashboard() {
                 </div>
 
                 <div class="flex items-center gap-2">
+                    {/* Add New Project Button */}
+                    <A
+                        href="/add-project"
+                        class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow"
+                    >
+                        + Add New Project
+                    </A>
                     <button
                         onClick={() => setViewType("table")}
                         class={`p-2 rounded-lg border ${viewType() === "table"
@@ -184,6 +257,7 @@ export default function ClientDashboard() {
                             <rect x="14" y="14" width="7" height="7" rx="1" />
                         </svg>
                     </button>
+
                 </div>
 
                 {/* <div class="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -191,7 +265,97 @@ export default function ClientDashboard() {
                 </div> */}
             </div>
 
+            <div class="flex flex-wrap items-center gap-3 mb-4">
 
+                {/* ALL DROPDOWN */}
+                <select
+                    class="border px-3 py-2 rounded-lg bg-white dark:bg-gray-800"
+                    value={statusFilter()}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                >
+                    <option value="all">All</option>
+                    <option value="active">Active Project</option>
+                    <option value="paused">Paused Project</option>
+                </select>
+
+                {/* SEARCH INPUT */}
+                <input
+                    type="text"
+                    placeholder="Search project..."
+                    value={searchText()}
+                    onInput={(e) => setSearchText(e.target.value)}
+                    class="border px-3 py-2 rounded-lg w-60 dark:bg-gray-800"
+                />
+
+                {/* SORT DROPDOWN */}
+                <select
+                    class="border px-3 py-2 rounded-lg dark:bg-gray-800"
+                    value={sortType()}
+                    onChange={(e) => setSortType(e.target.value)}
+                >
+                    <option value="">Sort By</option>
+                    <option value="budget">Budget High → Low</option>
+                    <option value="leads">Leads High → Low</option>
+                    <option value="activeCampaigns">Number Of Active Campaigns</option>
+                    <option value="budgetPerCPL">Budget ÷ CPL</option>
+                    <option value="cplHigh">CPL High → Low</option>
+                    <option value="cplLow">CPL Low → High</option>
+                </select>
+                <button
+                    onClick={handleClearFilters}
+                    class="px-4 py-2 rounded-lg border bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600 text-sm font-medium transition"
+                >
+                    Reset
+                </button>
+
+                {/* THREE DOT */}
+                {/* <button
+                    class="border px-3 py-2 rounded-lg"
+                    onClick={() => setShowColumnFilter(!showColumnFilter())}
+                >
+                    ⋮
+                </button> */}
+            </div>
+            {/* <Show when={showColumnFilter()}>
+                <div class="absolute bg-white dark:bg-gray-900 shadow-lg border rounded-lg p-4 z-50 w-60">
+                    <p class="font-semibold mb-2">Select Columns</p>
+
+                    {[
+                        "location",
+                        "type",
+                        "status",
+                        "budget",
+                        "cpl",
+                        "leadsgenerated",
+                        "activeCampaigns",
+                        "pausedCampaigns",
+                    ].map((col) => (
+                        <div class="flex items-center gap-2">
+                            <input
+                                type="checkbox"
+                                checked={selectedColumns().includes(col)}
+                                onChange={(e) => {
+                                    if (e.target.checked) {
+                                        setSelectedColumns([...selectedColumns(), col]);
+                                    } else {
+                                        setSelectedColumns(
+                                            selectedColumns().filter((c) => c !== col)
+                                        );
+                                    }
+                                }}
+                            />
+                            <label class="text-sm capitalize">{col}</label>
+                        </div>
+                    ))}
+
+                    <button
+                        class="mt-3 bg-green-600 text-white px-3 py-1 rounded"
+                        onClick={() => setShowColumnFilter(false)}
+                    >
+                        Apply
+                    </button>
+                </div>
+            </Show> */}
             <Show
                 when={viewType() === "grid"}
                 fallback={
@@ -200,89 +364,153 @@ export default function ClientDashboard() {
                         <table class="w-full text-sm table-auto">
                             <thead class="bg-gray-100 dark:bg-gray-800">
                                 <tr class="[&_th]:text-center  [&_th]:whitespace-nowrap [&_th:first-child]:text-left">
-                                    <th class="p-3">Project</th>
-                                    <th class="p-3">Location</th>
-                                    <th class="p-3">Type</th>
-                                    <th class="p-3">Status</th>
-                                    <th class="p-3">Customer Priority</th>
-                                    <th class="p-3">Project Control</th>
-                                    <th class="p-3">Budget</th>
-                                    <th class="p-3">CPL</th>
-                                    <th class="p-3">Leads Generated</th>
-                                    <th class="p-3">Active Campaigns</th>
-                                    <th class="p-3">Paused Campaigns</th>
+                                    <Show when={selectedColumns().length === 0 || selectedColumns().includes("name")}>
+                                        <th class="p-3">Project Name</th>
+                                    </Show>
+                                    <Show when={selectedColumns().length === 0 || selectedColumns().includes("location")}>
+                                        <th class="p-3">Location</th>
+                                    </Show>
+                                    <Show when={selectedColumns().length === 0 || selectedColumns().includes("type")}>
+                                        <th class="p-3">Type</th>
+                                    </Show>
+                                    <Show when={selectedColumns().length === 0 || selectedColumns().includes("status")}>
+                                        <th class="p-3">Status</th>
+                                    </Show>
+                                    <Show when={selectedColumns().length === 0 || selectedColumns().includes("uploaddocument")}>
+                                        <th class="p-3">Uploaded Document</th>
+                                    </Show>
+                                    <Show when={selectedColumns().length === 0 || selectedColumns().includes("priority")}>
+                                        <th class="p-3">Customer Priority</th>
+                                    </Show>
+                                    <Show when={selectedColumns().length === 0 || selectedColumns().includes("projectControl")}>
+                                        <th class="p-3">Project Control</th>
+                                    </Show>
+                                    <Show when={selectedColumns().length === 0 || selectedColumns().includes("budget")}>
+                                        <th class="p-3">Budget</th>
+                                    </Show>
+                                    <Show when={selectedColumns().length === 0 || selectedColumns().includes("cpl")}>
+                                        <th class="p-3">CPL</th>
+                                    </Show>
+                                    <Show when={selectedColumns().length === 0 || selectedColumns().includes("leadsgenerated")}>
+                                        <th class="p-3">Leads Generated</th>
+                                    </Show>
+                                    <Show when={selectedColumns().length === 0 || selectedColumns().includes("activeCampaigns")}>
+                                        <th class="p-3">Active Campaigns</th>
+                                    </Show>
+                                    <Show when={selectedColumns().length === 0 || selectedColumns().includes("pausedCampaigns")}>
+                                        <th class="p-3">Paused Campaigns</th>
+                                    </Show>
                                 </tr>
                             </thead>
                             <tbody>
-                                <For each={projects()}>
+                                <For each={filteredProjects()}>
                                     {(project) => (
                                         <tr class="[&_td]:text-center [&_td]:px-6 [&_td:first-child]:px-2 [&_td]:whitespace-nowrap [&_td:first-child]:text-left border-t hover:bg-gray-50 dark:hover:bg-gray-800">
-                                            <td class="p-2 flex items-center gap-2">
-                                                <div class="rounded bg-gray-100 dark:bg-gray-300 p-1 px-2 min-w-max">
-                                                    <img src={project.logo} class="w-10 h-10  " />
-                                                </div>
-                                                <A href={project.url} class="text-blue-600 dark:text-blue-400">
-                                                    {project.name}
-                                                </A>
-                                            </td>
-                                            <td class="p-2">{project.location}</td>
-                                            <td class="p-2">{project.type}</td>
-                                            <td class="px-4 py-3">
-                                                <span class="px-2 py-1 text-sm rounded-full capitalize"
-                                                    classList={{
-                                                        "bg-green-100 text-green-700": project.status === "active",
-                                                        "bg-yellow-100 text-yellow-700": project.status === "paused",
-                                                        "bg-red-100 text-red-700": project.status === "stopped",
-                                                    }}>
-                                                    {project.status}
-                                                </span>
-                                            </td>
+                                            <Show when={selectedColumns().length === 0 || selectedColumns().includes("name")}>
+                                                <td class="p-2 flex items-center gap-2">
+                                                    <div class="rounded bg-gray-100 dark:bg-gray-300 p-1 px-1 min-w-max">
+                                                        <img
+                                                            src={project.logo || "/default-logo.png"}
+                                                            class="w-10 h-10 object-fit"
+                                                            alt="logo"
+                                                        />
+                                                    </div>
+                                                    <A href={project.url} state={{ project }} class="text-blue-600 dark:text-blue-400">
+                                                        {project.name}
+                                                    </A>
+                                                </td>
+                                            </Show>
+                                            <Show when={selectedColumns().length === 0 || selectedColumns().includes("location")}>
+                                                <td class="p-2">{project.location}</td>
+                                            </Show>
+                                            <Show when={selectedColumns().length === 0 || selectedColumns().includes("type")}>
+                                                <td class="p-2">{project.type}</td>
+                                            </Show>
+                                            <Show when={selectedColumns().length === 0 || selectedColumns().includes("status")}>
+                                                <td class="px-4 py-3">
+                                                    <span class="px-3 py-1 text-sm rounded-full capitalize"
+                                                        classList={{
+                                                            "bg-green-100 text-green-700": project.status === "active",
+                                                            "bg-yellow-100 text-yellow-700": project.status === "paused",
+                                                            "bg-red-100 text-red-700": project.status === "stopped",
+                                                        }}>
+                                                        {project.status}
+                                                    </span>
+                                                </td>
+                                            </Show>
+                                            <Show when={selectedColumns().length === 0 || selectedColumns().includes("uploaddocument")}>
+                                                <td class="p-2">
+                                                    <Show when={project.uploaddocument} fallback={<span class="text-gray-400">No File</span>}>
+                                                        <a
+                                                            href={project.uploaddocument}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            class="text-blue-600 dark:text-blue-400 hover:underline text-sm"
+                                                        >
+                                                            View PDF
+                                                        </a>
+                                                    </Show>
+                                                </td>
+                                            </Show>
                                             {/* Priority Column */}
-                                            <td class="p-2">
-                                                <select
-                                                    class="border rounded px-2 py-1 text-sm bg-gray-100 dark:bg-gray-800 min-w-max"
-                                                    value={project.priority}
-                                                    onChange={(e) =>
-                                                        handlePriorityChange(project.id, e.target.value)
-                                                    }
-                                                >
-                                                    <option value="Urgent">Urgent</option>
-                                                    <option value="High">High Priority</option>
-                                                    <option value="Standard">Standard</option>
-                                                </select>
-                                            </td>
-
+                                            <Show when={selectedColumns().length === 0 || selectedColumns().includes("priority")}>
+                                                <td class="p-2">
+                                                    <select
+                                                        class="border rounded px-2 py-1 text-sm bg-gray-100 dark:bg-gray-800 min-w-max"
+                                                        value={project.priority}
+                                                        onChange={(e) =>
+                                                            handlePriorityChange(project.id, e.target.value)
+                                                        }
+                                                    >
+                                                        <option value="Urgent">Urgent</option>
+                                                        <option value="High">High Priority</option>
+                                                        <option value="Standard">Standard</option>
+                                                    </select>
+                                                </td>
+                                            </Show>
                                             {/* Project Status Dropdown */}
-                                            <td class="p-2">
-                                                <select
-                                                    class="border rounded px-2 py-1 text-sm bg-gray-100 dark:bg-gray-800 min-w-max"
-                                                    value={
-                                                        project.status === "active"
-                                                            ? "Live"
-                                                            : project.status === "paused"
-                                                                ? "Temporary Pause"
-                                                                : "Stopped"
-                                                    }
-                                                    onChange={(e) =>
-                                                        handleClientControlRequest(project.id, e.target.value)
-                                                    }
-                                                >
-                                                    <option value="Live">Live</option>
-                                                    <option value="Temporary Pause">Temporary Pause</option>
-                                                    <option value="Stopped">Stopped</option>
-                                                </select>
-                                            </td>
-                                            <td class="p-2">
-                                                ₹ {project.budget.toLocaleString("en-IN")}
-                                            </td>
-                                            <td class="p-2">{project.cpl}</td>
-                                            <td class="p-2">{project.leadsgenerated}</td>
-                                            <td class="p-2 text-center">
-                                                {project.activeCampaigns}
-                                            </td>
-                                            <td class="p-2 text-center">
-                                                {project.pausedCampaigns}
-                                            </td>
+                                            <Show when={selectedColumns().length === 0 || selectedColumns().includes("status")}>
+                                                <td class="p-2">
+                                                    <select
+                                                        class="border rounded px-2 py-1 text-sm bg-gray-100 dark:bg-gray-800 min-w-max"
+                                                        value={
+                                                            project.status === "active"
+                                                                ? "Live"
+                                                                : project.status === "paused"
+                                                                    ? "Temporary Pause"
+                                                                    : "Stopped"
+                                                        }
+                                                        onChange={(e) =>
+                                                            handleClientControlRequest(project.id, e.target.value)
+                                                        }
+                                                    >
+                                                        <option value="Live">Live</option>
+                                                        <option value="Temporary Pause">Temporary Pause</option>
+                                                        <option value="Stopped">Stopped</option>
+                                                    </select>
+                                                </td>
+                                            </Show>
+                                            <Show when={selectedColumns().length === 0 || selectedColumns().includes("budget")}>
+                                                <td class="p-2">
+                                                    ₹ {project.budget}
+                                                </td>
+                                            </Show>
+                                            <Show when={selectedColumns().length === 0 || selectedColumns().includes("cpl")}>
+                                                <td class="p-2">{project.cpl}</td>
+                                            </Show>
+                                            <Show when={selectedColumns().length === 0 || selectedColumns().includes("leadsgenerated")}>
+                                                <td class="p-2">{project.leadsgenerated}</td>
+                                            </Show>
+                                            <Show when={selectedColumns().length === 0 || selectedColumns().includes("activeCampaigns")}>
+                                                <td class="p-2 text-center">
+                                                    {project.activeCampaigns}
+                                                </td>
+                                            </Show>
+                                            <Show when={selectedColumns().length === 0 || selectedColumns().includes("pausedCampaigns")}>
+                                                <td class="p-2 text-center">
+                                                    {project.pausedCampaigns}
+                                                </td>
+                                            </Show>
                                         </tr>
                                     )}
                                 </For>
@@ -291,130 +519,6 @@ export default function ClientDashboard() {
                     </div>
                 }
             >
-                {/* GRID VIEW (Your Existing Cards – unchanged) */}
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                    <For each={projects()}>
-                        {(project) => (
-                            <For each={projects()}>
-                                {(project) => (
-                                    <div
-                                        class="
-                                group rounded-xl border border-gray-200 dark:border-gray-700
-                                bg-white dark:bg-gray-900
-                                p-4 transition-all duration-300 shadow-md
-                                hover:shadow-lg hover:-translate-y-1
-                                "
-                                    >
-
-                                        {/* Header */}
-                                        <div class="flex items-start justify-between">
-                                            <div class="flex items-center gap-3">
-
-                                                {/* Project Logo */}
-
-                                                <div
-                                                    class="
-                                            h-12 w-12 rounded-lg
-                                            flex items-center justify-center
-                                            bg-gray-100 
-                                            shadow-sm
-                                        "
-                                                >
-                                                    <img
-                                                        src={project.logo}
-                                                        alt={project.name}
-                                                        class=" object-cover"
-                                                    />
-                                                </div>
-
-                                                {/* Title */}
-                                                <div>
-                                                    <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">
-                                                        {project.name}
-                                                    </h3>
-                                                    <p class="text-sm text-gray-500 dark:text-gray-400">
-                                                        Property Type · {project.type}
-                                                    </p>
-                                                </div>
-                                            </div>
-
-                                            {/* Status */}
-                                            <span class="flex items-center gap-1 text-sm font-medium text-green-600 dark:text-green-400">
-                                                <span class="h-2 w-2 rounded-full bg-green-500"></span>
-                                                Active
-                                            </span>
-                                        </div>
-
-                                        {/* Location */}
-                                        <div class="flex justify-between">
-                                            <p class="mt-3 text-sm text-gray-700 dark:text-gray-300 flex items-center gap-1">
-                                                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                                        d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                                        d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                                                </svg>
-                                                {project.location}
-                                            </p>
-                                            <p class="mt-3 text-sm text-gray-700 dark:text-gray-300 flex items-center gap-1">
-
-                                                ₹ {project.budget.toLocaleString("en-IN")}
-                                            </p>
-                                        </div>
-
-                                        {/* Divider */}
-                                        <div class="my-4 border-t border-gray-200 dark:border-gray-700"></div>
-
-                                        {/* Campaign Stats */}
-                                        <div class="grid grid-cols-2 gap-4 text-sm ">
-                                            <div class="bg-green-50 dark:bg-gray-800 rounded-lg p-3">
-                                                <p class="text-sm text-green-700 dark:text-green-500">
-                                                    Active Campaigns
-                                                </p>
-                                                <p class="text-lg font-bold text-gray-900 dark:text-white">
-                                                    {project.activeCampaigns}
-                                                </p>
-                                            </div>
-
-                                            <div class="bg-red-50 dark:bg-gray-800 rounded-lg p-3">
-                                                <p class="text-sm text-red-500">
-                                                    Paused Campaigns
-                                                </p>
-                                                <p class="text-lg font-bold text-gray-900 dark:text-white">
-                                                    {project.pausedCampaigns}
-                                                </p>
-                                            </div>
-                                        </div>
-
-                                        {/* Footer CTA */}
-
-                                        {/* Footer CTA */}
-                                        <A
-                                            href={project.url}
-                                            class="
-                                        mt-4 w-full
-                                        text-primary-600 dark:text-primary-400
-                                        hover:text-primary-700 dark:hover:text-primary-300
-                                        font-medium text-sm
-                                        flex items-center justify-center gap-1
-                                    "
-                                        >
-                                            View Details
-                                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path
-                                                    stroke-linecap="round"
-                                                    stroke-linejoin="round"
-                                                    stroke-width="2"
-                                                    d="M9 5l7 7-7 7"
-                                                />
-                                            </svg>
-                                        </A>
-                                    </div>
-                                )}
-                            </For>
-                        )}
-                    </For>
-                </div>
             </Show>
 
             {/* Empty State */}
