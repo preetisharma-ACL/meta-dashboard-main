@@ -47,7 +47,7 @@ export function Billing() {
                     Manage your financial overview and campaign budgets
                 </p>
 
-                <p class="text-sm text-gray-400 mt-1">
+                <p class="text-sm text-gray-500 mt-1">
                     *All amounts shown excluding GST
                 </p>
             </div>
@@ -55,24 +55,24 @@ export function Billing() {
             {/* Budget Overview */}
             <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-10">
 
-                <div class="bg-white dark:bg-gray-800 rounded p-6 border shadow-sm">
-                    <p class="text-sm text-gray-300">Total Budget Committed</p>
-                    <h3 class="text-2xl font-semibold mt-2">{billing.committed}</h3>
+                <div class="bg-[#f4f7ca] dark:bg-gray-800 rounded p-6 border border-[#e3e996]">
+                    <p class="text-sm text-[#868d2b] dark:text-gray-300">Total Budget Committed</p>
+                    <h3 class="text-xl font-semibold mt-2">{billing.committed}</h3>
                 </div>
 
-                <div class="bg-white dark:bg-gray-800 rounded p-6 border shadow-sm">
-                    <p class="text-sm text-gray-300">Budget Utilized</p>
-                    <h3 class="text-2xl font-semibold mt-2">{billing.utilized}</h3>
+                <div class="bg-blue-50 dark:bg-gray-800 rounded p-6 border border-blue-200">
+                    <p class="text-sm text-blue-800 dark:text-gray-300">Budget Utilized</p>
+                    <h3 class="text-xl font-semibold mt-2">{billing.utilized}</h3>
                 </div>
 
-                <div class="bg-white dark:bg-gray-800 rounded p-6 border shadow-sm">
-                    <p class="text-sm text-gray-300">Remaining Balance</p>
-                    <h3 class="text-2xl font-semibold text-green-600 mt-2">{billing.remaining}</h3>
+                <div class="bg-green-50 dark:bg-gray-800 rounded p-6 border border-green-200">
+                    <p class="text-sm text-green-800 dark:text-gray-300">Remaining Balance</p>
+                    <h3 class="text-xl font-semibold text-green-600 mt-2">{billing.remaining}</h3>
                 </div>
 
-                <div class="bg-white dark:bg-gray-800 rounded p-6 border shadow-sm">
-                    <p class="text-sm text-gray-300">Pending Payment</p>
-                    <h3 class="text-2xl font-semibold text-red-500 mt-2">{billing.pending}</h3>
+                <div class="bg-red-50 dark:bg-gray-800 rounded p-6 border border-red-200">
+                    <p class="text-sm text-red-800 dark:text-gray-300">Pending Payment</p>
+                    <h3 class="text-xl font-semibold text-red-500 mt-2">{billing.pending}</h3>
                 </div>
 
             </div>
@@ -88,23 +88,23 @@ export function Billing() {
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
 
                     <div class="bg-white dark:bg-gray-800 p-6 rounded border shadow-sm">
-                        <p class="text-sm text-gray-300">Total Leads Generated</p>
-                        <h3 class="text-2xl font-semibold mt-2">{cplData.totalLeads}</h3>
+                        <p class="text-sm text-gray-500 dark:text-gray-300">Total Leads Generated</p>
+                        <h3 class="text-xl font-semibold mt-2">{cplData.totalLeads}</h3>
                     </div>
 
                     <div class="bg-white dark:bg-gray-800 p-6 rounded border shadow-sm">
-                        <p class="text-sm text-gray-300">Total Spend</p>
-                        <h3 class="text-2xl font-semibold mt-2">{cplData.totalSpend}</h3>
+                        <p class="text-sm text-gray-500 dark:text-gray-300">Total Spend</p>
+                        <h3 class="text-xl font-semibold mt-2">{cplData.totalSpend}</h3>
                     </div>
 
                     <div class="bg-white dark:bg-gray-800 p-6 rounded border shadow-sm">
-                        <p class="text-sm text-gray-300">Average CPL</p>
-                        <h3 class="text-2xl font-semibold text-blue-600 mt-2">{cplData.avgCPL}</h3>
+                        <p class="text-sm text-gray-500 dark:text-gray-300">Average CPL</p>
+                        <h3 class="text-xl font-semibold text-blue-600 mt-2">{cplData.avgCPL}</h3>
                     </div>
 
                 </div>
 
-                <p class="text-sm text-gray-300 mt-4">
+                <p class="text-sm text-gray-500 dark:text-gray-300 mt-4">
                     CPL = Total Spend ÷ Total Leads (Excluding GST)
                 </p>
 
