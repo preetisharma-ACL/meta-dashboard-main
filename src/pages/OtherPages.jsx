@@ -1,11 +1,4 @@
-export function Accounts() {
-    return (
-        <div class="p-6">
-            <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Accounts</h1>
-            <p class="text-gray-600 dark:text-gray-400 mt-2">Manage your customer accounts</p>
-        </div>
-    );
-}
+
 
 export function Contacts() {
     return (
@@ -76,14 +69,7 @@ export function Reports() {
     );
 }
 
-export function Billing() {
-    return (
-        <div class="p-6">
-            <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Billing</h1>
-            <p class="text-gray-600 dark:text-gray-400 mt-2">Manage your billing and subscriptions</p>
-        </div>
-    );
-}
+
 
 export function Integrations() {
     return (
