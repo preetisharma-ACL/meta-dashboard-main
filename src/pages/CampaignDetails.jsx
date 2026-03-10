@@ -43,27 +43,27 @@ export default function CampaignDetails() {
 
             {/* Campaign Overview */}
             <div class="grid md:grid-cols-4 gap-6 mb-10">
-                <div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm border border-gray-200 dark:border-gray-600">
-                    <p class="text-md text-gray-400">Impressions</p>
-                    <h3 class="text-xl font-semibold mt-1 dark:text-white">
+                <div class="bg-blue-50 dark:bg-gray-800 p-5 rounded  border border-blue-200 dark:border-gray-600">
+                    <p class="text-md text-blue-800 dark:text-gray-400">Impressions</p>
+                    <h3 class="text-lg font-semibold mt-1 dark:text-white">
                         {campaign.impressions}
                     </h3>
                 </div>
-                <div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm border border-gray-200 dark:border-gray-600">
-                    <p class="text-md text-gray-400">Reach</p>
-                    <h3 class="text-xl font-semibold mt-1 dark:text-white">
+                <div class="bg-red-50 dark:bg-gray-800 p-5 rounded  border border-red-200 dark:border-gray-600">
+                    <p class="text-md text-red-800 dark:text-gray-400">Reach</p>
+                    <h3 class="text-lg font-semibold mt-1 dark:text-white">
                         {campaign.reach}
                     </h3>
                 </div>
-                <div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm border border-gray-200 dark:border-gray-600">
-                    <p class="text-md text-gray-400">Spend</p>
-                    <h3 class="text-xl font-semibold mt-1 dark:text-white">
+                <div class="bg-green-50 dark:bg-gray-800 p-5 rounded  border border-green-200 dark:border-gray-600">
+                    <p class="text-md text-green-800 dark:text-gray-400">Spend</p>
+                    <h3 class="text-lg font-semibold mt-1 dark:text-white">
                         {campaign.spend}
                     </h3>
                 </div>
-                <div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm border border-gray-200 dark:border-gray-600">
-                    <p class="text-md text-gray-400">ROAS</p>
-                    <h3 class="text-xl font-semibold mt-1 dark:text-white">
+                <div class="bg-purple-50 dark:bg-gray-800 p-5 rounded  border border-purple-200 dark:border-gray-600">
+                    <p class="text-md text-purple-800 dark:text-gray-400">ROAS</p>
+                    <h3 class="text-lg font-semibold mt-1 dark:text-white">
                         {campaign.roas}
                     </h3>
                 </div>
@@ -72,7 +72,7 @@ export default function CampaignDetails() {
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
 
                 {/* Campaign Basics */}
-                <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
+                <div class="bg-white dark:bg-gray-900 rounded-xl  border border-gray-200 dark:border-gray-700">
                     <div class="p-5 border-b border-gray-200 dark:border-gray-700">
                         <h2 class="font-semibold text-gray-800 dark:text-white">
                             Campaign Basics
@@ -108,9 +108,8 @@ export default function CampaignDetails() {
                     </table>
                 </div>
 
-
                 {/* Performance Metrics */}
-                <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
+                <div class="bg-white dark:bg-gray-900 rounded-xl  border border-gray-200 dark:border-gray-700">
 
                     <div class="p-5 border-b border-gray-200 dark:border-gray-700">
                         <h2 class="font-semibold text-gray-800 dark:text-white">
@@ -146,7 +145,7 @@ export default function CampaignDetails() {
             </div>
 
             {/* Audience & Targeting */}
-            <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
+            <div class="bg-white dark:bg-gray-900 rounded-xl  border border-gray-200 dark:border-gray-700">
                 <div class="p-5 border-b border-gray-200 dark:border-gray-700">
                     <h2 class="font-semibold text-gray-800 dark:text-white">
                         Audience & Targeting

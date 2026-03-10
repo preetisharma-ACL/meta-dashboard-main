@@ -87,21 +87,20 @@ export function Billing() {
 
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
 
-                    <div class="bg-white dark:bg-gray-800 p-6 rounded border shadow-sm">
-                        <p class="text-sm text-gray-500 dark:text-gray-300">Total Leads Generated</p>
+                    <div class="bg-green-50 dark:bg-gray-800 p-6 rounded border border-green-200 ">
+                        <p class="text-sm text-green-800 dark:text-gray-300">Total Leads Generated</p>
                         <h3 class="text-xl font-semibold mt-2">{cplData.totalLeads}</h3>
                     </div>
 
-                    <div class="bg-white dark:bg-gray-800 p-6 rounded border shadow-sm">
-                        <p class="text-sm text-gray-500 dark:text-gray-300">Total Spend</p>
+                    <div class="bg-red-50 dark:bg-gray-800 p-6 rounded border border-red-200 ">
+                        <p class="text-sm text-red-800 dark:text-gray-300">Total Spend</p>
                         <h3 class="text-xl font-semibold mt-2">{cplData.totalSpend}</h3>
                     </div>
 
-                    <div class="bg-white dark:bg-gray-800 p-6 rounded border shadow-sm">
-                        <p class="text-sm text-gray-500 dark:text-gray-300">Average CPL</p>
+                    <div class="bg-yellow-50 dark:bg-gray-800 p-6 rounded border border-yellow-200 ">
+                        <p class="text-sm text-yellow-800 dark:text-gray-300">Average CPL</p>
                         <h3 class="text-xl font-semibold text-blue-600 mt-2">{cplData.avgCPL}</h3>
                     </div>
-
                 </div>
 
                 <p class="text-sm text-gray-500 dark:text-gray-300 mt-4">
@@ -134,7 +133,6 @@ export function Billing() {
                         <tbody>
                             {invoices.map((inv) => (
                                 <tr class="border-t dark:border-gray-700">
-
                                     <td class="p-4">{inv.date}</td>
                                     <td class="p-4">{inv.invoice}</td>
                                     <td class="p-4">{inv.amount}</td>
@@ -148,17 +146,12 @@ export function Billing() {
                                             {inv.status}
                                         </span>
                                     </td>
-
                                 </tr>
                             ))}
                         </tbody>
-
                     </table>
-
                 </div>
-
             </div>
-
         </div>
     );
 }

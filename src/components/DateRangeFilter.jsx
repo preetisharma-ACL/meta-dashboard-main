@@ -70,53 +70,77 @@ export function DateRangeFilter(props) {
     };
 
     const isDateSelected = (day) => {
-        if (!tempFromDate() && !tempToDate()) return false;
+        if (!tempFromDate()) return false;
 
         const year = currentMonth().getFullYear();
         const month = currentMonth().getMonth();
         const date = new Date(year, month, day);
-        const dateStr = date.toISOString().split('T')[0];
+        date.setHours(0, 0, 0, 0);
 
-        const from = tempFromDate() ? new Date(tempFromDate()).toISOString().split('T')[0] : null;
-        const to = tempToDate() ? new Date(tempToDate()).toISOString().split('T')[0] : null;
+        const from = new Date(tempFromDate());
+        const to = new Date(tempToDate());
 
-        return dateStr === from || dateStr === to;
+        from.setHours(0, 0, 0, 0);
+        to.setHours(0, 0, 0, 0);
+
+        return (
+            date.getTime() === from.getTime() ||
+            date.getTime() === to.getTime()
+        );
     };
-
     const isDateInRange = (day) => {
         if (!tempFromDate() || !tempToDate()) return false;
 
         const year = currentMonth().getFullYear();
         const month = currentMonth().getMonth();
+
         const date = new Date(year, month, day);
+        date.setHours(0, 0, 0, 0);
 
         const from = new Date(tempFromDate());
         const to = new Date(tempToDate());
+
+        from.setHours(0, 0, 0, 0);
+        to.setHours(0, 0, 0, 0);
 
         return date > from && date < to;
     };
 
     const handleDayClick = (day) => {
-        setSelectionMode('manual'); // 👈 important
-
         const year = currentMonth().getFullYear();
         const month = currentMonth().getMonth();
-        const date = new Date(year, month, day);
-        const dateStr = date.toISOString();
 
-        if (!tempFromDate() || (tempFromDate() && tempToDate())) {
+        const clickedDate = new Date(year, month, day);
+        clickedDate.setHours(0, 0, 0, 0);
+
+        const dateStr = clickedDate.toISOString();
+
+        // First click
+        if (!tempFromDate()) {
             setTempFromDate(dateStr);
-            setTempToDate('');
-        } else {
-            if (new Date(dateStr) < new Date(tempFromDate())) {
-                setTempToDate(tempFromDate());
+            setTempToDate("");
+            return;
+        }
+
+        // Second click -> create range
+        if (!tempToDate()) {
+
+            const from = new Date(tempFromDate());
+
+            if (clickedDate < from) {
                 setTempFromDate(dateStr);
+                setTempToDate(from.toISOString());
             } else {
                 setTempToDate(dateStr);
             }
-        }
-    };
 
+            return;
+        }
+
+        // Third click -> restart selection
+        setTempFromDate(dateStr);
+        setTempToDate("");
+    };
 
     const handlePresetClick = (preset) => {
         setSelectionMode("preset");
@@ -186,18 +210,23 @@ export function DateRangeFilter(props) {
         }
 
         // ⚠️ KEEP ISO ONLY FOR STATE (logic uses local timestamps)
-        setTempFromDate(from.toISOString());
-        setTempToDate(to.toISOString());
+        setTempFromDate(from);
+        setTempToDate(to);
         setCurrentMonth(new Date(from));
     };
 
 
 
     const handleApply = () => {
-        if (tempFromDate() && tempToDate()) {
-            props.setFromDate(tempFromDate());
-            props.setToDate(tempToDate());
-        }
+
+        if (!tempFromDate()) return;
+
+        const from = tempFromDate();
+        const to = tempToDate() || tempFromDate(); // single date support
+
+        props.setFromDate(from);
+        props.setToDate(to);
+
         setIsOpen(false);
     };
 
@@ -217,6 +246,21 @@ export function DateRangeFilter(props) {
         const newMonth = new Date(currentMonth());
         newMonth.setMonth(newMonth.getMonth() + delta);
         setCurrentMonth(newMonth);
+    };
+
+    const isFutureDateSelected = () => {
+        if (!tempFromDate()) return false;
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const from = new Date(tempFromDate());
+        from.setHours(0, 0, 0, 0);
+
+        const to = tempToDate() ? new Date(tempToDate()) : from;
+        to.setHours(0, 0, 0, 0);
+
+        return from > today || to > today;
     };
 
     return (
@@ -370,22 +414,18 @@ export function DateRangeFilter(props) {
                                     <div class="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-600">
                                         <button
                                             onClick={handleCancel}
-                                            disabled={selectionMode() === 'manual'}
-                                            class={`px-6 py-2 text-sm font-medium rounded-lg border transition-colors
-                                            ${selectionMode() === 'manual'
-                                                    ? 'opacity-50 cursor-not-allowed'
-                                                    : 'text-gray-700 dark:text-gray-200 border-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
-                                                }`}
+                                            class="px-6 py-2 text-sm font-medium rounded-lg border text-gray-700 dark:text-gray-200 border-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
                                         >
                                             Cancel
                                         </button>
+
                                         <button
                                             onClick={handleApply}
-                                            disabled={selectionMode() === 'manual'}
-                                            class={`px-6 py-2 text-sm font-medium rounded-lg transition-colors
-                                             ${selectionMode() === 'manual'
-                                                    ? 'bg-blue-400 cursor-not-allowed'
-                                                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                                            disabled={!tempFromDate() || isFutureDateSelected()}
+                                            class={`px-6 py-2 text-sm font-medium rounded-lg
+                                            ${!tempFromDate() || isFutureDateSelected()
+                                                    ? "bg-blue-400 cursor-not-allowed"
+                                                    : "bg-blue-600 text-white hover:bg-blue-700"
                                                 }`}
                                         >
                                             Apply
