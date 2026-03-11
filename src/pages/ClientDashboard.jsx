@@ -4,6 +4,7 @@ import godrejlogo from "../assets/project-logo/dlf.png";
 import birlalogo from "../assets/project-logo/godrej.png";
 import prestigelogo from "../assets/project-logo/prestige.png";
 import { A, } from "@solidjs/router";
+import { DateRangeFilter } from "../components/DateRangeFilter";
 export default function ClientDashboard() {
 
     const [statusFilter, setStatusFilter] = createSignal("all");
@@ -11,6 +12,8 @@ export default function ClientDashboard() {
     const [showColumnFilter, setShowColumnFilter] = createSignal(false);
     const [selectedColumns, setSelectedColumns] = createSignal([]);
     const [sortType, setSortType] = createSignal("");
+    const [fromDate, setFromDate] = createSignal("");
+    const [toDate, setToDate] = createSignal("");
 
     const [viewType, setViewType] = createSignal("table"); // "grid" | "table"
     const storedProjects =
@@ -127,6 +130,121 @@ export default function ClientDashboard() {
         },
     ]);
 
+
+    const campaignsData = [
+        {
+            campaign_name: "Birla 1",
+            spent: 34890,
+            leadsByDate: {
+                "2026-02-05": 12,
+                "2026-02-14": 8,
+                "2026-02-12": 5
+            }
+        },
+        {
+            campaign_name: "Birla 2",
+            spent: 34890,
+            leadsByDate: {
+                "2026-02-13": 20,
+                "2026-02-15": 20,
+                "2026-02-14": 10
+            }
+        },
+        {
+            campaign_name: "Birla 3",
+            spent: 34890,
+            leadsByDate: {
+                "2026-02-13": 20,
+                "2026-02-15": 20,
+                "2026-02-14": 10
+            }
+        },
+        {
+            campaign_name: "Birla 4",
+            spent: 34890,
+            leadsByDate: {
+                "2026-02-13": 20,
+                "2026-02-15": 20,
+                "2026-02-14": 10
+            }
+        },
+        {
+            campaign_name: "Birla 5",
+            spent: 34890,
+            leadsByDate: {
+                "2026-02-13": 20,
+                "2026-02-15": 20,
+                "2026-02-14": 10
+            }
+        },
+        {
+            campaign_name: "Birla 6",
+            spent: 34890,
+            leadsByDate: {
+                "2026-02-13": 20,
+                "2026-02-15": 20,
+                "2026-02-14": 10
+            }
+        }
+    ]
+
+    const normalizeLocalDate = (d) => {
+        const date = new Date(d);
+        date.setHours(0, 0, 0, 0);
+        return date.getTime();
+    };
+
+    const getLeadsInRange = (leadsByDate, from, to) => {
+
+        if (!from || !to) return 0;
+
+        const start = normalizeLocalDate(from);
+        const end = normalizeLocalDate(to);
+
+        return Object.entries(leadsByDate || {}).reduce(
+            (total, [date, leads]) => {
+
+                const current = normalizeLocalDate(date);
+
+                return current >= start && current <= end
+                    ? total + leads
+                    : total;
+
+            }, 0)
+
+    }
+
+    const dashboardStats = createMemo(() => {
+
+        let totalLeads = 0
+        let totalSpent = 0
+
+        campaignsData.forEach(campaign => {
+
+            const leads = getLeadsInRange(
+                campaign.leadsByDate,
+                fromDate(),
+                toDate()
+            )
+
+            totalLeads += leads
+            totalSpent += campaign.spent
+
+        })
+
+        const avgCPL =
+            totalLeads > 0
+                ? Math.round(totalSpent / totalLeads)
+                : 0
+
+        return {
+            totalLeads,
+            totalSpent,
+            avgCPL
+        }
+
+    })
+
     const handlePriorityChange = (id, value) => {
         setProjects(prev =>
             prev.map(p =>
@@ -203,7 +321,40 @@ export default function ClientDashboard() {
         setSearchText("");
         setSortType("");
         setSelectedColumns([]);
+        setFromDate("");
+        setToDate("");
     };
+
+    const rangeLabel = createMemo(() => {
+        if (!fromDate() || !toDate()) return "Today";
+
+        const from = new Date(fromDate());
+        const to = new Date(toDate());
+
+        // normalize to local midnight
+        from.setHours(0, 0, 0, 0);
+        to.setHours(0, 0, 0, 0);
+
+        const diffDays =
+            Math.floor((to.getTime() - from.getTime()) / 86400000) + 1;
+
+        // today check
+        if (diffDays === 1) {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            if (from.getTime() === today.getTime()) {
+                return "Today";
+            }
+            return "Yesterday";
+        }
+
+        if (diffDays === 3) return "Last 3 Days";
+        if (diffDays === 7) return "Last 7 Days";
+        if (diffDays >= 28 && diffDays <= 31) return "Last Month";
+
+        return "Custom Range";
+    });
     return (
         <section class="w-full px-4 sm:px-6 lg:px-8 py-6">
 
@@ -301,6 +452,13 @@ export default function ClientDashboard() {
                     <option value="cplHigh">CPL High → Low</option>
                     <option value="cplLow">CPL Low → High</option>
                 </select>
+
+                <DateRangeFilter
+                    fromDate={fromDate}
+                    toDate={toDate}
+                    setFromDate={setFromDate}
+                    setToDate={setToDate}
+                />
                 <button
                     onClick={handleClearFilters}
                     class="px-4 py-2 rounded-lg border bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600 text-sm font-medium transition"
@@ -389,11 +547,17 @@ export default function ClientDashboard() {
                                         <th class="p-3">Budget</th>
                                     </Show>
                                     <Show when={selectedColumns().length === 0 || selectedColumns().includes("cpl")}>
-                                        <th class="p-3">CPL</th>
+                                        <th class="p-3">{rangeLabel()} Total Leads</th>
                                     </Show>
-                                    <Show when={selectedColumns().length === 0 || selectedColumns().includes("leadsgenerated")}>
+                                    <Show when={selectedColumns().length === 0 || selectedColumns().includes("cpl")}>
+                                        <th class="p-3">{rangeLabel()} Total Spent</th>
+                                    </Show>
+                                    <Show when={selectedColumns().length === 0 || selectedColumns().includes("cpl")}>
+                                        <th class="p-3">{rangeLabel()} AVG CPL</th>
+                                    </Show>
+                                    {/* <Show when={selectedColumns().length === 0 || selectedColumns().includes("leadsgenerated")}>
                                         <th class="p-3">Leads Generated</th>
-                                    </Show>
+                                    </Show> */}
                                     <Show when={selectedColumns().length === 0 || selectedColumns().includes("activeCampaigns")}>
                                         <th class="p-3">Active Campaigns</th>
                                     </Show>
@@ -495,12 +659,28 @@ export default function ClientDashboard() {
                                                     ₹ {project.budget}
                                                 </td>
                                             </Show>
-                                            <Show when={selectedColumns().length === 0 || selectedColumns().includes("cpl")}>
+                                            <Show when={selectedColumns().length === 0 || selectedColumns().includes("totalLeads")}>
+                                                <td class="p-2">
+                                                    {dashboardStats().totalLeads}
+                                                </td>
+                                            </Show>
+                                            <Show when={selectedColumns().length === 0 || selectedColumns().includes("totalSpent")}>
+                                                <td class="p-2">
+                                                    ₹{dashboardStats().totalSpent.toLocaleString("en-IN")}
+                                                </td>
+                                            </Show>
+                                            <Show when={selectedColumns().length === 0 || selectedColumns().includes("avgCPL")}>
+                                                <td class="p-2">
+                                                    ₹{dashboardStats().avgCPL}
+                                                </td>
+                                            </Show>
+
+                                            {/* <Show when={selectedColumns().length === 0 || selectedColumns().includes("cpl")}>
                                                 <td class="p-2">{project.cpl}</td>
-                                            </Show>
-                                            <Show when={selectedColumns().length === 0 || selectedColumns().includes("leadsgenerated")}>
+                                            </Show> */}
+                                            {/* <Show when={selectedColumns().length === 0 || selectedColumns().includes("leadsgenerated")}>
                                                 <td class="p-2">{project.leadsgenerated}</td>
-                                            </Show>
+                                            </Show> */}
                                             <Show when={selectedColumns().length === 0 || selectedColumns().includes("activeCampaigns")}>
                                                 <td class="p-2 text-center">
                                                     {project.activeCampaigns}
