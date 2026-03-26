@@ -173,7 +173,6 @@ export default function AddProject() {
                                     class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 px-4 py-3 rounded-xl focus:ring-2 focus:ring-green-500 outline-none transition"
                                     onInput={handleChange}
                                 />
-
                                 <select
                                     name="priority"
                                     class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 px-4 py-3 rounded-xl focus:ring-2 focus:ring-green-500 outline-none transition"

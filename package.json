@@ -10,7 +10,9 @@
   },
   "dependencies": {
     "@solidjs/router": "^0.10.5",
+    "apexcharts": "^5.10.4",
     "flatpickr": "^4.6.13",
+    "lucide-solid": "^0.577.0",
     "solid-js": "^1.8.7",
     "sweetalert2": "^11.26.20"
   },

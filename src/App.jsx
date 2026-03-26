@@ -20,7 +20,9 @@ import ProjectDetails from './pages/ProjectDetails';
 import ClientDashboard from './pages/ClientDashboard';
 import CampaignDetails from './pages/CampaignDetails';
 import AddProject from './pages/AddProjects';
-import { Billing } from './pages/Billing';
+import  Billing  from './pages/Billing';
+import LeadPerformance from './pages/LeadPerformance';
+import WhatIsPerforming from './pages/WhatisPerforming';
 
 function Layout(props) {
   const { isCollapsed } = useSidebar();
@@ -50,6 +52,8 @@ function App() {
           <Route path="/" component={() => <Layout><ClientDashboard /></Layout>} />
           <Route path="/add-project" component={() => <Layout><AddProject /></Layout>} />
           <Route path="/billing" component={() => <Layout><Billing /></Layout>} />
+          <Route path="/leads-performance" component={() => <Layout><LeadPerformance /></Layout>} />
+          <Route path="/what-is-performing" component={() => <Layout><WhatIsPerforming /></Layout>} />
           <Route path="/contacts" component={() => <Layout><Contacts /></Layout>} />
           <Route path="/leads" component={() => <Layout><Leads /></Layout>} />
           <Route path="/task" component={() => <Layout><Task /></Layout>} />

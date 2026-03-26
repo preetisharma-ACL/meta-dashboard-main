@@ -2,6 +2,7 @@ import { For, Show, createMemo, createSignal } from "solid-js";
 import { DateRangeFilter } from "../components/DateRangeFilter";
 import { A } from "@solidjs/router";
 import { useLocation } from "@solidjs/router";
+import { Users, PhoneCall, BadgeCheck, MapPin, Home, TrendingUp } from "lucide-solid";
 
 /* ================= STATIC PROJECT INFO ================= */
 
@@ -358,6 +359,7 @@ export default function ProjectDetails() {
                             <th class="p-3">{rangeLabel()} Clicks</th>
                             <th class="p-3">{rangeLabel()} Reach</th>
                             <th class="p-3">{rangeLabel()} Spent</th>
+                            <th class="p-3">{rangeLabel()} CPL</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -388,11 +390,87 @@ export default function ProjectDetails() {
                                     <td class="p-3">{row.totalClicks}</td>
                                     <td class="p-3">{row.totalReach}</td>
                                     <td class="p-3">₹{row.totalSpent.toLocaleString("en-IN")}</td>
+                                    <td class="p-3">₹{row.cpl}</td>
                                 </tr>
                             )}
                         </For>
                     </tbody>
                 </table>
+            </div>
+
+            {/* ================= Lead Quality Insights ================= */}
+            <h3 class="mt-8 mb-4 text-lg font-semibold text-gray-800 dark:text-white">
+                Lead Quality Insights
+            </h3>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+
+                {/* Total Leads */}
+                <div class="p-4 rounded-lg bg-blue-50 dark:bg-gray-800 border border-blue-100 dark:border-gray-700 shadow-sm hover:shadow-md transition">
+                    <div class="flex items-center justify-between">
+                        <p class="text-sm text-gray-600 dark:text-gray-400">Total Leads</p>
+                        <div class="p-2 bg-blue-100 dark:bg-blue-500 rounded">
+                            <Users size={18} class="text-blue-500 dark:text-blue-100" />
+                        </div>
+                    </div>
+                    <h3 class="mt-2 text-xl font-semibold text-gray-800 dark:text-white">120</h3>
+                </div>
+
+                {/* Contacted */}
+                <div class="p-4 rounded-lg bg-purple-50 dark:bg-gray-800 border border-purple-100 dark:border-gray-700 shadow-sm hover:shadow-md transition">
+                    <div class="flex items-center justify-between">
+                        <p class="text-sm text-gray-600 dark:text-gray-400">Contacted</p>
+                        <div class="p-2 bg-purple-100 dark:bg-purple-500 rounded">
+                            <PhoneCall size={18} class="text-purple-500 dark:text-purple-100" />
+                        </div>
+                    </div>
+                    <h3 class="mt-2 text-xl font-semibold text-gray-800 dark:text-white">95</h3>
+                </div>
+                {/* Qualified */}
+                <div class="p-4 rounded-lg bg-green-50 dark:bg-gray-800 border border-green-100 dark:border-gray-700 shadow-sm hover:shadow-md transition">
+                    <div class="flex items-center justify-between">
+                        <p class="text-sm text-gray-600 dark:text-gray-400">Qualified</p>
+                        <div class="p-2 bg-green-100 dark:bg-green-500 rounded">
+                            <BadgeCheck size={18} class="text-green-500 dark:text-green-100" />
+                        </div>
+                    </div>
+                    <h3 class="mt-2 text-xl font-semibold text-gray-800 dark:text-white">60</h3>
+                </div>
+
+                {/* Site Visits */}
+                <div class="p-4 rounded-lg bg-yellow-50 dark:bg-gray-800 border border-yellow-100 dark:border-gray-700 shadow-sm hover:shadow-md transition">
+                    <div class="flex items-center justify-between">
+                        <p class="text-sm text-gray-600 dark:text-gray-400">Site Visits</p>
+                        <div class="p-2 bg-yellow-100 dark:bg-yellow-500 rounded">
+                            <MapPin size={18} class="text-yellow-500 dark:text-yellow-100" />
+                        </div>
+                    </div>
+                    <h3 class="mt-2 text-xl font-semibold text-gray-800 dark:text-white">30</h3>
+                </div>
+
+                {/* Bookings */}
+                <div class="p-4 rounded-lg bg-pink-50 dark:bg-gray-800 border border-pink-100 dark:border-gray-700 shadow-sm hover:shadow-md transition">
+                    <div class="flex items-center justify-between">
+                        <p class="text-sm text-gray-600 dark:text-gray-400">Bookings</p>
+                        <div class="p-2 bg-pink-100 dark:bg-pink-500 rounded">
+                            <Home size={18} class="text-pink-500 dark:text-pink-100" />
+                        </div>
+                    </div>
+                    <h3 class="mt-2 text-xl font-semibold text-gray-800 dark:text-white">12</h3>
+                </div>
+
+                {/* Conversion */}
+                <div class="p-4 rounded-lg bg-emerald-50 dark:bg-gray-800 border border-emerald-100 dark:border-gray-700 shadow-sm hover:shadow-md transition">
+                    <div class="flex items-center justify-between">
+                        <p class="text-sm text-gray-600 dark:text-gray-400">Conversion %</p>
+                        <div class="p-2 bg-emerald-100 dark:bg-emerald-500 rounded">
+                            <TrendingUp size={18} class="text-emerald-500 dark:text-emerald-100" />
+                        </div>
+                    </div>
+                    <h3 class="mt-2 text-xl font-semibold text-emerald-600 dark:text-emerald-400">
+                        10%
+                    </h3>
+                </div>
             </div>
         </div>
     );

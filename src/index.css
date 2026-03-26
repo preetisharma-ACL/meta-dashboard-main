@@ -78,3 +78,29 @@
 .date-btn:hover {
   background: #f3f4f6;
 }
+
+/* ApexCharts tooltip */
+
+.apexcharts-tooltip {
+  @apply bg-white text-gray-800 border border-gray-200 shadow-lg rounded-md;
+}
+
+.dark .apexcharts-tooltip {
+  @apply bg-gray-800 text-gray-800 border-gray-700;
+}
+
+/* Tooltip title (date section) */
+.apexcharts-tooltip-title {
+  @apply bg-gray-50 text-gray-500 border-b border-gray-200;
+}
+
+.dark .apexcharts-tooltip-title {
+  @apply bg-gray-700 text-gray-800 border-gray-600;
+}
+.input-ui {
+  @apply w-full px-3 py-2.5 text-sm rounded-lg 
+  border border-gray-300 dark:border-gray-700 
+  bg-white dark:bg-gray-800 shadow-md hover:shadow-lg  duration-200
+  text-gray-800 dark:text-gray-200 
+  focus:ring-1 focus:ring-green-500 focus:border-green-500 focus:outline-none;
+}

@@ -301,9 +301,9 @@ export default function ClientDashboard() {
                 data.sort((a, b) => b.activeCampaigns - a.activeCampaigns);
                 break;
 
-            case "budgetPerCPL":
-                data.sort((a, b) => (b.budget / b.cpl) - (a.budget / a.cpl));
-                break;
+            // case "budgetPerCPL":
+            //     data.sort((a, b) => (b.budget / b.cpl) - (a.budget / a.cpl));
+            //     break;
 
             case "cplHigh":
                 data.sort((a, b) => b.cpl - a.cpl);
@@ -416,8 +416,88 @@ export default function ClientDashboard() {
                 </div> */}
             </div>
 
-            <div class="flex flex-wrap items-center gap-3 mb-4">
+            {/* project Overview */}
+            <div class="grid md:grid-cols-4 gap-6 mb-10">
+                {/* Total Budget */}
+                <div class="bg-blue-50  dark:bg-gray-800 p-5 rounded border border-blue-200 dark:border-gray-600 flex justify-between items-center">
+                    <div>
+                        <p class="text-sm text-blue-800 dark:text-gray-400">Total Budget Allocated</p>
+                        <h3 class="text-lg font-semibold mt-1 dark:text-white">₹1000</h3>
+                    </div>
+                    <div class="p-3 rounded-lg bg-blue-100 dark:bg-blue-300">
+                        <svg class="w-5 h-5 text-blue-600 dark:text-blue-800" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                        </svg>
+                    </div>
+                </div>
+                {/* Total Spend */}
+                <div class="bg-red-50 dark:bg-gray-800 p-5 rounded border border-red-200 dark:border-gray-600 flex justify-between items-center">
+                    <div>
+                        <p class="text-sm text-red-800 dark:text-gray-400">Total Spend Till Date</p>
+                        <h3 class="text-lg font-semibold mt-1 dark:text-white">30,000</h3>
+                    </div>
+                    <div class="p-3 rounded-lg bg-red-100 dark:bg-red-300">
+                        <svg class="w-5 h-5 text-red-600 dark:text-red-800" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path d="M17 9V7a5 5 0 00-10 0v2" />
+                            <rect x="3" y="9" width="18" height="11" rx="2" />
+                        </svg>
+                    </div>
+                </div>
+                {/* Leads */}
+                <div class="bg-green-50 dark:bg-gray-800 p-5 rounded border border-green-200 dark:border-gray-600 flex justify-between items-center">
+                    <div>
+                        <p class="text-sm text-green-800 dark:text-gray-400">Total Leads Generated</p>
+                        <h3 class="text-lg font-semibold mt-1 dark:text-white">200</h3>
+                    </div>
+                    <div class="p-3 rounded-lg bg-green-100 dark:bg-green-300">
+                        <svg class="w-5 h-5 text-green-600 dark:text-green-800" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                        </svg>
+                    </div>
+                </div>
+                {/* CPL */}
+                <div class="bg-purple-50 dark:bg-gray-800 p-5 rounded border border-purple-200 dark:border-gray-600 flex justify-between items-center">
+                    <div>
+                        <p class="text-sm text-purple-800 dark:text-gray-400">Average CPL</p>
+                        <h3 class="text-lg font-semibold mt-1 dark:text-white">212.20</h3>
+                    </div>
+                    <div class="p-3 rounded-lg bg-purple-100 dark:bg-purple-300">
+                        <svg class="w-5 h-5 text-purple-600 dark:text-purple-800" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path d="M3 3v18h18" />
+                            <path d="M18 17l-5-5-4 4-3-3" />
+                        </svg>
+                    </div>
+                </div>
+            </div>
+            <div class="grid md:grid-cols-4 gap-6 mb-10">
+                {/* Active Campaigns */}
+                <div class="bg-blue-50 dark:bg-gray-800 p-5 rounded border border-blue-200 dark:border-gray-600 flex justify-between items-center">
+                    <div>
+                        <p class="text-sm text-blue-800 dark:text-gray-400">Active Campaigns Count</p>
+                        <h3 class="text-lg font-semibold mt-1 dark:text-white">12</h3>
+                    </div>
+                    <div class="p-3 rounded-lg bg-blue-100 dark:bg-blue-300">
+                        <svg class="w-5 h-5 text-blue-600 dark:text-blue-800" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <circle cx="12" cy="12" r="9" />
+                            <path d="M12 7v5l3 3" />
+                        </svg>
+                    </div>
+                </div>
+                {/* Project Status */}
+                <div class="bg-red-50 dark:bg-gray-800 p-5 rounded border border-red-200 dark:border-gray-600 flex justify-between items-center">
+                    <div>
+                        <p class="text-sm text-red-800 dark:text-gray-400">Project Status</p>
+                        <h3 class="text-lg font-semibold mt-1 dark:text-white">Running</h3>
+                    </div>
+                    <div class="p-3 rounded-lg bg-red-100 dark:bg-red-300">
+                        <svg class="w-5 h-5 text-red-600 dark:text-red-800" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path d="M5 13l4 4L19 7" />
+                        </svg>
+                    </div>
+                </div>
+            </div>
 
+            <div class="flex flex-wrap items-center gap-3 mb-4">
                 {/* ALL DROPDOWN */}
                 <select
                     class="border px-3 py-2 rounded-lg bg-white dark:bg-gray-800"
@@ -448,7 +528,7 @@ export default function ClientDashboard() {
                     <option value="budget">Budget High → Low</option>
                     <option value="leads">Leads High → Low</option>
                     <option value="activeCampaigns">Number Of Active Campaigns</option>
-                    <option value="budgetPerCPL">Budget ÷ CPL</option>
+                    {/* <option value="budgetPerCPL">Budget ÷ CPL</option> */}
                     <option value="cplHigh">CPL High → Low</option>
                     <option value="cplLow">CPL Low → High</option>
                 </select>
