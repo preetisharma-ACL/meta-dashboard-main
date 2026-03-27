@@ -3,6 +3,12 @@ import { DateRangeFilter } from "../components/DateRangeFilter";
 import { A } from "@solidjs/router";
 import { useLocation } from "@solidjs/router";
 import { Users, PhoneCall, BadgeCheck, MapPin, Home, TrendingUp } from "lucide-solid";
+import {
+    IndianRupee,
+    Clock,
+    XCircle,
+    User,
+} from "lucide-solid";
 
 /* ================= STATIC PROJECT INFO ================= */
 
@@ -290,7 +296,17 @@ export default function ProjectDetails() {
 
         return "Custom Range";
     });
-
+    const metricIcons = {
+        "Total Leads Generated": Users,
+        "Average CPL": TrendingUp,
+        "Total Spent Amount": IndianRupee,
+        "Total Qualified Leads": BadgeCheck,
+        "Follow ups / Interested": PhoneCall,
+        "Delay in Feedback": Clock,
+        "Not Interested": XCircle,
+        "Call Not Picked / Call Later": PhoneCall,
+        "Broker": User,
+    };
 
 
     /* ================= UI ================= */
@@ -402,7 +418,6 @@ export default function ProjectDetails() {
             <h3 class="mt-8 mb-4 text-lg font-semibold text-gray-800 dark:text-white">
                 Lead Quality Insights
             </h3>
-
             <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
 
                 {/* Total Leads */}
@@ -470,6 +485,136 @@ export default function ProjectDetails() {
                     <h3 class="mt-2 text-xl font-semibold text-emerald-600 dark:text-emerald-400">
                         10%
                     </h3>
+                </div>
+            </div>
+
+
+            {/* leads report */}
+            <h3 class="mt-8 text-lg font-semibold text-gray-800 dark:text-white">
+                Project Leads Report
+            </h3>
+            <div class="mt-4 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden  dark:bg-gray-900">
+                <table class="w-full text-sm">
+                    <thead class="border-b border-gray-200 dark:border-gray-700">
+                        <tr class="text-md font-bold text-gray-800 dark:text-gray-200 bg-gray-100 dark:bg-gray-800  ">
+
+                            {[
+                                "Total Leads",
+                                "Follow Up / Interested",
+                                "Delay in Feedback",
+                                "Qualified Leads",
+                                "Call Later / CNP",
+                                "Not Interested",
+                                "Broker",
+                            ].map((head) => (
+                                <th class="p-3 text-center whitespace-nowrap">
+                                    {head}
+                                </th>
+                            ))}
+
+                        </tr>
+                    </thead>
+
+                    {/*  VALUES */}
+                    <tbody>
+                        <tr class="text-center hover:bg-gray-50 dark:hover:bg-gray-800/40 transition">
+
+                            {[
+                                115,
+                                40,
+                                17,
+                                57,
+                                31,
+                                24,
+                                3,
+                            ].map((val) => (
+                                <td class="p-3  text-gray-900 dark:text-gray-100">
+                                    {val}
+                                </td>
+                            ))}
+
+                        </tr>
+                    </tbody>
+
+                </table>
+            </div>
+
+
+            {/* Payment report */}
+            <h3 class="mt-8 text-lg font-semibold text-gray-800 dark:text-white">
+                Project Payment Report
+            </h3>
+            <div class="mt-8 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden bg-white dark:bg-gray-900">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead class="border-b border-gray-200 dark:border-gray-700">
+                            <tr class="text-gray-800 dark:text-gray-300 text-md bg-gray-100 dark:bg-gray-800">
+                                <th class="px-4 py-3 text-left">Metric</th>
+                                <th class="px-4 py-3 text-center">Birla 1</th>
+                                <th class="px-4 py-3 text-center">Birla 2</th>
+                                <th class="px-4 py-3 text-center">Birla 3</th>
+                                <th class="px-4 py-3 text-center">Birla 4</th>
+                                <th class="px-4 py-3 text-center">Birla 5</th>
+                                <th class="px-4 py-3 text-center">Total</th>
+                            </tr>
+                        </thead>
+
+                        <tbody class="[&_tr]:border-b [&_tr]:border-gray-200 dark:[&_tr]:border-gray-700">
+
+                            {[
+                                ["Total Leads Generated", 40, 93, 20, 67, 32, 120],
+                                ["Average CPL", 251, 210, 150, 320, 300, 300],
+                                ["Total Spent Amount", 10049, 19571, 17324, 21000, 1567, 80000],
+                                ["Total Qualified Leads", 21, 29, 45, 30, 55, "-"],
+                                ["Follow ups / Interested", 22, 39, 65, 70, 15, "-"],
+                                ["Delay in Feedback", 14, 22, 39, 65, 70, "-"],
+                                ["Not Interested", 20, 42, 29, 25, 50, "-"],
+                                ["Call Not Picked / Call Later", 25, 22, 32, 49, 35, "-"],
+                                ["Broker", 17, 65, 32, 32, 49, "-"],
+                            ].map((row) => {
+                                const Icon = metricIcons[row[0]];
+
+                                return (
+                                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/40 transition">
+
+                                        {/*  Metric with Icon */}
+                                        <td class="px-4 py-3">
+                                            <div class="flex items-center gap-2 text-gray-700 dark:text-gray-300 font-medium">
+
+                                                {Icon && (
+                                                    <Icon class="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                                                )}
+
+                                                {row[0]}
+                                            </div>
+                                        </td>
+
+                                        {/* Values */}
+                                        <td class="px-4 py-3 text-center text-gray-800 dark:text-gray-200">
+                                            {row[1]}
+                                        </td>
+                                        <td class="px-4 py-3 text-center text-gray-800 dark:text-gray-200">
+                                            {row[2]}
+                                        </td>
+                                        <td class="px-4 py-3 text-center text-gray-800 dark:text-gray-200">
+                                            {row[3]}
+                                        </td>
+                                        <td class="px-4 py-3 text-center text-gray-800 dark:text-gray-200">
+                                            {row[4]}
+                                        </td>
+                                        <td class="px-4 py-3 text-center text-gray-800 dark:text-gray-200">
+                                            {row[5]}
+                                        </td>
+                                        <td class="px-4 py-3 text-center font-semibold text-gray-900 dark:text-gray-100">
+                                            {row[6]}
+                                        </td>
+
+                                    </tr>
+                                );
+                            })}
+
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>

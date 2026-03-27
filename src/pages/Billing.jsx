@@ -1,5 +1,6 @@
 import { createSignal, createMemo, For, Show } from "solid-js";
 
+
 // ─── Mock Data ────────────────────────────────────────────────────────────────
 const MOCK = {
     client: "Acme Corp Pvt Ltd",
@@ -72,7 +73,7 @@ function SectionLabel(props) {
 
 function Card(props) {
     return (
-        <div class={`rounded-xl shadow-md transition border border-gray-200/80 dark:border-gray-800/80 bg-white/70 dark:bg-gray-800/70 backdrop-blur-xl ${props.class || ""}`}>
+        <div class={`rounded-xl shadow-md transition border border-gray-200/80 dark:border dark:border-gray-700 bg-white/70 dark:bg-gray-800/70 backdrop-blur-xl ${props.class || ""}`}>
             {props.children}
         </div>
     );
@@ -96,7 +97,7 @@ function Tag(props) {
 function ProgressBar(props) {
     const width = () => pct(props.value, props.max);
     return (
-        <div class="h-1 w-full rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+        <div class="h-1 w-full rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden">
             <div
                 class={`h-full rounded-full transition-all duration-700 ${props.colorClass || "bg-gray-700 dark:bg-gray-300"}`}
                 style={{ width: `${width()}%` }}
@@ -164,10 +165,10 @@ function CampaignTable(props) {
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
                 <thead>
-                    <tr class="border-b border-gray-100 dark:border-gray-800">
+                    <tr class="border-b border-gray-100 dark:border-gray-700">
                         <For each={colHeads}>
                             {(h) => (
-                                <th class={`pb-2.5 text-sm font-semibold text-gray-500 dark:text-gray-600 uppercase tracking-wider ${h === "Campaign" ? "text-left pr-4" : "text-right"}`}>
+                                <th class={`pb-2.5 text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider ${h === "Campaign" ? "text-left pr-4" : "text-right"}`}>
                                     {h}
                                 </th>
                             )}
@@ -179,7 +180,7 @@ function CampaignTable(props) {
                         {(c) => {
                             const cpl = c.leads > 0 ? Math.round(c.spend / c.leads) : 0;
                             return (
-                                <tr class="border-b border-gray-50 dark:border-gray-900/60 hover:bg-gray-50/80 dark:hover:bg-gray-800/30 transition-colors">
+                                <tr class="border-b border-gray-50 dark:border-gray-700 hover:bg-gray-50/80 dark:hover:bg-gray-800/30 transition-colors">
                                     <td class="py-3 pr-4">
                                         <p class="font-medium text-gray-800 dark:text-gray-200">{c.name}</p>
                                         <Tag variant="gray">{c.result}</Tag>
@@ -215,7 +216,7 @@ function CampaignTable(props) {
 // ─── CPL Calculation Block ────────────────────────────────────────────────────
 function CPLBlock(props) {
     return (
-        <div class="rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-800 p-4 space-y-3">
+        <div class="rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 p-4 space-y-3">
             <SectionLabel>CPL Calculation (ex-GST)</SectionLabel>
             <div class="flex flex-wrap gap-4 items-center">
                 <div>
@@ -258,7 +259,7 @@ function QualBlock(props) {
     ];
 
     return (
-        <div class="rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-800 p-4 space-y-4">
+        <div class="rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-700 p-4 space-y-4">
             <div class="flex items-center justify-between flex-wrap gap-2">
                 <SectionLabel>Proposed CPL &amp; Qualification Logic</SectionLabel>
                 <Tag variant="gray">Q% = {props.project.qualificationPct}%</Tag>
@@ -273,7 +274,7 @@ function QualBlock(props) {
                                 {item.val}
                             </p>
                             <Show when={item.sub}>
-                                <p class="text-sm text-gray-500 dark:text-gray-600 ">{item.sub}</p>
+                                <p class="text-sm text-gray-500 dark:text-gray-400 ">{item.sub}</p>
                             </Show>
                         </div>
                     )}
@@ -358,7 +359,7 @@ function ProjectRow(props) {
                 opacity: open() ? "1" : "0",
                 transition: "max-height 0.4s ease, opacity 0.3s ease",
             }}>
-                <div class="px-5 pb-5 space-y-4 border-t border-gray-100 dark:border-gray-800 pt-4">
+                <div class="px-5 pb-5 space-y-4 border-t border-gray-100 dark:border-gray-600 pt-4">
                     <SectionLabel>Campaign-Level Spend Details</SectionLabel>
                     <CampaignTable campaigns={props.project.campaigns} />
                     <CPLBlock
@@ -382,7 +383,7 @@ function CPLComparisonPanel(props) {
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
 
                 {/* Overall */}
-                <div class="rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-800 p-4 space-y-2">
+                <div class="rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 p-4 space-y-2">
                     <p class="text-md text-gray-500 dark:text-gray-400 font-medium">Overall Avg CPL</p>
                     <p class="text-3xl font-bold  text-gray-900 dark:text-gray-100">{fmt(props.overallCPL)}</p>
                     <p class="text-sm  text-gray-500 dark:text-gray-400">{fmt(props.totalSpend)} ÷ {props.totalLeads} leads</p>
@@ -390,7 +391,7 @@ function CPLComparisonPanel(props) {
 
                 <For each={props.projectStats}>
                     {(proj) => (
-                        <div class="rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-800 p-4 space-y-2">
+                        <div class="rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 p-4 space-y-2">
                             <div class="flex items-center justify-between gap-2">
                                 <p class="text-md text-gray-600 dark:text-gray-400 font-medium">{proj.name}</p>
                                 <Tag variant={proj.cpl <= proj.proposedCPL ? "green" : "amber"}>
@@ -434,7 +435,7 @@ function PaymentHistory(props) {
                                                 <Tag variant="blue">GST Filed</Tag>
                                             </Show>
                                         </div>
-                                        <p class="text-sm text-gray-400 dark:text-gray-400 mt-0.5">
+                                        <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
                                             {pay.credit
                                                 ? `Credited on ${pay.creditDate} by ${pay.creditedBy}`
                                                 : `${pay.date} · via ${pay.method} · ${pay.id}`}
@@ -451,8 +452,8 @@ function PaymentHistory(props) {
                                 </Show>
                             </div>
                             <Show when={pay.credit}>
-                                <div class="text-sm text-gray-400 dark:text-gray-600 bg-gray-100 dark:bg-gray-800 rounded-lg px-3 py-2">
-                                    ℹ Payment history disabled — amount credited by {pay.creditedBy} on {pay.creditDate}.
+                                <div class="text-sm text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-900 border dark:border-gray-700 rounded-lg px-3 py-2">
+                                     Payment history disabled — amount credited by {pay.creditedBy} on {pay.creditDate}.
                                 </div>
                             </Show>
                         </div>
@@ -476,17 +477,17 @@ function DeliveryBreakdown(props) {
             <div class="overflow-x-auto">
                 <table class="w-full text-sm">
                     <thead>
-                        <tr class="border-b border-gray-100 dark:border-gray-800">
-                            <th class="pb-2.5 text-sm font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-left pr-4">Project</th>
-                            <th class="pb-2.5 text-sm font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-right">Leads</th>
-                            <th class="pb-2.5 text-sm font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-right">Amount (ex-GST)</th>
-                            <th class="pb-2.5 text-sm font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-right">With GST (18%)</th>
+                        <tr class="border-b border-gray-100 dark:border-gray-700">
+                            <th class="pb-2.5 text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-left pr-4">Project</th>
+                            <th class="pb-2.5 text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-right">Leads</th>
+                            <th class="pb-2.5 text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-right">Amount (ex-GST)</th>
+                            <th class="pb-2.5 text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-right">With GST (18%)</th>
                         </tr>
                     </thead>
                     <tbody>
                         <For each={props.deliveries}>
                             {(d) => (
-                                <tr class="border-b border-gray-50 dark:border-gray-900/50">
+                                <tr class="border-b border-gray-50 dark:border-gray-700">
                                     <td class="py-2.5 pr-4 font-medium text-gray-800 dark:text-gray-200">{d.project}</td>
                                     <td class="py-2.5 text-right  text-gray-600 dark:text-gray-400">{d.leads}</td>
                                     <td class="py-2.5 text-right  text-gray-600 dark:text-gray-400">{fmt(d.amountExGST)}</td>
@@ -505,7 +506,7 @@ function DeliveryBreakdown(props) {
                     </tfoot>
                 </table>
             </div>
-            <div class="flex flex-wrap justify-between items-center pt-3 border-t border-gray-100 dark:border-gray-800 gap-2">
+            <div class="flex flex-wrap justify-between items-center pt-3 border-t border-gray-100 dark:border-gray-700 gap-2">
                 <span class="text-sm text-gray-500 dark:text-gray-400">Remaining: {fmt(props.totalPaid)} – {fmt(totalWithGST)}</span>
                 <span class="text-sm font-bold  text-green-600 dark:text-green-400">{fmt(remaining)}</span>
             </div>
@@ -858,21 +859,21 @@ export default function Billing() {
 
                     {/* Summary cards */}
                     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                        <Card class="p-5 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-800 shadow-sm hover:shadow-md transition-all duration-300">
-                            <div class="flex items-center justify-between">
+                        <Card class="p-4 ">
+                            <div class="flex items-center justify-between ">
                                 {/* Left Content */}
                                 <div>
-                                    <p class="text-sm text-gray-500 dark:text-gray-400 font-medium">
+                                    <p class="text-md text-gray-600 dark:text-gray-400 ">
                                         Total Received
                                     </p>
-                                    <p class="text-2xl font-bold mt-1 text-gray-900 dark:text-white tracking-tight">
+                                    <p class="text-xl font-bold mt-2 text-gray-900 dark:text-white ">
                                         {fmt(MOCK.totalPaid)}
                                     </p>
                                 </div>
                                 {/* Right Icon */}
-                                <div class="p-3 rounded-xl bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center">
+                                <div class="p-3 rounded-lg bg-blue-100 dark:bg-blue-300 flex items-center justify-center">
                                     <svg
-                                        class="w-5 h-5 text-blue-600 dark:text-blue-400"
+                                        class="w-5 h-5 text-blue-800 dark:text-blue-800"
                                         fill="none"
                                         viewBox="0 0 24 24"
                                         stroke="currentColor"
@@ -890,11 +891,11 @@ export default function Billing() {
                         <Card class="p-4">
                             <div class="flex items-center justify-between">
                                 <div>
-                                    <p class="text-sm text-gray-400 dark:text-gray-400">Total Invoiced (Including GST)</p>
-                                    <p class="text-2xl font-bold  mt-1 text-gray-900 dark:text-gray-100">{fmt(MOCK.totalSpent)}</p>
+                                    <p class="text-md text-gray-600 dark:text-gray-400">Total Invoiced (Including GST)</p>
+                                    <p class="text-xl font-bold  mt-2 text-gray-900 dark:text-gray-100">{fmt(MOCK.totalSpent)}</p>
                                 </div>
                                 {/* Right Icon */}
-                                <div class="p-3 rounded-xl bg-purple-100 dark:bg-purple-900/40 flex items-center justify-center">
+                                <div class="p-3 rounded-lg bg-purple-100 dark:bg-purple-300 flex items-center justify-center">
                                     <svg class="w-5 h-5 text-purple-600 dark:text-purple-800" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                                         <path d="M3 3v18h18" />
                                         <path d="M18 17l-5-5-4 4-3-3" />
@@ -907,10 +908,10 @@ export default function Billing() {
                         <Card class="p-4">
                             <div class="flex items-center justify-between">
                                 <div>
-                                    <p class="text-sm text-gray-400 dark:text-gray-400">Total Invoiced (Excluding GST)</p>
-                                    <p class="text-2xl font-bold  mt-1 text-gray-900 dark:text-gray-100">{fmt(55000)}</p>
+                                    <p class="text-md text-gray-600 dark:text-gray-400">Total Invoiced (Excluding GST)</p>
+                                    <p class="text-xl font-bold  mt-2 text-gray-900 dark:text-gray-100">{fmt(55000)}</p>
                                 </div>
-                                <div class="p-3 rounded-xl bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center">
+                                <div class="p-3 rounded-lg bg-blue-100 dark:bg-blue-300 flex items-center justify-center">
                                     <svg class="w-5 h-5 text-blue-600 dark:text-blue-800" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                                         <circle cx="12" cy="12" r="9" />
                                         <path d="M12 7v5l3 3" />
@@ -921,10 +922,10 @@ export default function Billing() {
                         <Card class="p-4">
                             <div class="flex items-center justify-between">
                                 <div>
-                                    <p class="text-sm text-gray-400 dark:text-gray-400">Remaining Balance</p>
-                                    <p class="text-2xl font-bold  mt-1 text-green-600 dark:text-green-400">{fmt(remaining)}</p>
+                                    <p class="text-md text-gray-600 dark:text-gray-400">Remaining Balance</p>
+                                    <p class="text-xl font-bold  mt-2 text-green-600 dark:text-green-400">{fmt(remaining)}</p>
                                 </div>
-                                <div class="p-3 rounded-xl bg-red-100 dark:bg-red-900/40 flex items-center justify-center">
+                                <div class="p-3 rounded-lg bg-red-100 dark:bg-red-300 flex items-center justify-center">
                                     <svg class="w-5 h-5 text-red-600 dark:text-red-800" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                                         <path d="M5 13l4 4L19 7" />
                                     </svg>
