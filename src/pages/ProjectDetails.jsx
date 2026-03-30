@@ -9,6 +9,8 @@ import {
     XCircle,
     User,
 } from "lucide-solid";
+import * as XLSX from "xlsx";
+import { onMount, onCleanup } from "solid-js";
 
 /* ================= STATIC PROJECT INFO ================= */
 
@@ -33,6 +35,9 @@ export default function ProjectDetails() {
     const project = location.state?.project;
     const today = new Date();
 
+    const [showNotifications, setShowNotifications] = createSignal(false);
+
+
     /* ================= FILTER STATES ================= */
 
     const [fromDate, setFromDate] = createSignal("");
@@ -41,7 +46,7 @@ export default function ProjectDetails() {
     const [statusFilter, setStatusFilter] = createSignal("All");
     const [page, setPage] = createSignal(1);
 
-    const rowsPerPage = 5;
+    const rowsPerPage = 10;
 
     /* ================= RAW CAMPAIGN DATA ================= */
 
@@ -168,6 +173,21 @@ export default function ProjectDetails() {
         },
     ];
 
+
+    onMount(() => {
+        const handleClickOutside = (e) => {
+            if (!e.target.closest(".notification-wrapper")) {
+                setShowNotifications(false);
+            }
+        };
+
+        document.addEventListener("click", handleClickOutside);
+
+        onCleanup(() => {
+            document.removeEventListener("click", handleClickOutside);
+        });
+    });
+
     /* ================= UTILITY ================= */
 
     const normalizeLocalDate = (d) => {
@@ -245,6 +265,41 @@ export default function ProjectDetails() {
         );
     });
 
+    const suggestions = createMemo(() => {
+        const result = [];
+
+        const data = sortedCampaigns();
+
+        data.forEach((campaign) => {
+            // 1. Zero Leads
+            if (campaign.totalLeads === 0) {
+                result.push(`${campaign.campaign_name} has zero leads`);
+            }
+
+            // 2. High CPL
+            if (campaign.cpl > 250) {
+                result.push(`${campaign.campaign_name} CPL is high (₹${campaign.cpl}) - Need attention`);
+            }
+
+            // 3. Low performance suggestion
+            if (campaign.totalLeads < 10 && campaign.cpl > 200) {
+                result.push(`Improve performance in ${campaign.campaign_name}`);
+            }
+
+            // 4. Good campaign → suggest scaling
+            if (campaign.totalLeads > 50 && campaign.cpl < 200) {
+                result.push(` Increase budget in ${campaign.campaign_name}`);
+            }
+
+            // dummy logic
+            if (campaign.cpl > 1.2 * 200) {
+                result.push(` ${campaign.campaign_name} CPL increased significantly`);
+            }
+        });
+
+        return result;
+    });
+
     /* ================= PAGINATION ================= */
 
     const paginatedData = createMemo(() =>
@@ -296,6 +351,7 @@ export default function ProjectDetails() {
 
         return "Custom Range";
     });
+
     const metricIcons = {
         "Total Leads Generated": Users,
         "Average CPL": TrendingUp,
@@ -308,7 +364,26 @@ export default function ProjectDetails() {
         "Broker": User,
     };
 
+    function budgetReport() {
+        const table = document.getElementById("budget-report");
 
+        const ws = XLSX.utils.table_to_sheet(table);
+        const wb = XLSX.utils.book_new();
+
+        XLSX.utils.book_append_sheet(wb, ws, "Report");
+
+        XLSX.writeFile(wb, "budget-report.xlsx");
+    }
+    function leadsReport() {
+        const table = document.getElementById("leads-report");
+
+        const ws = XLSX.utils.table_to_sheet(table);
+        const wb = XLSX.utils.book_new();
+
+        XLSX.utils.book_append_sheet(wb, ws, "Report");
+
+        XLSX.writeFile(wb, "leads-report.xlsx");
+    }
     /* ================= UI ================= */
 
     return (
@@ -330,37 +405,114 @@ export default function ProjectDetails() {
             </Show>
 
             {/* ================= FILTERS ================= */}
-            <div class="flex flex-wrap gap-2 items-center">
-                <input
-                    placeholder="Search campaign..."
-                    value={search()}
-                    onInput={(e) => setSearch(e.target.value)}
-                    class="px-3 py-2 border rounded-lg dark:bg-gray-800"
-                />
+            <div class="flex justify-between">
+                <div class="flex flex-wrap gap-2 items-center">
+                    <input
+                        placeholder="Search campaign..."
+                        value={search()}
+                        onInput={(e) => setSearch(e.target.value)}
+                        class="px-3 py-2 border rounded-lg dark:bg-gray-800"
+                    />
 
-                <select
-                    value={statusFilter()}
-                    onChange={(e) => setStatusFilter(e.target.value)}
-                    class="px-3 py-2 border rounded-lg dark:bg-gray-800"
-                >
-                    <option value="All">All</option>
-                    <option value="Live">Live</option>
-                    <option value="paused">Paused</option>
-                </select>
+                    <select
+                        value={statusFilter()}
+                        onChange={(e) => setStatusFilter(e.target.value)}
+                        class="px-3 py-2 border rounded-lg dark:bg-gray-800"
+                    >
+                        <option value="All">All</option>
+                        <option value="Live">Live</option>
+                        <option value="paused">Paused</option>
+                    </select>
 
-                <DateRangeFilter
-                    fromDate={fromDate}
-                    toDate={toDate}
-                    setFromDate={setFromDate}
-                    setToDate={setToDate}
-                />
+                    <DateRangeFilter
+                        fromDate={fromDate}
+                        toDate={toDate}
+                        setFromDate={setFromDate}
+                        setToDate={setToDate}
+                    />
 
-                <button
-                    onClick={clearFilters}
-                    class="px-3 py-2 bg-red-100 text-red-700 rounded-lg"
-                >
-                    Clear
-                </button>
+                    <button
+                        onClick={clearFilters}
+                        class="px-3 py-2 bg-red-100 text-red-700 rounded-lg"
+                    >
+                        Clear
+                    </button>
+                </div>
+                <div class="relative notification-wrapper">
+                    <div class="flex justify-end items-center gap-4  relative">
+
+                        <h3 class="text-lg font-semibold text-gray-800 dark:text-white">
+                            Notifications & Recommendations
+                        </h3>
+
+                        <button
+                            onClick={() => setShowNotifications(!showNotifications())}
+                            class="relative p-2 m-2 rounded-full bg-blue-100 dark:bg-blue-800 hover:scale-105 transition"
+                        >
+                            {/* Bell SVG */}
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-blue-900 dark:text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14V11a6 6 0 10-12 0v3c0 .386-.149.735-.405 1.001L4 17h5m6 0a3 3 0 11-6 0h6z" />
+                            </svg>
+
+                            {/* Badge */}
+                            <Show when={suggestions().length > 0}>
+                                <span class="absolute -top-1 -right-1 bg-red-500 text-white text-xs px-1.5 rounded-full">
+                                    {suggestions().length}
+                                </span>
+                            </Show>
+                        </button>
+
+                    </div>
+
+                    <Show when={showNotifications()}>
+                        <div class="absolute right-0 mt-3 w-90 bg-white dark:bg-gray-900 
+              rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 z-50">
+
+                            {/* Header (RED like your image) */}
+                            <div class="bg-blue-800 text-white px-4 py-3 rounded-t-xl flex justify-between items-center">
+                                <span class="font-semibold">Notifications</span>
+                                <span class="text-sm">
+                                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                    </svg>
+                                </span>
+                            </div>
+
+                            {/* List */}
+                            <div class="max-h-80 overflow-y-auto">
+
+                                <For each={suggestions()}>
+                                    {(item) => (
+                                        <div class="flex items-start gap-3 px-4 py-3 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition">
+
+                                            {/* Avatar circle */}
+                                            <div class="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center text-blue-900 text-xs font-bold">
+                                                B
+                                            </div>
+
+                                            {/* Content */}
+                                            <div class="flex-1">
+                                                <p class="text-sm text-gray-800 dark:text-gray-200">
+                                                    {item}
+                                                </p>
+                                                <span class="text-xs text-gray-400">just now</span>
+                                            </div>
+                                        </div>
+                                    )}
+                                </For>
+
+                            </div>
+
+                            {/* Footer */}
+                            <div class="text-center text-sm text-blue-500 py-2 hover:underline cursor-pointer">
+                                See all recent activity
+                            </div>
+
+                        </div>
+                    </Show>
+                </div>
             </div>
 
             {/* ================= TABLE ================= */}
@@ -412,6 +564,23 @@ export default function ProjectDetails() {
                         </For>
                     </tbody>
                 </table>
+            </div>
+            <div class="flex justify-end gap-2 mt-4">
+                <button
+                    onClick={() => setPage(page() - 1)}
+                    disabled={page() === 1}
+                    class="px-3 py-1 border rounded"
+                >
+                    Prev
+                </button>
+
+                <button
+                    onClick={() => setPage(page() + 1)}
+                    disabled={page() * rowsPerPage >= sortedCampaigns().length}
+                    class="px-3 py-1 border rounded"
+                >
+                    Next
+                </button>
             </div>
 
             {/* ================= Lead Quality Insights ================= */}
@@ -490,11 +659,37 @@ export default function ProjectDetails() {
 
 
             {/* leads report */}
-            <h3 class="mt-8 text-lg font-semibold text-gray-800 dark:text-white">
-                Project Leads Report
-            </h3>
+            <div class="flex items-center justify-between mt-8">
+
+                <h3 class="text-lg font-semibold text-gray-800 dark:text-white">
+                    Project Leads Report
+                </h3>
+
+                <button
+                    onClick={leadsReport}
+                    class="flex items-center gap-2 px-4 py-2 rounded-lg 
+           bg-green-600 hover:bg-green-700 
+           text-white text-sm font-medium 
+           shadow-sm hover:shadow-md 
+           transition-all duration-200"
+                >
+                    {/* Download Icon */}
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        class="w-4 h-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        stroke-width="2"
+                    >
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V4" />
+                    </svg>
+                    Download Report
+                </button>
+
+            </div>
             <div class="mt-4 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden  dark:bg-gray-900">
-                <table class="w-full text-sm">
+                <table class="w-full text-sm" id="leads-report">
                     <thead class="border-b border-gray-200 dark:border-gray-700">
                         <tr class="text-md font-bold text-gray-800 dark:text-gray-200 bg-gray-100 dark:bg-gray-800  ">
 
@@ -541,12 +736,38 @@ export default function ProjectDetails() {
 
 
             {/* Payment report */}
-            <h3 class="mt-8 text-lg font-semibold text-gray-800 dark:text-white">
-                Project Payment Report
-            </h3>
+            <div class="flex items-center justify-between mt-8">
+
+                <h3 class="text-lg font-semibold text-gray-800 dark:text-white">
+                    Project Payment Report
+                </h3>
+
+                <button
+                    onClick={budgetReport}
+                    class="flex items-center gap-2 px-4 py-2 rounded-lg 
+           bg-green-600 hover:bg-green-700 
+           text-white text-sm font-medium 
+           shadow-sm hover:shadow-md 
+           transition-all duration-200"
+                >
+                    {/* Download Icon */}
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        class="w-4 h-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        stroke-width="2"
+                    >
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V4" />
+                    </svg>
+                    Download Report
+                </button>
+
+            </div>
             <div class="mt-8 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden bg-white dark:bg-gray-900">
                 <div class="overflow-x-auto">
-                    <table class="w-full text-sm">
+                    <table class="w-full text-sm" id="budget-report">
                         <thead class="border-b border-gray-200 dark:border-gray-700">
                             <tr class="text-gray-800 dark:text-gray-300 text-md bg-gray-100 dark:bg-gray-800">
                                 <th class="px-4 py-3 text-left">Metric</th>

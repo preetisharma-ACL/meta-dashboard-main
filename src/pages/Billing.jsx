@@ -49,11 +49,11 @@ const MOCK = {
     ],
 
     alerts: [
-        { id: "a1", type: "warning", icon: "⚠️", label: "Low Balance Alert", desc: "Trigger when remaining balance falls below 10% of committed budget.", activeMsg: "Budget utilization at 62% — review campaign pacing.", defaultOn: true },
-        { id: "a2", type: "warning", icon: "🔴", label: "Budget Exhaustion Alert", desc: "Alert when any campaign reaches 95% of its cap.", activeMsg: null, defaultOn: true },
-        { id: "a3", type: "info", icon: "📅", label: "Payment Due Reminder", desc: "Remind 7 days before next billing cycle.", activeMsg: "Next billing cycle: 28 March 2025", defaultOn: true },
-        { id: "a4", type: "caution", icon: "📈", label: "CPL Threshold Alert", desc: "Alert when actual CPL exceeds proposed CPL for any project.", activeMsg: null, defaultOn: false },
-        { id: "a5", type: "success", icon: "✅", label: "CPL On-Target Notification", desc: "Notify when CPL is within the agreed threshold.", activeMsg: "CPL within threshold for all active campaigns.", defaultOn: true },
+        { id: "a1", type: "warning", label: "Low Balance Alert", desc: "Trigger when remaining balance falls below 10% of committed budget.", activeMsg: "Budget utilization at 62% — review campaign pacing.", defaultOn: true },
+        { id: "a2", type: "warning", label: "Budget Exhaustion Alert", desc: "Alert when any campaign reaches 95% of its cap.", activeMsg: null, defaultOn: true },
+        { id: "a3", type: "info",    label: "Payment Due Reminder", desc: "Remind 7 days before next billing cycle.", activeMsg: "Next billing cycle: 28 March 2025", defaultOn: true },
+        { id: "a4", type: "caution", label: "CPL Threshold Alert", desc: "Alert when actual CPL exceeds proposed CPL for any project.", activeMsg: null, defaultOn: false },
+        { id: "a5", type: "success", label: "CPL On-Target Notification", desc: "Notify when CPL is within the agreed threshold.", activeMsg: "CPL within threshold for all active campaigns.", defaultOn: true },
     ],
 };
 
@@ -453,7 +453,7 @@ function PaymentHistory(props) {
                             </div>
                             <Show when={pay.credit}>
                                 <div class="text-sm text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-900 border dark:border-gray-700 rounded-lg px-3 py-2">
-                                     Payment history disabled — amount credited by {pay.creditedBy} on {pay.creditDate}.
+                                    Amount credited by {pay.creditedBy} on {pay.creditDate}.
                                 </div>
                             </Show>
                         </div>
@@ -479,8 +479,8 @@ function DeliveryBreakdown(props) {
                     <thead>
                         <tr class="border-b border-gray-100 dark:border-gray-700">
                             <th class="pb-2.5 text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-left pr-4">Project</th>
-                            <th class="pb-2.5 text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-right">Leads</th>
-                            <th class="pb-2.5 text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-right">Amount (ex-GST)</th>
+                            <th class="pb-2.5 text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-center">Leads</th>
+                            <th class="pb-2.5 text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-center">Amount (ex-GST)</th>
                             <th class="pb-2.5 text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-right">With GST (18%)</th>
                         </tr>
                     </thead>
@@ -489,8 +489,8 @@ function DeliveryBreakdown(props) {
                             {(d) => (
                                 <tr class="border-b border-gray-50 dark:border-gray-700">
                                     <td class="py-2.5 pr-4 font-medium text-gray-800 dark:text-gray-200">{d.project}</td>
-                                    <td class="py-2.5 text-right  text-gray-600 dark:text-gray-400">{d.leads}</td>
-                                    <td class="py-2.5 text-right  text-gray-600 dark:text-gray-400">{fmt(d.amountExGST)}</td>
+                                    <td class="py-2.5 text-center  text-gray-600 dark:text-gray-400">{d.leads}</td>
+                                    <td class="py-2.5 text-center  text-gray-600 dark:text-gray-400">{fmt(d.amountExGST)}</td>
                                     <td class="py-2.5 text-right  font-semibold text-gray-900 dark:text-gray-100">{fmt(d.amountWithGST)}</td>
                                 </tr>
                             )}
@@ -499,9 +499,9 @@ function DeliveryBreakdown(props) {
                     <tfoot>
                         <tr class="border-t border-gray-200 dark:border-gray-700 font-bold text-gray-900 dark:text-gray-100">
                             <td class="pt-3">Total</td>
-                            <td class="pt-3 text-right ">{totalLeads}</td>
-                            <td class="pt-3 text-right ">{fmt(totalExGST)}</td>
-                            <td class="pt-3 text-right  text-base">{fmt(totalWithGST)}</td>
+                            <td class="pt-3 text-center ">{totalLeads}</td>
+                            <td class="pt-3 text-center ">{fmt(totalExGST)}</td>
+                            <td class="pt-3 text-right text-base">{fmt(totalWithGST)}</td>
                         </tr>
                     </tfoot>
                 </table>
@@ -535,7 +535,7 @@ function AlertsTab(props) {
                             <div class="flex items-start justify-between gap-3 flex-wrap">
                                 <div>
                                     <p class="font-semibold text-gray-800 dark:text-gray-200 text-sm">{alert.label}</p>
-                                    <p class="text-sm text-gray-400 dark:text-gray-400 mt-0.5">{alert.desc}</p>
+                                    <p class="text-sm text-gray-700 dark:text-gray-400 mt-0.5">{alert.desc}</p>
                                 </div>
                                 <Toggle checked={enabled()[alert.id]} onChange={() => toggle(alert.id)} />
                             </div>
@@ -576,7 +576,7 @@ function AddFundsModal(props) {
                     <div class="flex items-start justify-between">
                         <div>
                             <h3 class="font-bold text-gray-900 dark:text-gray-100 text-lg">Add Funds</h3>
-                            <p class="text-sm text-gray-400 dark:text-gray-400 mt-0.5">Powered by HDFC Payment Gateway</p>
+                            <p class="text-sm text-gray-600 dark:text-gray-400 mt-0.5">Powered by HDFC Payment Gateway</p>
                         </div>
                         <button onClick={props.onClose} class="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -584,6 +584,8 @@ function AddFundsModal(props) {
                             </svg>
                         </button>
                     </div>
+
+
 
                     {/* Amount input */}
                     <div class="space-y-1.5">
@@ -598,7 +600,7 @@ function AddFundsModal(props) {
                                 class="w-full pl-8 pr-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100  text-lg focus:outline-none focus:ring-2 focus:ring-gray-400 dark:focus:ring-gray-600 placeholder-gray-300 dark:placeholder-gray-700"
                             />
                         </div>
-                        <p class="text-sm text-gray-400 dark:text-gray-600">
+                        <p class="text-sm text-gray-600 dark:text-gray-400">
                             +18% GST · You pay:{" "}
                             <span class="font-semibold text-gray-700 dark:text-gray-400">
                                 {totalWithGST() ? fmt(totalWithGST()) : "—"}
@@ -642,7 +644,7 @@ function AddFundsModal(props) {
                         <div class="w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 flex items-center justify-center font-bold text-sm text-gray-700 dark:text-gray-400 flex-shrink-0">H</div>
                         <div>
                             <p class="text-sm font-semibold text-gray-800 dark:text-gray-200">HDFC Payment Gateway</p>
-                            <p class="text-[10px] text-gray-400 dark:text-gray-600">Secured · PCI-DSS Compliant · 256-bit SSL</p>
+                            <p class="text-[10px] text-gray-400 dark:text-gray-400">Secured · PCI-DSS Compliant · 256-bit SSL</p>
                         </div>
                         <svg class="w-4 h-4 text-green-500 ml-auto flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                             <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
@@ -972,4 +974,4 @@ export default function Billing() {
             <AddFundsModal open={showModal()} onClose={() => setShowModal(false)} />
         </div>
     );
-}
+} 

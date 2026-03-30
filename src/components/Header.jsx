@@ -9,7 +9,7 @@ export default function Header() {
     const [showNotifications, setShowNotifications] = createSignal(false);
 
     const notifications = [
-        { id: 1, title: 'New lead assigned', message: 'John Doe has been assigned to you', time: '5 min ago', unread: true },
+        { id: 1, title: 'New lead assigned', message: 'ABC has been assigned to you', time: '5 min ago', unread: true },
         { id: 2, title: 'Meeting reminder', message: 'Sales meeting in 30 minutes', time: '25 min ago', unread: true },
         { id: 3, title: 'Deal closed', message: 'ABC Corp deal successfully closed', time: '2 hours ago', unread: false },
     ];
