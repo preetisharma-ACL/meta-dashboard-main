@@ -392,7 +392,7 @@ export default function ClientDashboard() {
                             <line x1="4" y1="18" x2="20" y2="18" />
                         </svg>
                     </button>
-                    <button
+                    {/* <button
                         onClick={() => setViewType("grid")}
                         class={`p-2 rounded-lg border ${viewType() === "grid"
                             ? "bg-green-600 text-white"
@@ -400,14 +400,14 @@ export default function ClientDashboard() {
                             }`}
                         title="Grid View"
                     >
-                        {/* Grid Icon */}
+                        
                         <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                             <rect x="3" y="3" width="7" height="7" rx="1" />
                             <rect x="14" y="3" width="7" height="7" rx="1" />
                             <rect x="3" y="14" width="7" height="7" rx="1" />
                             <rect x="14" y="14" width="7" height="7" rx="1" />
                         </svg>
-                    </button>
+                    </button> */}
 
                 </div>
 
