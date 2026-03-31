@@ -5,10 +5,9 @@ import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import Dashboard from './pages/Dashboard';
 import Settings from './pages/Settings';
+import Leads from './pages/Leads';  
+import FollowUp from './pages/FollowUp';
 import {
-  Contacts,
-  Leads,
-  Task,
   Meeting,
   Activities,
   Emails,
@@ -54,9 +53,8 @@ function App() {
           <Route path="/billing" component={() => <Layout><Billing /></Layout>} />
           <Route path="/leads-performance" component={() => <Layout><LeadPerformance /></Layout>} />
           <Route path="/what-is-performing" component={() => <Layout><WhatIsPerforming /></Layout>} />
-          <Route path="/contacts" component={() => <Layout><Contacts /></Layout>} />
           <Route path="/leads" component={() => <Layout><Leads /></Layout>} />
-          <Route path="/task" component={() => <Layout><Task /></Layout>} />
+          <Route path="/follow-up" component={() => <Layout><FollowUp/></Layout>} />
           <Route path="/meeting" component={() => <Layout><Meeting /></Layout>} />
           <Route path="/activities" component={() => <Layout><Activities /></Layout>} />
           <Route path="/emails" component={() => <Layout><Emails /></Layout>} />
