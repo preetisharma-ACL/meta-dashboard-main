@@ -21,6 +21,30 @@ export default function PerformanceChart() {
     month: ["Jan", "Feb", "Mar"]
   };
 
+
+  const getFilteredData = () => {
+    const baseData = dataMap[tab()];
+
+    if (range() === "day") return baseData;
+
+    if (range() === "week") {
+      return [
+        baseData.slice(0, 5).reduce((a, b) => a + b, 0),
+        baseData.slice(5, 10).reduce((a, b) => a + b, 0),
+        baseData.slice(10, 15).reduce((a, b) => a + b, 0),
+        baseData.slice(15, 21).reduce((a, b) => a + b, 0),
+      ];
+    }
+
+    if (range() === "month") {
+      return [
+        baseData.slice(0, 10).reduce((a, b) => a + b, 0),
+        baseData.slice(10, 21).reduce((a, b) => a + b, 0),
+        0 // or add real next month data
+      ];
+    }
+  };
+
   // ---------------- TOOLTIP ----------------
   const getTooltip = () => {
     if (tab() === "leads") {
@@ -78,7 +102,7 @@ export default function PerformanceChart() {
 
       series: [{
         name: tab(),
-        data: dataMap[tab()]
+        data: getFilteredData()
       }],
 
       colors: ["#7BC5C1"],
@@ -121,10 +145,21 @@ export default function PerformanceChart() {
   // ---------------- UPDATE ----------------
   createEffect(() => {
     if (chart) {
-      chart.updateSeries([{ data: dataMap[tab()] }]);
-
       chart.updateOptions({
-        xaxis: { categories: categories[range()] },
+        chart: {
+          animations: {
+            enabled: true,
+            easing: "easeinout",
+            speed: 400
+          }
+        },
+        series: [{
+          name: tab(),
+          data: getFilteredData()
+        }],
+        xaxis: {
+          categories: categories[range()]
+        },
         tooltip: getTooltip()
       });
     }
