@@ -143,9 +143,7 @@ export default function AddProject() {
                             <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4">
                                 Basic Information
                             </h3>
-
                             <div class="grid md:grid-cols-2 gap-6">
-
                                 <input
                                     type="text"
                                     name="name"
@@ -154,7 +152,6 @@ export default function AddProject() {
                                     required
                                     onInput={handleChange}
                                 />
-
                                 <select
                                     name="type"
                                     class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 px-4 py-3 rounded-xl focus:ring-2 focus:ring-green-500 outline-none transition"

@@ -318,8 +318,7 @@ const WhatIsPerforming = () => {
         </div>
       </div>
 
-      {/* CARDS */}
-      {/* CARDS */}
+     
       {/* CARDS */}
       <div class="grid md:grid-cols-2 lg:grid-cols-2 xxl:grid-cols-3 gap-4">
 
@@ -351,7 +350,7 @@ const WhatIsPerforming = () => {
                     Performing
                   </span>
 
-                  {/* MENU CONTAINER (IMPORTANT CLASS 🔥) */}
+                  {/* MENU CONTAINER (IMPORTANT CLASS ) */}
                   <div class="relative menu-container">
 
                     {/* 3 dots button */}
@@ -417,7 +416,7 @@ const WhatIsPerforming = () => {
               {/* Meta */}
               <p class="text-sm mb-4 tracking-wide
           text-gray-600
-          dark:text-gray-500">
+          dark:text-gray-400">
                 {project.city}
                 <span class="mx-1.5 text-green-800 dark:text-green-600">•</span>
                 {project.type}
@@ -472,35 +471,35 @@ const WhatIsPerforming = () => {
           dark:bg-gray-800/40 dark:border-gray-700/40">
 
                 <div class="flex justify-between items-center text-sm">
-                  <span class="text-gray-500 dark:text-gray-500">Tentative CPL</span>
+                  <span class="text-gray-500 dark:text-gray-400">Tentative CPL</span>
                   <span class="text-[#d4af5a] font-medium">{project.cpl}</span>
                 </div>
 
                 <div class="h-px bg-gray-200 dark:bg-gray-700/50" />
 
                 <div class="flex justify-between items-center text-sm">
-                  <span class="text-gray-500 dark:text-gray-500">No of leads we can generate</span>
+                  <span class="text-gray-500 dark:text-gray-400">No of leads we can generate</span>
                   <span class="text-[#d4af5a] font-medium">{project.leads}</span>
                 </div>
 
                 <div class="h-px bg-gray-200 dark:bg-gray-700/50" />
 
                 <div class="flex justify-between items-center text-sm">
-                  <span class="text-gray-500 dark:text-gray-500">Budget required monthly</span>
+                  <span class="text-gray-500 dark:text-gray-400">Budget required monthly</span>
                   <span class="text-[#d4af5a] font-medium">{project.estimation}</span>
                 </div>
 
                 <div class="h-px bg-gray-200 dark:bg-gray-700/50" />
 
                 <div class="flex justify-between items-center text-sm">
-                  <span class="text-gray-500 dark:text-gray-500">Qualification</span>
+                  <span class="text-gray-500 dark:text-gray-400">Qualification</span>
                   <span class="text-[#d4af5a] font-medium">{project.qualification}</span>
                 </div>
 
               </div>
 
               {/* Note */}
-              <div class="text-xs leading-relaxed pt-3 border-t
+              <div class="text-sm leading-relaxed pt-3 border-t
           text-gray-500 border-gray-100
           dark:text-gray-500 dark:border-gray-700/50">
                 <strong class="font-semibold text-gray-500 dark:text-gray-400">Note:</strong> This is an estimated CPL, the sales team will share Final CPL and can be checked in the proposal.
@@ -551,7 +550,8 @@ const WhatIsPerforming = () => {
                 >
                   <option value="">Select City</option>
                   <option>Noida | Greater Noida </option>
-                  <option>Delhi</option>
+                  <option value="Noida">Noida</option>
+                  <option value="Greater Noida">Greater Noida</option>
                   <option>Faridabad</option>
                   <option>Ghaziabad</option>
                   <option>Gurugram</option>
@@ -579,7 +579,7 @@ const WhatIsPerforming = () => {
                   <option value="">Property Type</option>
                   <option>Villa</option>
                   <option>Plots / Land</option>
-                  <option>High Rise Apartments</option>
+                  <option value="High Rise">High Rise </option>
                   <option>Low Rise Floors</option>
                   <option>Studio Apartments</option>
                   <option>Builder Floors</option>

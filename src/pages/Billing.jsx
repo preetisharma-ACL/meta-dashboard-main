@@ -51,7 +51,7 @@ const MOCK = {
     alerts: [
         { id: "a1", type: "warning", label: "Low Balance Alert", desc: "Trigger when remaining balance falls below 10% of committed budget.", activeMsg: "Budget utilization at 62% — review campaign pacing.", defaultOn: true },
         { id: "a2", type: "warning", label: "Budget Exhaustion Alert", desc: "Alert when any campaign reaches 95% of its cap.", activeMsg: null, defaultOn: true },
-        { id: "a3", type: "info",    label: "Payment Due Reminder", desc: "Remind 7 days before next billing cycle.", activeMsg: "Next billing cycle: 28 March 2025", defaultOn: true },
+        { id: "a3", type: "info", label: "Payment Due Reminder", desc: "Remind 7 days before next billing cycle.", activeMsg: "Next billing cycle: 28 March 2025", defaultOn: true },
         { id: "a4", type: "caution", label: "CPL Threshold Alert", desc: "Alert when actual CPL exceeds proposed CPL for any project.", activeMsg: null, defaultOn: false },
         { id: "a5", type: "success", label: "CPL On-Target Notification", desc: "Notify when CPL is within the agreed threshold.", activeMsg: "CPL within threshold for all active campaigns.", defaultOn: true },
     ],
@@ -126,13 +126,12 @@ function CPLIndicator(props) {
         <div class="space-y-1">
             <div class="flex justify-between text-sm">
                 <span class="text-gray-500 dark:text-gray-400">vs Proposed {fmt(props.proposed)}</span>
-                <span class={isOver() ? "text-amber-600 dark:text-amber-400 font-semibold" : "text-green-600 dark:text-green-400 font-semibold"}>
+                {/* <span class={isOver() ? "text-amber-600 dark:text-amber-400 font-semibold" : "text-green-600 dark:text-green-400 font-semibold"}>
                     {isOver()
                         ? `+${Math.round(((props.actual / props.proposed) - 1) * 100)}% over cap`
                         : `✓ ${pct(props.actual, props.proposed)}% of cap`}
-                </span>
+                </span> */}
             </div>
-            <ProgressBar value={props.actual} max={props.proposed} colorClass={isOver() ? "bg-amber-500" : "bg-gray-600"} />
         </div>
     );
 }
@@ -157,146 +156,279 @@ function BudgetCard(props) {
 // ─── Campaign Table ───────────────────────────────────────────────────────────
 function CampaignTable(props) {
     const colHeads = ["Campaign", "Spend", "Daily Avg", "Budget Cap", "Leads", "CPL"];
+
     const totalSpend = () => props.campaigns.reduce((s, c) => s + c.spend, 0);
     const totalLeads = () => props.campaigns.reduce((s, c) => s + c.leads, 0);
     const totalCPL = () => totalLeads() > 0 ? Math.round(totalSpend() / totalLeads()) : 0;
 
     return (
-        <div class="overflow-x-auto">
-            <table class="w-full text-sm">
+        <div class="overflow-x-auto rounded-2xl border border-gray-200 dark:border-gray-700
+                bg-white dark:bg-gray-900 shadow-sm hover:shadow-md transition">
+
+            <table class="w-full text-base">
+
+                {/* ── Head ── */}
                 <thead>
-                    <tr class="border-b border-gray-100 dark:border-gray-700">
+                    <tr class="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
                         <For each={colHeads}>
                             {(h) => (
-                                <th class={`pb-2.5 text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider ${h === "Campaign" ? "text-left pr-4" : "text-right"}`}>
+                                <th class={`py-3 px-4 text-md font-semibold 
+                            text-gray-500 dark:text-gray-400
+                            ${h === "Campaign" ? "text-left" : "text-center"}`}>
                                     {h}
                                 </th>
                             )}
                         </For>
                     </tr>
                 </thead>
+
+                {/* ── Body ── */}
                 <tbody>
                     <For each={props.campaigns}>
-                        {(c) => {
+                        {(c, i) => {
                             const cpl = c.leads > 0 ? Math.round(c.spend / c.leads) : 0;
+
                             return (
-                                <tr class="border-b border-gray-50 dark:border-gray-700 hover:bg-gray-50/80 dark:hover:bg-gray-800/30 transition-colors">
-                                    <td class="py-3 pr-4">
-                                        <p class="font-medium text-gray-800 dark:text-gray-200">{c.name}</p>
-                                        <Tag variant="gray">{c.result}</Tag>
+                                <tr class={`group transition-all duration-200
+                            hover:bg-gray-50 dark:hover:bg-gray-800/60
+                            ${i() < props.campaigns.length - 1
+                                        ? "border-b border-gray-100 dark:border-gray-700"
+                                        : ""}`}>
+
+                                    {/* Campaign */}
+                                    <td class="py-4 px-4">
+                                        <p class="font-semibold text-sm md:text-base text-gray-800 dark:text-gray-100">
+                                            {c.name}
+                                        </p>
+
+                                        <span class="inline-block mt-1 px-2.5 py-0.5 rounded-full
+                                 text-xs font-medium
+                                 bg-purple-100 dark:bg-purple-900/30
+                                 text-purple-700 dark:text-purple-400">
+                                            {c.result}
+                                        </span>
                                     </td>
-                                    <td class="py-3 text-right  text-gray-700 dark:text-gray-400">{fmt(c.spend)}</td>
-                                    <td class="py-3 text-right  5">{fmt(c.dailyAvg)}</td>
-                                    <td class="py-3 text-right">
-                                        <span class=" text-gray-500 dark:text-gray-400 block">{fmt(c.budgetCap)}</span>
-                                        <div class="w-20 ml-auto mt-1"><ProgressBar value={c.spend} max={c.budgetCap} /></div>
+
+                                    {/* Spend */}
+                                    <td class="py-4 px-4 text-center text-sm md:text-base font-medium text-gray-700 dark:text-gray-300">
+                                        {fmt(c.spend)}
                                     </td>
-                                    <td class="py-3 text-right  font-semibold text-gray-800 dark:text-gray-200">{c.leads}</td>
-                                    <td class="py-3 text-right  font-semibold text-gray-800 dark:text-gray-200">{fmt(cpl)}</td>
+
+                                    {/* Daily Avg */}
+                                    <td class="py-4 px-4 text-center text-sm md:text-base text-gray-500 dark:text-gray-400">
+                                        {fmt(c.dailyAvg)}
+                                    </td>
+
+                                    {/* Budget Cap */}
+                                    <td class="py-4 px-4 text-center">
+                                        <span class="block text-sm md:text-base text-gray-600 dark:text-gray-400">
+                                            {fmt(c.budgetCap)}
+                                        </span>
+
+
+                                    </td>
+
+                                    {/* Leads */}
+                                    <td class="py-4 px-4 text-center text-sm md:text-base font-semibold text-gray-800 dark:text-gray-200">
+                                        {c.leads.toLocaleString()}
+                                    </td>
+
+                                    {/* CPL */}
+                                    <td class="py-4 px-4 text-right text-sm md:text-base font-semibold text-indigo-600 dark:text-indigo-400">
+                                        {fmt(cpl)}
+                                    </td>
+
                                 </tr>
                             );
                         }}
                     </For>
                 </tbody>
+
+                {/* ── Footer ── */}
                 <tfoot>
-                    <tr>
-                        <td class="pt-3 font-bold text-gray-900 dark:text-gray-100">Total</td>
-                        <td class="pt-3 text-right  font-bold text-gray-900 dark:text-gray-100">{fmt(totalSpend())}</td>
-                        <td class="pt-3 text-right  text-gray-400">—</td>
-                        <td />
-                        <td class="pt-3 text-right  font-bold text-gray-900 dark:text-gray-100">{totalLeads()}</td>
-                        <td class="pt-3 text-right  font-bold text-gray-900 dark:text-gray-100">{fmt(totalCPL())}</td>
+                    <tr class="bg-gray-50 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700">
+
+                        <td class="py-4 px-4 text-xs font-bold uppercase tracking-wider text-gray-500">
+                            Total
+                        </td>
+
+                        <td class="py-4 px-4 text-center text-sm md:text-base font-bold text-gray-900 dark:text-white">
+                            {fmt(totalSpend())}
+                        </td>
+
+                        <td class="py-4 px-4 text-right text-gray-400">—</td>
+
+                        <td></td>
+
+                        <td class="py-4 px-4 text-center text-sm md:text-base font-bold text-gray-900 dark:text-white">
+                            {totalLeads().toLocaleString()}
+                        </td>
+
+                        <td class="py-4 px-4 text-right text-sm md:text-base font-bold text-indigo-600 dark:text-indigo-400">
+                            {fmt(totalCPL())}
+                        </td>
+
                     </tr>
                 </tfoot>
+
             </table>
         </div>
     );
 }
 
 // ─── CPL Calculation Block ────────────────────────────────────────────────────
-function CPLBlock(props) {
-    return (
-        <div class="rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 p-4 space-y-3">
-            <SectionLabel>CPL Calculation (ex-GST)</SectionLabel>
-            <div class="flex flex-wrap gap-4 items-center">
-                <div>
-                    <p class="text-sm text-gray-600 dark:text-gray-400">Total Leads</p>
-                    <p class="text-2xl font-bold  text-gray-900 dark:text-gray-100">{props.totalLeads}</p>
-                </div>
-                <span class="text-gray-500 dark:text-gray-700 text-xl">÷</span>
-                <div>
-                    <p class="text-sm text-gray-600 dark:text-gray-400">Total Spend</p>
-                    <p class="text-2xl font-bold  text-gray-900 dark:text-gray-100">{fmt(props.totalSpend)}</p>
-                </div>
-                <span class="text-gray-500 dark:text-gray-700 text-xl">=</span>
-                <div>
-                    <p class="text-sm text-gray-600 dark:text-gray-400">Actual CPL</p>
-                    <p class="text-2xl font-bold  text-gray-900 dark:text-gray-100">{fmt(props.cpl)}</p>
-                </div>
-                <div class="ml-auto text-right">
-                    <p class="text-sm text-gray-4600 dark:text-gray-400">Proposed CPL</p>
-                    <p class={`text-2xl font-bold  ${props.cpl <= props.proposedCPL ? "text-green-600 dark:text-green-400" : "text-amber-600 dark:text-amber-400"}`}>
-                        {fmt(props.proposedCPL)}
-                    </p>
-                </div>
-            </div>
-            <CPLIndicator actual={props.cpl} proposed={props.proposedCPL} />
-        </div>
-    );
-}
+// function CPLBlock(props) {
+//     return (
+//         <div class="rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 p-4 space-y-3">
+//             <SectionLabel>CPL Calculation (ex-GST)</SectionLabel>
+//             <div class="flex flex-wrap gap-4 items-center">
+//                 <div>
+//                     <p class="text-sm text-gray-600 dark:text-gray-400">Total Leads</p>
+//                     <p class="text-2xl font-bold  text-gray-900 dark:text-gray-100">{props.totalLeads}</p>
+//                 </div>
+//                 <span class="text-gray-500 dark:text-gray-700 text-xl">÷</span>
+//                 <div>
+//                     <p class="text-sm text-gray-600 dark:text-gray-400">Total Spend</p>
+//                     <p class="text-2xl font-bold  text-gray-900 dark:text-gray-100">{fmt(props.totalSpend)}</p>
+//                 </div>
+//                 <span class="text-gray-500 dark:text-gray-700 text-xl">=</span>
+//                 <div>
+//                     <p class="text-sm text-gray-600 dark:text-gray-400">Actual CPL</p>
+//                     <p class="text-2xl font-bold  text-gray-900 dark:text-gray-100">{fmt(props.cpl)}</p>
+//                 </div>
+//                 <div class="ml-auto text-right">
+//                     <p class="text-sm text-gray-4600 dark:text-gray-400">Proposed CPL</p>
+//                     <p class={`text-2xl font-bold  ${props.cpl <= props.proposedCPL ? "text-green-600 dark:text-green-400" : "text-amber-600 dark:text-amber-400"}`}>
+//                         {fmt(props.proposedCPL)}
+//                     </p>
+//                 </div>
+//             </div>
+//             <CPLIndicator actual={props.cpl} proposed={props.proposedCPL} />
+//         </div>
+//     );
+// }
 
 // ─── Qualification Logic Block ────────────────────────────────────────────────
 function QualBlock(props) {
+
     const expectedQL = () => Math.round(props.totalLeads * (props.project.qualificationPct / 100));
     const qProg = () => expectedQL() > 0 ? Math.round((props.project.qualifiedLeads / expectedQL()) * 100) : 0;
-    const barColor = () => qProg() >= 100 ? "bg-green-500" : qProg() >= 60 ? "bg-amber-500" : "bg-red-500";
 
     const statCards = () => [
-        { label: "Total Leads (TL)", val: props.totalLeads, sub: null, hi: false },
-        { label: "Expected QL", val: expectedQL(), sub: `${props.totalLeads} × ${props.project.qualificationPct / 100}`, hi: false },
-        { label: "Qualified (QL)", val: props.project.qualifiedLeads, sub: "Delivered", hi: false },
-        { label: "Progress", val: `${qProg()}%`, sub: "of QL target", hi: true },
+        {
+            label: "Total Leads",
+            val: props.totalLeads,
+            sub: null,
+            icon: "users",
+            color: "blue"
+        },
+        {
+            label: "Expected QL",
+            val: expectedQL(),
+            sub: `${props.totalLeads} × ${props.project.qualificationPct / 100}`,
+            icon: "target",
+            color: "purple"
+        },
+        {
+            label: "Qualified",
+            val: props.project.qualifiedLeads,
+            sub: "Delivered",
+            icon: "check",
+            color: "green"
+        },
+        {
+            label: "Progress",
+            val: `${qProg()}%`,
+            sub: "of target",
+            icon: "chart",
+            color: qProg() >= 100 ? "green" : qProg() >= 60 ? "amber" : "red"
+        }
     ];
 
+    const colorMap = {
+        blue: "bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400",
+        purple: "bg-purple-50 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400",
+        green: "bg-green-50 text-green-600 dark:bg-green-900/20 dark:text-green-400",
+        amber: "bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400",
+        red: "bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400"
+    };
+
     return (
-        <div class="rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-700 p-4 space-y-4">
-            <div class="flex items-center justify-between flex-wrap gap-2">
-                <SectionLabel>Proposed CPL &amp; Qualification Logic</SectionLabel>
-                <Tag variant="gray">Q% = {props.project.qualificationPct}%</Tag>
+        <div class="rounded-2xl border border-gray-200 dark:border-gray-700 
+                bg-white dark:bg-gray-900 p-5 space-y-5 shadow-sm">
+
+            {/* Header */}
+            <div class="flex items-center justify-between">
+                <SectionLabel>Qualification Overview</SectionLabel>
+                <span class="text-sm px-2 py-1 rounded-full 
+                     bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 ">
+                    Qualification % = {props.project.qualificationPct}%
+                </span>
             </div>
 
-            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {/* Cards */}
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+
                 <For each={statCards()}>
                     {(item) => (
-                        <div class="rounded-lg bg-white dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 p-3">
-                            <p class="text-md text-gray-700 dark:text-gray-400">{item.label}</p>
-                            <p class={`text-lg font-bold  mt-0.5 ${item.hi ? (qProg() >= 100 ? "text-green-600 dark:text-green-400" : "text-amber-600 dark:text-amber-400") : "text-gray-900 dark:text-gray-100"}`}>
-                                {item.val}
-                            </p>
-                            <Show when={item.sub}>
-                                <p class="text-sm text-gray-500 dark:text-gray-400 ">{item.sub}</p>
-                            </Show>
+
+                        <div class="flex justify-between rounded-xl border border-gray-200 dark:border-gray-700 
+                        bg-white dark:bg-gray-800/50 p-4 
+                        hover:shadow-md transition-all duration-200">
+                            <div>
+                                {/* Text */}
+                                <p class="text-md text-gray-700 dark:text-gray-400">
+                                    {item.label}
+                                </p>
+
+                                <p class="text-xl font-semibold mt-1 text-gray-900 dark:text-white">
+                                    {item.val}
+                                </p>
+
+                                <Show when={item.sub}>
+                                    <p class="text-sm text-gray-500 mt-1">
+                                        {item.sub}
+                                    </p>
+                                </Show>
+                            </div>
+                            {/* Icon */}
+                            <div class={`w-10 h-10 rounded-lg flex items-center justify-center mb-3 
+                          ${colorMap[item.color]}`}>
+
+                                {/* ICONS */}
+                                {item.icon === "users" && (
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-width="2" d="M17 20h5V9a2 2 0 00-2-2h-3M9 20H4V9a2 2 0 012-2h3m0 0V5a2 2 0 114 0v2m-4 0h4" />
+                                    </svg>
+                                )}
+
+                                {item.icon === "target" && (
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <circle cx="12" cy="12" r="10" stroke-width="2" />
+                                        <circle cx="12" cy="12" r="4" stroke-width="2" />
+                                    </svg>
+                                )}
+
+                                {item.icon === "check" && (
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-width="2" d="M5 13l4 4L19 7" />
+                                    </svg>
+                                )}
+
+                                {item.icon === "chart" && (
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-width="2" d="M3 3v18h18M7 14l3-3 4 4 5-5" />
+                                    </svg>
+                                )}
+
+                            </div>
                         </div>
                     )}
                 </For>
             </div>
-
-            <div class="space-y-1.5">
-                <div class="flex justify-between text-md text-gray-600 dark:text-gray-400">
-                    <span>Progress: {props.project.qualifiedLeads} / {expectedQL()} QL achieved</span>
-                    <span>{qProg()}%</span>
-                </div>
-                <div class="h-1.5 w-full rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
-                    <div class={`h-full rounded-full transition-all duration-700 ${barColor()}`} style={{ width: `${Math.min(100, qProg())}%` }} />
-                </div>
-                {/* <p class="text-[10px] text-gray-400 dark:text-gray-600 ">
-                    Formula: QL ÷ (TL × Q%) × 100 = {props.project.qualifiedLeads} ÷ ({props.totalLeads} × {props.project.qualificationPct / 100}) × 100 = {qProg()}%
-                </p> */}
-            </div>
         </div>
     );
 }
-
 // ─── Project Row (Accordion) ──────────────────────────────────────────────────
 function ProjectRow(props) {
     const [open, setOpen] = createSignal(false);
@@ -306,71 +438,136 @@ function ProjectRow(props) {
     const cpl = () => totalLeads() > 0 ? Math.round(totalSpend() / totalLeads()) : 0;
 
     return (
-        <Card class="overflow-hidden">
+        <Card class="group overflow-hidden rounded-2xl border border-gray-200 dark:border-gray-700 
+              dark:bg-gray-900/70 backdrop-blur-sm 
+             shadow-sm  transition-all duration-300">
+
             {/* Header button */}
             <button
-                class="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50/80 dark:hover:bg-gray-800/30 transition-colors text-left gap-4"
+                class="w-full flex items-center justify-between px-5 py-4 text-left bg-purple-50 dark:bg-gray-800 gap-4 
+          dark:hover:bg-gray-800/50 transition-all duration-200"
                 onClick={() => setOpen((v) => !v)}
             >
+                {/* LEFT */}
                 <div class="flex items-center gap-3 min-w-0">
-                    <div class="w-9 h-9 rounded-xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-sm font-bold text-gray-600 dark:text-gray-400 flex-shrink-0">
+
+                    {/* Avatar */}
+                    <div class="w-10 h-10 rounded-xl 
+                  bg-gradient-to-br from-purple-500 to-indigo-600 
+                  flex items-center justify-center 
+                  text-white text-sm font-semibold shadow-md">
                         {props.project.name.replace("Project ", "P")}
                     </div>
+
+                    {/* Title */}
                     <div class="min-w-0">
-                        <p class="font-semibold text-gray-900 dark:text-gray-100 text-sm">{props.project.name}</p>
-                        <p class="text-sm text-gray-500 dark:text-gray-400">{props.project.campaigns.length} campaigns · {totalLeads()} leads</p>
+                        <p class="font-semibold text-gray-900 dark:text-white text-sm truncate">
+                            {props.project.name}
+                        </p>
+                        <p class="text-sm text-gray-500 dark:text-gray-400">
+                            {props.project.campaigns.length} campaigns · {totalLeads()} leads
+                        </p>
                     </div>
                 </div>
-                <div class="flex items-center gap-5 flex-shrink-0">
-                    <div class="hidden sm:block text-right">
-                        <p class="text-sm text-gray-500 dark:text-gray-400">Allocated</p>
-                        <p class="text-sm font-semibold mt-2  text-gray-800 dark:text-gray-200">{fmt(props.project.budgetAllocated)}</p>
+
+                {/* RIGHT STATS */}
+                <div class="flex items-center gap-6 flex-shrink-0">
+
+                    {/* Allocated */}
+                    <div class="hidden sm:block text-right border border-purple-200 dark:border-gray-700 py-2 px-4 rounded-lg">
+                        <p class="text-sm text-purple-900 dark:text-gray-400">Allocated</p>
+                        <p class="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                            {fmt(props.project.budgetAllocated)}
+                        </p>
                     </div>
-                    <div class="hidden sm:block text-right">
-                        <p class="text-sm text-gray-500 dark:text-gray-400">Spent</p>
-                        <p class="text-sm font-semibold  mt-2  text-gray-800 dark:text-gray-200">{fmt(totalSpend())}</p>
+
+                    {/* Spent */}
+                    <div class="hidden sm:block text-right border border-purple-200 dark:border-gray-700 py-2 px-4 rounded-lg">
+                        <p class="text-sm text-purple-900 dark:text-gray-400">Spent</p>
+                        <p class="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                            {fmt(totalSpend())}
+                        </p>
                     </div>
-                    <div class="hidden md:block text-right">
-                        <p class="text-sm text-gray-500 dark:text-gray-400">CPL</p>
-                        <p class="text-sm font-semibold  mt-2  text-gray-800 dark:text-gray-200">{fmt(cpl())}</p>
+
+                    {/* CPL */}
+                    <div class="hidden md:block text-right border border-purple-200 dark:border-gray-700 py-2 px-4 rounded-lg">
+                        <p class="text-sm text-purple-900 dark:text-gray-400">CPL</p>
+                        <p class="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                            {fmt(cpl())}
+                        </p>
                     </div>
-                    <svg
-                        class={`w-4 h-4 text-gray-400 dark:text-gray-600 transition-transform duration-300 ${open() ? "rotate-180" : ""}`}
-                        fill="none" stroke="currentColor" viewBox="0 0 24 24"
-                    >
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                    </svg>
+
+                    {/* Chevron */}
+                    <div class="p-1.5 rounded-lg bg-purple-100 dark:bg-gray-800 
+                  group-hover:bg-purple-200 dark:group-hover:bg-gray-700 transition">
+                        <svg
+                            class={`w-4 h-4 text-gray-500 dark:text-gray-400 transition-transform duration-300 ${open() ? "rotate-180" : ""}`}
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                        >
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                        </svg>
+                    </div>
                 </div>
             </button>
 
-            {/* Spend bar */}
-            <div class="px-5 pb-3">
-                <div class="flex justify-between text-sm text-gray-700 dark:text-gray-400 mb-1">
+            {/* Progress bar */}
+            {/* <div class="px-5 pb-3">
+                <div class="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
                     <span>Spend progress</span>
                     <span>{pct(totalSpend(), props.project.budgetAllocated)}%</span>
                 </div>
-                <ProgressBar value={totalSpend()} max={props.project.budgetAllocated} />
-            </div>
+
+                <div class="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                    <div
+                        class="h-full bg-gradient-to-r from-purple-500 to-indigo-500 transition-all duration-500"
+                        style={{ width: `${pct(totalSpend(), props.project.budgetAllocated)}%` }}
+                    ></div>
+                </div>
+            </div> */}
 
             {/* Collapsible body */}
-            <div style={{
-                overflow: "hidden",
-                "max-height": open() ? "2000px" : "0px",
-                opacity: open() ? "1" : "0",
-                transition: "max-height 0.4s ease, opacity 0.3s ease",
-            }}>
-                <div class="px-5 pb-5 space-y-4 border-t border-gray-100 dark:border-gray-600 pt-4">
+            <div
+                style={{
+                    overflow: "hidden",
+                    "max-height": open() ? "2000px" : "0px",
+                    opacity: open() ? "1" : "0",
+                    transition: "all 0.4s ease",
+                }}
+            >
+                <div class="px-5 pb-5 pt-4 space-y-5 
+                border-t border-gray-100 dark:border-gray-700">
+
                     <SectionLabel>Campaign-Level Spend Details</SectionLabel>
-                    <CampaignTable campaigns={props.project.campaigns} />
-                    <CPLBlock
-                        totalLeads={totalLeads()}
-                        totalSpend={totalSpend()}
-                        cpl={cpl()}
-                        proposedCPL={props.project.proposedCPL}
-                    />
-                    <QualBlock project={props.project} totalLeads={totalLeads()} />
+
+                    {/* Inner cards wrapper */}
+                    <div class="space-y-4">
+                        <CampaignTable campaigns={props.project.campaigns} />
+                    </div>
+
+                    {/* CPL block */}
+                    {/* <div class="p-4 rounded-xl border 
+                  bg-gray-50 dark:bg-gray-800/50 
+                  border-gray-200 dark:border-gray-700">
+                        <CPLBlock
+                            totalLeads={totalLeads()}
+                            totalSpend={totalSpend()}
+                            cpl={cpl()}
+                            proposedCPL={props.project.proposedCPL}
+                        />
+                    </div> */}
+
+                    {/* Qualification */}
+                    <div class="p-4 rounded-xl border 
+                  bg-gray-50 dark:bg-gray-800/50 
+                  border-gray-200 dark:border-gray-700">
+                        <QualBlock project={props.project} totalLeads={totalLeads()} />
+                    </div>
+
                 </div>
             </div>
+
         </Card>
     );
 }
@@ -953,7 +1150,7 @@ export default function Billing() {
                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4" />
                             </svg>
-                            Add Funds via HDFC
+                            Add Funds 
                         </button>
                     </Card>
                 </div>
@@ -974,4 +1171,4 @@ export default function Billing() {
             <AddFundsModal open={showModal()} onClose={() => setShowModal(false)} />
         </div>
     );
-} 
+}  
