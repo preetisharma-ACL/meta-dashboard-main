@@ -9,8 +9,9 @@ import {
     XCircle,
     User,
 } from "lucide-solid";
-import * as XLSX from "xlsx";
 import { onMount, onCleanup } from "solid-js";
+import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
 
 /* ================= STATIC PROJECT INFO ================= */
 
@@ -364,25 +365,24 @@ export default function ProjectDetails() {
         "Broker": User,
     };
 
-    function budgetReport() {
-        const table = document.getElementById("budget-report");
+    async function downloadPDF(elementId, fileName) {
+        const element = document.getElementById(elementId);
 
-        const ws = XLSX.utils.table_to_sheet(table);
-        const wb = XLSX.utils.book_new();
+        const canvas = await html2canvas(element, {
+            scale: 2,
+            backgroundColor: "#ffffff",
+        });
 
-        XLSX.utils.book_append_sheet(wb, ws, "Report");
+        const imgData = canvas.toDataURL("image/png");
 
-        XLSX.writeFile(wb, "budget-report.xlsx");
-    }
-    function leadsReport() {
-        const table = document.getElementById("leads-report");
+        const pdf = new jsPDF("p", "mm", "a4");
 
-        const ws = XLSX.utils.table_to_sheet(table);
-        const wb = XLSX.utils.book_new();
+        const imgWidth = 210;
+        const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-        XLSX.utils.book_append_sheet(wb, ws, "Report");
+        pdf.addImage(imgData, "PNG", 0, 0, imgWidth, imgHeight);
 
-        XLSX.writeFile(wb, "leads-report.xlsx");
+        pdf.save(fileName);
     }
     /* ================= UI ================= */
 
@@ -666,7 +666,7 @@ export default function ProjectDetails() {
                 </h3>
 
                 <button
-                    onClick={leadsReport}
+                    onClick={() => downloadPDF("pdf-leads", "leads-report.pdf")}
                     class="flex items-center gap-2 px-4 py-2 rounded-lg 
            bg-green-600 hover:bg-green-700 
            text-white text-sm font-medium 
@@ -733,22 +733,213 @@ export default function ProjectDetails() {
 
                 </table>
             </div>
+            {/* pdf leads report start */}
+            <div id="pdf-leads" style="position: absolute; left: -9999px; top: 0;">
+                <div style="width: 950px; background: #fbfbfb; padding: 32px; font-family: 'Georgia', serif; position: relative; box-sizing: border-box;">
+
+                    {/* Diagonal stripe texture overlay */}
+                    <div style="position: absolute; inset: 0; background-image: repeating-linear-gradient(135deg, transparent, transparent 18px, rgba(255,255,255,0.015) 18px, rgba(255,255,255,0.015) 19px); pointer-events: none;" />
+
+                    {/* Outer gold border frame */}
+                    <div style="position: absolute; inset: 20px; border: 2.5px solid #C9A84C; border-radius: 10px; pointer-events: none;" />
+
+                    {/* Inner gold thin border */}
+                    <div style="position: absolute; inset: 30px; border: 0.8px solid #C9A84C; border-radius: 7px; pointer-events: none;" />
+
+                    {/* Corner ornaments - Top Left */}
+                    <div style="position: absolute; top: 20px; left: 20px; width: 40px; height: 40px; pointer-events: none;">
+                        <div style="position: absolute; top: -1px; left: -1px; width: 22px; height: 3px; background: #C9A84C;" />
+                        <div style="position: absolute; top: -1px; left: -1px; width: 3px; height: 22px; background: #C9A84C;" />
+                        <div style="position: absolute; top: 6px; left: 6px; width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg);" />
+                    </div>
+
+                    {/* Corner ornaments - Top Right */}
+                    <div style="position: absolute; top: 20px; right: 20px; width: 40px; height: 40px; pointer-events: none;">
+                        <div style="position: absolute; top: -1px; right: -1px; width: 22px; height: 3px; background: #C9A84C;" />
+                        <div style="position: absolute; top: -1px; right: -1px; width: 3px; height: 22px; background: #C9A84C;" />
+                        <div style="position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg);" />
+                    </div>
+
+                    {/* Corner ornaments - Bottom Left */}
+                    <div style="position: absolute; bottom: 20px; left: 20px; width: 40px; height: 40px; pointer-events: none;">
+                        <div style="position: absolute; bottom: -1px; left: -1px; width: 22px; height: 3px; background: #C9A84C;" />
+                        <div style="position: absolute; bottom: -1px; left: -1px; width: 3px; height: 22px; background: #C9A84C;" />
+                        <div style="position: absolute; bottom: 6px; left: 6px; width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg);" />
+                    </div>
+
+                    {/* Corner ornaments - Bottom Right */}
+                    <div style="position: absolute; bottom: 20px; right: 20px; width: 40px; height: 40px; pointer-events: none;">
+                        <div style="position: absolute; bottom: -1px; right: -1px; width: 22px; height: 3px; background: #C9A84C;" />
+                        <div style="position: absolute; bottom: -1px; right: -1px; width: 3px; height: 22px; background: #C9A84C;" />
+                        <div style="position: absolute; bottom: 6px; right: 6px; width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg);" />
+                    </div>
+
+                    {/* Inner cream content area */}
+                    <div style="position: relative; margin: 14px; background: #FDF8EE; border-radius: 6px; padding: 0 0 36px 0; overflow: hidden; z-index: 1;">
+                        {/* ── HEADER BAND ── */}
+                        <div style="background: #0A1628; padding: 28px 40px 22px; position: relative; overflow: hidden;">
+                            {/* Header stripe texture */}
+                            <div style="position: absolute; inset: 0; background-image: repeating-linear-gradient(135deg, transparent, transparent 18px, rgba(255,255,255,0.02) 18px, rgba(255,255,255,0.02) 19px);" />
+                            {/* Gold top bar */}
+                            <div style="position: absolute; top: 0; left: 0; right: 0; height: 5px; background: #C9A84C;" />
+                            {/* Gold bottom bar */}
+                            <div style="position: absolute; bottom: 0; left: 0; right: 0; height: 4px; background: #C9A84C;" />
+
+                            {/* Tag line */}
+                            {/* <p style="text-align: center; color: #d8b75b; font-size: 20px; font-family: 'Arial', sans-serif;  font-weight: bold; margin: 0 0 10px; text-transform: uppercase;">
+                                Real Estate Analytics
+                            </p> */}
+                            <p style="text-align: center; color: #E8D5A3; font-size: 18px; font-family: 'Arial', sans-serif; margin: 0; letter-spacing: 1px;">
+                                [Aajneeti Connect Ltd.]
+                            </p>
+
+                            {/* Main title */}
+                            <h1 style="text-align: center; color: white; font-size: 32px; font-family: 'Georgia', serif; letter-spacing: 2px; margin: 0 0 8px; font-weight: bold; text-transform: uppercase;">
+                                Project Leads Report
+                            </h1>
+                            {/* Date */}
+                            <p style="text-align: center; color: #E8D5A3; font-size: 18px; font-family: 'Arial', sans-serif; margin: 0; letter-spacing: 1px;">
+                                Generated on: {new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
+                            </p>
+                        </div>
+                        {/* ── CLIENT INFO BAND ── */}
+                        <div style="background: #F5EDD8; padding: 15px 30px 15px; position: relative; border-bottom: 2px solid #C9A84C; border-top: 1px solid rgba(201,168,76,0.3);">
+                            <div style="position: absolute; inset: 0; background-image: radial-gradient(circle, rgba(201,168,76,0.1) 1px, transparent 1px); background-size: 18px 18px; pointer-events: none;" />
+
+                            <div style="position: relative; display: flex; align-items: center; gap: 0;">
+
+                                {/* LEFT — client fields */}
+                                <div style="flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 28px;">
+
+                                    <div style="display: flex; align-items: center; gap: 6px;">
+                                        <span style="color: #7A5C1E;  font-size: 12px; font-family: 'Arial', sans-serif; margin: 0;margin-bottom:2px; letter-spacing: 1px;">Client Name</span>
+                                        <span style="flex: 1; height: 1px; background: rgba(201,168,76,0.4);" />
+                                        <span style="color: #0A1628; font-size: 12px; font-family: Georgia; font-weight: bold;">ABC sdxd ddgdfhgh</span>
+                                    </div>
+
+                                    <div style="display: flex; align-items: center; gap: 6px;">
+                                        <span style="color: #7A5C1E;  font-size: 12px; font-family: 'Arial', sans-serif; margin: 0;margin-bottom:2px; letter-spacing: 1px;">Company</span>
+                                        <span style="flex: 1; height: 1px; background: rgba(201,168,76,0.4);" />
+                                        <span style="color: #0A1628; font-size: 12px; font-family: Georgia; font-weight: bold;">ABC pvt ltd</span>
+                                    </div>
+
+                                    <div style="display: flex; align-items: center; gap: 6px;">
+                                        <span style="color: #7A5C1E;  font-size: 12px; font-family: 'Arial', sans-serif; margin: 0;margin-bottom:2px; letter-spacing: 1px;">City</span>
+                                        <span style="flex: 1; height: 1px; background: rgba(201,168,76,0.4);" />
+                                        <span style="color: #0A1628; font-size: 12px; font-family: Georgia; font-weight: bold;">Greater Noida</span>
+                                    </div>
+
+                                    <div style="display: flex; align-items: center; gap: 6px;">
+                                        <span style="color: #7A5C1E;  font-size: 12px; font-family: 'Arial', sans-serif; margin: 0;margin-bottom:2px; letter-spacing: 1px;">Mobile No</span>
+                                        <span style="flex: 1; height: 1px; background: rgba(201,168,76,0.4);" />
+                                        <span style="color: #0A1628; font-size: 12px; font-family: Georgia; font-weight: bold;">9292876787</span>
+                                    </div>
+
+                                </div>
+
+                                {/* VERTICAL DIVIDER */}
+                                <div style="width: 1px; background: linear-gradient(to bottom, transparent, #C9A84C, transparent); height: 60px; margin: 0 28px; flex-shrink: 0;" />
+
+                                {/* RIGHT — project name badge */}
+                                <div style="flex-shrink: 0; text-align: center;">
+                                    <div style="display: inline-block; border: 1.5px solid #C9A84C; border-radius: 6px; padding: 10px 20px; background: white; position: relative; box-shadow: 2px 2px 0 #C9A84C;">
+                                        <div style="position: absolute; top: 0; left: 12px; right: 12px; height: 2px; background: #C9A84C; border-radius: 2px;" />
+                                        <div style="position: absolute; bottom: 0; left: 12px; right: 12px; height: 2px; background: #C9A84C; border-radius: 2px;" />
+                                        <p style="color: #7A5C1E; font-size: 10px; font-family: Arial; font-weight: bold;  text-transform: uppercase; margin: 0 0 5px;">Project</p>
+                                        <p style="color: #0A1628; font-size: 13px; font-family: Georgia; font-weight: bold; margin: 0;  white-space: nowrap;">Birla Estates Campaign</p>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+                        {/* ── DETAILED TABLE ── */}
+                        <div style="padding: 24px 36px 0;">
+                            {/* Section divider */}
+                            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+                                <div style="width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg); flex-shrink: 0;" />
+                                <div style="flex: 1; height: 1px; background: #C9A84C; opacity: 0.4;" />
+                                <div style="
+                                            display:flex;
+                                            align-items:center;
+                                            justify-content:center;
+                                            background:#0A1628;
+                                            padding:6px 16px;
+                                            border-radius:20px;
+                                            height:28px;   /* IMPORTANT */
+                                        ">
+                                    <span style="
+                                            color:#C9A84C;
+                                            font-size:12px;
+                                            font-family:Arial;
+                                            font-weight:bold;
+                                            line-height:1;   /* IMPORTANT */
+                                            margin-bottom:12px;
+                                        ">
+                                        DETAILED BREAKDOWN
+                                    </span>
+                                </div>
+                                <div style="flex: 1; height: 1px; background: #C9A84C; opacity: 0.4;" />
+                                <div style="width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg); flex-shrink: 0;" />
+                            </div>
+
+                            {/* Table */}
+                            <div style="border-radius: 8px; overflow: hidden; box-shadow: 4px 4px 0 #C8B89A; border: 1px solid #C9A84C;">
+                                <table style="width: 100%; border-collapse: collapse; font-family: Arial;">
+                                    <thead>
+                                        <tr style="background: #0A1628;">
+                                            <th style="padding: 11px 16px; text-align: left; color:   #C9A84C; padding-bottom:25px; font-size: 18px;   border-right: 1px solid rgba(201,168,76,0.2);">Category</th>
+                                            <th style="padding: 11px 16px; text-align: center; color: #C9A84C; padding-bottom:25px; font-size: 18px;   border-right: 1px solid rgba(201,168,76,0.2);">Count</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {[
+                                            { cat: "Total Leads", count: 115, even: true },
+                                            { cat: "Follow Up / Interested", count: 40, even: false },
+                                            { cat: "Delay in Feedback	", count: 17, even: true },
+                                            { cat: "Qualified Leads", count: 57, even: false },
+                                            { cat: "Call Later / CNP", count: 31, even: true },
+                                            { cat: "Not Interested", count: 24, even: false },
+                                            { cat: "Broker", count: 3, even: true },
+                                        ].map((row) => (
+                                            <tr style={`background: ${row.even ? '#F5EDD8' : '#FDF8EE'};`}>
+                                                <td style="padding: 10px 16px; align-items:center; padding-bottom:25px; font-size: 18px; font-weight: bold; color: #0A1628; border-right: 1px solid rgba(201,168,76,0.2); position: relative;">
+                                                    <span style="position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: #C9A84C;" />
+                                                    {row.cat}
+                                                </td>
+                                                <td style="padding: 10px 16px; text-align: center; padding-bottom:25px; font-size: 18px; font-weight: bold; color: #1E3A5F; border-right: 1px solid rgba(201,168,76,0.2);">{row.count}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        {/* ── FOOTER ── */}
+                        <div style="margin: 28px 36px 0; padding-top: 16px; border-top: 1px solid rgba(201,168,76,0.4); display: flex; align-items: center; justify-content: space-between;">
+                            <div style="width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg);" />
+                            <p style="color: #645132; font-size: 12px; font-family: Arial; letter-spacing: 1.5px; text-align: center; margin: 0; text-transform: uppercase;">
+                                © 2026 Project Analytics
+                            </p>
+                            <div style="width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg);" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {/* pdf leads report end */}
 
 
             {/* Payment report */}
             <div class="flex items-center justify-between mt-8">
-
                 <h3 class="text-lg font-semibold text-gray-800 dark:text-white">
                     Project Payment Report
                 </h3>
-
                 <button
-                    onClick={budgetReport}
+                    onClick={() => downloadPDF("pdf-budget", "payment-report.pdf")}
                     class="flex items-center gap-2 px-4 py-2 rounded-lg 
-           bg-green-600 hover:bg-green-700 
-           text-white text-sm font-medium 
-           shadow-sm hover:shadow-md 
-           transition-all duration-200"
+                        bg-green-600 hover:bg-green-700 
+                        text-white text-sm font-medium 
+                        shadow-sm hover:shadow-md 
+                        transition-all duration-200"
                 >
                     {/* Download Icon */}
                     <svg
@@ -763,7 +954,6 @@ export default function ProjectDetails() {
                     </svg>
                     Download Report
                 </button>
-
             </div>
             <div class="mt-8 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden bg-white dark:bg-gray-900">
                 <div class="overflow-x-auto">
@@ -779,9 +969,7 @@ export default function ProjectDetails() {
                                 <th class="px-4 py-3 text-center">Total</th>
                             </tr>
                         </thead>
-
                         <tbody class="[&_tr]:border-b [&_tr]:border-gray-200 dark:[&_tr]:border-gray-700">
-
                             {[
                                 ["Total Leads Generated", 40, 93, 20, 67, 32, 120],
                                 ["Average CPL", 251, 210, 150, 320, 300, 300],
@@ -794,10 +982,8 @@ export default function ProjectDetails() {
                                 ["Broker", 17, 65, 32, 32, 49, "-"],
                             ].map((row) => {
                                 const Icon = metricIcons[row[0]];
-
                                 return (
                                     <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/40 transition">
-
                                         {/*  Metric with Icon */}
                                         <td class="px-4 py-3">
                                             <div class="flex items-center gap-2 text-gray-700 dark:text-gray-300 font-medium">
@@ -809,7 +995,6 @@ export default function ProjectDetails() {
                                                 {row[0]}
                                             </div>
                                         </td>
-
                                         {/* Values */}
                                         <td class="px-4 py-3 text-center text-gray-800 dark:text-gray-200">
                                             {row[1]}
@@ -829,15 +1014,206 @@ export default function ProjectDetails() {
                                         <td class="px-4 py-3 text-center font-semibold text-gray-900 dark:text-gray-100">
                                             {row[6]}
                                         </td>
-
                                     </tr>
                                 );
                             })}
-
                         </tbody>
                     </table>
                 </div>
             </div>
+
+            {/* pdf payment report start */}
+            <div id="pdf-budget" style="position: absolute; left: -9999px; top: 0;">
+                <div style="width: 950px; background: #fbfbfb; padding: 32px; font-family: 'Georgia', serif; position: relative; box-sizing: border-box;">
+
+                    {/* Diagonal stripe texture overlay */}
+                    <div style="position: absolute; inset: 0; background-image: repeating-linear-gradient(135deg, transparent, transparent 18px, rgba(255,255,255,0.015) 18px, rgba(255,255,255,0.015) 19px); pointer-events: none;" />
+
+                    {/* Outer gold border frame */}
+                    <div style="position: absolute; inset: 20px; border: 2.5px solid #C9A84C; border-radius: 10px; pointer-events: none;" />
+
+                    {/* Inner gold thin border */}
+                    <div style="position: absolute; inset: 30px; border: 0.8px solid #C9A84C; border-radius: 7px; pointer-events: none;" />
+
+                    {/* Corner ornaments - Top Left */}
+                    <div style="position: absolute; top: 20px; left: 20px; width: 40px; height: 40px; pointer-events: none;">
+                        <div style="position: absolute; top: -1px; left: -1px; width: 22px; height: 3px; background: #C9A84C;" />
+                        <div style="position: absolute; top: -1px; left: -1px; width: 3px; height: 22px; background: #C9A84C;" />
+                        <div style="position: absolute; top: 6px; left: 6px; width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg);" />
+                    </div>
+
+                    {/* Corner ornaments - Top Right */}
+                    <div style="position: absolute; top: 20px; right: 20px; width: 40px; height: 40px; pointer-events: none;">
+                        <div style="position: absolute; top: -1px; right: -1px; width: 22px; height: 3px; background: #C9A84C;" />
+                        <div style="position: absolute; top: -1px; right: -1px; width: 3px; height: 22px; background: #C9A84C;" />
+                        <div style="position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg);" />
+                    </div>
+
+                    {/* Corner ornaments - Bottom Left */}
+                    <div style="position: absolute; bottom: 20px; left: 20px; width: 40px; height: 40px; pointer-events: none;">
+                        <div style="position: absolute; bottom: -1px; left: -1px; width: 22px; height: 3px; background: #C9A84C;" />
+                        <div style="position: absolute; bottom: -1px; left: -1px; width: 3px; height: 22px; background: #C9A84C;" />
+                        <div style="position: absolute; bottom: 6px; left: 6px; width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg);" />
+                    </div>
+
+                    {/* Corner ornaments - Bottom Right */}
+                    <div style="position: absolute; bottom: 20px; right: 20px; width: 40px; height: 40px; pointer-events: none;">
+                        <div style="position: absolute; bottom: -1px; right: -1px; width: 22px; height: 3px; background: #C9A84C;" />
+                        <div style="position: absolute; bottom: -1px; right: -1px; width: 3px; height: 22px; background: #C9A84C;" />
+                        <div style="position: absolute; bottom: 6px; right: 6px; width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg);" />
+                    </div>
+
+                    {/* Inner cream content area */}
+                    <div style="position: relative; margin: 14px; background: #FDF8EE; border-radius: 6px; padding: 0 0 36px 0; overflow: hidden; z-index: 1;">
+
+                        {/* ── HEADER BAND ── */}
+                        <div style="background: #0A1628; padding: 28px 40px 22px; position: relative; overflow: hidden;">
+                            <div style="position: absolute; inset: 0; background-image: repeating-linear-gradient(135deg, transparent, transparent 18px, rgba(255,255,255,0.02) 18px, rgba(255,255,255,0.02) 19px);" />
+                            <div style="position: absolute; top: 0; left: 0; right: 0; height: 5px; background: #C9A84C;" />
+                            <div style="position: absolute; bottom: 0; left: 0; right: 0; height: 4px; background: #C9A84C;" />
+
+                            <p style="text-align: center; color: #E8D5A3; font-size: 18px; font-family: 'Arial', sans-serif; margin: 0 0 6px; letter-spacing: 1px;">
+                                [Aajneeti Connect Ltd.]
+                            </p>
+                            <h1 style="text-align: center; color: white; font-size: 32px; font-family: 'Georgia', serif; letter-spacing: 2px; margin: 0 0 8px; font-weight: bold; text-transform: uppercase;">
+                                Payment Report
+                            </h1>
+                            <p style="text-align: center; color: #E8D5A3; font-size: 18px; font-family: 'Arial', sans-serif; margin: 0; letter-spacing: 1px;">
+                                Generated on: {new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
+                            </p>
+                        </div>
+
+                        {/* ── CLIENT INFO BAND ── */}
+                        <div style="background: #F5EDD8; padding: 15px 30px 15px; position: relative; border-bottom: 2px solid #C9A84C; border-top: 1px solid rgba(201,168,76,0.3);">
+                            <div style="position: absolute; inset: 0; background-image: radial-gradient(circle, rgba(201,168,76,0.1) 1px, transparent 1px); background-size: 18px 18px; pointer-events: none;" />
+
+                            <div style="position: relative; display: flex; align-items: center; gap: 0;">
+
+                                {/* LEFT — client fields */}
+                                <div style="flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 28px;">
+
+                                    <div style="display: flex; align-items: center; gap: 6px;">
+                                        <span style="color: #7A5C1E; font-size: 12px; font-family: 'Arial', sans-serif; margin: 0; letter-spacing: 1px;">Client Name</span>
+                                        <span style="flex: 1; height: 1px; background: rgba(201,168,76,0.4);" />
+                                        <span style="color: #0A1628; font-size: 12px; font-family: Georgia; font-weight: bold;">ABC sdxd ddgdfhgh</span>
+                                    </div>
+
+                                    <div style="display: flex; align-items: center; gap: 6px;">
+                                        <span style="color: #7A5C1E; font-size: 12px; font-family: 'Arial', sans-serif; margin: 0; letter-spacing: 1px;">Company</span>
+                                        <span style="flex: 1; height: 1px; background: rgba(201,168,76,0.4);" />
+                                        <span style="color: #0A1628; font-size: 12px; font-family: Georgia; font-weight: bold;">ABC pvt ltd</span>
+                                    </div>
+
+                                    <div style="display: flex; align-items: center; gap: 6px;">
+                                        <span style="color: #7A5C1E; font-size: 12px; font-family: 'Arial', sans-serif; margin: 0; letter-spacing: 1px;">City</span>
+                                        <span style="flex: 1; height: 1px; background: rgba(201,168,76,0.4);" />
+                                        <span style="color: #0A1628; font-size: 12px; font-family: Georgia; font-weight: bold;">Greater Noida</span>
+                                    </div>
+
+                                    <div style="display: flex; align-items: center; gap: 6px;">
+                                        <span style="color: #7A5C1E; font-size: 12px; font-family: 'Arial', sans-serif; margin: 0; letter-spacing: 1px;">Mobile No</span>
+                                        <span style="flex: 1; height: 1px; background: rgba(201,168,76,0.4);" />
+                                        <span style="color: #0A1628; font-size: 12px; font-family: Georgia; font-weight: bold;">9292876787</span>
+                                    </div>
+
+                                </div>
+
+                                {/* VERTICAL DIVIDER */}
+                                <div style="width: 1px; background: linear-gradient(to bottom, transparent, #C9A84C, transparent); height: 60px; margin: 0 28px; flex-shrink: 0;" />
+
+                                {/* RIGHT — project name badge */}
+                                <div style="flex-shrink: 0; text-align: center;">
+                                    <div style="display: inline-block; border: 1.5px solid #C9A84C; border-radius: 6px; padding: 10px 20px; background: white; position: relative; box-shadow: 2px 2px 0 #C9A84C;">
+                                        <div style="position: absolute; top: 0; left: 12px; right: 12px; height: 2px; background: #C9A84C; border-radius: 2px;" />
+                                        <div style="position: absolute; bottom: 0; left: 12px; right: 12px; height: 2px; background: #C9A84C; border-radius: 2px;" />
+                                        <p style="color: #7A5C1E; font-size: 10px; font-family: Arial; font-weight: bold; text-transform: uppercase; margin: 0 0 5px;">Project</p>
+                                        <p style="color: #0A1628; font-size: 13px; font-family: Georgia; font-weight: bold; margin: 0; white-space: nowrap;">Birla Estates </p>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+
+                        {/* ── DETAILED TABLE ── */}
+                        <div style="padding: 24px 36px 0;">
+
+                            {/* Section divider */}
+                            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+                                <div style="width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg); flex-shrink: 0;" />
+                                <div style="flex: 1; height: 1px; background: #C9A84C; opacity: 0.4;" />
+                                <div style="display: flex; align-items: center; justify-content: center; background: #0A1628; padding: 6px 16px; border-radius: 20px; height: 28px;">
+                                    <span style="color: #C9A84C; font-size: 12px; font-family: Arial; margin-bottom:12px; font-weight: bold; line-height: 1;">
+                                        CAMPAIGN PERFORMANCE BREAKDOWN
+                                    </span>
+                                </div>
+                                <div style="flex: 1; height: 1px; background: #C9A84C; opacity: 0.4;" />
+                                <div style="width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg); flex-shrink: 0;" />
+                            </div>
+
+                            {/* Table */}
+                            <div style="border-radius: 8px; overflow: hidden; box-shadow: 4px 4px 0 #C8B89A; border: 1px solid #C9A84C;">
+                                <table style="width: 100%; border-collapse: collapse; font-family: Arial;">
+                                    <thead>
+                                        <tr style="background: #0A1628;">
+                                            <th style="padding: 12px 16px 20px; text-align: left;   color: #C9A84C; font-size: 14px; border-right: 1px solid rgba(201,168,76,0.2); white-space: nowrap;">Metric</th>
+                                            <th style="padding: 12px 16px 20px; text-align: center; color: #C9A84C; font-size: 14px; border-right: 1px solid rgba(201,168,76,0.2); white-space: nowrap;">Birla 1</th>
+                                            <th style="padding: 12px 16px 20px; text-align: center; color: #C9A84C; font-size: 14px; border-right: 1px solid rgba(201,168,76,0.2); white-space: nowrap;">Birla 2</th>
+                                            <th style="padding: 12px 16px 20px; text-align: center; color: #C9A84C; font-size: 14px; border-right: 1px solid rgba(201,168,76,0.2); white-space: nowrap;">Birla 3</th>
+                                            <th style="padding: 12px 16px 20px; text-align: center; color: #C9A84C; font-size: 14px; border-right: 1px solid rgba(201,168,76,0.2); white-space: nowrap;">Birla 4</th>
+                                            <th style="padding: 12px 16px 20px; text-align: center; color: #C9A84C; font-size: 14px; border-right: 1px solid rgba(201,168,76,0.2); white-space: nowrap;">Birla 5</th>
+                                            <th style="padding: 12px 16px 20px; text-align: center; color: #E8D5A3; font-size: 14px; white-space: nowrap;">Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {[
+                                            { metric: "Total Leads Generated", b1: 40, b2: 93, b3: 20, b4: 67, b5: 32, total: 120, even: true },
+                                            { metric: "Average CPL", b1: 251, b2: 210, b3: 150, b4: 320, b5: 300, total: 300, even: false },
+                                            { metric: "Total Spent Amount", b1: 10049, b2: 19571, b3: 17324, b4: 21000, b5: 1567, total: 80000, even: true },
+                                            { metric: "Total Qualified Leads", b1: 21, b2: 29, b3: 45, b4: 30, b5: 55, total: "—", even: false },
+                                            { metric: "Follow Ups / Interested", b1: 22, b2: 39, b3: 65, b4: 70, b5: 15, total: "—", even: true },
+                                            { metric: "Delay in Feedback", b1: 14, b2: 22, b3: 39, b4: 65, b5: 70, total: "—", even: false },
+                                            { metric: "Not Interested", b1: 20, b2: 42, b3: 29, b4: 25, b5: 50, total: "—", even: true },
+                                            { metric: "Call Not Picked / Call Later", b1: 25, b2: 22, b3: 32, b4: 49, b5: 35, total: "—", even: false },
+                                            { metric: "Broker", b1: 17, b2: 65, b3: 32, b4: 32, b5: 49, total: "—", even: true },
+                                        ].map((row) => (
+                                            <tr style={`background: ${row.even ? '#F5EDD8' : '#FDF8EE'};`}>
+
+                                                {/* Metric */}
+                                                <td style="padding: 10px 16px 22px; font-size: 14px; font-weight: bold; color: #0A1628; border-right: 1px solid rgba(201,168,76,0.2); position: relative; white-space: nowrap;">
+                                                    <span style="position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: #C9A84C;" />
+                                                    {row.metric}
+                                                </td>
+
+                                                {/* Birla columns */}
+                                                <td style="padding: 10px 16px 22px; text-align: center; font-size: 14px; font-weight: bold; color: #1E3A5F; border-right: 1px solid rgba(201,168,76,0.2);">{row.b1}</td>
+                                                <td style="padding: 10px 16px 22px; text-align: center; font-size: 14px; font-weight: bold; color: #1E3A5F; border-right: 1px solid rgba(201,168,76,0.2);">{row.b2}</td>
+                                                <td style="padding: 10px 16px 22px; text-align: center; font-size: 14px; font-weight: bold; color: #1E3A5F; border-right: 1px solid rgba(201,168,76,0.2);">{row.b3}</td>
+                                                <td style="padding: 10px 16px 22px; text-align: center; font-size: 14px; font-weight: bold; color: #1E3A5F; border-right: 1px solid rgba(201,168,76,0.2);">{row.b4}</td>
+                                                <td style="padding: 10px 16px 22px; text-align: center; font-size: 14px; font-weight: bold; color: #1E3A5F; border-right: 1px solid rgba(201,168,76,0.2);">{row.b5}</td>
+
+                                                {/* Total — highlighted */}
+                                                <td style="padding: 10px 16px 22px; text-align: center; font-size: 14px; font-weight: bold; color: #7A5C1E; background: rgba(201,168,76,0.12);">{row.total}</td>
+
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        {/* ── FOOTER ── */}
+                        <div style="margin: 28px 36px 0; padding-top: 16px; border-top: 1px solid rgba(201,168,76,0.4); display: flex; align-items: center; justify-content: space-between;">
+                            <div style="width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg);" />
+                            <p style="color: #645132; font-size: 12px; font-family: Arial; letter-spacing: 1.5px; text-align: center; margin: 0; text-transform: uppercase;">
+                                © 2026 Project Analytics
+                            </p>
+                            <div style="width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg);" />
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+            {/* pdf payment report end */}
         </div>
     );
 }

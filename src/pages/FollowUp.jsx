@@ -60,18 +60,18 @@ const FollowUp = () => {
         return "Upcoming";
     };
 
-    const getColor = (type) => {
-        switch (type) {
-            case "Overdue":
-                return "bg-red-100 text-red-700";
-            case "Today":
-                return "bg-yellow-100 text-yellow-700";
-            case "Upcoming":
-                return "bg-green-100 text-green-700";
-            default:
-                return "bg-gray-100 text-gray-700";
-        }
-    };
+    // const getColor = (type) => {
+    //     switch (type) {
+    //         case "Overdue":
+    //             return "bg-red-100 text-red-700";
+    //         case "Today":
+    //             return "bg-yellow-100 text-yellow-700";
+    //         case "Upcoming":
+    //             return "bg-green-100 text-green-700";
+    //         default:
+    //             return "bg-gray-100 text-gray-700";
+    //     }
+    // };
 
     return (
         <div class="p-6 min-h-screen bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200">
@@ -89,7 +89,6 @@ const FollowUp = () => {
             {/* TABLE */}
             <div class="bg-white dark:bg-gray-800 rounded-xl shadow overflow-hidden border border-gray-200 dark:border-gray-700">
                 <table class="w-full text-sm">
-
                     {/* HEAD */}
                     <thead class="bg-gray-100 dark:bg-gray-800">
                         <tr class="border-b border-gray-200 dark:border-gray-700">
@@ -99,7 +98,6 @@ const FollowUp = () => {
                             <th class="p-3">Status</th>
                             <th class="p-3">Remark</th>
                             <th class="p-3">Follow-up</th>
-                            <th class="p-3">Type</th>
                             <th class="p-3">Action</th>
                         </tr>
                     </thead>
@@ -171,11 +169,11 @@ const FollowUp = () => {
                                         </td>
 
                                         {/* Type */}
-                                        <td class="p-3 text-center">
+                                        {/* <td class="p-3 text-center">
                                             <span class={`px-2 py-1 rounded text-xs ${getColor(type)}`}>
                                                 {type}
                                             </span>
-                                        </td>
+                                        </td> */}
                                         <td class="p-3 text-center flex gap-3 justify-center">
 
                                             {/* WhatsApp */}
