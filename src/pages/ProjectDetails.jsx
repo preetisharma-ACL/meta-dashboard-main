@@ -462,7 +462,6 @@ export default function ProjectDetails() {
                                 </span>
                             </Show>
                         </button>
-
                     </div>
 
                     <Show when={showNotifications()}>
@@ -486,7 +485,6 @@ export default function ProjectDetails() {
                                 <For each={suggestions()}>
                                     {(item) => (
                                         <div class="flex items-start gap-3 px-4 py-3 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition">
-
                                             {/* Avatar circle */}
                                             <div class="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center text-blue-900 text-xs font-bold">
                                                 B
@@ -502,14 +500,12 @@ export default function ProjectDetails() {
                                         </div>
                                     )}
                                 </For>
-
                             </div>
 
                             {/* Footer */}
                             <div class="text-center text-sm text-blue-500 py-2 hover:underline cursor-pointer">
                                 See all recent activity
                             </div>
-
                         </div>
                     </Show>
                 </div>
@@ -573,7 +569,6 @@ export default function ProjectDetails() {
                 >
                     Prev
                 </button>
-
                 <button
                     onClick={() => setPage(page() + 1)}
                     disabled={page() * rowsPerPage >= sortedCampaigns().length}
@@ -657,21 +652,18 @@ export default function ProjectDetails() {
                 </div>
             </div>
 
-
             {/* leads report */}
             <div class="flex items-center justify-between mt-8">
-
                 <h3 class="text-lg font-semibold text-gray-800 dark:text-white">
                     Project Leads Report
                 </h3>
-
                 <button
                     onClick={() => downloadPDF("pdf-leads", "leads-report.pdf")}
                     class="flex items-center gap-2 px-4 py-2 rounded-lg 
-           bg-green-600 hover:bg-green-700 
-           text-white text-sm font-medium 
-           shadow-sm hover:shadow-md 
-           transition-all duration-200"
+                    bg-green-600 hover:bg-green-700 
+                    text-white text-sm font-medium 
+                    shadow-sm hover:shadow-md 
+                    transition-all duration-200"
                 >
                     {/* Download Icon */}
                     <svg
@@ -955,23 +947,38 @@ export default function ProjectDetails() {
                     Download Report
                 </button>
             </div>
-            <div class="mt-8 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden bg-white dark:bg-gray-900">
+            <div class="mt-8 rounded-xl overflow-hidden border border-amber-200/60 dark:border-gray-700 ">
                 <div class="overflow-x-auto">
                     <table class="w-full text-sm" id="budget-report">
-                        <thead class="border-b border-gray-200 dark:border-gray-700">
-                            <tr class="text-gray-800 dark:text-gray-300 text-md bg-gray-100 dark:bg-gray-800">
-                                <th class="px-4 py-3 text-left">Metric</th>
-                                <th class="px-4 py-3 text-center">Birla 1</th>
-                                <th class="px-4 py-3 text-center">Birla 2</th>
-                                <th class="px-4 py-3 text-center">Birla 3</th>
-                                <th class="px-4 py-3 text-center">Birla 4</th>
-                                <th class="px-4 py-3 text-center">Birla 5</th>
-                                <th class="px-4 py-3 text-center">Total</th>
+                        <thead>
+                            <tr class="bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-200">
+                                <th class="px-5 py-4 text-left font-bold text-md   whitespace-nowrap">
+                                    <div class="flex items-center gap-2">
+                                       
+                                        Metric
+                                    </div>
+                                </th>
+
+                                <th class="px-5 py-4 text-center font-bold text-md   whitespace-nowrap">Birla 1</th>
+                                <th class="px-5 py-4 text-center font-bold text-md   whitespace-nowrap">Birla 2</th>
+                                <th class="px-5 py-4 text-center font-bold text-md   whitespace-nowrap">Birla 3</th>
+                                <th class="px-5 py-4 text-center font-bold text-md   whitespace-nowrap">Birla 4</th>
+                                <th class="px-5 py-4 text-center font-bold text-md   whitespace-nowrap">Birla 5</th>
+
+                                <th class="px-5 py-4 text-center font-bold text-md  text-gray-900 dark:text-gray-200 whitespace-nowrap bg-amber-900/20">
+                                    Total
+                                </th>
                             </tr>
-                        </thead>
-                        <tbody class="[&_tr]:border-b [&_tr]:border-gray-200 dark:[&_tr]:border-gray-700">
+
+                            {/* Gold accent line under header */}
+                            <tr class="bg-amber-200 dark:bg-gray-700">
+                                <td colspan="7" class="h-[1px] p-0"></td>
+                            </tr>
+                        </thead> 
+
+                        <tbody>
                             {[
-                                ["Total Leads Generated", 40, 93, 20, 67, 32, 120],
+                                ["Total Leads Generated", 40, 93, 20, 17324, 32, 120],
                                 ["Average CPL", 251, 210, 150, 320, 300, 300],
                                 ["Total Spent Amount", 10049, 19571, 17324, 21000, 1567, 80000],
                                 ["Total Qualified Leads", 21, 29, 45, 30, 55, "-"],
@@ -980,40 +987,67 @@ export default function ProjectDetails() {
                                 ["Not Interested", 20, 42, 29, 25, 50, "-"],
                                 ["Call Not Picked / Call Later", 25, 22, 32, 49, 35, "-"],
                                 ["Broker", 17, 65, 32, 32, 49, "-"],
-                            ].map((row) => {
+                            ].map((row, i) => {
                                 const Icon = metricIcons[row[0]];
+                                const isEven = i % 2 === 0;
+
                                 return (
-                                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/40 transition">
-                                        {/*  Metric with Icon */}
-                                        <td class="px-4 py-3">
-                                            <div class="flex items-center gap-2 text-gray-700 dark:text-gray-300 font-medium">
+                                    <tr class={`
+                            border-b border-amber-100 dark:border-amber-900/20
+                            transition-colors duration-150
+                            hover:bg-amber-50 dark:hover:bg-amber-900/10
+                            ${isEven
+                                            ? 'bg-gray-50 dark:bg-gray-900'
+                                            : 'bg-[#FBF7ED] dark:bg-gray-800/60'
+                                        }
+                        `}>
+
+                                        {/* Metric with icon */}
+                                        <td class="px-5 py-3.5 ">
+                                            <div class="flex items-center gap-2.5">
+                                              
+                                               
 
                                                 {Icon && (
-                                                    <Icon class="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                                                    <Icon class="w-4 h-4 text-[#C9A84C] dark:text-amber-500 flex-shrink-0" />
                                                 )}
 
-                                                {row[0]}
+                                                <span class="font-semibold text-[#0A1628] dark:text-gray-200 text-sm whitespace-nowrap">
+                                                    {row[0]}
+                                                </span>
                                             </div>
                                         </td>
-                                        {/* Values */}
-                                        <td class="px-4 py-3 text-center text-gray-800 dark:text-gray-200">
+
+                                        {/* Birla 1 */}
+                                        <td class="px-5 py-3.5 text-center text-[#1E3A5F] dark:text-gray-200 font-medium ">
                                             {row[1]}
                                         </td>
-                                        <td class="px-4 py-3 text-center text-gray-800 dark:text-gray-200">
+
+                                        {/* Birla 2 */}
+                                        <td class="px-5 py-3.5 text-center text-[#1E3A5F] dark:text-gray-200 font-medium ">
                                             {row[2]}
                                         </td>
-                                        <td class="px-4 py-3 text-center text-gray-800 dark:text-gray-200">
+
+                                        {/* Birla 3 */}
+                                        <td class="px-5 py-3.5 text-center text-[#1E3A5F] dark:text-gray-200 font-medium ">
                                             {row[3]}
                                         </td>
-                                        <td class="px-4 py-3 text-center text-gray-800 dark:text-gray-200">
+
+                                        {/* Birla 4 */}
+                                        <td class="px-5 py-3.5 text-center text-[#1E3A5F] dark:text-gray-200 font-medium ">
                                             {row[4]}
                                         </td>
-                                        <td class="px-4 py-3 text-center text-gray-800 dark:text-gray-200">
+
+                                        {/* Birla 5 */}
+                                        <td class="px-5 py-3.5 text-center text-[#1E3A5F] dark:text-gray-200 font-medium ">
                                             {row[5]}
                                         </td>
-                                        <td class="px-4 py-3 text-center font-semibold text-gray-900 dark:text-gray-100">
+
+                                        {/* Total — gold highlighted column */}
+                                        <td class="px-5 py-3.5 text-center font-bold text-[#7A5C1E] dark:text-amber-400 bg-amber-50/80 dark:bg-amber-900/10">
                                             {row[6]}
                                         </td>
+
                                     </tr>
                                 );
                             })}

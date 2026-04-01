@@ -7,13 +7,7 @@ import Dashboard from './pages/Dashboard';
 import Settings from './pages/Settings';
 import Leads from './pages/Leads';  
 import FollowUp from './pages/FollowUp';
-import {
-  Meeting,
-  Activities,
-  Emails,
-  Reports,
-  Integrations
-} from './pages/OtherPages';
+
 import { useSidebar } from './context/SidebarContext';
 import ProjectDetails from './pages/ProjectDetails';
 import ClientDashboard from './pages/ClientDashboard';
@@ -55,13 +49,8 @@ function App() {
           <Route path="/what-is-performing" component={() => <Layout><WhatIsPerforming /></Layout>} />
           <Route path="/leads" component={() => <Layout><Leads /></Layout>} />
           <Route path="/follow-up" component={() => <Layout><FollowUp/></Layout>} />
-          <Route path="/meeting" component={() => <Layout><Meeting /></Layout>} />
-          <Route path="/activities" component={() => <Layout><Activities /></Layout>} />
-          <Route path="/emails" component={() => <Layout><Emails /></Layout>} />
-          <Route path="/reports" component={() => <Layout><Reports /></Layout>} />
           <Route path="/settings" component={() => <Layout><Settings /></Layout>} />
           <Route path="/billing" component={() => <Layout><Billing /></Layout>} />
-          <Route path="/integrations" component={() => <Layout><Integrations /></Layout>} />
           <Route path="/all-campaigns" component={() => <Layout><ProjectDetails /></Layout>} />
           <Route path="/campaign/:id" component={() => <Layout> <CampaignDetails /> </Layout>} />
         </Router>
