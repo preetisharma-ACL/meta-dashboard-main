@@ -1204,7 +1204,7 @@ export default function ProjectDetails() {
                         {/* ── FOOTER ── */}
                         <div style="margin: 28px 36px 0; padding-top: 16px; border-top: 1px solid rgba(201,168,76,0.4); display: flex; align-items: center; justify-content: space-between;">
                             <div style="width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg);" />
-                            <p style="color: #645132; font-size: 12px; font-family: Arial; letter-spacing: 1.5px; text-align: center; margin: 0; text-transform: uppercase;">
+                            <p style="color: #604c2c; font-size: 12px; font-family: Arial; letter-spacing: 1.5px; text-align: center; margin: 0; text-transform: uppercase;">
                                 © 2026 Project Analytics
                             </p>
                             <div style="width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg);" />
