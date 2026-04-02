@@ -191,7 +191,7 @@ const WhatIsPerforming = () => {
           <button
             onClick={() => setIsOpen(true)}
             class="px-4 py-2.5 text-sm font-medium rounded 
-            bg-green-600 text-white hover:bg-green-700 transition-all"
+            bg-blue-900 text-white hover:bg-blue-700 transition-all"
           >
             + Add Project
           </button>
@@ -254,7 +254,7 @@ const WhatIsPerforming = () => {
 
           <div class="flex items-center space-x-2">
             <button class="px-3 py-2 rounded text-sm font-medium 
-              bg-green-700 text-white hover:bg-green-600 transition"
+              bg-blue-900 text-white hover:bg-blue-800 transition-all"
               onClick={() => {
                 setCity("");
                 setRera("");
@@ -772,7 +772,7 @@ const WhatIsPerforming = () => {
                     qualification: "",
                   });
                 }}
-                class="bg-green-600 text-white py-2 px-6 rounded-lg hover:bg-green-700"
+                class="bg-blue-900 text-white py-2 px-6 rounded-lg hover:bg-blue-700"
               >
                 {editIndex() !== null ? "Update" : "Save"}
               </button>

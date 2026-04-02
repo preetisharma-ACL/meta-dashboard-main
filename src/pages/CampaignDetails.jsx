@@ -30,6 +30,44 @@ export default function CampaignDetails() {
         <div class="p-6 bg-gray-50 dark:bg-gray-900 min-h-screen">
 
             {/* Header */}
+            <nav>
+                <ul class="flex items-center gap-1.5 mb-1.5 list-none p-0">
+                    <li class="flex items-center gap-1 group cursor-pointer">
+                        <svg class="w-4 h-4 text-gray-500 dark:text-gray-400 transition-colors group-hover:text-purple-400"
+                            fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001 1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                        </svg>
+
+                        <a href="/"
+                            class="text-sm text-gray-600 dark:text-gray-400 transition-colors group-hover:text-purple-400">
+                            Home
+                        </a>
+                    </li>
+                    <li class="flex items-center">
+                        <svg class="w-3 h-3 text-gray-600 dark:text-gray-400" viewBox="0 0 12 12" fill="none">
+                            <path d="M4.5 2.5L7.5 6L4.5 9.5" stroke="currentColor" stroke-width="1.2"
+                                stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                    </li>
+                    <li class="flex items-center gap-1 group cursor-pointer">
+
+                        <a href="/all-campaigns"
+                            class="text-sm text-gray-600 dark:text-gray-400 transition-colors group-hover:text-purple-400">
+                            All Active Campaigns
+                        </a>
+                    </li>
+                    <li class="flex items-center">
+                        <svg class="w-3 h-3 text-gray-600 dark:text-gray-400" viewBox="0 0 12 12" fill="none">
+                            <path d="M4.5 2.5L7.5 6L4.5 9.5" stroke="currentColor" stroke-width="1.2"
+                                stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                    </li>
+                    <li>
+                        <span class="text-sm text-gray-500 dark:text-gray-400 font-medium">{params.id}</span>
+                    </li>
+                </ul>
+            </nav>
             <div class="mb-8 flex items-center gap-4">
                 <div>
                     <h1 class="text-2xl font-semibold text-gray-800 dark:text-white">
@@ -47,55 +85,55 @@ export default function CampaignDetails() {
 
             {/* Campaign Overview */}
             <div class="grid md:grid-cols-4 gap-6 mb-10">
-                <div class="bg-blue-50 dark:bg-gray-800 p-5 rounded  border border-blue-200 dark:border-gray-600">
+                <div class="bg-blue-50 dark:bg-gray-800 px-5 py-9 rounded-xl shadow hover:shadow-lg  border border-blue-200 dark:border-gray-600">
                     <div class="flex items-center justify-between gap-2">
                         <div>
-                            <p class="text-md text-blue-800 dark:text-gray-400">Impressions</p>
-                            <h3 class="text-lg font-semibold mt-1 dark:text-white">
+                            <p class="text-lg text-blue-800 dark:text-gray-400">Impressions</p>
+                            <h3 class="text-xl font-semibold mt-2 dark:text-white">
                                 {campaign.impressions}
                             </h3>
                         </div>
                         <div class="flex bg-blue-100 dark:bg-blue-500 p-3 rounded items-center gap-1 mt-2 text-sm text-gray-500 dark:text-gray-400">
-                            <Eye size={18} class=" font-bold text-blue-500 dark:text-blue-100" />
+                            <Eye size={20} class=" font-bold text-blue-500 dark:text-blue-100" />
                         </div>
                     </div>
                 </div>
-                <div class="bg-red-50 dark:bg-gray-800 p-5 rounded  border border-red-200 dark:border-gray-600">
+                <div class="bg-red-50 dark:bg-gray-800 px-5 py-9 rounded-xl shadow hover:shadow-lg rounded  border border-red-200 dark:border-gray-600">
                     <div class="flex items-center justify-between gap-2">
                         <div>
-                            <p class="text-md text-red-800 dark:text-gray-400">Reach</p>
-                            <h3 class="text-lg font-semibold mt-1 dark:text-white">
+                            <p class="text-lg text-red-800 dark:text-gray-400">Reach</p>
+                            <h3 class="text-xl font-semibold mt-2 dark:text-white">
                                 {campaign.reach}
                             </h3>
                         </div>
                         <div class="flex bg-red-100 dark:bg-purple-500 p-3 rounded items-center gap-1 mt-2 text-sm text-gray-500 dark:text-gray-400">
-                            <Users size={18} class="font-bold text-red-500 dark:text-purple-100" />
+                            <Users size={20} class="font-bold text-red-500 dark:text-purple-100" />
                         </div>
                     </div>
                 </div>
-                <div class="bg-green-50 dark:bg-gray-800 p-5 rounded  border border-green-200 dark:border-gray-600">
+                <div class="bg-green-50 dark:bg-gray-800 px-5 py-9 rounded-xl shadow hover:shadow-lg rounded  border border-green-200 dark:border-gray-600">
                     <div class="flex items-center justify-between gap-2">
                         <div>
-                            <p class="text-md text-green-800 dark:text-gray-400">Spend</p>
-                            <h3 class="text-lg font-semibold mt-1 dark:text-white">
+                            <p class="text-lg text-green-800 dark:text-gray-400">Spend</p>
+                            <h3 class="text-xl font-semibold mt-2 dark:text-white">
                                 {campaign.spend}
                             </h3>
                         </div>
                         <div class="flex bg-green-100 dark:bg-green-500 p-3 rounded items-center gap-1 mt-2 text-sm text-gray-500 dark:text-gray-400">
-                            <IndianRupee size={18} class="font-bold text-green-500 dark:text-green-100" />
+                            <IndianRupee size={20} class="font-bold text-green-500 dark:text-green-100" />
                         </div>
                     </div>
                 </div>
-                <div class="bg-purple-50 dark:bg-gray-800 p-5 rounded  border border-purple-200 dark:border-gray-600">
+                <div class="bg-purple-50 dark:bg-gray-800 px-5 py-9 rounded-xl shadow hover:shadow-lg rounded  border border-purple-200 dark:border-gray-600">
                     <div class="flex items-center justify-between gap-2">
                         <div>
-                            <p class="text-md text-purple-800 dark:text-gray-400">ROAS</p>
-                            <h3 class="text-lg font-semibold mt-1 dark:text-white">
+                            <p class="text-lg text-purple-800 dark:text-gray-400">ROAS</p>
+                            <h3 class="text-xl font-semibold mt-2 dark:text-white">
                                 {campaign.roas}
                             </h3>
                         </div>
                         <div class="flex bg-purple-100 dark:bg-purple-500 p-3 rounded items-center gap-1 mt-2 text-sm text-gray-500 dark:text-gray-400">
-                            <TrendingUp size={18} class="font-bold text-purple-500 dark:text-purple-100" />
+                            <TrendingUp size={20} class="font-bold text-purple-500 dark:text-purple-100" />
                         </div>
                     </div>
                 </div>
@@ -212,7 +250,6 @@ export default function CampaignDetails() {
                                 </td>
                                 <td class="p-4 font-medium dark:text-white">{campaign.roas}</td>
                             </tr>
-
                         </tbody>
                     </table>
                 </div>

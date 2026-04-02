@@ -282,7 +282,7 @@ const LeadsPage = () => {
                         <option>Not Interested</option>
                     </select>
                     <div>
-                        <button onClick={handleClearFilters} class="px-4 py-2.5 text-sm font-medium rounded-md bg-green-500 text-white border border-green-500 hover:bg-green-600 hover:border-green-600 focus:outline-none focus:ring-1 focus:ring-green-500 focus:ring-offset-2">
+                        <button onClick={handleClearFilters} class="px-4 py-2.5 text-sm font-medium rounded-md bg-blue-900 text-white border border-blue-500 hover:bg-blue-600 hover:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:ring-offset-2">
                             Clear All
                         </button>
                     </div>
@@ -511,7 +511,7 @@ const LeadsPage = () => {
                             <div class="flex gap-2 mt-6">
                                 <button
                                     onClick={handleSave}
-                                    class="px-4 py-2 bg-green-600 text-white rounded"
+                                    class="px-4 py-2 bg-blue-900 text-white rounded"
                                 >
                                     Save
                                 </button>

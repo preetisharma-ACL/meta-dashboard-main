@@ -898,9 +898,9 @@ export default function Billing() {
                         <button
                             onClick={() => setShowModal(true)}
                             class="flex items-center gap-2 px-4 py-3 text-sm font-medium rounded
-                            bg-green-500 dark:bg-green-600 text-white
+                            bg-blue-900 dark:bg-blue-800 text-white
                             shadow-sm hover:shadow-md
-                            hover:bg-green-600 dark:hover:bg-green-700
+                            hover:bg-blue-800 dark:hover:bg-blue-700
                             active:scale-95 transition-all duration-200"
                         >
                             <svg

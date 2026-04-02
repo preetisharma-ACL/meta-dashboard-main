@@ -390,16 +390,51 @@ export default function ProjectDetails() {
         <div class="space-y-6 m-4">
 
             {/* ================= PROJECT OVERVIEW ================= */}
-            <Show when={project} fallback={<p>No project selected</p>}>
-                <section class="bg-white dark:bg-gray-900 border rounded-xl p-4">
-                    <h2 class="text-lg font-semibold mb-4">Project Overview</h2>
-                    <div class="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
-                        <Info label="Project Name" value={project?.name} />
+            <div>
+                <nav>
+                    <ul class="flex items-center gap-1.5 mb-1.5 list-none p-0">
+                        <li class="flex items-center gap-1 group cursor-pointer">
+                            <svg class="w-4 h-4 text-gray-500 transition-colors group-hover:text-purple-600"
+                                fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001 1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                            </svg>
+
+                            <a href="/"
+                                class="text-sm text-gray-600 dark:text-gray-400 transition-colors group-hover:text-purple-400">
+                                Home
+                            </a>
+                        </li>
+                        <li class="flex items-center">
+                            <svg class="w-3 h-3 text-gray-600 dark:text-gray-400" viewBox="0 0 12 12" fill="none">
+                                <path d="M4.5 2.5L7.5 6L4.5 9.5" stroke="currentColor" stroke-width="1.2"
+                                    stroke-linecap="round" stroke-linejoin="round" />
+                            </svg>
+                        </li>
+                        <li>
+                            <span class="text-sm text-gray-500 dark:text-gray-400 font-medium">All active campaigns</span>
+                        </li>
+                    </ul>
+                </nav>
+
+                <h1 class="text-2xl font-semibold">All active campaigns</h1>
+            </div>
+            <Show when={project} fallback={
+                <p class="text-sm text-gray-400 border border-dashed rounded-xl p-8 text-center">
+                    No project selected
+                </p>
+            }>
+                <section class=" dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-5">
+                    <h2 class="text-[15px] font-medium mb-4 pb-3 border-b border-gray-200 dark:border-gray-700">
+                        Project overview
+                    </h2>
+                    <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+                        <Info label="Project name" value={project?.name} />
                         <Info label="Location" value={project?.location} />
-                        <Info label="Property Type" value={project?.type} />
-                        <Info label="Priority" value={project?.priority} />
-                        <Info label="Project Control" value={project?.projectControl} />
-                        <Info label="Project Pricing & Typology" value={project?.summary} />
+                        <Info label="Property type" value={project?.type} />
+                        <Info label="Priority" value={project?.priority} badge />
+                        <Info label="Project control" value={project?.projectControl} />
+                        <Info label="Pricing & typology" value={project?.summary} />
                     </div>
                 </section>
             </Show>
@@ -529,9 +564,11 @@ export default function ProjectDetails() {
                     <tbody>
                         <For each={paginatedData()}>
                             {(row, i) => (
-                                <tr class=" [&_td]:text-center [&_td:first-child]:text-left border-t">
+                                <tr class={`[&_td]:text-center [&_td:first-child]:text-left border-t    ${i() % 2 === 0
+                                    ? "bg-white dark:bg-gray-900"
+                                    : "bg-purple-50 dark:bg-gray-900"}`} >
                                     <td class="p-3 font-medium">
-                                        <A href={`/campaign/${row.id}`} class="text-blue-600  dark:text-blue-400">
+                                        <A href={`/campaign/${row.id}`} class="text-purple-800  dark:text-purple-300">
                                             {row.campaign_name}
                                         </A>
                                         <Show when={i() === 0}>
@@ -660,7 +697,7 @@ export default function ProjectDetails() {
                 <button
                     onClick={() => downloadPDF("pdf-leads", "leads-report.pdf")}
                     class="flex items-center gap-2 px-4 py-2 rounded-lg 
-                    bg-green-600 hover:bg-green-700 
+                    bg-blue-900 hover:bg-blue-800 
                     text-white text-sm font-medium 
                     shadow-sm hover:shadow-md 
                     transition-all duration-200"
@@ -928,7 +965,7 @@ export default function ProjectDetails() {
                 <button
                     onClick={() => downloadPDF("pdf-budget", "payment-report.pdf")}
                     class="flex items-center gap-2 px-4 py-2 rounded-lg 
-                        bg-green-600 hover:bg-green-700 
+                        bg-blue-900 hover:bg-blue-800 
                         text-white text-sm font-medium 
                         shadow-sm hover:shadow-md 
                         transition-all duration-200"
@@ -947,14 +984,14 @@ export default function ProjectDetails() {
                     Download Report
                 </button>
             </div>
-            <div class="mt-8 rounded-xl overflow-hidden border border-amber-200/60 dark:border-gray-700 ">
+            <div class="mt-8 rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 ">
                 <div class="overflow-x-auto">
                     <table class="w-full text-sm" id="budget-report">
                         <thead>
-                            <tr class="bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-200">
+                            <tr class="bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-200">
                                 <th class="px-5 py-4 text-left font-bold text-md   whitespace-nowrap">
                                     <div class="flex items-center gap-2">
-                                       
+
                                         Metric
                                     </div>
                                 </th>
@@ -964,17 +1001,16 @@ export default function ProjectDetails() {
                                 <th class="px-5 py-4 text-center font-bold text-md   whitespace-nowrap">Birla 3</th>
                                 <th class="px-5 py-4 text-center font-bold text-md   whitespace-nowrap">Birla 4</th>
                                 <th class="px-5 py-4 text-center font-bold text-md   whitespace-nowrap">Birla 5</th>
-
-                                <th class="px-5 py-4 text-center font-bold text-md  text-gray-900 dark:text-gray-200 whitespace-nowrap bg-amber-900/20">
+                                <th class="px-5 py-4 text-center font-bold text-md  text-gray-900 dark:text-gray-200 whitespace-nowrap ">
                                     Total
                                 </th>
                             </tr>
 
                             {/* Gold accent line under header */}
-                            <tr class="bg-amber-200 dark:bg-gray-700">
+                            <tr class="bg-gray-200 dark:bg-gray-700">
                                 <td colspan="7" class="h-[1px] p-0"></td>
                             </tr>
-                        </thead> 
+                        </thead>
 
                         <tbody>
                             {[
@@ -993,23 +1029,23 @@ export default function ProjectDetails() {
 
                                 return (
                                     <tr class={`
-                            border-b border-amber-100 dark:border-amber-900/20
+                            border-b border-gray-200 dark:border-gray-700
                             transition-colors duration-150
-                            hover:bg-amber-50 dark:hover:bg-amber-900/10
+                           
                             ${isEven
                                             ? 'bg-gray-50 dark:bg-gray-900'
-                                            : 'bg-[#FBF7ED] dark:bg-gray-800/60'
+                                            : 'bg-purple-50 dark:bg-gray-800/60'
                                         }
                         `}>
 
                                         {/* Metric with icon */}
                                         <td class="px-5 py-3.5 ">
                                             <div class="flex items-center gap-2.5">
-                                              
-                                               
+
+
 
                                                 {Icon && (
-                                                    <Icon class="w-4 h-4 text-[#C9A84C] dark:text-amber-500 flex-shrink-0" />
+                                                    <Icon class="w-4 h-4 text-purple-800 dark:text-amber-500 flex-shrink-0" />
                                                 )}
 
                                                 <span class="font-semibold text-[#0A1628] dark:text-gray-200 text-sm whitespace-nowrap">
@@ -1044,7 +1080,7 @@ export default function ProjectDetails() {
                                         </td>
 
                                         {/* Total — gold highlighted column */}
-                                        <td class="px-5 py-3.5 text-center font-bold text-[#7A5C1E] dark:text-amber-400 bg-amber-50/80 dark:bg-amber-900/10">
+                                        <td class="px-5 py-3.5 text-center font-bold text-[#7A5C1E] dark:text-amber-400 ">
                                             {row[6]}
                                         </td>
 
@@ -1254,11 +1290,20 @@ export default function ProjectDetails() {
 
 /* ================= SMALL COMPONENTS ================= */
 
-function Info(props) {
+function Info({ label, value, badge }) {
     return (
-        <div>
-            <p class="text-sm text-gray-400">{props.label}</p>
-            <p class="font-medium">{props.value}</p>
+        <div class="flex flex-col gap-0.5">
+            <span class="text-[14px] font-medium uppercase tracking-wider  text-gray-400 dark:text-gray-500">
+                {label}
+            </span>
+            {badge ? (
+                <span class="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 w-fit">
+                    <span class="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                    {value}
+                </span>
+            ) : (
+                <span class="text-sm font-medium text-gray-900 dark:text-gray-100">{value}</span>
+            )}
         </div>
     );
 }

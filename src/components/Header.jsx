@@ -125,8 +125,8 @@ export default function Header() {
                             onClick={() => setShowUserMenu(!showUserMenu())}
                             class="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                         >
-                            <div class="w-8 h-8 bg-primary-500 rounded-full flex items-center justify-center text-white font-semibold text-sm">
-                                ACL
+                            <div class="w-8 h-8 bg-blue-900 rounded-full flex items-center justify-center text-white font-semibold text-sm">
+                                PS
                             </div>
                             <div class="hidden md:block text-left">
                                 <p class="text-sm font-medium text-gray-900 dark:text-white">Preeti Sharma</p>

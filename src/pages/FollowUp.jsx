@@ -191,7 +191,7 @@ const FollowUp = () => {
                                             {/* Call */}
                                             <a
                                                 href={`tel:9871234565`}
-                                                class="p-2 bg-blue-500 font-bold hover:bg-blue-600 text-white rounded-full"
+                                                class="p-2 bg-blue-900 font-bold hover:bg-blue-800 text-white rounded-full"
                                             >
                                                 <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"

@@ -100,18 +100,43 @@ export default function AddProject() {
         navigate(`/`);
     };
     return (
-        <section class="min-h-screen bg-gray-50 dark:bg-gray-900 py-10 px-6 transition-colors duration-300">
+        <section class="min-h-screen bg-gray-50 dark:bg-gray-900 py-8 px-6 transition-colors duration-300">
+            <nav>
+                <ul class="flex items-center gap-1.5 mb-1.5 list-none p-0">
+                    <li class="flex items-center gap-1 group cursor-pointer">
+                        <svg class="w-4 h-4 text-gray-500 transition-colors group-hover:text-purple-600"
+                            fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001 1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                        </svg>
+
+                        <a href="/"
+                            class="text-sm text-gray-600 transition-colors group-hover:text-purple-600">
+                            Home
+                        </a>
+                    </li>
+                    <li class="flex items-center">
+                        <svg class="w-3 h-3 text-gray-600" viewBox="0 0 12 12" fill="none">
+                            <path d="M4.5 2.5L7.5 6L4.5 9.5" stroke="currentColor" stroke-width="1.2"
+                                stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                    </li>
+                    <li>
+                        <span class="text-sm text-gray-500 font-medium">Add New Project</span>
+                    </li>
+                </ul>
+            </nav>
             {/* Page Header */}
-            <div class="max-w-6xl mx-auto mb-8">
+            <div class=" mx-auto mb-5 mt-2">
                 <h2 class="text-2xl font-bold text-gray-900 dark:text-white">
                     Create New Project
                 </h2>
-                <p class="text-sm text-gray-500 dark:text-gray-400">
+                <p class="text-sm text-gray-500 mt-1 dark:text-gray-400">
                     Configure project details for campaign activation
                 </p>
             </div>
 
-            <div class="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div class=" grid grid-cols-1 lg:grid-cols-3 gap-8">
 
                 {/* LEFT SECTION */}
                 <div class="lg:col-span-2 bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 p-8">

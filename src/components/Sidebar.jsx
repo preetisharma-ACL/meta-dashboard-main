@@ -106,15 +106,13 @@ export default function Sidebar() {
                 {/* Logo */}
                 <div class="h-16 flex items-center justify-between px-4 border-b border-gray-200 dark:border-gray-700">
                     <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 bg-primary-500 rounded-lg flex items-center justify-center flex-shrink-0">
-                            <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                            </svg>
+                        <div class="w-10 h-10 bg-white rounded-lg flex items-center justify-center flex-shrink-0">
+                           <img src='/aajneeti-favicon.png' alt='aajneeti'/>
                         </div>
                         <Show when={!isCollapsed()}>
                             <div class="flex flex-col">
                                 <span class="text-lg font-bold text-gray-900 dark:text-white">Meta Dashboard</span>
-                                <span class="text-xs text-gray-500 dark:text-gray-400">By Aajneeti Connect ltd.</span>
+                                <span class="text-xs text-red-800 font-semibold dark:text-gray-400">Aajneeti Connect ltd.</span>
                             </div>
                         </Show>
                     </div>
@@ -127,7 +125,7 @@ export default function Sidebar() {
                             <A
                                 href={item.path}
                                 class={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group relative ${isActive(item.path)
-                                    ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400'
+                                    ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
                                     : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                                     }`}
                                 onClick={closeMobileSidebar}
@@ -138,13 +136,13 @@ export default function Sidebar() {
                                 <Show when={!isCollapsed()}>
                                     <span class="flex-1 font-medium text-sm">{item.name}</span>
                                     <Show when={item.badge}>
-                                        <span class="px-2 py-0.5 text-xs font-semibold rounded-full bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300">
+                                        <span class="px-2 py-0.5 text-xs font-semibold rounded-full bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300">
                                             {item.badge}
                                         </span>
                                     </Show>
                                 </Show>
                                 <Show when={isCollapsed() && item.badge}>
-                                    <span class="absolute -top-1 -right-1 w-5 h-5 flex items-center justify-center text-xs font-semibold rounded-full bg-primary-500 text-white">
+                                    <span class="absolute -top-1 -right-1 w-5 h-5 flex items-center justify-center text-xs font-semibold rounded-full bg-blue-500 text-white">
                                         {item.badge}
                                     </span>
                                 </Show>

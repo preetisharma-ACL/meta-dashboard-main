@@ -363,16 +363,17 @@ export default function ClientDashboard() {
                 <div>
                     <h1 class="text-2xl md:text-2xl font-semibold mb-1"> Active Projects</h1>
                     <p class="text-md text-gray-700 dark:text-gray-400"> All projects with live marketing campaigns.</p>
+                    
                 </div>
                 <div class="flex items-center gap-2">
                     {/* Add New Project Button */}
                     <A
                         href="/add-project"
-                        class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow"
+                        class="bg-blue-900 hover:bg-blue-800 transition-all text-white px-4 py-2 rounded-lg text-sm font-medium shadow"
                     >
                         + Add New Project
                     </A>
-                    <button
+                    {/* <button
                         onClick={() => setViewType("table")}
                         class={`p-2 rounded-lg border ${viewType() === "table"
                             ? "bg-green-600 text-white"
@@ -380,13 +381,12 @@ export default function ClientDashboard() {
                             }`}
                         title="Table View"
                     >
-                        {/* Table Icon */}
                         <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                             <line x1="4" y1="6" x2="20" y2="6" />
                             <line x1="4" y1="12" x2="20" y2="12" />
                             <line x1="4" y1="18" x2="20" y2="18" />
                         </svg>
-                    </button>
+                    </button> */}
                     {/* <button
                         onClick={() => setViewType("grid")}
                         class={`p-2 rounded-lg border ${viewType() === "grid"
@@ -646,14 +646,14 @@ export default function ClientDashboard() {
                                     {(project, index) => (
                                         <tr
                                             class={`
-                        border-t transition-all duration-300 ease-in-out
-                        [&_td]:text-center [&_td]:px-6 [&_td:first-child]:px-2
-                        [&_td]:whitespace-nowrap [&_td:first-child]:text-left
-                        ${index() % 2 === 0
-                                                    ? "bg-white dark:bg-gray-900"
-                                                    : "bg-purple-50/40 dark:bg-gray-900"}
-                        hover:bg-purple-100/40 dark:hover:bg-gray-800
-                    `}
+                                                border-t transition-all duration-300 ease-in-out
+                                                [&_td]:text-center [&_td]:px-6 [&_td:first-child]:px-2
+                                                [&_td]:whitespace-nowrap [&_td:first-child]:text-left
+                                                ${index() % 2 === 0
+                                                                            ? "bg-white dark:bg-gray-900"
+                                                                            : "bg-purple-50/40 dark:bg-gray-900"}
+                                                hover:bg-purple-100/40 dark:hover:bg-gray-800
+                                            `}
                                         >
                                             <Show when={selectedColumns().length === 0 || selectedColumns().includes("name")}>
                                                 <td class="p-2 flex items-center gap-2">
