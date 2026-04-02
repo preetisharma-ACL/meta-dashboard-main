@@ -391,8 +391,9 @@ export default function ProjectDetails() {
 
             {/* ================= PROJECT OVERVIEW ================= */}
             <div>
+                <h1 class="text-2xl font-semibold">All active campaigns</h1>
                 <nav>
-                    <ul class="flex items-center gap-1.5 mb-1.5 list-none p-0">
+                    <ul class="flex items-center gap-1.5 mb-1.5 mt-2 list-none p-0">
                         <li class="flex items-center gap-1 group cursor-pointer">
                             <svg class="w-4 h-4 text-gray-500 transition-colors group-hover:text-purple-600"
                                 fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -401,7 +402,7 @@ export default function ProjectDetails() {
                             </svg>
 
                             <a href="/"
-                                class="text-sm text-gray-600 dark:text-gray-400 transition-colors group-hover:text-purple-400">
+                                class="text-sm text-gray-600 dark:text-gray-400 transition-colors group-hover:text-purple-600">
                                 Home
                             </a>
                         </li>
@@ -416,8 +417,6 @@ export default function ProjectDetails() {
                         </li>
                     </ul>
                 </nav>
-
-                <h1 class="text-2xl font-semibold">All active campaigns</h1>
             </div>
             <Show when={project} fallback={
                 <p class="text-sm text-gray-400 border border-dashed rounded-xl p-8 text-center">
@@ -602,14 +601,14 @@ export default function ProjectDetails() {
                 <button
                     onClick={() => setPage(page() - 1)}
                     disabled={page() === 1}
-                    class="px-3 py-1 border rounded"
+                    class="px-3 py-1 border border-blue-800  rounded bg-blue-900 text-white"
                 >
                     Prev
                 </button>
                 <button
                     onClick={() => setPage(page() + 1)}
                     disabled={page() * rowsPerPage >= sortedCampaigns().length}
-                    class="px-3 py-1 border rounded"
+                    class="px-3 py-1 border border-blue-800  bg-blue-900 text-white rounded"
                 >
                     Next
                 </button>
@@ -730,6 +729,7 @@ export default function ProjectDetails() {
                                 "Call Later / CNP",
                                 "Not Interested",
                                 "Broker",
+                                "Extra Leed"
                             ].map((head) => (
                                 <th class="p-3 text-center whitespace-nowrap">
                                     {head}
@@ -751,6 +751,7 @@ export default function ProjectDetails() {
                                 31,
                                 24,
                                 3,
+                                5
                             ].map((val) => (
                                 <td class="p-3  text-gray-900 dark:text-gray-100">
                                     {val}
@@ -929,6 +930,7 @@ export default function ProjectDetails() {
                                             { cat: "Call Later / CNP", count: 31, even: true },
                                             { cat: "Not Interested", count: 24, even: false },
                                             { cat: "Broker", count: 3, even: true },
+                                            { cat: "Extra Leeds", count: 5, even: false },
                                         ].map((row) => (
                                             <tr style={`background: ${row.even ? '#F5EDD8' : '#FDF8EE'};`}>
                                                 <td style="padding: 10px 16px; align-items:center; padding-bottom:25px; font-size: 18px; font-weight: bold; color: #0A1628; border-right: 1px solid rgba(201,168,76,0.2); position: relative;">

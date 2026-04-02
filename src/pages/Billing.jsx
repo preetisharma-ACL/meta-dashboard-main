@@ -889,11 +889,12 @@ export default function Billing() {
         <div class="min-h-screen bg-white p-6 dark:bg-gray-900 text-gray-800 dark:text-gray-200 transition-all duration-300 selection:bg-gray-800 selection:text-white">
             {/* ── Header ── */}
             <header >
-                <div class="flex flex-col md:flex-row md:justify-between md:items-center gap-4 mb-6">
+                <div class="flex flex-col md:flex-row md:justify-between md:items-center gap-4 mb-3">
                     <div>
                         <h1 class="text-2xl md:text-2xl font-semibold mb-1">Billing </h1>
                         <p class="text-md text-gray-700 dark:text-gray-400">Manage your billing and payment information.</p>
                     </div>
+                   
                     <div class="flex items-center gap-3">
                         <button
                             onClick={() => setShowModal(true)}
@@ -921,6 +922,31 @@ export default function Billing() {
                         </button>
                     </div>
                 </div>
+                 <nav>
+                        <ul class="flex items-center gap-1.5 mb-4 mt-2 list-none p-0">
+                            <li class="flex items-center gap-1 group cursor-pointer">
+                                <svg class="w-4 h-4 text-gray-500 transition-colors group-hover:text-purple-600"
+                                    fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001 1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                                </svg>
+
+                                <a href="/"
+                                    class="text-sm text-gray-600 dark:text-gray-400 transition-colors group-hover:text-purple-600">
+                                    Home
+                                </a>
+                            </li>
+                            <li class="flex items-center">
+                                <svg class="w-3 h-3 text-gray-600 dark:text-gray-400" viewBox="0 0 12 12" fill="none">
+                                    <path d="M4.5 2.5L7.5 6L4.5 9.5" stroke="currentColor" stroke-width="1.2"
+                                        stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                            </li>
+                            <li>
+                                <span class="text-sm text-gray-500 dark:text-gray-400 font-medium">All active campaigns</span>
+                            </li>
+                        </ul>
+                    </nav>
             </header>
             {/* Sub-nav tabs */}
             <div class=" mx-auto flex gap-1">
@@ -1150,7 +1176,7 @@ export default function Billing() {
                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4" />
                             </svg>
-                            Add Funds 
+                            Add Funds
                         </button>
                     </Card>
                 </div>

@@ -30,17 +30,32 @@ export default function CampaignDetails() {
         <div class="p-6 bg-gray-50 dark:bg-gray-900 min-h-screen">
 
             {/* Header */}
+
+            <div class=" flex items-center gap-4">
+                <div>
+                    <h1 class="text-2xl font-semibold text-gray-800 dark:text-white">
+                        Campaign Details : {params.id}
+                    </h1>
+                    {/* <p class="text-sm text-gray-500 dark:text-gray-400">
+                        Campaign ID: {params.id}
+                    </p> */}
+                </div>
+
+                <span class="px-4 py-1 text-sm rounded-full bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
+                    {campaign.status}
+                </span>
+            </div>
             <nav>
-                <ul class="flex items-center gap-1.5 mb-1.5 list-none p-0">
+                <ul class="flex items-center gap-1.5 mb-6 mt-2 list-none p-0">
                     <li class="flex items-center gap-1 group cursor-pointer">
-                        <svg class="w-4 h-4 text-gray-500 dark:text-gray-400 transition-colors group-hover:text-purple-400"
+                        <svg class="w-4 h-4 text-gray-500 dark:text-gray-400 transition-colors group-hover:text-purple-600"
                             fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                 d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001 1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
                         </svg>
 
                         <a href="/"
-                            class="text-sm text-gray-600 dark:text-gray-400 transition-colors group-hover:text-purple-400">
+                            class="text-sm text-gray-600 dark:text-gray-400 transition-colors group-hover:text-purple-600">
                             Home
                         </a>
                     </li>
@@ -53,7 +68,7 @@ export default function CampaignDetails() {
                     <li class="flex items-center gap-1 group cursor-pointer">
 
                         <a href="/all-campaigns"
-                            class="text-sm text-gray-600 dark:text-gray-400 transition-colors group-hover:text-purple-400">
+                            class="text-sm text-gray-600 dark:text-gray-400 transition-colors group-hover:text-purple-600">
                             All Active Campaigns
                         </a>
                     </li>
@@ -68,20 +83,6 @@ export default function CampaignDetails() {
                     </li>
                 </ul>
             </nav>
-            <div class="mb-8 flex items-center gap-4">
-                <div>
-                    <h1 class="text-2xl font-semibold text-gray-800 dark:text-white">
-                        Campaign Details : {params.id}
-                    </h1>
-                    {/* <p class="text-sm text-gray-500 dark:text-gray-400">
-                        Campaign ID: {params.id}
-                    </p> */}
-                </div>
-
-                <span class="px-4 py-1 text-sm rounded-full bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
-                    {campaign.status}
-                </span>
-            </div>
 
             {/* Campaign Overview */}
             <div class="grid md:grid-cols-4 gap-6 mb-10">

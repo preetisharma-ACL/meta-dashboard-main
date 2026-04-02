@@ -140,7 +140,6 @@ export default function AddProject() {
 
                 {/* LEFT SECTION */}
                 <div class="lg:col-span-2 bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 p-8">
-
                     <form onSubmit={handleSubmit} class="space-y-8">
                         {/* Logo Upload */}
                         <div>
@@ -259,7 +258,7 @@ export default function AddProject() {
                         <div class="pt-4">
                             <button
                                 type="submit"
-                                class="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl font-medium shadow-md transition"
+                                class="bg-blue-900 hover:bg-blue-800 text-white px-6 py-3 rounded-xl font-medium shadow-md transition"
                             >
                                 Create Project
                             </button>
