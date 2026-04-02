@@ -361,14 +361,9 @@ export default function ClientDashboard() {
             {/* Section Header */}
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-5">
                 <div>
-                    <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                        Active Projects
-                    </h2>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">
-                        All projects with live marketing campaigns
-                    </p>
+                    <h1 class="text-2xl md:text-2xl font-semibold mb-1"> Active Projects</h1>
+                    <p class="text-md text-gray-700 dark:text-gray-400"> All projects with live marketing campaigns.</p>
                 </div>
-
                 <div class="flex items-center gap-2">
                     {/* Add New Project Button */}
                     <A
@@ -419,10 +414,10 @@ export default function ClientDashboard() {
             {/* project Overview */}
             <div class="grid md:grid-cols-4 gap-6 mb-10">
                 {/* Total Budget */}
-                <div class="bg-blue-50  dark:bg-gray-800 p-5 rounded border border-blue-200 dark:border-gray-600 flex justify-between items-center">
+                <div class="bg-blue-50  dark:bg-gray-800 px-5 py-9 gap-4 shadow-sm hover:shadow-lg transition-all rounded-xl border border-blue-200 dark:border-gray-600 flex justify-between items-center">
                     <div>
-                        <p class="text-sm text-blue-800 dark:text-gray-400">Total Budget Allocated</p>
-                        <h3 class="text-lg font-semibold mt-1 dark:text-white">₹1000</h3>
+                        <p class="text-md text-blue-800 dark:text-gray-400">Total Budget Allocated</p>
+                        <h3 class="text-xl font-semibold mt-2 dark:text-white">₹1000</h3>
                     </div>
                     <div class="p-3 rounded-lg bg-blue-100 dark:bg-blue-300">
                         <svg class="w-5 h-5 text-blue-600 dark:text-blue-800" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -431,10 +426,10 @@ export default function ClientDashboard() {
                     </div>
                 </div>
                 {/* Total Spend */}
-                <div class="bg-red-50 dark:bg-gray-800 p-5 rounded border border-red-200 dark:border-gray-600 flex justify-between items-center">
+                <div class="bg-red-50 dark:bg-gray-800 px-5 py-9 gap-4 shadow-sm hover:shadow-lg transition-all rounded-xl border border-red-200 dark:border-gray-600 flex justify-between items-center">
                     <div>
-                        <p class="text-sm text-red-800 dark:text-gray-400">Total Spend Till Date</p>
-                        <h3 class="text-lg font-semibold mt-1 dark:text-white">30,000</h3>
+                        <p class="text-md text-red-800 dark:text-gray-400">Total Spend Till Date</p>
+                        <h3 class="text-xl font-semibold mt-1 dark:text-white">30,000</h3>
                     </div>
                     <div class="p-3 rounded-lg bg-red-100 dark:bg-red-300">
                         <svg class="w-5 h-5 text-red-600 dark:text-red-800" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -444,10 +439,10 @@ export default function ClientDashboard() {
                     </div>
                 </div>
                 {/* Leads */}
-                <div class="bg-green-50 dark:bg-gray-800 p-5 rounded border border-green-200 dark:border-gray-600 flex justify-between items-center">
+                <div class="bg-green-50 dark:bg-gray-800 px-5 py-9 gap-4 shadow-sm hover:shadow-lg transition-all rounded-xl border border-green-200 dark:border-gray-600 flex justify-between items-center">
                     <div>
-                        <p class="text-sm text-green-800 dark:text-gray-400">Total Leads Generated</p>
-                        <h3 class="text-lg font-semibold mt-1 dark:text-white">200</h3>
+                        <p class="text-md text-green-800 dark:text-gray-400">Total Leads Generated</p>
+                        <h3 class="text-xl font-semibold mt-1 dark:text-white">200</h3>
                     </div>
                     <div class="p-3 rounded-lg bg-green-100 dark:bg-green-300">
                         <svg class="w-5 h-5 text-green-600 dark:text-green-800" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -456,10 +451,10 @@ export default function ClientDashboard() {
                     </div>
                 </div>
                 {/* CPL */}
-                <div class="bg-purple-50 dark:bg-gray-800 p-5 rounded border border-purple-200 dark:border-gray-600 flex justify-between items-center">
+                <div class="bg-purple-50 dark:bg-gray-800 px-5 py-9 gap-4 shadow-sm hover:shadow-lg transition-all rounded-xl border border-purple-200 dark:border-gray-600 flex justify-between items-center">
                     <div>
-                        <p class="text-sm text-purple-800 dark:text-gray-400">Average CPL</p>
-                        <h3 class="text-lg font-semibold mt-1 dark:text-white">212.20</h3>
+                        <p class="text-md text-purple-800 dark:text-gray-400">Average CPL</p>
+                        <h3 class="text-xl font-semibold mt-1 dark:text-white">212.20</h3>
                     </div>
                     <div class="p-3 rounded-lg bg-purple-100 dark:bg-purple-300">
                         <svg class="w-5 h-5 text-purple-600 dark:text-purple-800" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -471,10 +466,10 @@ export default function ClientDashboard() {
             </div>
             <div class="grid md:grid-cols-4 gap-6 mb-10">
                 {/* Active Campaigns */}
-                <div class="bg-blue-50 dark:bg-gray-800 p-5 rounded border border-blue-200 dark:border-gray-600 flex justify-between items-center">
+                <div class="bg-blue-50 dark:bg-gray-800 px-3 py-9 gap-4 shadow-sm hover:shadow-lg transition-all rounded-xl border border-blue-200 dark:border-gray-600 flex justify-between items-center">
                     <div>
-                        <p class="text-sm text-blue-800 dark:text-gray-400">Active Campaigns Count</p>
-                        <h3 class="text-lg font-semibold mt-1 dark:text-white">12</h3>
+                        <p class="text-md text-blue-800 dark:text-gray-400">Active Campaigns Count</p>
+                        <h3 class="text-xl font-semibold mt-1 dark:text-white">12</h3>
                     </div>
                     <div class="p-3 rounded-lg bg-blue-100 dark:bg-blue-300">
                         <svg class="w-5 h-5 text-blue-600 dark:text-blue-800" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -484,10 +479,10 @@ export default function ClientDashboard() {
                     </div>
                 </div>
                 {/* Project Status */}
-                <div class="bg-red-50 dark:bg-gray-800 p-5 rounded border border-red-200 dark:border-gray-600 flex justify-between items-center">
+                <div class="bg-red-50 dark:bg-gray-800 px-5 py-9 gap-4 shadow-sm hover:shadow-lg transition-all rounded-xl border border-red-200 dark:border-gray-600 flex justify-between items-center">
                     <div>
-                        <p class="text-sm text-red-800 dark:text-gray-400">Project Status</p>
-                        <h3 class="text-lg font-semibold mt-1 dark:text-white">Running</h3>
+                        <p class="text-md text-red-800 dark:text-gray-400">Project Status</p>
+                        <h3 class="text-xl font-semibold mt-1 dark:text-white">Running</h3>
                     </div>
                     <div class="p-3 rounded-lg bg-red-100 dark:bg-red-300">
                         <svg class="w-5 h-5 text-red-600 dark:text-red-800" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -541,7 +536,7 @@ export default function ClientDashboard() {
                 />
                 <button
                     onClick={handleClearFilters}
-                    class="px-4 py-2 rounded-lg border bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600 text-sm font-medium transition"
+                    class="px-4 py-2 rounded-lg border bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600 text-md font-medium transition"
                 >
                     Reset
                 </button>
@@ -600,8 +595,8 @@ export default function ClientDashboard() {
                     /* TABLE VIEW */
                     <div class="overflow-x-auto bg-white dark:bg-gray-900 rounded-xl border">
                         <table class="w-full text-sm table-auto">
-                            <thead class="bg-gray-100 dark:bg-gray-800">
-                                <tr class="[&_th]:text-center  [&_th]:whitespace-nowrap [&_th:first-child]:text-left">
+                            <thead class="bg-purple-50 dark:bg-gray-800">
+                                <tr class="[&_th]:text-center  [&_th]:whitespace-nowrap [&_th:first-child]:text-left text-purple-800 dark:text-gray-200">
                                     <Show when={selectedColumns().length === 0 || selectedColumns().includes("name")}>
                                         <th class="p-3">Project Name</th>
                                     </Show>
@@ -648,18 +643,28 @@ export default function ClientDashboard() {
                             </thead>
                             <tbody>
                                 <For each={filteredProjects()}>
-                                    {(project) => (
-                                        <tr class="[&_td]:text-center [&_td]:px-6 [&_td:first-child]:px-2 [&_td]:whitespace-nowrap [&_td:first-child]:text-left border-t hover:bg-gray-50 dark:hover:bg-gray-800">
+                                    {(project, index) => (
+                                        <tr
+                                            class={`
+                        border-t transition-all duration-300 ease-in-out
+                        [&_td]:text-center [&_td]:px-6 [&_td:first-child]:px-2
+                        [&_td]:whitespace-nowrap [&_td:first-child]:text-left
+                        ${index() % 2 === 0
+                                                    ? "bg-white dark:bg-gray-900"
+                                                    : "bg-purple-50/40 dark:bg-gray-900"}
+                        hover:bg-purple-100/40 dark:hover:bg-gray-800
+                    `}
+                                        >
                                             <Show when={selectedColumns().length === 0 || selectedColumns().includes("name")}>
                                                 <td class="p-2 flex items-center gap-2">
-                                                    <div class="rounded bg-gray-100 dark:bg-gray-300 p-1 px-1 min-w-max">
+                                                    <div class="rounded bg-purple-50 dark:bg-gray-200 p-1 px-1 min-w-max">
                                                         <img
                                                             src={project.logo || "/default-logo.png"}
                                                             class="w-10 h-10 object-fit"
                                                             alt="logo"
                                                         />
                                                     </div>
-                                                    <A href={project.url} state={{ project }} class="text-blue-600 dark:text-blue-400">
+                                                    <A href={project.url} state={{ project }} class="text-purple-700 dark:text-purple-300 font-medium hover:underline transition">
                                                         {project.name}
                                                     </A>
                                                 </td>
@@ -700,7 +705,7 @@ export default function ClientDashboard() {
                                             <Show when={selectedColumns().length === 0 || selectedColumns().includes("priority")}>
                                                 <td class="p-2">
                                                     <select
-                                                        class="border rounded px-2 py-1 text-sm bg-gray-100 dark:bg-gray-800 min-w-max"
+                                                        class="border border-purple-200 dark:border-gray-600  rounded px-2 py-1 text-sm bg-purple-100 dark:bg-gray-800 min-w-max"
                                                         value={project.priority}
                                                         onChange={(e) =>
                                                             handlePriorityChange(project.id, e.target.value)
@@ -716,7 +721,7 @@ export default function ClientDashboard() {
                                             <Show when={selectedColumns().length === 0 || selectedColumns().includes("status")}>
                                                 <td class="p-2">
                                                     <select
-                                                        class="border rounded px-2 py-1 text-sm bg-gray-100 dark:bg-gray-800 min-w-max"
+                                                        class="border border-blue-200 dark:border-gray-600 rounded px-2 py-1 text-sm bg-blue-50 dark:bg-gray-800 min-w-max"
                                                         value={
                                                             project.status === "active"
                                                                 ? "Live"
