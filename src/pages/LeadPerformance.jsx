@@ -1,5 +1,6 @@
 import { createSignal, For, createMemo } from "solid-js";
-
+import { onMount } from "solid-js";
+import { leads, setLeads, fetchLeads } from "../store/leadsStore";
 const LeadsPage = () => {
     const [darkMode, setDarkMode] = createSignal(false);
     const [search, setSearch] = createSignal("");
@@ -8,104 +9,105 @@ const LeadsPage = () => {
     const [isEditOpen, setIsEditOpen] = createSignal(false);
     const [selectedLead, setSelectedLead] = createSignal(null);
     const [editIndex, setEditIndex] = createSignal(null);
-    const [leads, setLeads] = createSignal([
-        {
-            name: "Preeti",
-            contact: "9876543210",
-            email: "abc@example.com",
-            source: "Website",
-            status: "Fresh",
-            performance: "Contacted Leads",
-            next_follow: "Mar 25 2026",
-            created: "Mar 20 2026",
-            project: "ABC Corp",
-            action: "",
-        },
-        {
-            name: "Akhil",
-            contact: "9876543210",
-            email: "akhil@example.com",
-            source: "Website",
-            status: "site visit done",
-            performance: "Qualified Leads",
-            next_follow: "Mar 25 2026",
-            created: "Mar 20 2026",
-            project: "XYZ Corp",
-            action: "",
-        },
-        {
-            name: "Prashant",
-            contact: "9876543210",
-            email: "prashant@example.com",
-            source: "Website",
-            status: "call not picked",
-            performance: "Follow-ups Pending",
-            next_follow: "Mar 25 2026",
-            created: "Mar 20 2026",
-            project: "ABC Corp",
-            action: "",
-        },
-        {
-            name: "Shivam",
-            contact: "9876543210",
-            email: "shivam@example.com",
-            source: "Meta",
-            status: "Booking Done",
-            performance: "Follow-ups Pending",
-            next_follow: "Mar 25 2026",
-            created: "Mar 20 2026",
-            project: "ABC Corp",
-            action: "",
-        },
-        {
-            name: "Mayank",
-            contact: "9876543210",
-            email: "mayank@example.com",
-            source: "Website",
-            status: "Not Interested",
-            performance: "Follow-ups Pending",
-            next_follow: "Mar 25 2026",
-            created: "Mar 20 2026",
-            project: "ABC Corp",
-            action: "",
-        },
-        {
-            name: "Rishabh",
-            contact: "9876543210",
-            email: "rishabh@example.com",
-            source: "Website",
-            status: "Asked to call later",
-            performance: "Follow-ups Pending",
-            next_follow: "Mar 25 2026",
-            created: "Mar 20 2026",
-            project: "ABC Corp",
-            action: "",
-        },
-    ]);
 
-    // 🔹 Leads Data (you can replace with API)
+    onMount(() => {
+        fetchLeads();
+    });
+    // const [leads, setLeads] = createSignal([
+    //     {
+    //         name: "Preeti",
+    //         contact: "9876543210",
+    //         email: "abc@example.com",
+    //         source: "Website",
+    //         status: "Fresh",
+    //         performance: "Contacted Leads",
+    //         next_follow: "Mar 25 2026",
+    //         created: "Mar 20 2026",
+    //         project: "ABC Corp",
+    //         action: "",
+    //     },
+    //     {
+    //         name: "Akhil",
+    //         contact: "9876543210",
+    //         email: "akhil@example.com",
+    //         source: "Website",
+    //         status: "site visit done",
+    //         performance: "Qualified Leads",
+    //         next_follow: "Mar 25 2026",
+    //         created: "Mar 20 2026",
+    //         project: "XYZ Corp",
+    //         action: "",
+    //     },
+    //     {
+    //         name: "Prashant",
+    //         contact: "9876543210",
+    //         email: "prashant@example.com",
+    //         source: "Website",
+    //         status: "call not picked",
+    //         performance: "Follow-ups Pending",
+    //         next_follow: "Mar 25 2026",
+    //         created: "Mar 20 2026",
+    //         project: "ABC Corp",
+    //         action: "",
+    //     },
+    //     {
+    //         name: "Shivam",
+    //         contact: "9876543210",
+    //         email: "shivam@example.com",
+    //         source: "Meta",
+    //         status: "Booking Done",
+    //         performance: "Follow-ups Pending",
+    //         next_follow: "Mar 25 2026",
+    //         created: "Mar 20 2026",
+    //         project: "ABC Corp",
+    //         action: "",
+    //     },
+    //     {
+    //         name: "Mayank",
+    //         contact: "9876543210",
+    //         email: "mayank@example.com",
+    //         source: "Website",
+    //         status: "Not Interested",
+    //         performance: "Follow-ups Pending",
+    //         next_follow: "Mar 25 2026",
+    //         created: "Mar 20 2026",
+    //         project: "ABC Corp",
+    //         action: "",
+    //     },
+    //     {
+    //         name: "Rishabh",
+    //         contact: "9876543210",
+    //         email: "rishabh@example.com",
+    //         source: "Website",
+    //         status: "Asked to call later",
+    //         performance: "Follow-ups Pending",
+    //         next_follow: "Mar 25 2026",
+    //         created: "Mar 20 2026",
+    //         project: "ABC Corp",
+    //         action: "",
+    //     },
+    // ]);
+
 
     // Open Edit
-    const handleEdit = (lead, index) => {
+    const handleEdit = (lead) => {
         setSelectedLead({ ...lead });
-        setEditIndex(index);
         setIsEditOpen(true);
     };
 
     // Save Edit
     const handleSave = () => {
-        const updated = [...leads()];
-        updated[editIndex()] = selectedLead();
+        const updated = leads().map((l) =>
+            l.id === selectedLead().id ? selectedLead() : l
+        );
         setLeads(updated);
         setIsEditOpen(false);
     };
 
     //  Delete
-    const handleDelete = (index) => {
-        if (confirm("Are you sure you want to delete this lead?")) {
-            const updated = leads().filter((_, i) => i !== index);
-            setLeads(updated);
-        }
+    const handleDelete = (id) => {
+        const updated = leads().filter((l) => l.id !== id);
+        setLeads(updated);
     };
     // 🔹 Status Color Logic (YOUR FUNNEL RULES)
     const getStatusStyle = (status) => {
@@ -212,31 +214,31 @@ const LeadsPage = () => {
                     </button>
                 </div> */}
             </div>
-             <nav>
-                        <ul class="flex items-center gap-1.5 mb-6  list-none p-0">
-                            <li class="flex items-center gap-1 group cursor-pointer">
-                                <svg class="w-4 h-4 text-gray-500 transition-colors group-hover:text-purple-600"
-                                    fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                        d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001 1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-                                </svg>
+            <nav>
+                <ul class="flex items-center gap-1.5 mb-6  list-none p-0">
+                    <li class="flex items-center gap-1 group cursor-pointer">
+                        <svg class="w-4 h-4 text-gray-500 transition-colors group-hover:text-purple-600"
+                            fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001 1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                        </svg>
 
-                                <a href="/"
-                                    class="text-sm text-gray-600 dark:text-gray-400 transition-colors group-hover:text-purple-600">
-                                    Home
-                                </a>
-                            </li>
-                            <li class="flex items-center">
-                                <svg class="w-3 h-3 text-gray-600 dark:text-gray-400" viewBox="0 0 12 12" fill="none">
-                                    <path d="M4.5 2.5L7.5 6L4.5 9.5" stroke="currentColor" stroke-width="1.2"
-                                        stroke-linecap="round" stroke-linejoin="round" />
-                                </svg>
-                            </li>
-                            <li>
-                                <span class="text-sm text-gray-500 dark:text-gray-400 font-medium">Lead Performance</span>
-                            </li>
-                        </ul>
-                    </nav>
+                        <a href="/"
+                            class="text-sm text-gray-600 dark:text-gray-400 transition-colors group-hover:text-purple-600">
+                            Home
+                        </a>
+                    </li>
+                    <li class="flex items-center">
+                        <svg class="w-3 h-3 text-gray-600 dark:text-gray-400" viewBox="0 0 12 12" fill="none">
+                            <path d="M4.5 2.5L7.5 6L4.5 9.5" stroke="currentColor" stroke-width="1.2"
+                                stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                    </li>
+                    <li>
+                        <span class="text-sm text-gray-500 dark:text-gray-400 font-medium">Lead Performance</span>
+                    </li>
+                </ul>
+            </nav>
 
             {/* FILTERS */}
             <div class=" mb-6 space-y-3">
@@ -365,8 +367,8 @@ const LeadsPage = () => {
 
                                         {/* Edit */}
                                         <button
-                                            onClick={() => handleEdit(lead, index())}
-                                            class="text-blue-500 hover:text-blue-700 text-lg"
+                                            onClick={() => handleEdit(lead)}
+                                            class="text-blue-500 hover:text-blue-700 text-lg transition-all duration-150"
                                         >
                                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
                                                 <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 .375a1.875 1.875 0 11-3.75 0 1.875 1.875 0 013.75 0z" />
@@ -374,8 +376,8 @@ const LeadsPage = () => {
                                         </button>
                                         {/* Delete */}
                                         <button
-                                            onClick={() => handleDelete(index())}
-                                            class="text-red-500 hover:text-red-700 text-lg"
+                                            onClick={() => handleDelete(lead.id)}
+                                            class="text-red-500 hover:text-red-700 text-lg transition-all duration-150"
                                         >
                                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
                                                 <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0c.34.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79" />
@@ -419,7 +421,7 @@ const LeadsPage = () => {
 
                         {/* Overlay */}
                         <div
-                            class="absolute inset-0 bg-black/40"
+                            class="absolute inset-0 bg-black/40 transition-opacity duration-250"
                             onClick={() => setIsEditOpen(false)}
                         ></div>
 

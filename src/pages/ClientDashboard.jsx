@@ -595,8 +595,8 @@ export default function ClientDashboard() {
                     /* TABLE VIEW */
                     <div class="overflow-x-auto bg-white dark:bg-gray-900 rounded-xl border">
                         <table class="w-full text-sm table-auto">
-                            <thead class="bg-purple-50 dark:bg-gray-800">
-                                <tr class="[&_th]:text-center  [&_th]:whitespace-nowrap [&_th:first-child]:text-left text-purple-800 dark:text-gray-200">
+                            <thead class="bg-gray-100 dark:bg-gray-800">
+                                <tr class="[&_th]:text-center  [&_th]:whitespace-nowrap [&_th:first-child]:text-left text-gray-800 dark:text-gray-200">
                                     <Show when={selectedColumns().length === 0 || selectedColumns().includes("name")}>
                                         <th class="p-3">Project Name</th>
                                     </Show>

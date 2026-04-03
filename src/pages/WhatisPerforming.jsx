@@ -187,7 +187,7 @@ const WhatIsPerforming = () => {
           <h1 class="text-2xl md:text-2xl font-semibold mb-1">Performing Projects</h1>
           <p class="text-md text-gray-700 dark:text-gray-400">Discover top-performing projects based on historical and regional data.</p>
         </div>
-        <div class="flex gap-2">
+        {/* <div class="flex gap-2">
           <button
             onClick={() => setIsOpen(true)}
             class="px-4 py-2.5 text-sm font-medium rounded 
@@ -195,7 +195,7 @@ const WhatIsPerforming = () => {
           >
             + Add Project
           </button>
-        </div>
+        </div> */}
       </div>
       <nav>
         <ul class="flex items-center gap-1.5 mb-6  list-none p-0">

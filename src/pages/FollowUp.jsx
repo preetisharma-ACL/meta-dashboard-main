@@ -1,236 +1,387 @@
-import { createSignal, createMemo, For } from "solid-js";
-import { Index } from "solid-js";
+import { createMemo, createSignal, Index, onMount, Show } from "solid-js";
+import { leads, fetchLeads, updateLead, deleteLead } from "../store/leadsStore";
 
 const FollowUp = () => {
 
-    // 🔹 Sample Leads Data (same as Leads page)
-    const [leads, setLeads] = createSignal([
-        {
-            name: "Preeti",
-            contact: "9876543210",
-            status: "Fresh",
-            Remark: "Call later",
-            next_follow: "2026-03-30",
-            project: "ABC Corp",
-        },
-        {
-            name: "ABC",
-            contact: "9876543210",
-            status: "Interested",
-            Remark: "Site visit",
-            next_follow: "2026-03-31",
-            project: "XYZ Corp",
-        },
-        {
-            name: "Rahul",
-            contact: "9876543210",
-            status: "Follow-Up",
-            Remark: "Budget discussion",
-            next_follow: "2026-04-02",
-            project: "PQR Corp",
-        },
-    ]);
+    const [editingLead, setEditingLead] = createSignal(null);
+    const [formData, setFormData] = createSignal({});
+    const [deleteConfirm, setDeleteConfirm] = createSignal(null);
 
-    // 🔹 Update field
-    const handleFieldChange = (index, field, value) => {
-        const updated = [...leads()];
-        updated[index] = {
-            ...updated[index],
-            [field]: value
-        };
-        setLeads(updated);
+    // Separate mount vs visible signals so CSS transition has time to run
+    const [sidebarVisible, setSidebarVisible] = createSignal(false);
+    const [sidebarMounted, setSidebarMounted] = createSignal(false);
+    const [modalVisible, setModalVisible] = createSignal(false);
+    const [modalMounted, setModalMounted] = createSignal(false);
+
+    onMount(() => {
+        fetchLeads();
+    });
+
+    const handleFieldChange = (id, field, value) => {
+        const lead = leads().find((l) => l.id === id);
+        if (!lead) return;
+        updateLead({ ...lead, [field]: value });
     };
 
-    // 🔹 Today Date
-    const today = new Date().toISOString().split("T")[0];
+    // ── Sidebar ──
+    const openEdit = (lead) => {
+        setFormData({ ...lead });
+        setEditingLead(lead);
+        setSidebarMounted(true);
+        // Two rAFs: first lets the DOM mount, second starts the CSS transition
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => setSidebarVisible(true));
+        });
+    };
 
-    // 🔹 Filter Follow-ups (important logic)
+    const closeEdit = () => {
+        setSidebarVisible(false);
+        setTimeout(() => {
+            setSidebarMounted(false);
+            setEditingLead(null);
+            setFormData({});
+        }, 300); // matches transition-duration below
+    };
+
+    // ── Delete modal ──
+    const openDelete = (id) => {
+        setDeleteConfirm(id);
+        setModalMounted(true);
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => setModalVisible(true));
+        });
+    };
+
+    const closeDelete = () => {
+        setModalVisible(false);
+        setTimeout(() => {
+            setModalMounted(false);
+            setDeleteConfirm(null);
+        }, 250);
+    };
+
+    const handleFormChange = (field, value) => {
+        setFormData((prev) => ({ ...prev, [field]: value }));
+    };
+
+    const handleSave = () => {
+        updateLead({ ...formData() });
+        closeEdit();
+    };
+
+    const handleDelete = (id) => {
+        deleteLead(id);
+        closeDelete();
+    };
+
+    const followStatuses = [
+        "call later", "not picked", "call not picked",
+        "asked to call later", "interested", "site visit scheduled",
+        "follow-up", "follow up", "always busy", "site visit done",
+    ];
+
+    const allStatuses = [
+        "Fresh Leads", "Call Later", "Not Picked", "Call Not Picked",
+        "Asked to Call Later", "Always Busy", "Interested", "Follow-Up",
+        "Site Visit Scheduled", "Site Visit Done", "Booking Done",
+        "Invalid", "Low Budget", "Not Interested", "Broker",
+        "Always Not Picked", "Feeded Leads",
+    ];
+
+    const getStatusStyle = (status) => {
+        switch (status) {
+            case "Fresh Leads":
+                return "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300";
+            case "Call Later":
+            case "not picked":
+            case "call not picked":
+            case "Asked to call later":
+            case "Always Busy":
+                return "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300";
+            case "Interested":
+            case "Follow-Up":
+            case "Site Visit Scheduled":
+            case "site visit done":
+            case "Booking Done":
+                return "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300";
+            case "Invalid":
+            case "Low Budget":
+            case "Not Interested":
+            case "Broker":
+            case "Always Not Picked":
+            case "Feeded Leads":
+                return "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300";
+            default:
+                return "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300";
+        }
+    };
+
     const followUps = createMemo(() => {
         return leads().filter((lead) => {
-            return lead.next_follow && lead.next_follow <= today;
+            const status = lead.status?.toLowerCase().trim();
+            return followStatuses.includes(status);
         });
     });
 
-    // 🔹 Status color
-    const getFollowUpType = (date) => {
-        if (!date) return "";
-
-        if (date < today) return "Overdue";
-        if (date === today) return "Today";
-        return "Upcoming";
-    };
-
-    // const getColor = (type) => {
-    //     switch (type) {
-    //         case "Overdue":
-    //             return "bg-red-100 text-red-700";
-    //         case "Today":
-    //             return "bg-yellow-100 text-yellow-700";
-    //         case "Upcoming":
-    //             return "bg-green-100 text-green-700";
-    //         default:
-    //             return "bg-gray-100 text-gray-700";
-    //     }
-    // };
-
     return (
-        <div class="p-6 min-h-screen bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200">
+        <div class="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-200 transition">
 
             {/* HEADER */}
-            <div class="mb-2">
-                <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">
-                    Follow-Up Leads
-                </h1>
-                <p class="text-gray-500 dark:text-gray-400">
-                    Manage today's and overdue follow-ups
+            <div class="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 px-6 py-5 shadow-sm">
+                <h1 class="text-2xl font-bold">Follow-Up Leads</h1>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                    Manage and track your follow-up leads
                 </p>
             </div>
-            <nav>
-                <ul class="flex items-center gap-1.5 mb-6  list-none p-0">
-                    <li class="flex items-center gap-1 group cursor-pointer">
-                        <svg class="w-4 h-4 text-gray-500 transition-colors group-hover:text-purple-600"
-                            fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001 1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-                        </svg>
-
-                        <a href="/"
-                            class="text-sm text-gray-600 dark:text-gray-400 transition-colors group-hover:text-purple-600">
-                            Home
-                        </a>
-                    </li>
-                    <li class="flex items-center">
-                        <svg class="w-3 h-3 text-gray-600 dark:text-gray-400" viewBox="0 0 12 12" fill="none">
-                            <path d="M4.5 2.5L7.5 6L4.5 9.5" stroke="currentColor" stroke-width="1.2"
-                                stroke-linecap="round" stroke-linejoin="round" />
-                        </svg>
-                    </li>
-                    <li>
-                        <span class="text-sm text-gray-500 dark:text-gray-400 font-medium">Follow Up</span>
-                    </li>
-                </ul>
-            </nav>
 
             {/* TABLE */}
-            <div class="bg-white dark:bg-gray-800 rounded-xl shadow overflow-hidden border border-gray-200 dark:border-gray-700">
-                <table class="w-full text-sm">
-                    {/* HEAD */}
-                    <thead class="bg-gray-100 dark:bg-gray-800">
-                        <tr class="border-b border-gray-200 dark:border-gray-700">
-                            <th class="p-3 text-left">Name</th>
-                            <th class="p-3">Contact</th>
-                            <th class="p-3">Project</th>
-                            <th class="p-3">Status</th>
-                            <th class="p-3">Remark</th>
-                            <th class="p-3">Follow-up</th>
-                            <th class="p-3">Action</th>
-                        </tr>
-                    </thead>
+            <div class="p-6">
+                <div class="bg-white dark:bg-gray-900 rounded-2xl shadow border border-gray-200 dark:border-gray-800 overflow-hidden">
+                    <table class="w-full text-sm border dark:border-gray-700">
 
-                    {/* BODY */}
-                    <tbody class="bg-white dark:bg-gray-900">
-                        <Index each={followUps()}>
-                            {(lead, index) => {
-                                const type = getFollowUpType(lead().next_follow);
-                                return (
-                                    <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition">
+                        <thead>
+                            <tr class="[&_th]:text-center [&_th]:whitespace-nowrap [&_th:first-child]:text-left bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300">
+                                <th class="p-4">Name</th>
+                                <th class="p-4">Contact</th>
+                                <th class="p-4">Project</th>
+                                <th class="p-4">Status</th>
+                                <th class="p-4">Remark</th>
+                                <th class="p-4">Next Follow-Up</th>
+                                <th class="p-4">Action</th>
+                            </tr>
+                        </thead>
 
-                                        {/* Name */}
-                                        <td class="p-3">{lead().name}</td>
+                        <tbody class="divide-y divide-gray-200 dark:divide-gray-800">
+                            <Index each={followUps()}>
+                                {(lead) => (
+                                    <tr class="[&_td]:text-center [&_td]:whitespace-nowrap [&_td:first-child]:text-left hover:bg-gray-50 dark:hover:bg-gray-800 transition">
 
-                                        {/* Contact */}
-                                        <td class="p-3 text-center">{lead().contact}</td>
+                                        <td class="p-3 font-medium">{lead().name}</td>
+                                        <td class="p-3 text-gray-600 dark:text-gray-300">{lead().contact}</td>
+                                        <td class="p-3 text-gray-600 dark:text-gray-300">{lead().project}</td>
 
-                                        {/* Project */}
-                                        <td class="p-3 text-center">{lead().project}</td>
-
-                                        {/* Status */}
-                                        <td class="p-3 text-center">
-                                            <select
-                                                value={lead().status}
-                                                onChange={(e) =>
-                                                    handleFieldChange(index(), "status", e.target.value)
-                                                }
-                                                class="border border-gray-300 dark:border-gray-700 
-                                               bg-white dark:bg-gray-800 
-                                               text-gray-800 dark:text-gray-200
-                                               px-2 py-1 rounded"
-                                            >
-                                                <option>Fresh</option>
-                                                <option>Interested</option>
-                                                <option>Follow-Up</option>
-                                                <option>Not Interested</option>
-                                            </select>
+                                        <td class="p-3">
+                                            <span class={`px-2 py-1 rounded ${getStatusStyle(lead().status)}`}>
+                                                {lead().status}
+                                            </span>
                                         </td>
 
-                                        {/* Remark */}
                                         <td class="p-3">
                                             <input
                                                 value={lead().Remark || ""}
-                                                placeholder="Enter Remark..."
-                                                onInput={(e) =>
-                                                    handleFieldChange(index(), "Remark", e.target.value)
-                                                }
-                                                class="w-full border border-gray-300 dark:border-gray-700 
-                                               bg-white dark:bg-gray-800 
-                                               text-gray-800 dark:text-gray-200
-                                               px-2 py-1 rounded"
+                                                placeholder="Add remark..."
+                                                onInput={(e) => handleFieldChange(lead().id, "Remark", e.target.value)}
+                                                class="w-full px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent focus:ring-1 focus:ring-blue-900 outline-none"
                                             />
                                         </td>
 
-                                        {/* Date */}
-                                        <td class="p-3 text-center">
+                                        <td class="p-3">
                                             <input
                                                 type="date"
                                                 value={lead().next_follow}
-                                                onInput={(e) =>
-                                                    handleFieldChange(index(), "next_follow", e.target.value)
-                                                }
-                                                class="border border-gray-300 dark:border-gray-600 
-                                               bg-white dark:bg-gray-700 
-                                               text-gray-800 dark:text-gray-200
-                                               px-2 py-1 rounded"
+                                                onInput={(e) => handleFieldChange(lead().id, "next_follow", e.target.value)}
+                                                class="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent focus:ring-2 focus:ring-blue-500 outline-none"
                                             />
                                         </td>
 
-                                        {/* Type */}
-                                        {/* <td class="p-3 text-center">
-                                            <span class={`px-2 py-1 rounded text-xs ${getColor(type)}`}>
-                                                {type}
-                                            </span>
-                                        </td> */}
-                                        <td class="p-3 text-center flex gap-3 justify-center">
+                                        <td class="px-4 py-3.5">
+                                            <div class="flex items-center justify-center gap-2">
 
-                                            {/* WhatsApp */}
+                                                {/* Call */}
+                                                <a href={`tel:${lead().contact}`} title={`Call ${lead().name}`}
+                                                    class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-900 text-white hover:bg-blue-100 border border-gray-200 dark:border-blue-500 hover:border-blue-300 hover:text-blue-600 transition-all duration-150 shadow-sm hover:shadow">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.36 13a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21 16.92z" />
+                                                    </svg>
+                                                </a>
 
-                                            <a
-                                                href="https://api.whatsapp.com/"
-                                                // href={`https://wa.me/${lead.contact}`}
-                                                target="_blank"
-                                                class="p-2 bg-green-500 font-bold hover:bg-green-600 text-white rounded-full"
-                                            >
-                                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" class="w-5 h-5 fill-white">
-                                                    <path d="M16.04 2C8.94 2 3.1 7.84 3.1 14.94c0 2.63.77 5.16 2.22 7.34L3 30l7.92-2.28c2.09 1.14 4.44 1.74 6.85 1.74 7.1 0 12.94-5.84 12.94-12.94S23.14 2 16.04 2zm0 23.44c-2.19 0-4.33-.59-6.2-1.7l-.44-.26-4.7 1.35 1.26-4.58-.29-.47c-1.18-1.93-1.8-4.15-1.8-6.4 0-6.69 5.45-12.14 12.14-12.14S28.18 7.69 28.18 14.38 22.73 25.44 16.04 25.44zm6.68-9.1c-.36-.18-2.12-1.04-2.45-1.16-.33-.12-.57-.18-.8.18-.24.36-.92 1.16-1.12 1.4-.21.24-.41.27-.77.09-.36-.18-1.5-.55-2.86-1.75-1.06-.95-1.78-2.12-1.99-2.48-.21-.36-.02-.56.16-.74.16-.16.36-.41.54-.62.18-.21.24-.36.36-.6.12-.24.06-.45-.03-.63-.09-.18-.8-1.92-1.1-2.63-.29-.7-.59-.6-.8-.61h-.68c-.24 0-.63.09-.96.45-.33.36-1.26 1.23-1.26 3 0 1.77 1.29 3.48 1.47 3.72.18.24 2.54 3.88 6.16 5.44.86.37 1.53.59 2.06.75.86.27 1.64.23 2.25.14.69-.1 2.12-.87 2.42-1.71.3-.84.3-1.56.21-1.71-.09-.15-.33-.24-.69-.42z" />
-                                                </svg>
-                                            </a>
-                                            {/* Call */}
-                                            <a
-                                                href={`tel:9871234565`}
-                                                class="p-2 bg-blue-900 font-bold hover:bg-blue-800 text-white rounded-full"
-                                            >
-                                                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                                        d="M3 5a2 2 0 012-2h2.28a2 2 0 011.94 1.52l.72 3.11a2 2 0 01-.45 1.95l-1.27 1.27a16.06 16.06 0 006.59 6.59l1.27-1.27a2 2 0 011.95-.45l3.11.72A2 2 0 0121 16.72V19a2 2 0 01-2 2h-1C9.16 21 3 14.84 3 7V5z" />
-                                                </svg>
-                                            </a>
+                                                {/* WhatsApp */}
+                                                <a href={`https://wa.me/${lead().contact?.replace(/\D/g, "")}`} target="_blank" rel="noopener noreferrer" title={`WhatsApp ${lead().name}`}
+                                                    class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-green-600 text-white hover:bg-emerald-100 border border-gray-200 hover:border-emerald-300 hover:text-emerald-600 transition-all duration-150 shadow-sm hover:shadow">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                                                        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413z" />
+                                                    </svg>
+                                                </a>
+
+                                                {/* Edit */}
+                                                <button onClick={() => openEdit(lead())} title={`Edit ${lead().name}`}
+                                                    class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-amber-500 text-white hover:bg-amber-100 border border-amber-400 hover:border-amber-300 hover:text-amber-600 transition-all duration-150 shadow-sm hover:shadow">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                                    </svg>
+                                                </button>
+
+                                                {/* Delete */}
+                                                <button onClick={() => openDelete(lead().id)} title={`Delete ${lead().name}`}
+                                                    class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-red-500 text-white hover:bg-red-100 border border-red-400 hover:border-red-300 hover:text-red-600 transition-all duration-150 shadow-sm hover:shadow">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                        <polyline points="3 6 5 6 21 6" />
+                                                        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                                                        <path d="M10 11v6" /><path d="M14 11v6" />
+                                                        <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                                                    </svg>
+                                                </button>
+
+                                            </div>
                                         </td>
+
                                     </tr>
-                                );
-                            }}
-                        </Index>
-                    </tbody>
-                </table>
+                                )}
+                            </Index>
+                        </tbody>
+                    </table>
+
+                    {followUps().length === 0 && (
+                        <div class="text-center py-10 text-gray-500 dark:text-gray-400">
+                            No follow-up leads found
+                        </div>
+                    )}
+                </div>
             </div>
+
+            {/* ── DELETE CONFIRM MODAL ── */}
+            <Show when={modalMounted()}>
+                {/* Backdrop */}
+                <div
+                    onClick={closeDelete}
+                    class="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm transition-opacity duration-250"
+                    style={{ opacity: modalVisible() ? "1" : "0" }}
+                />
+                {/* Card */}
+                <div class="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+                    <div
+                        class="bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 w-full max-w-sm p-6 pointer-events-auto transition-all duration-250"
+                        style={{
+                            opacity: modalVisible() ? "1" : "0",
+                            transform: modalVisible() ? "scale(1) translateY(0)" : "scale(0.95) translateY(10px)",
+                        }}
+                    >
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900 flex items-center justify-center shrink-0">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-red-600 dark:text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <polyline points="3 6 5 6 21 6" />
+                                    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                                    <path d="M10 11v6" /><path d="M14 11v6" />
+                                    <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 class="font-semibold text-gray-800 dark:text-gray-100">Delete Lead</h3>
+                                <p class="text-sm text-gray-500 dark:text-gray-400">This action cannot be undone.</p>
+                            </div>
+                        </div>
+                        <p class="text-sm text-gray-600 dark:text-gray-300 mb-6">
+                            Are you sure you want to delete this lead? All associated data will be permanently removed.
+                        </p>
+                        <div class="flex gap-3">
+                            <button onClick={closeDelete}
+                                class="flex-1 px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition text-sm font-medium">
+                                Cancel
+                            </button>
+                            <button onClick={() => handleDelete(deleteConfirm())}
+                                class="flex-1 px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 transition text-sm font-medium">
+                                Delete
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </Show>
+
+            {/* ── EDIT SIDEBAR ── */}
+            <Show when={sidebarMounted()}>
+                <div class="fixed inset-0 z-50 flex">
+                    {/* Backdrop */}
+                    <div
+                        onClick={closeEdit}
+                        class="fixed inset-0 z-40 bg-black/20 backdrop-blur-sm transition-opacity duration-300"
+                        style={{ opacity: sidebarVisible() ? "1" : "0" }}
+                    />
+
+                    {/* Panel — slides in from the right */}
+                    <div
+                        class="fixed inset-y-0 right-0 z-50 w-full max-w-md flex flex-col bg-white dark:bg-gray-900 shadow-2xl border-l border-gray-200 dark:border-gray-700 transition-transform duration-300 ease-in-out"
+                        style={{ transform: sidebarVisible() ? "translateX(0)" : "translateX(100%)" }}
+                    >
+
+                        {/* Header */}
+                        <div class="flex items-center justify-between px-6 py-5 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+                            <div>
+                                <h2 class="text-lg font-bold text-gray-800 dark:text-gray-100">Edit Lead</h2>
+                                <p class="text-sm text-gray-500 dark:text-gray-400">Update lead information</p>
+                            </div>
+                            <button onClick={closeEdit}
+                                class="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 transition">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                                </svg>
+                            </button>
+                        </div>
+
+                        {/* Scrollable body */}
+                        <div class="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Name</label>
+                                <input type="text" value={formData().name || ""} onInput={(e) => handleFormChange("name", e.target.value)}
+                                    placeholder="Lead name"
+                                    class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm transition" />
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Contact</label>
+                                <input type="text" value={formData().contact || ""} onInput={(e) => handleFormChange("contact", e.target.value)}
+                                    placeholder="Phone number"
+                                    class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm transition" />
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Project</label>
+                                <input type="text" value={formData().project || ""} onInput={(e) => handleFormChange("project", e.target.value)}
+                                    placeholder="Project name"
+                                    class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm transition" />
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Status</label>
+                                <select value={formData().status || ""} onChange={(e) => handleFormChange("status", e.target.value)}
+                                    class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm transition">
+                                    <option value="" disabled>Select status</option>
+                                    {allStatuses.map((s) => <option value={s}>{s}</option>)}
+                                </select>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Remark</label>
+                                <textarea value={formData().Remark || ""} onInput={(e) => handleFormChange("Remark", e.target.value)}
+                                    rows={3} placeholder="Add remark..."
+                                    class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm transition resize-none" />
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Next Follow-Up Date</label>
+                                <input type="date" value={formData().next_follow || ""} onInput={(e) => handleFormChange("next_follow", e.target.value)}
+                                    class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm transition" />
+                            </div>
+
+                        </div>
+
+                        {/* Footer */}
+                        <div class="px-6 py-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex gap-3">
+                            <button onClick={closeEdit}
+                                class="flex-1 px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition text-sm font-medium">
+                                Cancel
+                            </button>
+                            <button onClick={handleSave}
+                                class="flex-1 px-4 py-2.5 rounded-lg bg-blue-900 text-white hover:bg-blue-800 transition text-sm font-medium shadow-sm">
+                                Save Changes
+                            </button>
+                        </div>
+
+                    </div>
+                </div>
+            </Show>
+
         </div>
     );
 };

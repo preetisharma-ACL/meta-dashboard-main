@@ -1,0 +1,94 @@
+export const getLeads = async () => {
+    return [
+     
+
+        {
+             id: 1,
+            name: "Preeti",
+            contact: "9876543210",
+            email: "abc@example.com",
+            source: "Website",
+            status: "Fresh",
+            performance: "Contacted Leads",
+            next_follow: "2026-03-31",
+            created: "2026-03-31",
+            project: "ABC Corp",
+            action: "",
+        },
+        {
+             id: 2,
+            name: "Akhil",
+            contact: "9876543210",
+            email: "akhil@example.com",
+            source: "Website",
+            status: "site visit done",
+            performance: "Qualified Leads",
+            next_follow: "2026-03-31",
+            created: "2026-03-31",
+            project: "XYZ Corp",
+            action: "",
+        },
+        {
+             id: 3,
+            name: "Prashant",
+            contact: "9876543210",
+            email: "prashant@example.com",
+            source: "Website",
+            status: "call not picked",
+            performance: "Follow-ups Pending",
+            next_follow: "2026-03-31",
+            created: "2026-03-31",
+            project: "ABC Corp",
+            action: "",
+        },
+        {
+             id: 4,
+            name: "Shivam",
+            contact: "9876543210",
+            email: "shivam@example.com",
+            source: "Meta",
+            status: "Booking Done",
+            performance: "Follow-ups Pending",
+            next_follow: "2026-03-31",
+            created: "2026-03-31",
+            project: "ABC Corp",
+            action: "",
+        },
+        {
+             id: 5,
+            name: "Mayank",
+            contact: "9876543210",
+            email: "mayank@example.com",
+            source: "Website",
+            status: "Not Interested",
+            performance: "Follow-ups Pending",
+            next_follow: "2026-03-31",
+            created: "2026-03-31",
+            project: "ABC Corp",
+            action: "",
+        },
+        {
+             id: 6,
+            name: "Rishabh",
+            contact: "9876543210",
+            email: "rishabh@example.com",
+            source: "Website",
+            status: "Asked to call later",
+            performance: "Follow-ups Pending",
+            next_follow: "2026-03-31",
+            created: "2026-03-31",
+            project: "ABC Corp",
+            action: "",
+        },
+    ];
+};
+
+
+
+
+// api data
+
+// export const getLeads = async () => {
+//     const res = await fetch("/api/leads");
+//     return await res.json();
+// };
