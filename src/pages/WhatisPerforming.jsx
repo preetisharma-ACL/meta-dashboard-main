@@ -182,7 +182,7 @@ const WhatIsPerforming = () => {
   return (
     <div class="p-4 md:p-6 min-h-screen bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200">
       {/* HEADER */}
-      <div class="flex flex-col md:flex-row md:justify-between md:items-center gap-4 mb-6">
+      <div class="flex flex-col md:flex-row md:justify-between md:items-center gap-4 mb-2">
         <div>
           <h1 class="text-2xl md:text-2xl font-semibold mb-1">Performing Projects</h1>
           <p class="text-md text-gray-700 dark:text-gray-400">Discover top-performing projects based on historical and regional data.</p>
@@ -197,6 +197,31 @@ const WhatIsPerforming = () => {
           </button>
         </div>
       </div>
+      <nav>
+        <ul class="flex items-center gap-1.5 mb-6  list-none p-0">
+          <li class="flex items-center gap-1 group cursor-pointer">
+            <svg class="w-4 h-4 text-gray-500 transition-colors group-hover:text-purple-600"
+              fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001 1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+            </svg>
+
+            <a href="/"
+              class="text-sm text-gray-600 dark:text-gray-400 transition-colors group-hover:text-purple-600">
+              Home
+            </a>
+          </li>
+          <li class="flex items-center">
+            <svg class="w-3 h-3 text-gray-600 dark:text-gray-400" viewBox="0 0 12 12" fill="none">
+              <path d="M4.5 2.5L7.5 6L4.5 9.5" stroke="currentColor" stroke-width="1.2"
+                stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </li>
+          <li>
+            <span class="text-sm text-gray-500 dark:text-gray-400 font-medium">Performing Projects</span>
+          </li>
+        </ul>
+      </nav>
 
       {/* FILTERS */}
       <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-4 mb-6 space-y-4">
@@ -318,7 +343,7 @@ const WhatIsPerforming = () => {
         </div>
       </div>
 
-     
+
       {/* CARDS */}
       <div class="grid md:grid-cols-2 lg:grid-cols-2 xxl:grid-cols-3 gap-4">
 

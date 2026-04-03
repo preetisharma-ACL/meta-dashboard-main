@@ -77,7 +77,7 @@ const FollowUp = () => {
         <div class="p-6 min-h-screen bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200">
 
             {/* HEADER */}
-            <div class="mb-6">
+            <div class="mb-2">
                 <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">
                     Follow-Up Leads
                 </h1>
@@ -85,6 +85,31 @@ const FollowUp = () => {
                     Manage today's and overdue follow-ups
                 </p>
             </div>
+            <nav>
+                <ul class="flex items-center gap-1.5 mb-6  list-none p-0">
+                    <li class="flex items-center gap-1 group cursor-pointer">
+                        <svg class="w-4 h-4 text-gray-500 transition-colors group-hover:text-purple-600"
+                            fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001 1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                        </svg>
+
+                        <a href="/"
+                            class="text-sm text-gray-600 dark:text-gray-400 transition-colors group-hover:text-purple-600">
+                            Home
+                        </a>
+                    </li>
+                    <li class="flex items-center">
+                        <svg class="w-3 h-3 text-gray-600 dark:text-gray-400" viewBox="0 0 12 12" fill="none">
+                            <path d="M4.5 2.5L7.5 6L4.5 9.5" stroke="currentColor" stroke-width="1.2"
+                                stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                    </li>
+                    <li>
+                        <span class="text-sm text-gray-500 dark:text-gray-400 font-medium">Follow Up</span>
+                    </li>
+                </ul>
+            </nav>
 
             {/* TABLE */}
             <div class="bg-white dark:bg-gray-800 rounded-xl shadow overflow-hidden border border-gray-200 dark:border-gray-700">

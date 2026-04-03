@@ -943,7 +943,7 @@ export default function Billing() {
                                 </svg>
                             </li>
                             <li>
-                                <span class="text-sm text-gray-500 dark:text-gray-400 font-medium">All active campaigns</span>
+                                <span class="text-sm text-gray-500 dark:text-gray-400 font-medium">Billing</span>
                             </li>
                         </ul>
                     </nav>
