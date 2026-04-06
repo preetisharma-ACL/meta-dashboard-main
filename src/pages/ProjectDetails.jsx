@@ -31,7 +31,11 @@ const leadStats = {
     replaced: 5,
 };
 
+
 export default function ProjectDetails() {
+
+
+
     const location = useLocation();
     const project = location.state?.project;
     const today = new Date();
@@ -386,6 +390,24 @@ export default function ProjectDetails() {
     }
     /* ================= UI ================= */
 
+    const leadSummary = {
+        totalLeads: 120,
+        deliveredLeads: 100,
+        commitment: 60,
+        qualifiedLeads: 72 // actual qualified (manual or API)
+    };
+    const requiredQualified = () =>
+        Math.round(leadSummary.totalLeads * (leadSummary.commitment / 100));
+
+    const isCommitmentMet = () =>
+        leadSummary.qualifiedLeads >= requiredQualified();
+
+    const remainingLeads = () =>
+        isCommitmentMet()
+            ? 0
+            : leadSummary.totalLeads - leadSummary.deliveredLeads;
+
+
     return (
         <div class="space-y-6 m-4">
 
@@ -437,7 +459,97 @@ export default function ProjectDetails() {
                     </div>
                 </section>
             </Show>
+            <Show when={project}>
 
+                <div class="mt-8 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm">
+                    {/* Header */}
+                    <div class="flex items-center justify-between mb-6">
+                        <h2 class="text-lg font-semibold text-gray-800 dark:text-white">
+                            Qualification Summary
+                        </h2>
+                        <span
+                            class="text-sm px-4 py-1 rounded-full font-medium"
+                            classList={{
+                                "bg-green-100 text-green-700": isCommitmentMet(),
+                                "bg-yellow-100 text-yellow-700": !isCommitmentMet(),
+                            }}
+                        >
+                            {isCommitmentMet() ? "Completed" : "In Progress"}
+                        </span>
+                    </div>
+                    {/* Cards */}
+                    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+
+                        {/* Card */}
+                        {[
+                            { label: "Total Required", value: leadSummary.totalLeads },
+                            { label: "Delivered", value: leadSummary.deliveredLeads },
+                            { label: "Commitment", value: `${leadSummary.commitment}%` },
+                            { label: "Target Qualified", value: requiredQualified(), color: "text-blue-600" },
+                            { label: "Achieved", value: leadSummary.qualifiedLeads, color: "text-green-600" },
+                            { label: "Remaining", value: remainingLeads(), color: "text-yellow-500" },
+                        ].map((item) => (
+                            <div class="group bg-white dark:bg-gray-800/70 backdrop-blur-sm p-4 rounded-xl border border-gray-100 shadow-md dark:border-gray-700 hover:shadow-lg transition-all duration-300">
+
+                                <p class="text-sm text-gray-700 dark:text-gray-400 mb-1">
+                                    {item.label}
+                                </p>
+
+                                <h2 class={`text-2xl font-semibold ${item.color || "text-gray-800 dark:text-white"}`}>
+                                    {item.value}
+                                </h2>
+
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Progress Bar */}
+                    <div class="mt-6">
+                        <div class="flex justify-between text-xs text-gray-500 mb-1">
+                            <span>Qualification Progress</span>
+                            <span>
+                                {leadSummary.qualifiedLeads} / {requiredQualified()}
+                            </span>
+                        </div>
+
+                        <div class="w-full bg-gray-200 dark:bg-gray-700 h-1 rounded-full overflow-hidden">
+                            <div
+                                class="h-1 rounded-full transition-all duration-700"
+                                classList={{
+                                    "bg-green-700": isCommitmentMet(),
+                                    "bg-yellow-500": !isCommitmentMet(),
+                                }}
+                                style={{
+                                    width: `${Math.min(
+                                        (leadSummary.qualifiedLeads / requiredQualified()) * 100,
+                                        100
+                                    )}%`,
+                                }}
+                            />
+                        </div>
+                    </div>
+
+                    {/* Insight Box */}
+                    <div class="mt-6 p-4 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+
+                        <p class="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+                            You have received <span class="font-semibold text-gray-900 dark:text-white">{leadSummary.deliveredLeads}</span> leads.
+                            Based on <span class="font-semibold">{leadSummary.commitment}%</span> commitment,
+                            <span class="font-semibold">{requiredQualified()}</span> should be qualified.
+                            Currently, <span class="font-semibold text-green-600">{leadSummary.qualifiedLeads}</span> are achieved.
+
+                            <span class={`ml-1 font-medium ${isCommitmentMet() ? "text-green-600" : "text-yellow-600"}`}>
+                                {isCommitmentMet()
+                                    ? "Requirement has been fulfilled."
+                                    : "More qualified leads are required."}
+                            </span>
+                        </p>
+
+                    </div>
+
+                </div>
+
+            </Show>
             {/* ================= FILTERS ================= */}
             <div class="flex justify-between">
                 <div class="flex flex-wrap gap-2 items-center">
