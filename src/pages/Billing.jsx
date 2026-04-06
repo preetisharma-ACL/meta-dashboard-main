@@ -17,6 +17,7 @@ const MOCK = {
             name: "Project 1",
             proposedCPL: 500,
             qualificationPct: 50,
+            deliveredLeads: 30,
             budgetAllocated: 50000,
             qualifiedLeads: 25,
             campaigns: [
@@ -29,6 +30,7 @@ const MOCK = {
             name: "Project 2",
             proposedCPL: 1000,
             qualificationPct: 60,
+            deliveredLeads: 30,
             budgetAllocated: 80000,
             qualifiedLeads: 18,
             campaigns: [
@@ -311,39 +313,27 @@ function CampaignTable(props) {
 // ─── Qualification Logic Block ────────────────────────────────────────────────
 function QualBlock(props) {
 
-    const expectedQL = () => Math.round(props.totalLeads * (props.project.qualificationPct / 100));
-    const qProg = () => expectedQL() > 0 ? Math.round((props.project.qualifiedLeads / expectedQL()) * 100) : 0;
+    const totalLeads = () =>
+        props.project.campaigns.reduce((s, c) => s + c.leads, 0);
 
-    const statCards = () => [
-        {
-            label: "Total Leads",
-            val: props.totalLeads,
-            sub: null,
-            icon: "users",
-            color: "blue"
-        },
-        {
-            label: "Expected QL",
-            val: expectedQL(),
-            sub: `${props.totalLeads} × ${props.project.qualificationPct / 100}`,
-            icon: "target",
-            color: "purple"
-        },
-        {
-            label: "Qualified",
-            val: props.project.qualifiedLeads,
-            sub: "Delivered",
-            icon: "check",
-            color: "green"
-        },
-        {
-            label: "Progress",
-            val: `${qProg()}%`,
-            sub: "of target",
-            icon: "chart",
-            color: qProg() >= 100 ? "green" : qProg() >= 60 ? "amber" : "red"
-        }
-    ];
+    const commitment = () => Number(props.project.qualificationPct);
+
+    const requiredQualified = () =>
+        Math.round(totalLeads() * (commitment() / 100));
+
+    const deliveredLeads = () =>
+        props.project.campaigns.reduce((s, c) => s + c.leads, 0);
+
+
+    const qualifiedLeads = () => props.project.qualifiedLeads;
+
+    const isCommitmentMet = () =>
+        qualifiedLeads() >= requiredQualified();
+
+    const remainingLeads = () =>
+        isCommitmentMet()
+            ? 0
+            : requiredQualified() - qualifiedLeads();
 
     const colorMap = {
         blue: "bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400",
@@ -354,79 +344,95 @@ function QualBlock(props) {
     };
 
     return (
-        <div class="rounded-2xl border border-gray-200 dark:border-gray-700 
-                bg-white dark:bg-gray-900 p-5 space-y-5 shadow-sm">
 
-            {/* Header */}
-            <div class="flex items-center justify-between">
-                <SectionLabel>Qualification Overview</SectionLabel>
-                <span class="text-sm px-2 py-1 rounded-full 
-                     bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 ">
-                    Qualification % = {props.project.qualificationPct}%
-                </span>
-            </div>
+        <>
+            <Show when={true}>
+                {/* Header */}
+                <div class="flex items-center justify-between mb-6">
+                    <h2 class="text-lg font-semibold text-gray-800 dark:text-white">
+                        Qualification Summary
+                    </h2>
+                    <span
+                        class="text-sm px-4 py-1 rounded-full font-medium"
+                        classList={{
+                            "bg-green-100 text-green-700": isCommitmentMet(),
+                            "bg-yellow-100 text-yellow-700": !isCommitmentMet(),
+                        }}
+                    >
+                        {isCommitmentMet() ? "Completed" : "In Progress"}
+                    </span>
+                </div>
+                {/* Cards */}
+                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
 
-            {/* Cards */}
-            <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    {/* Card */}
+                    {[
+                        { label: "Total Required", value: totalLeads() },
+                        { label: "Delivered", value: deliveredLeads() },
+                        { label: "Commitment", value: `${commitment()}%` },
+                        { label: "Target Qualified", value: requiredQualified(), color: "text-blue-600" },
+                        { label: "Achieved", value: qualifiedLeads(), color: "text-green-600" },
+                        { label: "Remaining", value: remainingLeads(), color: "text-yellow-500" },
+                    ].map((item) => (
+                        <div class="group bg-white dark:bg-gray-800/70 backdrop-blur-sm p-4 rounded-xl border border-gray-100 shadow-md dark:border-gray-700 hover:shadow-lg transition-all duration-300">
 
-                <For each={statCards()}>
-                    {(item) => (
+                            <p class="text-sm text-gray-700 dark:text-gray-400 mb-1">
+                                {item.label}
+                            </p>
 
-                        <div class="flex justify-between rounded-xl border border-gray-200 dark:border-gray-700 
-                        bg-white dark:bg-gray-800/50 p-4 
-                        hover:shadow-md transition-all duration-200">
-                            <div>
-                                {/* Text */}
-                                <p class="text-md text-gray-700 dark:text-gray-400">
-                                    {item.label}
-                                </p>
+                            <h2 class={`text-2xl font-semibold ${item.color || "text-gray-800 dark:text-white"}`}>
+                                {item.value}
+                            </h2>
 
-                                <p class="text-xl font-semibold mt-1 text-gray-900 dark:text-white">
-                                    {item.val}
-                                </p>
-
-                                <Show when={item.sub}>
-                                    <p class="text-sm text-gray-500 mt-1">
-                                        {item.sub}
-                                    </p>
-                                </Show>
-                            </div>
-                            {/* Icon */}
-                            <div class={`w-10 h-10 rounded-lg flex items-center justify-center mb-3 
-                          ${colorMap[item.color]}`}>
-
-                                {/* ICONS */}
-                                {item.icon === "users" && (
-                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-width="2" d="M17 20h5V9a2 2 0 00-2-2h-3M9 20H4V9a2 2 0 012-2h3m0 0V5a2 2 0 114 0v2m-4 0h4" />
-                                    </svg>
-                                )}
-
-                                {item.icon === "target" && (
-                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <circle cx="12" cy="12" r="10" stroke-width="2" />
-                                        <circle cx="12" cy="12" r="4" stroke-width="2" />
-                                    </svg>
-                                )}
-
-                                {item.icon === "check" && (
-                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-width="2" d="M5 13l4 4L19 7" />
-                                    </svg>
-                                )}
-
-                                {item.icon === "chart" && (
-                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-width="2" d="M3 3v18h18M7 14l3-3 4 4 5-5" />
-                                    </svg>
-                                )}
-
-                            </div>
                         </div>
-                    )}
-                </For>
-            </div>
-        </div>
+                    ))}
+                </div>
+
+                {/* Progress Bar */}
+                <div class="mt-6">
+                    <div class="flex justify-between text-xs text-gray-500 mb-1">
+                        <span>Qualification Progress</span>
+                        <span>
+                            {qualifiedLeads} / {requiredQualified()}
+                        </span>
+                    </div>
+
+                    <div class="w-full bg-gray-200 dark:bg-gray-700 h-1 rounded-full overflow-hidden">
+                        <div
+                            class="h-1 rounded-full transition-all duration-700"
+                            classList={{
+                                "bg-green-700": isCommitmentMet(),
+                                "bg-yellow-500": !isCommitmentMet(),
+                            }}
+                            style={{
+                                width: `${Math.min(
+                                    (qualifiedLeads / requiredQualified()) * 100,
+                                    100
+                                )}%`,
+                            }}
+                        />
+                    </div>
+                </div>
+
+                {/* Insight Box */}
+                <div class="mt-6 p-4 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+
+                    <p class="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+                        You have received <span class="font-semibold text-gray-900 dark:text-white">{deliveredLeads}</span> leads.
+                        Based on <span class="font-semibold">{commitment}%</span> commitment,
+                        <span class="font-semibold">{requiredQualified()}</span> should be qualified.
+                        Currently, <span class="font-semibold text-green-600">{qualifiedLeads}</span> are achieved.
+
+                        <span class={`ml-1 font-medium ${isCommitmentMet() ? "text-green-600" : "text-yellow-600"}`}>
+                            {isCommitmentMet()
+                                ? "Requirement has been fulfilled."
+                                : "More qualified leads are required."}
+                        </span>
+                    </p>
+
+                </div>
+            </Show>
+        </>
     );
 }
 // ─── Project Row (Accordion) ──────────────────────────────────────────────────
@@ -512,20 +518,6 @@ function ProjectRow(props) {
                 </div>
             </button>
 
-            {/* Progress bar */}
-            {/* <div class="px-5 pb-3">
-                <div class="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
-                    <span>Spend progress</span>
-                    <span>{pct(totalSpend(), props.project.budgetAllocated)}%</span>
-                </div>
-
-                <div class="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                    <div
-                        class="h-full bg-gradient-to-r from-purple-500 to-indigo-500 transition-all duration-500"
-                        style={{ width: `${pct(totalSpend(), props.project.budgetAllocated)}%` }}
-                    ></div>
-                </div>
-            </div> */}
 
             {/* Collapsible body */}
             <div
@@ -546,23 +538,13 @@ function ProjectRow(props) {
                         <CampaignTable campaigns={props.project.campaigns} />
                     </div>
 
-                    {/* CPL block */}
-                    {/* <div class="p-4 rounded-xl border 
-                  bg-gray-50 dark:bg-gray-800/50 
-                  border-gray-200 dark:border-gray-700">
-                        <CPLBlock
-                            totalLeads={totalLeads()}
-                            totalSpend={totalSpend()}
-                            cpl={cpl()}
-                            proposedCPL={props.project.proposedCPL}
-                        />
-                    </div> */}
+
 
                     {/* Qualification */}
                     <div class="p-4 rounded-xl border 
                   bg-gray-50 dark:bg-gray-800/50 
                   border-gray-200 dark:border-gray-700">
-                        <QualBlock project={props.project} totalLeads={totalLeads()} />
+                        <QualBlock project={props.project} />
                     </div>
 
                 </div>
@@ -894,7 +876,7 @@ export default function Billing() {
                         <h1 class="text-2xl md:text-2xl font-semibold mb-1">Billing </h1>
                         <p class="text-md text-gray-700 dark:text-gray-400">Manage your billing and payment information.</p>
                     </div>
-                   
+
                     <div class="flex items-center gap-3">
                         <button
                             onClick={() => setShowModal(true)}
@@ -922,31 +904,31 @@ export default function Billing() {
                         </button>
                     </div>
                 </div>
-                 <nav>
-                        <ul class="flex items-center gap-1.5 mb-4 mt-2 list-none p-0">
-                            <li class="flex items-center gap-1 group cursor-pointer">
-                                <svg class="w-4 h-4 text-gray-500 transition-colors group-hover:text-purple-600"
-                                    fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                        d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001 1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-                                </svg>
+                <nav>
+                    <ul class="flex items-center gap-1.5 mb-4 mt-2 list-none p-0">
+                        <li class="flex items-center gap-1 group cursor-pointer">
+                            <svg class="w-4 h-4 text-gray-500 transition-colors group-hover:text-purple-600"
+                                fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001 1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                            </svg>
 
-                                <a href="/"
-                                    class="text-sm text-gray-600 dark:text-gray-400 transition-colors group-hover:text-purple-600">
-                                    Home
-                                </a>
-                            </li>
-                            <li class="flex items-center">
-                                <svg class="w-3 h-3 text-gray-600 dark:text-gray-400" viewBox="0 0 12 12" fill="none">
-                                    <path d="M4.5 2.5L7.5 6L4.5 9.5" stroke="currentColor" stroke-width="1.2"
-                                        stroke-linecap="round" stroke-linejoin="round" />
-                                </svg>
-                            </li>
-                            <li>
-                                <span class="text-sm text-gray-500 dark:text-gray-400 font-medium">Billing</span>
-                            </li>
-                        </ul>
-                    </nav>
+                            <a href="/"
+                                class="text-sm text-gray-600 dark:text-gray-400 transition-colors group-hover:text-purple-600">
+                                Home
+                            </a>
+                        </li>
+                        <li class="flex items-center">
+                            <svg class="w-3 h-3 text-gray-600 dark:text-gray-400" viewBox="0 0 12 12" fill="none">
+                                <path d="M4.5 2.5L7.5 6L4.5 9.5" stroke="currentColor" stroke-width="1.2"
+                                    stroke-linecap="round" stroke-linejoin="round" />
+                            </svg>
+                        </li>
+                        <li>
+                            <span class="text-sm text-gray-500 dark:text-gray-400 font-medium">Billing</span>
+                        </li>
+                    </ul>
+                </nav>
             </header>
             {/* Sub-nav tabs */}
             <div class=" mx-auto flex gap-1">
