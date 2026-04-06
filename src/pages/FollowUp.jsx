@@ -42,9 +42,9 @@ const FollowUp = () => {
         }, 300); // matches transition-duration below
     };
 
-    
 
-    
+
+
 
     const handleFormChange = (field, value) => {
         setFormData((prev) => ({ ...prev, [field]: value }));
@@ -55,7 +55,7 @@ const FollowUp = () => {
         closeEdit();
     };
 
-    
+
 
     const followStatuses = [
         "call later", "not picked", "call not picked",
@@ -126,6 +126,7 @@ const FollowUp = () => {
                             <tr class="[&_th]:text-center [&_th]:whitespace-nowrap [&_th:first-child]:text-left bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300">
                                 <th class="p-4">Name</th>
                                 <th class="p-4">Contact</th>
+                                <th class="p-4">Email</th>
                                 <th class="p-4">Project</th>
                                 <th class="p-4">Status</th>
                                 <th class="p-4">Remark</th>
@@ -141,8 +142,8 @@ const FollowUp = () => {
 
                                         <td class="p-3 font-medium">{lead().name}</td>
                                         <td class="p-3 text-gray-600 dark:text-gray-300">{lead().contact}</td>
+                                        <td class="p-3 text-gray-600 dark:text-gray-300">{lead().email}</td>
                                         <td class="p-3 text-gray-600 dark:text-gray-300">{lead().project}</td>
-
                                         <td class="p-3">
                                             <span class={`px-2 py-1 rounded ${getStatusStyle(lead().status)}`}>
                                                 {lead().status}
@@ -211,7 +212,7 @@ const FollowUp = () => {
                 </div>
             </div>
 
-           
+
             {/* ── EDIT SIDEBAR ── */}
             <Show when={sidebarMounted()}>
                 <div class="fixed inset-0 z-50 flex">

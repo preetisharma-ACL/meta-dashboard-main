@@ -13,6 +13,7 @@ const Leads = () => {
             name: "Preeti",
             contact: "9876543210",
             status: "Fresh",
+            email: "preeti@gmail.com",
             Remark: null,
             next_follow: "Mar 25 2026",
             project: "ABC Corp",
@@ -22,6 +23,7 @@ const Leads = () => {
             name: "Akhil",
             contact: "9876543210",
             status: "site visit done",
+            email: "akhil@gmail.com",
             Remark: null,
             next_follow: "Mar 25 2026",
             project: "XYZ Corp",
@@ -31,6 +33,7 @@ const Leads = () => {
             name: "Preeti",
             contact: "9876543210",
             status: "Fresh",
+            email: "preeti@gmail.com",
             Remark: null,
             next_follow: "Mar 25 2026",
             project: "ABC Corp",
@@ -40,6 +43,7 @@ const Leads = () => {
             name: "Preeti",
             contact: "9876543210",
             status: "Fresh",
+            email: "preeti@gmail.com",
             Remark: null,
             next_follow: "Mar 25 2026",
             project: "ABC Corp",
@@ -49,6 +53,7 @@ const Leads = () => {
             name: "Preeti",
             contact: "9876543210",
             status: "Fresh",
+            email: "preeti@gmail.com",
             Remark: null,
             next_follow: "Mar 25 2026",
             project: "ABC Corp",
@@ -58,6 +63,7 @@ const Leads = () => {
             name: "Preeti",
             contact: "9876543210",
             status: "Fresh",
+            email: "preeti@gmail.com",
             Remark: null,
             next_follow: "Mar 25 2026",
             project: "ABC Corp",
@@ -82,13 +88,7 @@ const Leads = () => {
         setIsEditOpen(false);
     };
 
-    //  Delete
-    const handleDelete = (index) => {
-        if (confirm("Are you sure you want to delete this lead?")) {
-            const updated = leads().filter((_, i) => i !== index);
-            setLeads(updated);
-        }
-    };
+
     // 🔹 Status Color Logic (YOUR FUNNEL RULES)
     const getStatusStyle = (status) => {
         switch (status) {
@@ -310,6 +310,7 @@ const Leads = () => {
                         <tr class="[&_th]:text-center [&_th]:whitespace-nowrap [&_th:first-child]:text-left border-b border-gray-200 dark:border-gray-700">
                             <th class="p-3">Name</th>
                             <th class="p-3">Contact No</th>
+                            <th class="p-3">Email</th>
                             <th class="p-3">Project</th>
                             <th class="p-3">Status</th>
                             <th class="p-3">Remark</th>
@@ -329,9 +330,8 @@ const Leads = () => {
                                     <td class="p-3">{lead().name}</td>
 
                                     <td class="p-3">{lead().contact}</td>
-
+                                    <td class="p-3">{lead().email}</td>
                                     <td class="p-3">{lead().project}</td>
-
                                     <td class="p-3">
                                         <select
                                             value={normalizeStatus(lead().status)}
@@ -375,15 +375,7 @@ const Leads = () => {
                                                 <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 .375a1.875 1.875 0 11-3.75 0 1.875 1.875 0 013.75 0z" />
                                             </svg>
                                         </button>
-                                        {/* Delete */}
-                                        <button
-                                            onClick={() => handleDelete(index)}
-                                            class="text-red-500 hover:text-red-700 text-lg"
-                                        >
-                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-                                                <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0c.34.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79" />
-                                            </svg>
-                                        </button>
+
                                     </td>
                                 </tr>
                             )}
