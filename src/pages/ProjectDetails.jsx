@@ -394,7 +394,7 @@ export default function ProjectDetails() {
         totalLeads: 120,
         deliveredLeads: 100,
         commitment: 60,
-        qualifiedLeads: 72 // actual qualified (manual or API)
+        qualifiedLeads: 52 // actual qualified (manual or API)
     };
     const requiredQualified = () =>
         Math.round(leadSummary.totalLeads * (leadSummary.commitment / 100));
