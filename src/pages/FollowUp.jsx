@@ -5,7 +5,6 @@ const FollowUp = () => {
 
     const [editingLead, setEditingLead] = createSignal(null);
     const [formData, setFormData] = createSignal({});
-    const [deleteConfirm, setDeleteConfirm] = createSignal(null);
 
     // Separate mount vs visible signals so CSS transition has time to run
     const [sidebarVisible, setSidebarVisible] = createSignal(false);
@@ -43,22 +42,9 @@ const FollowUp = () => {
         }, 300); // matches transition-duration below
     };
 
-    // ── Delete modal ──
-    const openDelete = (id) => {
-        setDeleteConfirm(id);
-        setModalMounted(true);
-        requestAnimationFrame(() => {
-            requestAnimationFrame(() => setModalVisible(true));
-        });
-    };
+    
 
-    const closeDelete = () => {
-        setModalVisible(false);
-        setTimeout(() => {
-            setModalMounted(false);
-            setDeleteConfirm(null);
-        }, 250);
-    };
+    
 
     const handleFormChange = (field, value) => {
         setFormData((prev) => ({ ...prev, [field]: value }));
@@ -69,10 +55,7 @@ const FollowUp = () => {
         closeEdit();
     };
 
-    const handleDelete = (id) => {
-        deleteLead(id);
-        closeDelete();
-    };
+    
 
     const followStatuses = [
         "call later", "not picked", "call not picked",
@@ -211,18 +194,6 @@ const FollowUp = () => {
                                                         <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
                                                     </svg>
                                                 </button>
-
-                                                {/* Delete */}
-                                                <button onClick={() => openDelete(lead().id)} title={`Delete ${lead().name}`}
-                                                    class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-red-500 text-white hover:bg-red-100 border border-red-400 hover:border-red-300 hover:text-red-600 transition-all duration-150 shadow-sm hover:shadow">
-                                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                                        <polyline points="3 6 5 6 21 6" />
-                                                        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                                                        <path d="M10 11v6" /><path d="M14 11v6" />
-                                                        <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-                                                    </svg>
-                                                </button>
-
                                             </div>
                                         </td>
 
@@ -240,54 +211,7 @@ const FollowUp = () => {
                 </div>
             </div>
 
-            {/* ── DELETE CONFIRM MODAL ── */}
-            <Show when={modalMounted()}>
-                {/* Backdrop */}
-                <div
-                    onClick={closeDelete}
-                    class="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm transition-opacity duration-250"
-                    style={{ opacity: modalVisible() ? "1" : "0" }}
-                />
-                {/* Card */}
-                <div class="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
-                    <div
-                        class="bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 w-full max-w-sm p-6 pointer-events-auto transition-all duration-250"
-                        style={{
-                            opacity: modalVisible() ? "1" : "0",
-                            transform: modalVisible() ? "scale(1) translateY(0)" : "scale(0.95) translateY(10px)",
-                        }}
-                    >
-                        <div class="flex items-center gap-3 mb-4">
-                            <div class="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900 flex items-center justify-center shrink-0">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-red-600 dark:text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                    <polyline points="3 6 5 6 21 6" />
-                                    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                                    <path d="M10 11v6" /><path d="M14 11v6" />
-                                    <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-                                </svg>
-                            </div>
-                            <div>
-                                <h3 class="font-semibold text-gray-800 dark:text-gray-100">Delete Lead</h3>
-                                <p class="text-sm text-gray-500 dark:text-gray-400">This action cannot be undone.</p>
-                            </div>
-                        </div>
-                        <p class="text-sm text-gray-600 dark:text-gray-300 mb-6">
-                            Are you sure you want to delete this lead? All associated data will be permanently removed.
-                        </p>
-                        <div class="flex gap-3">
-                            <button onClick={closeDelete}
-                                class="flex-1 px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition text-sm font-medium">
-                                Cancel
-                            </button>
-                            <button onClick={() => handleDelete(deleteConfirm())}
-                                class="flex-1 px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 transition text-sm font-medium">
-                                Delete
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </Show>
-
+           
             {/* ── EDIT SIDEBAR ── */}
             <Show when={sidebarMounted()}>
                 <div class="fixed inset-0 z-50 flex">
@@ -305,7 +229,7 @@ const FollowUp = () => {
                     >
 
                         {/* Header */}
-                        <div class="flex items-center justify-between px-6 py-5 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+                        <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
                             <div>
                                 <h2 class="text-lg font-bold text-gray-800 dark:text-gray-100">Edit Lead</h2>
                                 <p class="text-sm text-gray-500 dark:text-gray-400">Update lead information</p>

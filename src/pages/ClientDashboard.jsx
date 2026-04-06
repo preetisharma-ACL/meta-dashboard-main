@@ -359,7 +359,7 @@ export default function ClientDashboard() {
         <section class="w-full px-4 sm:px-6 lg:px-8 py-6">
 
             {/* Section Header */}
-            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-5">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-5 ">
                 <div>
                     <h1 class="text-2xl md:text-2xl font-semibold mb-1"> Active Projects</h1>
                     <p class="text-md text-gray-700 dark:text-gray-400"> All projects with live marketing campaigns.</p>
