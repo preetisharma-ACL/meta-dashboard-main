@@ -549,7 +549,8 @@ function ProjectRow(props) {
 }
 
 // ─── CPL Comparison Panel ─────────────────────────────────────────────────────
-function CPLComparisonPanel(props) {
+function CPLComparisonPanel(props) { 
+
     return (
         <Card class="p-5 space-y-4">
             <SectionLabel>CPL Comparison Across Projects</SectionLabel>
@@ -837,6 +838,7 @@ function AddFundsModal(props) {
 
 // ─── Root Component ───────────────────────────────────────────────────────────
 export default function Billing() {
+    
     const [tab, setTab] = createSignal("overview");
     const [showModal, setShowModal] = createSignal(false);
 

@@ -5,15 +5,15 @@ import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import Dashboard from './pages/Dashboard';
 import Settings from './pages/Settings';
-import Leads from './pages/Leads';  
+import Leads from './pages/Leads';
 import FollowUp from './pages/FollowUp';
-
+import ClientDelivery from './pages/Client-Delivery';
 import { useSidebar } from './context/SidebarContext';
 import ProjectDetails from './pages/ProjectDetails';
 import ClientDashboard from './pages/ClientDashboard';
 import CampaignDetails from './pages/CampaignDetails';
 import AddProject from './pages/AddProjects';
-import  Billing  from './pages/Billing';
+import Billing from './pages/Billing';
 import LeadPerformance from './pages/LeadPerformance';
 import WhatIsPerforming from './pages/WhatisPerforming';
 
@@ -45,10 +45,11 @@ function App() {
           <Route path="/" component={() => <Layout><ClientDashboard /></Layout>} />
           <Route path="/add-project" component={() => <Layout><AddProject /></Layout>} />
           <Route path="/billing" component={() => <Layout><Billing /></Layout>} />
+          <Route path="/client-delivery" component={() => <Layout><ClientDelivery/></Layout>} />
           <Route path="/leads-performance" component={() => <Layout><LeadPerformance /></Layout>} />
           <Route path="/what-is-performing" component={() => <Layout><WhatIsPerforming /></Layout>} />
           <Route path="/leads" component={() => <Layout><Leads /></Layout>} />
-          <Route path="/follow-up" component={() => <Layout><FollowUp/></Layout>} />
+          <Route path="/follow-up" component={() => <Layout><FollowUp /></Layout>} />
           <Route path="/settings" component={() => <Layout><Settings /></Layout>} />
           <Route path="/billing" component={() => <Layout><Billing /></Layout>} />
           <Route path="/all-campaigns" component={() => <Layout><ProjectDetails /></Layout>} />
