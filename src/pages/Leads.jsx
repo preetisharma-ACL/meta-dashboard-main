@@ -195,63 +195,26 @@ const Leads = () => {
     };
 
     return (
-        <div class="p-4 md:p-6 min-h-screen bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200">
+        <div class=" min-h-screen bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200">
 
             {/* HEADER */}
-            <div class="flex flex-col md:flex-row md:justify-between md:items-center gap-4 mb-2">
+            <div class="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 px-6 py-5 shadow-sm">
                 <div>
                     <h1 class="text-2xl md:text-2xl font-semibold mb-1">Leads </h1>
                     <p class="text-md text-gray-700 dark:text-gray-400">Track lead progress and optimize your conversion strategy.</p>
                 </div>
-                {/* <div class="flex gap-2">
-                    <button
-                        class="px-4 py-2.5 text-sm font-medium rounded 
-                        bg-green-500 dark:bg-green-600 
-                        text-white 
-                        border border-green-500 dark:border-green-600 
-                        shadow-sm
-                        hover:bg-green-600 dark:hover:bg-green-700 
-                        hover:border-green-400 dark:hover:border-green-500
-                        transition duration-200"
-                    >
-                        Export All
-                    </button>
-                </div> */}
+
             </div>
-            <nav>
-                <ul class="flex items-center gap-1.5 mb-6  list-none p-0">
-                    <li class="flex items-center gap-1 group cursor-pointer">
-                        <svg class="w-4 h-4 text-gray-500 transition-colors group-hover:text-purple-600"
-                            fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001 1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-                        </svg>
 
-                        <a href="/"
-                            class="text-sm text-gray-600 dark:text-gray-400 transition-colors group-hover:text-purple-600">
-                            Home
-                        </a>
-                    </li>
-                    <li class="flex items-center">
-                        <svg class="w-3 h-3 text-gray-600 dark:text-gray-400" viewBox="0 0 12 12" fill="none">
-                            <path d="M4.5 2.5L7.5 6L4.5 9.5" stroke="currentColor" stroke-width="1.2"
-                                stroke-linecap="round" stroke-linejoin="round" />
-                        </svg>
-                    </li>
-                    <li>
-                        <span class="text-sm text-gray-500 dark:text-gray-400 font-medium">Leads</span>
-                    </li>
-                </ul>
-            </nav>
+            <div class="p-4 md:p-6">
+                {/* FILTERS */}
+                <div class=" mb-6 space-y-3">
+                    <div class="flex gap-4 flex-col md:flex-row">
 
-            {/* FILTERS */}
-            <div class=" mb-6 space-y-3">
-                <div class="flex gap-4 flex-col md:flex-row">
-
-                    {/* Search Input */}
-                    <input
-                        placeholder="Search leads..."
-                        class="w-full md:w-auto 
+                        {/* Search Input */}
+                        <input
+                            placeholder="Search leads..."
+                            class="w-full md:w-auto 
                         bg-white dark:bg-gray-800 
                         text-gray-800 dark:text-gray-200 
                         placeholder:text-gray-500 dark:placeholder:text-gray-400 
@@ -260,271 +223,272 @@ const Leads = () => {
                         focus:ring-1 focus:ring-green-500 focus:border-green-500 focus:outline-none focus:ring-offset-2
                         hover:border-gray-400 dark:hover:border-gray-500
                         transition duration-200"
-                        onInput={(e) => setSearch(e.target.value)}
-                    />
+                            onInput={(e) => setSearch(e.target.value)}
+                        />
 
-                    {/* Status Filter */}
-                    <select
-                        class="w-full md:w-auto 
+                        {/* Status Filter */}
+                        <select
+                            class="w-full md:w-auto 
                         bg-white shadow dark:bg-gray-800 
                         text-gray-800 dark:text-gray-200 
                         text-sm border border-gray-300 dark:border-gray-700 
                         rounded-lg px-4 py-3 
                         focus:ring-1 focus:ring-green-500 focus:border-green-500 focus:outline-none focus:ring-offset-2
                         transition duration-200 "
-                        onChange={(e) => setStatusFilter(e.target.value)}
-                    >
-                        <option value="">Status</option>
-                        <option>Fresh Leads</option>
-                        <option>Call Later</option>
-                        <option>Not Picked</option>
-                        <option>Always Busy</option>
-                        <option>Asked to call later</option>
-                        <option>Interested</option>
-                        <option>Site Visit Done</option>
-                        <option>Site Visit Scheduled</option>
-                        <option>Booking Done</option>
-                        <option>Follow-Up</option>
-                        <option>Invalid</option>
-                        <option>Low Budget</option>
-                        <option>Not Interested</option>
-                        <option>Broker</option>
-                        <option>Always Not Picked</option>
-                        <option>Feeded Leads</option>
-                        <option>Not Interested</option>
-                    </select>
-                    <div>
-                        <button onClick={handleClearFilters} class="px-4 py-2.5 text-sm font-medium rounded-md bg-blue-900 text-white border border-blue-500 hover:bg-blue-600 hover:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:ring-offset-2">
-                            Clear All
-                        </button>
+                            onChange={(e) => setStatusFilter(e.target.value)}
+                        >
+                            <option value="">Status</option>
+                            <option>Fresh Leads</option>
+                            <option>Call Later</option>
+                            <option>Not Picked</option>
+                            <option>Always Busy</option>
+                            <option>Asked to call later</option>
+                            <option>Interested</option>
+                            <option>Site Visit Done</option>
+                            <option>Site Visit Scheduled</option>
+                            <option>Booking Done</option>
+                            <option>Follow-Up</option>
+                            <option>Invalid</option>
+                            <option>Low Budget</option>
+                            <option>Not Interested</option>
+                            <option>Broker</option>
+                            <option>Always Not Picked</option>
+                            <option>Feeded Leads</option>
+                            <option>Not Interested</option>
+                        </select>
+                        <div>
+                            <button onClick={handleClearFilters} class="px-4 py-2.5 text-sm font-medium rounded-md bg-blue-900 text-white border border-blue-500 hover:bg-blue-600 hover:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:ring-offset-2">
+                                Clear All
+                            </button>
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            {/* DESKTOP TABLE */}
-            <div class="hidden md:block bg-white dark:bg-gray-800 rounded-xl shadow overflow-hidden">
-                <table class="w-full text-sm border dark:border-gray-700">
+                {/* DESKTOP TABLE */}
+                <div class="hidden md:block bg-white dark:bg-gray-800 rounded-xl shadow overflow-hidden">
+                    <table class="w-full text-sm border dark:border-gray-700">
 
-                    {/* Table Head */}
-                    <thead class="bg-gray-100 dark:bg-gray-800">
-                        <tr class="[&_th]:text-center [&_th]:whitespace-nowrap [&_th:first-child]:text-left border-b border-gray-200 dark:border-gray-700">
-                            <th class="p-3">Name</th>
-                            <th class="p-3">Contact No</th>
-                            <th class="p-3">Email</th>
-                            <th class="p-3">Project</th>
-                            <th class="p-3">Status</th>
-                            <th class="p-3">Remark</th>
-                            <th class="p-3">Next Follow-up</th>
-                            <th class="p-3">Action</th>
-                        </tr>
-                    </thead>
+                        {/* Table Head */}
+                        <thead class="bg-gray-100 dark:bg-gray-800">
+                            <tr class="[&_th]:text-center [&_th]:whitespace-nowrap [&_th:first-child]:text-left border-b border-gray-200 dark:border-gray-700">
+                                <th class="p-3">Name</th>
+                                <th class="p-3">Contact No</th>
+                                <th class="p-3">Email</th>
+                                <th class="p-3">Project</th>
+                                <th class="p-3">Status</th>
+                                <th class="p-3">Remark</th>
+                                <th class="p-3">Next Follow-up</th>
+                                <th class="p-3">Action</th>
+                            </tr>
+                        </thead>
 
-                    {/* Table Body */}
-                    <tbody class="bg-white dark:bg-gray-900">
+                        {/* Table Body */}
+                        <tbody class="bg-white dark:bg-gray-900">
 
-                        <Index each={filteredLeads()}>
-                            {(lead, index) => (
-                                <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition
+                            <Index each={filteredLeads()}>
+                                {(lead, index) => (
+                                    <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition
                                     [&_td]:text-center [&_td]:whitespace-nowrap [&_td:first-child]:text-left">
 
-                                    <td class="p-3">{lead().name}</td>
+                                        <td class="p-3">{lead().name}</td>
 
-                                    <td class="p-3">{lead().contact}</td>
-                                    <td class="p-3">{lead().email}</td>
-                                    <td class="p-3">{lead().project}</td>
-                                    <td class="p-3">
-                                        <select
-                                            value={normalizeStatus(lead().status)}
-                                            onChange={(e) => handleFieldChange(index, "status", e.target.value)}
-                                            class={`px-2 py-1 rounded border text-sm 
+                                        <td class="p-3">{lead().contact}</td>
+                                        <td class="p-3">{lead().email}</td>
+                                        <td class="p-3">{lead().project}</td>
+                                        <td class="p-3">
+                                            <select
+                                                value={normalizeStatus(lead().status)}
+                                                onChange={(e) => handleFieldChange(index, "status", e.target.value)}
+                                                class={`px-2 py-1 rounded border text-sm 
                                                 ${getStatusStyle(normalizeStatus(lead().status))}
                                                 bg-white dark:bg-gray-800`}
-                                        >
-                                            <For each={STATUS_OPTIONS}>
-                                                {(status) => (
-                                                    <option value={status}>{status}</option>
-                                                )}
-                                            </For>
-                                        </select>
-                                    </td>
+                                            >
+                                                <For each={STATUS_OPTIONS}>
+                                                    {(status) => (
+                                                        <option value={status}>{status}</option>
+                                                    )}
+                                                </For>
+                                            </select>
+                                        </td>
 
-                                    <td class="p-3">
-                                        <input
-                                            type="text"
-                                            value={lead().Remark}
-                                            onInput={(e) =>
-                                                handleFieldChange(index, "Remark", e.target.value)
-                                            }
-                                            placeholder="Enter remark..."
-                                            class="w-full px-2 py-1 text-sm border rounded 
+                                        <td class="p-3">
+                                            <input
+                                                type="text"
+                                                value={lead().Remark}
+                                                onInput={(e) =>
+                                                    handleFieldChange(index, "Remark", e.target.value)
+                                                }
+                                                placeholder="Enter remark..."
+                                                class="w-full px-2 py-1 text-sm border rounded 
                                                     bg-white dark:bg-gray-800 
                                                     text-gray-800 dark:text-gray-200"
-                                        />
-                                    </td>
+                                            />
+                                        </td>
 
-                                    <td class="p-3">{lead().next_follow}</td>
+                                        <td class="p-3">{lead().next_follow}</td>
 
-                                    <td class="p-3 flex justify-center gap-3">
+                                        <td class="p-3 flex justify-center gap-3">
 
-                                        {/* Edit */}
-                                        <button
-                                            onClick={() => handleEdit(lead(), index)}
-                                            class="text-blue-500 hover:text-blue-700 text-lg"
-                                        >
-                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-                                                <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 .375a1.875 1.875 0 11-3.75 0 1.875 1.875 0 013.75 0z" />
-                                            </svg>
-                                        </button>
+                                            {/* Edit */}
+                                            <button
+                                                onClick={() => handleEdit(lead(), index)}
+                                                class="text-blue-500 hover:text-blue-700 text-lg"
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 .375a1.875 1.875 0 11-3.75 0 1.875 1.875 0 013.75 0z" />
+                                                </svg>
+                                            </button>
 
-                                    </td>
-                                </tr>
-                            )}
-                        </Index>
-                    </tbody>
-                </table>
-            </div>
+                                        </td>
+                                    </tr>
+                                )}
+                            </Index>
+                        </tbody>
+                    </table>
+                </div>
 
-            {/* MOBILE CARDS */}
-            <div class="md:hidden space-y-3">
-                <For each={filteredLeads()}>
-                    {(lead) => (
-                        <div class="bg-white dark:bg-gray-800 p-4 rounded-xl shadow">
-                            <div class="flex justify-between">
-                                <h3 class="font-semibold">{lead.name}</h3>
-                                <span class={`text-xs px-2 py-1 rounded ${getStatusStyle(normalizeStatus(lead.status))}`}>
-                                    {normalizeStatus(lead.status)}
-                                </span>
+                {/* MOBILE CARDS */}
+                <div class="md:hidden space-y-3">
+                    <For each={filteredLeads()}>
+                        {(lead) => (
+                            <div class="bg-white dark:bg-gray-800 p-4 rounded-xl shadow">
+                                <div class="flex justify-between">
+                                    <h3 class="font-semibold">{lead.name}</h3>
+                                    <span class={`text-xs px-2 py-1 rounded ${getStatusStyle(normalizeStatus(lead.status))}`}>
+                                        {normalizeStatus(lead.status)}
+                                    </span>
+                                </div>
+
+                                <p class="text-sm text-gray-500">{lead.project}</p>
+
+                                <div class="flex justify-between mt-2 text-sm">
+                                    <span>{lead.next}</span>
+                                    <span class="text-red-500">{lead.user}</span>
+                                </div>
                             </div>
+                        )}
+                    </For>
+                </div>
 
-                            <p class="text-sm text-gray-500">{lead.project}</p>
+                {/* Edit Sidebar */}
+                {
+                    isEditOpen() && (
+                        <div class="fixed inset-0 z-50 flex">
 
-                            <div class="flex justify-between mt-2 text-sm">
-                                <span>{lead.next}</span>
-                                <span class="text-red-500">{lead.user}</span>
+                            {/* Overlay */}
+                            <div
+                                class="absolute inset-0 bg-black/40"
+                                onClick={() => setIsEditOpen(false)}
+                            ></div>
+
+                            {/* Sidebar */}
+                            <div class="ml-auto w-full md:w-[600px] h-full bg-white dark:bg-gray-900 shadow-xl p-8 relative z-10 transition">
+                                <h2 class="text-lg font-semibold mb-2">Edit Leads Data</h2>
+                                <p class="text-md text-gray-700 dark:text-gray-400 mb-5">Track lead progress and optimize your conversion strategy.</p>
+
+                                {/* Inputs */}
+                                <div class="space-y-3 border rounded p-6 bg-gray-50 dark:bg-gray-900">
+
+                                    <div class="grid grid-cols-2 gap-4 mb-5">
+                                        <div>
+                                            <label class="text-md text-gray-600 dark:text-gray-400 mb-1">Name</label>
+                                            <input
+                                                value={selectedLead()?.name || ""}
+                                                onInput={(e) =>
+                                                    setSelectedLead({ ...selectedLead(), name: e.target.value })
+                                                }
+                                                class="w-full p-2 border rounded dark:bg-gray-800"
+                                                placeholder="Name"
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label class="text-md text-gray-600 dark:text-gray-400 mb-1">Contact</label>
+                                            <input
+                                                value={selectedLead()?.contact || ""}
+                                                onInput={(e) =>
+                                                    setSelectedLead({ ...selectedLead(), contact: e.target.value })
+                                                }
+                                                class="w-full p-2 border rounded dark:bg-gray-800"
+                                                placeholder="Contact"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div class="grid grid-cols-2 gap-4 mb-5">
+                                        <div>
+                                            <label class="text-md text-gray-600 dark:text-gray-400 mb-1">Next Follow-up</label>
+                                            <input
+                                                value={selectedLead()?.next_follow || ""}
+                                                type="date"
+                                                onInput={(e) =>
+                                                    setSelectedLead({ ...selectedLead(), next_follow: e.target.value })
+                                                }
+                                                class="w-full p-2 border rounded dark:bg-gray-800"
+                                                placeholder="Next Follow-up"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label class="text-md text-gray-600 mb-2">Status</label>
+                                            <input
+                                                value={selectedLead()?.status || ""}
+                                                onInput={(e) =>
+                                                    setSelectedLead({ ...selectedLead(), status: e.target.value })
+                                                }
+                                                class="w-full p-2 border rounded dark:bg-gray-800"
+                                                placeholder="Status"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div class="grid grid-cols-2 gap-4 mb-5">
+                                        <div>
+                                            <label class="text-md text-gray-600 dark:text-gray-400 mb-1">Project</label>
+                                            <input
+                                                value={selectedLead()?.project || ""}
+                                                type="date"
+                                                onInput={(e) =>
+                                                    setSelectedLead({ ...selectedLead(), project: e.target.value })
+                                                }
+                                                class="w-full p-2 border rounded dark:bg-gray-800"
+                                                placeholder="Project"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label class="text-md text-gray-600 mb-2">Remark</label>
+                                            <input
+                                                value={selectedLead()?.Remark || ""}
+                                                onInput={(e) =>
+                                                    setSelectedLead({ ...selectedLead(), Remark: e.target.value })
+                                                }
+                                                class="w-full p-2 border rounded dark:bg-gray-800"
+                                                placeholder="Remark"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Buttons */}
+                                <div class="flex gap-2 mt-6">
+                                    <button
+                                        onClick={handleSave}
+                                        class="px-4 py-2 bg-green-600 text-white rounded"
+                                    >
+                                        Save
+                                    </button>
+
+                                    <button
+                                        onClick={() => setIsEditOpen(false)}
+                                        class="px-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded"
+                                    >
+                                        Cancel
+                                    </button>
+                                </div>
+
                             </div>
                         </div>
-                    )}
-                </For>
+                    )
+                }
             </div>
-
-            {/* Edit Sidebar */}
-            {
-                isEditOpen() && (
-                    <div class="fixed inset-0 z-50 flex">
-
-                        {/* Overlay */}
-                        <div
-                            class="absolute inset-0 bg-black/40"
-                            onClick={() => setIsEditOpen(false)}
-                        ></div>
-
-                        {/* Sidebar */}
-                        <div class="ml-auto w-full md:w-[600px] h-full bg-white dark:bg-gray-900 shadow-xl p-8 relative z-10 transition">
-                            <h2 class="text-lg font-semibold mb-2">Edit Leads Data</h2>
-                            <p class="text-md text-gray-700 dark:text-gray-400 mb-5">Track lead progress and optimize your conversion strategy.</p>
-
-                            {/* Inputs */}
-                            <div class="space-y-3 border rounded p-6 bg-gray-50 dark:bg-gray-900">
-
-                                <div class="grid grid-cols-2 gap-4 mb-5">
-                                    <div>
-                                        <label class="text-md text-gray-600 dark:text-gray-400 mb-1">Name</label>
-                                        <input
-                                            value={selectedLead()?.name || ""}
-                                            onInput={(e) =>
-                                                setSelectedLead({ ...selectedLead(), name: e.target.value })
-                                            }
-                                            class="w-full p-2 border rounded dark:bg-gray-800"
-                                            placeholder="Name"
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label class="text-md text-gray-600 dark:text-gray-400 mb-1">Contact</label>
-                                        <input
-                                            value={selectedLead()?.contact || ""}
-                                            onInput={(e) =>
-                                                setSelectedLead({ ...selectedLead(), contact: e.target.value })
-                                            }
-                                            class="w-full p-2 border rounded dark:bg-gray-800"
-                                            placeholder="Contact"
-                                        />
-                                    </div>
-                                </div>
-
-                                <div class="grid grid-cols-2 gap-4 mb-5">
-                                    <div>
-                                        <label class="text-md text-gray-600 dark:text-gray-400 mb-1">Next Follow-up</label>
-                                        <input
-                                            value={selectedLead()?.next_follow || ""}
-                                            type="date"
-                                            onInput={(e) =>
-                                                setSelectedLead({ ...selectedLead(), next_follow: e.target.value })
-                                            }
-                                            class="w-full p-2 border rounded dark:bg-gray-800"
-                                            placeholder="Next Follow-up"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label class="text-md text-gray-600 mb-2">Status</label>
-                                        <input
-                                            value={selectedLead()?.status || ""}
-                                            onInput={(e) =>
-                                                setSelectedLead({ ...selectedLead(), status: e.target.value })
-                                            }
-                                            class="w-full p-2 border rounded dark:bg-gray-800"
-                                            placeholder="Status"
-                                        />
-                                    </div>
-                                </div>
-                                <div class="grid grid-cols-2 gap-4 mb-5">
-                                    <div>
-                                        <label class="text-md text-gray-600 dark:text-gray-400 mb-1">Project</label>
-                                        <input
-                                            value={selectedLead()?.project || ""}
-                                            type="date"
-                                            onInput={(e) =>
-                                                setSelectedLead({ ...selectedLead(), project: e.target.value })
-                                            }
-                                            class="w-full p-2 border rounded dark:bg-gray-800"
-                                            placeholder="Project"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label class="text-md text-gray-600 mb-2">Remark</label>
-                                        <input
-                                            value={selectedLead()?.Remark || ""}
-                                            onInput={(e) =>
-                                                setSelectedLead({ ...selectedLead(), Remark: e.target.value })
-                                            }
-                                            class="w-full p-2 border rounded dark:bg-gray-800"
-                                            placeholder="Remark"
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Buttons */}
-                            <div class="flex gap-2 mt-6">
-                                <button
-                                    onClick={handleSave}
-                                    class="px-4 py-2 bg-green-600 text-white rounded"
-                                >
-                                    Save
-                                </button>
-
-                                <button
-                                    onClick={() => setIsEditOpen(false)}
-                                    class="px-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded"
-                                >
-                                    Cancel
-                                </button>
-                            </div>
-
-                        </div>
-                    </div>
-                )
-            }
         </div>
     );
 };

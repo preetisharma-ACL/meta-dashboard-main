@@ -255,7 +255,7 @@ const LeadsPage = () => {
                 bar: "bg-green-500",
                 pct: "text-green-600 dark:text-green-400",
                 border: "border-green-200 dark:border-green-800",
-                activeBorder: "ring-2 ring-green-400 dark:ring-green-500",
+                activeBorder: "ring-1 ring-green-400 dark:ring-green-500",
                 chevron: "text-green-500",
             },
             prospects: {
@@ -266,7 +266,7 @@ const LeadsPage = () => {
                 bar: "bg-yellow-500",
                 pct: "text-yellow-600 dark:text-yellow-400",
                 border: "border-yellow-200 dark:border-yellow-800",
-                activeBorder: "ring-2 ring-yellow-400 dark:ring-yellow-500",
+                activeBorder: "ring-1 ring-yellow-400 dark:ring-yellow-500",
                 chevron: "text-yellow-500",
             },
             junk: {
@@ -277,7 +277,7 @@ const LeadsPage = () => {
                 bar: "bg-red-500",
                 pct: "text-red-600 dark:text-red-400",
                 border: "border-red-200 dark:border-red-800",
-                activeBorder: "ring-2 ring-red-400 dark:ring-red-500",
+                activeBorder: "ring-1 ring-red-400 dark:ring-red-500",
                 chevron: "text-red-500",
             },
         };
@@ -313,7 +313,7 @@ const LeadsPage = () => {
                     <div class="flex-1 h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
                         <div class={`h-full ${c.bar} rounded-full transition-all duration-500`} style={`width: ${pct()}%`} />
                     </div>
-                    <span class="text-xs text-gray-400 dark:text-gray-500 shrink-0">of total</span>
+                    <span class="text-xs text-gray-500 dark:text-gray-500 shrink-0">of total</span>
                 </div>
 
                 {/* Status tags hint */}
@@ -329,10 +329,10 @@ const LeadsPage = () => {
     );
 
     return (
-        <div class="p-4 md:p-6 min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-200">
+        <div class=" min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-200">
 
             {/* ── HEADER ─────────────────────────────────────────────────────── */}
-            <div class="flex flex-col md:flex-row md:justify-between md:items-center gap-4 mb-2">
+            <div class="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 px-6 py-5 shadow-sm">
                 <div>
                     <h1 class="text-2xl font-semibold mb-1">Leads Performance</h1>
                     <p class="text-sm text-gray-500 dark:text-gray-400">
@@ -341,349 +341,327 @@ const LeadsPage = () => {
                 </div>
             </div>
 
-            {/* ── BREADCRUMB ──────────────────────────────────────────────────── */}
-            <nav class="mb-6">
-                <ul class="flex items-center gap-1.5 list-none p-0">
-                    <li class="flex items-center gap-1 group cursor-pointer">
-                        <svg class="w-4 h-4 text-gray-500 group-hover:text-purple-600 transition-colors"
-                            fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001 1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-                        </svg>
-                        <a href="/" class="text-sm text-gray-500 dark:text-gray-400 group-hover:text-purple-600 transition-colors">Home</a>
-                    </li>
-                    <li>
-                        <svg class="w-3 h-3 text-gray-400" viewBox="0 0 12 12" fill="none">
-                            <path d="M4.5 2.5L7.5 6L4.5 9.5" stroke="currentColor" stroke-width="1.2"
-                                stroke-linecap="round" stroke-linejoin="round" />
-                        </svg>
-                    </li>
-                    <li>
-                        <span class="text-sm text-gray-500 dark:text-gray-400 font-medium">Lead Performance</span>
-                    </li>
-                </ul>
-            </nav>
-
-            {/* ── FILTERS ─────────────────────────────────────────────────────── */}
-            <div class="mb-6">
-                <div class="flex gap-3 flex-col md:flex-row flex-wrap">
-                    <input
-                        value={search()}
-                        placeholder="Search leads..."
-                        class="w-full md:w-auto bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 
+            <div class="p-6">
+                {/* ── FILTERS ─────────────────────────────────────────────────────── */}
+                <div class="mb-6">
+                    <div class="flex gap-3 flex-col md:flex-row flex-wrap">
+                        <input
+                            value={search()}
+                            placeholder="Search leads..."
+                            class="w-full md:w-auto bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 
                             placeholder:text-gray-400 text-sm border border-gray-200 dark:border-gray-700 
-                            rounded-lg px-4 py-2.5 shadow-sm focus:ring-2 focus:ring-green-400 
+                            rounded-lg px-4 py-2.5 shadow-sm focus:ring-1 focus:ring-green-400 
                             focus:border-green-400 focus:outline-none transition"
-                        onInput={(e) => setSearch(e.target.value)}
-                    />
+                            onInput={(e) => setSearch(e.target.value)}
+                        />
 
-                    <select
-                        class="w-full md:w-auto bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 
+                        <select
+                            class="w-full md:w-auto bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 
                             text-sm border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 
-                            shadow-sm focus:ring-2 focus:ring-green-400 focus:outline-none transition"
-                        value={performanceFilter()}
-                        onChange={(e) => setPerformanceFilter(e.target.value)}
-                    >
-                        <option value="">Total Leads Generated</option>
-                        <option>Contacted Leads</option>
-                        <option>Qualified Leads</option>
-                        <option>Follow-ups Pending</option>
-                        <option>Site Visits</option>
-                        <option>Booking/Conversions</option>
-                    </select>
+                            shadow-sm focus:ring-1 focus:ring-green-400 focus:outline-none transition"
+                            value={performanceFilter()}
+                            onChange={(e) => setPerformanceFilter(e.target.value)}
+                        >
+                            <option value="">Total Leads Generated</option>
+                            <option>Contacted Leads</option>
+                            <option>Qualified Leads</option>
+                            <option>Follow-ups Pending</option>
+                            <option>Site Visits</option>
+                            <option>Booking/Conversions</option>
+                        </select>
 
-                    <select
-                        class="w-full md:w-auto bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 
+                        <select
+                            class="w-full md:w-auto bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 
                             text-sm border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 
-                            shadow-sm focus:ring-2 focus:ring-green-400 focus:outline-none transition"
-                        value={statusFilter()}
-                        onChange={(e) => setStatusFilter(e.target.value)}
-                    >
-                        <option value="">All Statuses</option>
-                        <optgroup label="Positive Outcomes">
-                            <option>Site Visit Done</option>
-                            <option>Site Visit Scheduled</option>
-                            <option>Meeting Done</option>
-                            <option>Video Call Done</option>
-                            <option>Booking Done</option>
-                            <option>Interested</option>
-                        </optgroup>
-                        <optgroup label="Prospects">
-                            <option>Fresh Leads</option>
-                            <option>Call Later</option>
-                            <option>Not Picked</option>
-                            <option>Always Busy</option>
-                            <option>Asked to call later</option>
-                            <option>Follow-Up</option>
-                        </optgroup>
-                        <optgroup label="Junk / Invalid">
-                            <option>Not Interested</option>
-                            <option>Invalid</option>
-                            <option>Fake Lead</option>
-                            <option>Feeded Leads</option>
-                            <option>Broker</option>
-                            <option>Low Budget</option>
-                            <option>Always Not Picked</option>
-                        </optgroup>
-                    </select>
-
-                    <button
-                        onClick={handleClearFilters}
-                        class="px-4 py-2.5 text-sm font-medium rounded-lg bg-white dark:bg-gray-800 
+                            shadow-sm focus:ring-1 focus:ring-green-400 focus:outline-none transition"
+                            value={statusFilter()}
+                            onChange={(e) => setStatusFilter(e.target.value)}
+                        >
+                            <option value="">All Statuses</option>
+                            <optgroup label="Positive Outcomes">
+                                <option>Site Visit Done</option>
+                                <option>Site Visit Scheduled</option>
+                                <option>Meeting Done</option>
+                                <option>Video Call Done</option>
+                                <option>Booking Done</option>
+                                <option>Interested</option>
+                            </optgroup>
+                            <optgroup label="Prospects">
+                                <option>Fresh Leads</option>
+                                <option>Call Later</option>
+                                <option>Not Picked</option>
+                                <option>Always Busy</option>
+                                <option>Asked to call later</option>
+                                <option>Follow-Up</option>
+                            </optgroup>
+                            <optgroup label="Junk / Invalid">
+                                <option>Not Interested</option>
+                                <option>Invalid</option>
+                                <option>Fake Lead</option>
+                                <option>Feeded Leads</option>
+                                <option>Broker</option>
+                                <option>Low Budget</option>
+                                <option>Always Not Picked</option>
+                            </optgroup>
+                        </select>
+                        <button
+                            onClick={handleClearFilters}
+                            class="px-4 py-2.5 text-sm font-medium rounded-lg bg-white dark:bg-gray-800 
                             text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 
                             hover:bg-gray-50 dark:hover:bg-gray-700 shadow-sm transition"
+                        >
+                            Clear All
+                        </button>
+                    </div>
+                </div>
+
+                {/* ── 3 BLOCK CARDS ───────────────────────────────────────────────── */}
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+
+                    {/* Block 1 — Positive Outcomes */}
+                    <BlockCard
+                        key="positive"
+                        label="Positive Outcomes"
+                        sublabel="Converted / High Intent"
+                        count={() => positiveLeads().length} 
+                        pct={() => getPct(positiveLeads().length)}
+                        colorScheme="positive"
                     >
-                        Clear All
-                    </button>
+                        <StatusTag label="Booking Done" style="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300" />
+                        <StatusTag label="Site Visit Done" style="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300" />
+                        <StatusTag label="Interested" style="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300" />
+                    </BlockCard>
+
+                    {/* Block 2 — Prospects */}
+                    <BlockCard
+                        key="prospects"
+                        label="Prospects"
+                        sublabel="Active / Nurturing Stage"
+                        count={() => prospectLeads().length}
+                        pct={() => getPct(prospectLeads().length)}
+                        colorScheme="prospects"
+                    >
+                        <StatusTag label="Fresh Leads" style="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" />
+                        <StatusTag label="Follow-Up" style="bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300" />
+                        <StatusTag label="Not Picked" style="bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300" />
+                    </BlockCard>
+
+                    {/* Block 3 — Junk */}
+                    <BlockCard
+                        key="junk"
+                        label="Junk / Invalid Leads"
+                        sublabel="Low Quality"
+                        count={()=> junkLeads().length}
+                        pct={() => getPct(junkLeads().length)}
+                        colorScheme="junk"
+                    >
+                        <StatusTag label="Not Interested" style="bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300" />
+                        <StatusTag label="Fake Lead" style="bg-amber-100 text-amber-800 border border-amber-400 dark:bg-amber-900 dark:text-amber-200" />
+                        <StatusTag label="Invalid" style="bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300" />
+                    </BlockCard>
                 </div>
-            </div>
 
-            {/* ── 3 BLOCK CARDS ───────────────────────────────────────────────── */}
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-
-                {/* Block 1 — Positive Outcomes */}
-                <BlockCard
-                    key="positive"
-                    label="Positive Outcomes"
-                    sublabel="Converted / High Intent"
-                    count={positiveLeads().length}
-                    pct={() => getPct(positiveLeads().length)}
-                    colorScheme="positive"
-                >
-                    <StatusTag label="Booking Done" style="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300" />
-                    <StatusTag label="Site Visit Done" style="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300" />
-                    <StatusTag label="Interested" style="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300" />
-                </BlockCard>
-
-                {/* Block 2 — Prospects */}
-                <BlockCard
-                    key="prospects"
-                    label="Prospects"
-                    sublabel="Active / Nurturing Stage"
-                    count={prospectLeads().length}
-                    pct={() => getPct(prospectLeads().length)}
-                    colorScheme="prospects"
-                >
-                    <StatusTag label="Fresh Leads" style="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" />
-                    <StatusTag label="Follow-Up" style="bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300" />
-                    <StatusTag label="Not Picked" style="bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300" />
-                </BlockCard>
-
-                {/* Block 3 — Junk */}
-                <BlockCard
-                    key="junk"
-                    label="Junk / Invalid Leads"
-                    sublabel="Low Quality"
-                    count={junkLeads().length}
-                    pct={() => getPct(junkLeads().length)}
-                    colorScheme="junk"
-                >
-                    <StatusTag label="Not Interested" style="bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300" />
-                    <StatusTag label="Fake Lead" style="bg-amber-100 text-amber-800 border border-amber-400 dark:bg-amber-900 dark:text-amber-200" />
-                    <StatusTag label="Invalid" style="bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300" />
-                </BlockCard>
-            </div>
-
-            {/* ── DRILL-DOWN TABLES ────────────────────────────────────────────── */}
-            {activeBlock() === "positive" && (
-                <div class="mb-6">
-                    <div class="flex items-center gap-2 mb-3">
-                        <div class="w-2 h-2 rounded-full bg-green-500" />
-                        <span class="text-xs font-semibold uppercase tracking-widest text-green-600 dark:text-green-400">
-                            Positive Outcomes
-                        </span>
-                        <span class="text-xs text-gray-400 dark:text-gray-500 ml-1">
-                            ({positiveLeads().length} leads)
-                        </span>
-                    </div>
-                    <LeadTable leadList={positiveLeads} />
-                    <MobileCards leadList={positiveLeads} />
-                </div>
-            )}
-
-            {activeBlock() === "prospects" && (
-                <div class="mb-6">
-                    <div class="flex items-center gap-2 mb-3">
-                        <div class="w-2 h-2 rounded-full bg-yellow-500" />
-                        <span class="text-xs font-semibold uppercase tracking-widest text-yellow-600 dark:text-yellow-400">
-                            Prospects
-                        </span>
-                        <span class="text-xs text-gray-400 dark:text-gray-500 ml-1">
-                            ({prospectLeads().length} leads)
-                        </span>
-                    </div>
-                    <LeadTable leadList={prospectLeads} />
-                    <MobileCards leadList={prospectLeads} />
-                </div>
-            )}
-
-            {activeBlock() === "junk" && (
-                <div class="mb-6">
-                    <div class="flex items-center gap-2 mb-3">
-                        <div class="w-2 h-2 rounded-full bg-red-500" />
-                        <span class="text-xs font-semibold uppercase tracking-widest text-red-600 dark:text-red-400">
-                            Junk / Invalid Leads
-                        </span>
-                        <span class="text-xs text-gray-400 dark:text-gray-500 ml-1">
-                            ({junkLeads().length} leads)
-                        </span>
-                    </div>
-                    <LeadTable leadList={junkLeads} />
-                    <MobileCards leadList={junkLeads} />
-                </div>
-            )}
-
-            {/* ── EDIT SIDEBAR ─────────────────────────────────────────────────── */}
-            {isEditOpen() && (
-                <div class="fixed inset-0 z-50 flex">
-                    {/* Overlay */}
-                    <div
-                        class="absolute inset-0 bg-black/40 transition-opacity"
-                        onClick={() => setIsEditOpen(false)}
-                    />
-
-                    {/* Sidebar Panel */}
-                    <div class="ml-auto w-full md:w-[600px] h-full bg-white dark:bg-gray-900 shadow-2xl p-8 relative z-10 overflow-y-auto">
-                        <h2 class="text-lg font-semibold mb-1">Edit Lead Performance</h2>
-                        <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">
-                            Track lead progress and optimize your conversion strategy.
-                        </p>
-
-                        <div class="space-y-4 border border-gray-200 dark:border-gray-700 rounded-xl p-5 bg-gray-50 dark:bg-gray-800/50">
-
-                            <div class="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Name</label>
-                                    <input
-                                        value={selectedLead()?.name}
-                                        onInput={(e) => setSelectedLead({ ...selectedLead(), name: e.target.value })}
-                                        class="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                                        placeholder="Name"
-                                    />
-                                </div>
-                                <div>
-                                    <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Contact</label>
-                                    <input
-                                        value={selectedLead()?.contact}
-                                        onInput={(e) => setSelectedLead({ ...selectedLead(), contact: e.target.value })}
-                                        class="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                                        placeholder="Contact"
-                                    />
-                                </div>
-                            </div>
-
-                            <div class="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Email</label>
-                                    <input
-                                        value={selectedLead()?.email}
-                                        onInput={(e) => setSelectedLead({ ...selectedLead(), email: e.target.value })}
-                                        class="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                                        placeholder="Email"
-                                    />
-                                </div>
-                                <div>
-                                    <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Source</label>
-                                    <input
-                                        value={selectedLead()?.source}
-                                        onInput={(e) => setSelectedLead({ ...selectedLead(), source: e.target.value })}
-                                        class="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                                        placeholder="Source"
-                                    />
-                                </div>
-                            </div>
-
-                            <div class="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Status</label>
-                                    <select
-                                        value={selectedLead()?.status}
-                                        onChange={(e) => setSelectedLead({ ...selectedLead(), status: e.target.value })}
-                                        class="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                                    >
-                                        <optgroup label="Positive Outcomes">
-                                            <option>Site Visit Done</option>
-                                            <option>Site Visit Scheduled</option>
-                                            <option>Meeting Done</option>
-                                            <option>Video Call Done</option>
-                                            <option>Booking Done</option>
-                                            <option>Interested</option>
-                                        </optgroup>
-                                        <optgroup label="Prospects">
-                                            <option>Fresh Leads</option>
-                                            <option>Call Later</option>
-                                            <option>Not Picked</option>
-                                            <option>Always Busy</option>
-                                            <option>Asked to call later</option>
-                                            <option>Follow-Up</option>
-                                        </optgroup>
-                                        <optgroup label="Junk / Invalid">
-                                            <option>Not Interested</option>
-                                            <option>Invalid</option>
-                                            <option>Fake Lead</option>
-                                            <option>Feeded Leads</option>
-                                            <option>Broker</option>
-                                            <option>Low Budget</option>
-                                            <option>Always Not Picked</option>
-                                        </optgroup>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Performance</label>
-                                    <select
-                                        value={selectedLead()?.performance}
-                                        onChange={(e) => setSelectedLead({ ...selectedLead(), performance: e.target.value })}
-                                        class="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                                    >
-                                        <option>Contacted Leads</option>
-                                        <option>Qualified Leads</option>
-                                        <option>Follow-ups Pending</option>
-                                        <option>Site Visits</option>
-                                        <option>Booking/Conversions</option>
-                                    </select>
-                                </div>
-                            </div>
-
-                            <div class="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Next Follow-up</label>
-                                    <input
-                                        value={selectedLead()?.next_follow}
-                                        type="date"
-                                        onInput={(e) => setSelectedLead({ ...selectedLead(), next_follow: e.target.value })}
-                                        class="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                                    />
-                                </div>
-                                <div>
-                                    <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Created At</label>
-                                    <input
-                                        value={selectedLead()?.created}
-                                        type="date"
-                                        onInput={(e) => setSelectedLead({ ...selectedLead(), created: e.target.value })}
-                                        class="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                                    />
-                                </div>
-                            </div>
+                {/* ── DRILL-DOWN TABLES ────────────────────────────────────────────── */}
+                {activeBlock() === "positive" && (
+                    <div class="mb-6">
+                        <div class="flex items-center gap-2 mb-3">
+                            <div class="w-2 h-2 rounded-full bg-green-500" />
+                            <span class="text-xs font-semibold uppercase tracking-widest text-green-600 dark:text-green-400">
+                                Positive Outcomes
+                            </span>
+                            <span class="text-sm font-semibold text-gray-600 dark:text-gray-400 ml-1">
+                                ({positiveLeads().length} leads)
+                            </span>
                         </div>
+                        <LeadTable leadList={positiveLeads} />
+                        <MobileCards leadList={positiveLeads} />
+                    </div>
+                )}
 
-                        <div class="flex gap-3 mt-6">
-                            <button
-                                onClick={handleSave}
-                                class="px-5 py-2.5 bg-blue-900 hover:bg-blue-800 text-white text-sm font-medium rounded-lg transition"
-                            >
-                                Save Changes
-                            </button>
-                            <button
-                                onClick={() => setIsEditOpen(false)}
-                                class="px-5 py-2.5 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 text-sm font-medium 
+                {activeBlock() === "prospects" && (
+                    <div class="mb-6">
+                        <div class="flex items-center gap-2 mb-3">
+                            <div class="w-2 h-2 rounded-full bg-yellow-500" />
+                            <span class="text-xs font-semibold uppercase tracking-widest text-yellow-600 dark:text-yellow-400">
+                                Prospects
+                            </span>
+                            <span class="text-sm font-semibold text-gray-600 dark:text-gray-400 ml-1">
+                                ({prospectLeads().length} leads)
+                            </span>
+                        </div>
+                        <LeadTable leadList={prospectLeads} />
+                        <MobileCards leadList={prospectLeads} />
+                    </div>
+                )}
+
+                {activeBlock() === "junk" && (
+                    <div class="mb-6">
+                        <div class="flex items-center gap-2 mb-3">
+                            <div class="w-2 h-2 rounded-full bg-red-500" />
+                            <span class="text-xs font-semibold uppercase tracking-widest text-red-600 dark:text-red-400">
+                                Junk / Invalid Leads
+                            </span>
+                            <span class="text-sm font-semibold text-gray-600 dark:text-gray-400 ml-1">
+                                ({junkLeads().length} leads)
+                            </span>
+                        </div>
+                        <LeadTable leadList={junkLeads} />
+                        <MobileCards leadList={junkLeads} />
+                    </div>
+                )}
+
+                {/* ── EDIT SIDEBAR ─────────────────────────────────────────────────── */}
+                {isEditOpen() && (
+                    <div class="fixed inset-0 z-50 flex">
+                        {/* Overlay */}
+                        <div
+                            class="absolute inset-0 bg-black/40 transition-opacity"
+                            onClick={() => setIsEditOpen(false)}
+                        />
+
+                        {/* Sidebar Panel */}
+                        <div class="ml-auto w-full md:w-[600px] h-full bg-white dark:bg-gray-900 shadow-2xl p-8 relative z-10 overflow-y-auto">
+                            <h2 class="text-lg font-semibold mb-1">Edit Lead Performance</h2>
+                            <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">
+                                Track lead progress and optimize your conversion strategy.
+                            </p>
+
+                            <div class="space-y-4 border border-gray-200 dark:border-gray-700 rounded-xl p-5 bg-gray-50 dark:bg-gray-800/50">
+
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Name</label>
+                                        <input
+                                            value={selectedLead()?.name}
+                                            onInput={(e) => setSelectedLead({ ...selectedLead(), name: e.target.value })}
+                                            class="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                            placeholder="Name"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Contact</label>
+                                        <input
+                                            value={selectedLead()?.contact}
+                                            onInput={(e) => setSelectedLead({ ...selectedLead(), contact: e.target.value })}
+                                            class="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                            placeholder="Contact"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Email</label>
+                                        <input
+                                            value={selectedLead()?.email}
+                                            onInput={(e) => setSelectedLead({ ...selectedLead(), email: e.target.value })}
+                                            class="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                            placeholder="Email"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Source</label>
+                                        <input
+                                            value={selectedLead()?.source}
+                                            onInput={(e) => setSelectedLead({ ...selectedLead(), source: e.target.value })}
+                                            class="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                            placeholder="Source"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Status</label>
+                                        <select
+                                            value={selectedLead()?.status}
+                                            onChange={(e) => setSelectedLead({ ...selectedLead(), status: e.target.value })}
+                                            class="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                        >
+                                            <optgroup label="Positive Outcomes">
+                                                <option>Site Visit Done</option>
+                                                <option>Site Visit Scheduled</option>
+                                                <option>Meeting Done</option>
+                                                <option>Video Call Done</option>
+                                                <option>Booking Done</option>
+                                                <option>Interested</option>
+                                            </optgroup>
+                                            <optgroup label="Prospects">
+                                                <option>Fresh Leads</option>
+                                                <option>Call Later</option>
+                                                <option>Not Picked</option>
+                                                <option>Always Busy</option>
+                                                <option>Asked to call later</option>
+                                                <option>Follow-Up</option>
+                                            </optgroup>
+                                            <optgroup label="Junk / Invalid">
+                                                <option>Not Interested</option>
+                                                <option>Invalid</option>
+                                                <option>Fake Lead</option>
+                                                <option>Feeded Leads</option>
+                                                <option>Broker</option>
+                                                <option>Low Budget</option>
+                                                <option>Always Not Picked</option>
+                                            </optgroup>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Performance</label>
+                                        <select
+                                            value={selectedLead()?.performance}
+                                            onChange={(e) => setSelectedLead({ ...selectedLead(), performance: e.target.value })}
+                                            class="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                        >
+                                            <option>Contacted Leads</option>
+                                            <option>Qualified Leads</option>
+                                            <option>Follow-ups Pending</option>
+                                            <option>Site Visits</option>
+                                            <option>Booking/Conversions</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Next Follow-up</label>
+                                        <input
+                                            value={selectedLead()?.next_follow}
+                                            type="date"
+                                            onInput={(e) => setSelectedLead({ ...selectedLead(), next_follow: e.target.value })}
+                                            class="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Created At</label>
+                                        <input
+                                            value={selectedLead()?.created}
+                                            type="date"
+                                            onInput={(e) => setSelectedLead({ ...selectedLead(), created: e.target.value })}
+                                            class="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="flex gap-3 mt-6">
+                                <button
+                                    onClick={handleSave}
+                                    class="px-5 py-2.5 bg-blue-900 hover:bg-blue-800 text-white text-sm font-medium rounded-lg transition"
+                                >
+                                    Save Changes
+                                </button>
+                                <button
+                                    onClick={() => setIsEditOpen(false)}
+                                    class="px-5 py-2.5 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 text-sm font-medium 
                                     border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition"
-                            >
-                                Cancel
-                            </button>
+                                >
+                                    Cancel
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )}
+            </div>
         </div>
     );
 };

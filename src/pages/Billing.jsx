@@ -14,28 +14,28 @@ const MOCK = {
     projects: [
         {
             id: "p1",
-            name: "Project 1",
+            name: "Birla",
             proposedCPL: 500,
             qualificationPct: 50,
             deliveredLeads: 30,
             budgetAllocated: 50000,
             qualifiedLeads: 25,
             campaigns: [
-                { id: "c1", name: "Brand Awareness – Delhi", spend: 8500, dailyAvg: 850, budgetCap: 15000, leads: 17, result: "Lead" },
-                { id: "c2", name: "Retargeting – Mumbai", spend: 16500, dailyAvg: 1650, budgetCap: 20000, leads: 33, result: "Lead" },
+                { id: "c1", name: "Birla 1", spend: 8500, dailyAvg: 850, budgetCap: 15000, leads: 17, result: "Lead" },
+                { id: "c2", name: "Birla 2", spend: 16500, dailyAvg: 1650, budgetCap: 20000, leads: 33, result: "Lead" },
             ],
         },
         {
             id: "p2",
-            name: "Project 2",
+            name: "Prestige",
             proposedCPL: 1000,
             qualificationPct: 60,
             deliveredLeads: 30,
             budgetAllocated: 80000,
             qualifiedLeads: 18,
             campaigns: [
-                { id: "c3", name: "Lead Gen – Bangalore", spend: 19000, dailyAvg: 1900, budgetCap: 40000, leads: 19, result: "Lead" },
-                { id: "c4", name: "Conversion – Pune", spend: 11000, dailyAvg: 1100, budgetCap: 25000, leads: 11, result: "Lead" },
+                { id: "c3", name: "Prestige 1", spend: 19000, dailyAvg: 1900, budgetCap: 40000, leads: 19, result: "Lead" },
+                { id: "c4", name: "Prestige 2", spend: 11000, dailyAvg: 1100, budgetCap: 25000, leads: 11, result: "Lead" },
             ],
         },
     ],
@@ -450,7 +450,7 @@ function ProjectRow(props) {
 
             {/* Header button */}
             <button
-                class="w-full flex items-center justify-between px-5 py-4 text-left bg-purple-50 dark:bg-gray-800 gap-4 
+                class="w-full flex items-center justify-between px-5 py-4 text-left bg-blue-50 dark:bg-gray-800 gap-4 
           dark:hover:bg-gray-800/50 transition-all duration-200"
                 onClick={() => setOpen((v) => !v)}
             >
@@ -458,13 +458,12 @@ function ProjectRow(props) {
                 <div class="flex items-center gap-3 min-w-0">
 
                     {/* Avatar */}
-                    <div class="w-10 h-10 rounded-xl 
-                  bg-gradient-to-br from-purple-500 to-indigo-600 
+                    <div class="w-10 h-10 rounded 
+                  bg-gradient-to-br from-blue-900 to-blue-600 
                   flex items-center justify-center 
-                  text-white text-sm font-semibold shadow-md">
-                        {props.project.name.replace("Project ", "P")}
+                  text-white text-sm font-semibold ">
+                        {props.project.name?.charAt(0).toUpperCase()}
                     </div>
-
                     {/* Title */}
                     <div class="min-w-0">
                         <p class="font-semibold text-gray-900 dark:text-white text-sm truncate">
@@ -480,34 +479,34 @@ function ProjectRow(props) {
                 <div class="flex items-center gap-6 flex-shrink-0">
 
                     {/* Allocated */}
-                    <div class="hidden sm:block text-right border border-purple-200 dark:border-gray-700 py-2 px-4 rounded-lg">
-                        <p class="text-sm text-purple-900 dark:text-gray-400">Allocated</p>
+                    <div class="hidden sm:block text-right border border-blue-200 dark:border-gray-700 py-2 px-4 rounded-lg">
+                        <p class="text-sm text-blue-900 dark:text-gray-400">Allocated</p>
                         <p class="text-sm font-semibold text-gray-800 dark:text-gray-200">
                             {fmt(props.project.budgetAllocated)}
                         </p>
                     </div>
 
                     {/* Spent */}
-                    <div class="hidden sm:block text-right border border-purple-200 dark:border-gray-700 py-2 px-4 rounded-lg">
-                        <p class="text-sm text-purple-900 dark:text-gray-400">Spent</p>
+                    <div class="hidden sm:block text-right border border-blue-200 dark:border-gray-700 py-2 px-4 rounded-lg">
+                        <p class="text-sm text-blue-900 dark:text-gray-400">Spent</p>
                         <p class="text-sm font-semibold text-gray-800 dark:text-gray-200">
                             {fmt(totalSpend())}
                         </p>
                     </div>
 
                     {/* CPL */}
-                    <div class="hidden md:block text-right border border-purple-200 dark:border-gray-700 py-2 px-4 rounded-lg">
-                        <p class="text-sm text-purple-900 dark:text-gray-400">CPL</p>
+                    <div class="hidden md:block text-right border border-blue-200 dark:border-gray-700 py-2 px-4 rounded-lg">
+                        <p class="text-sm text-blue-900 dark:text-gray-400">CPL</p>
                         <p class="text-sm font-semibold text-gray-800 dark:text-gray-200">
                             {fmt(cpl())}
                         </p>
                     </div>
 
                     {/* Chevron */}
-                    <div class="p-1.5 rounded-lg bg-purple-100 dark:bg-gray-800 
-                  group-hover:bg-purple-200 dark:group-hover:bg-gray-700 transition">
+                    <div class="p-1.5 rounded-lg bg-blue-100 dark:bg-gray-800 
+                  group-hover:bg-blue-200 dark:group-hover:bg-gray-700 transition">
                         <svg
-                            class={`w-4 h-4 text-gray-500 dark:text-gray-400 transition-transform duration-300 ${open() ? "rotate-180" : ""}`}
+                            class={`w-4 h-4 text-blue-500 dark:text-blue-400 transition-transform duration-300 ${open() ? "rotate-180" : ""}`}
                             fill="none"
                             stroke="currentColor"
                             viewBox="0 0 24 24"
@@ -530,7 +529,6 @@ function ProjectRow(props) {
             >
                 <div class="px-5 pb-5 pt-4 space-y-5 
                 border-t border-gray-100 dark:border-gray-700">
-
                     <SectionLabel>Campaign-Level Spend Details</SectionLabel>
 
                     {/* Inner cards wrapper */}
@@ -538,18 +536,14 @@ function ProjectRow(props) {
                         <CampaignTable campaigns={props.project.campaigns} />
                     </div>
 
-
-
                     {/* Qualification */}
                     <div class="p-4 rounded-xl border 
                   bg-gray-50 dark:bg-gray-800/50 
                   border-gray-200 dark:border-gray-700">
                         <QualBlock project={props.project} />
                     </div>
-
                 </div>
             </div>
-
         </Card>
     );
 }
@@ -567,7 +561,6 @@ function CPLComparisonPanel(props) {
                     <p class="text-3xl font-bold  text-gray-900 dark:text-gray-100">{fmt(props.overallCPL)}</p>
                     <p class="text-sm  text-gray-500 dark:text-gray-400">{fmt(props.totalSpend)} ÷ {props.totalLeads} leads</p>
                 </div>
-
                 <For each={props.projectStats}>
                     {(proj) => (
                         <div class="rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 p-4 space-y-2">
@@ -904,31 +897,6 @@ export default function Billing() {
                         </button>
                     </div>
                 </div>
-                <nav>
-                    <ul class="flex items-center gap-1.5 mb-4 mt-2 list-none p-0">
-                        <li class="flex items-center gap-1 group cursor-pointer">
-                            <svg class="w-4 h-4 text-gray-500 transition-colors group-hover:text-purple-600"
-                                fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                    d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001 1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-                            </svg>
-
-                            <a href="/"
-                                class="text-sm text-gray-600 dark:text-gray-400 transition-colors group-hover:text-purple-600">
-                                Home
-                            </a>
-                        </li>
-                        <li class="flex items-center">
-                            <svg class="w-3 h-3 text-gray-600 dark:text-gray-400" viewBox="0 0 12 12" fill="none">
-                                <path d="M4.5 2.5L7.5 6L4.5 9.5" stroke="currentColor" stroke-width="1.2"
-                                    stroke-linecap="round" stroke-linejoin="round" />
-                            </svg>
-                        </li>
-                        <li>
-                            <span class="text-sm text-gray-500 dark:text-gray-400 font-medium">Billing</span>
-                        </li>
-                    </ul>
-                </nav>
             </header>
             {/* Sub-nav tabs */}
             <div class=" mx-auto flex gap-1">
