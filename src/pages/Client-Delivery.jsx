@@ -72,6 +72,8 @@ export default function RetainerSection() {
     {
       id: 1,
       name: "Project 1",
+      total_leads: 120,
+      spent: 1500,
       volume: 10,
       type: "Qualification",
       actualCPL: 160.92
@@ -79,6 +81,8 @@ export default function RetainerSection() {
     {
       id: 2,
       name: "Project 2",
+      total_leads: 100,
+      spent: 3500,
       volume: 20,
       type: "Overplus",
       actualCPL: 190.32
@@ -86,6 +90,8 @@ export default function RetainerSection() {
     {
       id: 3,
       name: "Project 3",
+      total_leads: 90,
+      spent: 5000,
       volume: 30,
       type: "Overplus",
       actualCPL: 220.17
@@ -382,11 +388,11 @@ export default function RetainerSection() {
 
 
                       {/* TOTAL LEADS */}
-                      <td class="text-center">{p.totalLeads}</td>
+                      <td class="text-center">{p.total_leads}</td>
 
                       {/* SPEND */}
                       <td class="text-center">
-                        ₹{p.spend?.toLocaleString()}
+                        ₹{p.spent?.toLocaleString()}
                       </td>
 
                       {/* VOLUME */}
