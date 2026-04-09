@@ -36,7 +36,7 @@ export default function RetainerSection() {
       qualified_leads: 20,
       actual_delivery: 20,
       progress: 60,
-      cpl: 160.92,
+      cpl: 500,
       spend: 9000,
       status: "On track"
     },
@@ -49,7 +49,7 @@ export default function RetainerSection() {
       qualified_leads: 25,
       actual_delivery: 20,
       progress: 50,
-      cpl: 190.32,
+      cpl: 300,
       spend: 9000,
       status: "Monitor"
     },
@@ -62,11 +62,51 @@ export default function RetainerSection() {
       qualified_leads: 40,
       actual_delivery: 30,
       progress: 50,
-      cpl: 220.17,
+      cpl: 600,
       spend: 9000,
       status: "Over CPL"
     }
   ];
+
+  // ---------- CPL STATS CALCULATIONS ----------
+
+  // TOTAL LEADS (sum of all projects)
+  const totalLeads_CPL = createMemo(() =>
+    CPLprojects.reduce((sum, p) => sum + p.totalLeads, 0)
+  );
+
+  // TOTAL QUALIFIED LEADS
+  const totalQualified = createMemo(() =>
+    CPLprojects.reduce((sum, p) => sum + p.qualified_leads, 0)
+  );
+
+  // HELPER → convert "60%" → 0.6
+  const getQualificationPercent = (q) =>
+    Number(q.replace("%", "")) / 100;
+
+  // ACTUAL DELIVERY = qualified * qualification %
+  const totalActualDelivery = createMemo(() =>
+    CPLprojects.reduce((sum, p) => {
+      return sum + (p.qualified_leads * getQualificationPercent(p.qualification));
+    }, 0)
+  );
+
+  // TOTAL SPENT = CPL * 18% GST
+  const totalSpent = createMemo(() =>
+    CPLprojects.reduce((sum, p) => {
+      const gstAmount = p.cpl * 0.18;
+      return sum + (p.cpl + gstAmount);
+    }, 0)
+  );
+
+  // ⚠️ You need this from API or define manually
+  const receivedAmount = 50000; // example
+
+  // REMAINING BALANCE
+  const remainingBalance = createMemo(() => {
+    const afterGST = receivedAmount * 0.82; // remove 18%
+    return afterGST - totalSpent();
+  });
 
   const hybrid_projects = [
     {
@@ -98,6 +138,9 @@ export default function RetainerSection() {
     }
   ];
 
+
+
+  // retainer part start
   // ---------- CALCULATIONS ----------
   const totalLeads = createMemo(() =>
     projects.reduce((s, p) => s + p.leads, 0)
@@ -123,6 +166,10 @@ export default function RetainerSection() {
     }, null);
   });
 
+  // retainer part end
+
+
+  // cpl part start
   const getStatusStyle = (status) => {
     if (status === "On track") return "bg-green-600/20 text-green-400";
     if (status === "Monitor") return "bg-yellow-500/20 text-yellow-400";
@@ -134,6 +181,7 @@ export default function RetainerSection() {
     if (cpl < 210) return "text-yellow-400";
     return "text-red-400";
   };
+  // cpl part end
 
 
   // hybrid logic
@@ -154,14 +202,23 @@ export default function RetainerSection() {
 
   // BEST PROJECT (same logic you used before)
   const bestProject_hybrid = createMemo(() => {
-    return projects.reduce((best, p) => {
+
+    //  Step 1: only consider good CPL projects
+    const validProjects = hybrid_projects.filter(p => p.actualCPL < 200);
+
+    //  fallback: if all are bad, consider all
+    const list = validProjects.length ? validProjects : hybrid_projects;
+
+    return list.reduce((best, p) => {
       if (!best) return p;
-      const score = p.volume / p.actualCPL;
-      const bestScore = best.volume / best.actualCPL;
+
+      // prioritize LOW CPL + HIGH volume
+      const score = (p.volume * 2) - p.actualCPL;
+      const bestScore = (best.volume * 2) - best.actualCPL;
+
       return score > bestScore ? p : best;
     }, null);
   });
-
   // ---------- UI ----------
   return (
     <div class="p-4 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 ">
@@ -186,7 +243,7 @@ export default function RetainerSection() {
           <Stat label="Total Leads" value={`₹${totalLeads().toLocaleString()}`} />
           <Stat label="Total spent" value={`₹${totalSpend().toLocaleString()}`} />
           <Stat label="Average CPL" value={`₹${avgCPL()}`} />
-          <Stat label="Projects active" value={projects.length} />
+          <Stat label="Remaining Balance" value={projects.length} />
         </div>
         {/* TABLE */}
         <div class="px-6 pb-6 overflow-x-auto">
@@ -265,6 +322,35 @@ export default function RetainerSection() {
           </div>
           <p>Get a clear overview of all projects, including total leads generated, overall spend, and average cost per lead (CPL).</p>
         </div>
+        {/* STATS */}
+        <div class="p-6 grid md:grid-cols-5 gap-4">
+
+          <Stat
+            label="Total Leads"
+            value={totalLeads_CPL()}
+          />
+
+          <Stat
+            label="Qualified Leads"
+            value={totalQualified()}
+          />
+
+          <Stat
+            label="Actual Delivery"
+            value={Math.round(totalActualDelivery())}
+          />
+
+          <Stat
+            label="Total Spent (incl GST)"
+            value={`₹${Math.round(totalSpent()).toLocaleString()}`}
+          />
+
+          <Stat
+            label="Remaining Balance"
+            value={`₹${Math.round(remainingBalance()).toLocaleString()}`}
+          />
+
+        </div>
         {/* TABLE */}
         <div class="overflow-x-auto">
           <table class="w-full text-sm">
@@ -291,7 +377,7 @@ export default function RetainerSection() {
                     <td class="py-3 px-4 font-medium">{p.name}</td>
                     <td class="text-center">{p.qualification}</td>
                     {/* CPL */}
-                    <td class={`text-center font-semibold ${getCPLColor(p.cpl)}`}>
+                    <td class="text-center">
                       ₹{p.cpl}
                     </td>
                     <td class="text-center">{p.totalLeads}</td>
@@ -346,6 +432,13 @@ export default function RetainerSection() {
             </div>
           </div>
           <p>Get a clear overview of all projects, including total leads generated, overall spend, and average cost per lead (CPL).</p>
+        </div>
+        {/* STATS */}
+        <div class="p-6 grid md:grid-cols-4 gap-4">
+          <Stat label="Total Leads" value={`₹${totalLeads().toLocaleString()}`} />
+          <Stat label="Total spent" value={`₹${totalSpend().toLocaleString()}`} />
+          <Stat label="Average CPL" value={`₹${avgCPL()}`} />
+          <Stat label="Projects active" value={projects.length} />
         </div>
 
         {/* PROJECT CARDS */}
@@ -434,7 +527,7 @@ export default function RetainerSection() {
           </p>
 
           <div class="grid md:grid-cols-2 gap-6">
-            <For each={hybrid_projects.slice(0, 2)}>
+            <For each={[bestProject_hybrid()]}>
               {(p) => (
                 <div>
                   <p class="text-sm">{p.name}</p>
