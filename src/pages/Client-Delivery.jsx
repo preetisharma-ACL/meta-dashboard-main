@@ -91,29 +91,27 @@ export default function RetainerSection() {
     }, 0)
   );
 
-  // TOTAL SPENT = CPL * 18% GST
   const totalSpent = createMemo(() =>
     CPLprojects.reduce((sum, p) => {
-      const gstAmount = p.cpl * 0.18;
-      return sum + (p.cpl + gstAmount);
+      const base = p.cpl * p.totalLeads;
+      return sum + (base * 1.18);
     }, 0)
   );
 
   // ⚠️ You need this from API or define manually
-  const receivedAmount = 50000; // example
+  const receivedAmount = 200000; // example
 
   // REMAINING BALANCE
   const remainingBalance = createMemo(() => {
-    const afterGST = receivedAmount * 0.82; // remove 18%
+    const afterGST = receivedAmount * 0.82; // remove 18% GST usable money
     return afterGST - totalSpent();
   });
-
   const hybrid_projects = [
     {
       id: 1,
       name: "Project 1",
       total_leads: 120,
-      spent: 1500,
+      spent: 24000,
       volume: 10,
       type: "Qualification",
       actualCPL: 160.92
@@ -122,7 +120,7 @@ export default function RetainerSection() {
       id: 2,
       name: "Project 2",
       total_leads: 100,
-      spent: 3500,
+      spent: 20000,
       volume: 20,
       type: "Overplus",
       actualCPL: 190.32
@@ -131,7 +129,7 @@ export default function RetainerSection() {
       id: 3,
       name: "Project 3",
       total_leads: 90,
-      spent: 5000,
+      spent: 18000,
       volume: 30,
       type: "Overplus",
       actualCPL: 220.17
@@ -181,6 +179,12 @@ export default function RetainerSection() {
     if (cpl < 210) return "text-yellow-400";
     return "text-red-400";
   };
+
+  const getProjectSpend = (p) => {
+    const base = p.cpl * p.totalLeads;
+    const gst = base * 0.18;
+    return base + gst; // total including GST
+  };
   // cpl part end
 
 
@@ -191,13 +195,13 @@ export default function RetainerSection() {
   const getStatus = (cpl) => (cpl < 200 ? "Under ₹200" : "Over ₹200");
 
   const getColor = (cpl) => {
-    if (cpl < 200) return "text-green-400";
-    return "text-red-400";
+    if (cpl < 200) return "text-green-700 dark:text-green-400";
+    return "text-red-700 dark:text-red-400";
   };
 
   const getStatusStyle_hybrid = (cpl) => {
-    if (cpl < 200) return "bg-green-600/20 text-green-400";
-    return "bg-red-600/20 text-red-400";
+    if (cpl < 200) return "bg-green-700 text-green-100";
+    return "bg-red-600 text-red-100";
   };
 
   // BEST PROJECT (same logic you used before)
@@ -219,6 +223,21 @@ export default function RetainerSection() {
       return score > bestScore ? p : best;
     }, null);
   });
+
+  // HYBRID TOTAL LEADS
+  const hybridTotalLeads = createMemo(() =>
+    hybrid_projects.reduce((sum, p) => sum + p.total_leads, 0)
+  );
+
+  // HYBRID TOTAL SPENT
+  const hybridTotalSpent = createMemo(() =>
+    hybrid_projects.reduce((sum, p) => sum + p.spent, 0)
+  );
+ 
+  // HYBRID AVG MODIFIED CPL
+  const hybridAvgCPL = createMemo(() => {
+    return (hybridTotalSpent() / hybridTotalLeads()).toFixed(2);
+  });
   // ---------- UI ----------
   return (
     <div class="p-4 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 ">
@@ -229,11 +248,11 @@ export default function RetainerSection() {
         {/* HEADER */}
         <div class="p-6 border-b border-gray-300 dark:border-gray-700">
           <div class="flex items-center gap-4 ">
-            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg class="w-5 h-5 text-blue-900 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
             </svg>
-            <div class="text-xl text-gray-600 dark:text-gray-400 font-semibold  text-gray-500  mb-2">
-              Project Summary ( Retainer )
+            <div class="text-xl text-blue-900 dark:text-blue-400 font-semibold    mb-2">
+              All Projects - Retainer
             </div>
           </div>
           <p>Get a clear overview of all projects, including total leads generated, overall spend, and average cost per lead (CPL).</p>
@@ -313,10 +332,10 @@ export default function RetainerSection() {
         {/* HEADER */}
         <div class="p-6 border-b border-gray-300 dark:border-gray-700">
           <div class="flex items-center gap-4 ">
-            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg class="w-5 h-5 text-blue-900 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
             </svg>
-            <div class="text-xl text-gray-600 dark:text-gray-400 font-semibold  text-gray-500  mb-2">
+            <div class="text-xl text-blue-900 dark:text-blue-400 font-semibold    mb-2">
               All projects — CPL breakdown
             </div>
           </div>
@@ -387,7 +406,7 @@ export default function RetainerSection() {
                     {/* PROGRESS BAR */}
                     <td class="text-center">
                       <div class="flex items-center gap-2 justify-center">
-                        <div class="w-24 h-2 bg-gray-700 rounded-full overflow-hidden">
+                        <div class="w-24 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
                           <div
                             class={`h-full ${p.progress >= 60
                               ? "bg-green-500"
@@ -401,7 +420,9 @@ export default function RetainerSection() {
                     </td>
 
 
-                    <td class="text-center">₹{p.spend.toLocaleString()}</td>
+                    <td class="text-center font-semibold">
+                      ₹{Math.round(getProjectSpend(p)).toLocaleString()}
+                    </td>
 
                     {/* STATUS */}
                     <td class="text-center">
@@ -424,10 +445,10 @@ export default function RetainerSection() {
         {/* HEADER */}
         <div class="p-6 border-b border-gray-300 dark:border-gray-700">
           <div class="flex items-center gap-4 ">
-            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg class="w-5 h-5 text-blue-900 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
             </svg>
-            <div class="text-xl text-gray-600 dark:text-gray-400 font-semibold  text-gray-500  mb-2">
+            <div class="text-xl text-blue-900 dark:text-blue-400 font-semibold    mb-2">
               All projects — Hybrid breakdown
             </div>
           </div>
@@ -435,10 +456,10 @@ export default function RetainerSection() {
         </div>
         {/* STATS */}
         <div class="p-6 grid md:grid-cols-4 gap-4">
-          <Stat label="Total Leads" value={`₹${totalLeads().toLocaleString()}`} />
-          <Stat label="Total spent" value={`₹${totalSpend().toLocaleString()}`} />
-          <Stat label="Average CPL" value={`₹${avgCPL()}`} />
-          <Stat label="Projects active" value={projects.length} />
+          <Stat label="Total Leads" value={hybridTotalLeads()} />
+          <Stat label="Total spent" value={`₹${hybridTotalSpent().toLocaleString()}`} />
+          <Stat label="Avg Modified CPL" value={`₹${hybridAvgCPL()}`} />
+          <Stat label="Projects active" value={hybrid_projects.length} />
         </div>
 
         {/* PROJECT CARDS */}
@@ -472,7 +493,7 @@ export default function RetainerSection() {
                         <div class="flex items-center gap-2">
                           {p.name}
                           {isBest && (
-                            <span class="text-xs px-2 py-1 rounded-full bg-green-600/20 text-green-400">
+                            <span class="text-xs px-2 py-1 rounded-full bg-green-100  dark:bg-green-600/20 text-green-700 dark:text-green-400">
                               Top performer
                             </span>
                           )}
@@ -522,16 +543,16 @@ export default function RetainerSection() {
 
         {/* BEST PERFORMANCE */}
         <div class="p-4">
-          <p class="text-xs text-gray-400 mb-4 tracking-wide">
-            BEST PERFORMING CAMPAIGN
+          <p class="text-sm text-green-700 mb-2 tracking-wide">
+            Best Performing Campaign
           </p>
 
           <div class="grid md:grid-cols-2 gap-6">
             <For each={[bestProject_hybrid()]}>
               {(p) => (
                 <div>
-                  <p class="text-sm">{p.name}</p>
-                  <p class="text-xl font-semibold text-green-400">
+                  <p class="text-sm mb-2">{p.name}</p>
+                  <p class="text-xl font-semibold text-green-700 dark:text-green-400">
                     ₹{p.actualCPL}
                   </p>
                   <p class="text-xs text-gray-500">
