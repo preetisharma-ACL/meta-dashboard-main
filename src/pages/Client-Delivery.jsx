@@ -31,6 +31,7 @@ export default function RetainerSection() {
     {
       id: 1,
       name: "Birla",
+      commitmentLeads: 100,
       qualification: "60%",
       totalLeads: 60,
       qualified_leads: 20,
@@ -38,11 +39,11 @@ export default function RetainerSection() {
       progress: 60,
       cpl: 500,
       spend: 9000,
-      status: "On track"
     },
     {
       id: 2,
       name: "Prestige",
+      commitmentLeads: 120,
       qualification: "50%",
       type: "Overplus",
       totalLeads: 75,
@@ -51,11 +52,11 @@ export default function RetainerSection() {
       progress: 50,
       cpl: 300,
       spend: 9000,
-      status: "Monitor"
     },
     {
       id: 3,
       name: "Shobha",
+      commitmentLeads: 100,
       qualification: "60%",
       type: "Overplus",
       totalLeads: 100,
@@ -64,7 +65,6 @@ export default function RetainerSection() {
       progress: 50,
       cpl: 600,
       spend: 9000,
-      status: "Over CPL"
     }
   ];
 
@@ -84,10 +84,11 @@ export default function RetainerSection() {
   const getQualificationPercent = (q) =>
     Number(q.replace("%", "")) / 100;
 
-  // ACTUAL DELIVERY = qualified * qualification %
+  // ACTUAL DELIVERY 
   const totalActualDelivery = createMemo(() =>
     CPLprojects.reduce((sum, p) => {
-      return sum + (p.qualified_leads * getQualificationPercent(p.qualification));
+      const percent = getQualificationPercent(p.qualification);
+      return sum + Math.floor(p.qualified_leads / percent);
     }, 0)
   );
 
@@ -98,7 +99,7 @@ export default function RetainerSection() {
     }, 0)
   );
 
-  // ⚠️ You need this from API or define manually
+  //  You need this from API or define manually
   const receivedAmount = 200000; // example
 
   // REMAINING BALANCE
@@ -168,17 +169,22 @@ export default function RetainerSection() {
 
 
   // cpl part start
-  const getStatusStyle = (status) => {
-    if (status === "On track") return "bg-green-600/20 text-green-400";
-    if (status === "Monitor") return "bg-yellow-500/20 text-yellow-400";
-    return "bg-red-600/20 text-red-400";
+  const cpl_getStatus = (progress) => {
+    if (progress < 50) return "Lagging";
+    if (progress < 100) return "On Track";
+    return "Completed";
+  };
+  const cpl_getStatusStyle = (progress) => {
+    if (progress < 50) return "bg-red-600 text-red-100";
+    if (progress < 100) return "bg-yellow-600 text-yellow-100";
+    return "bg-green-600 text-green-100";
   };
 
-  const getCPLColor = (cpl) => {
-    if (cpl < 180) return "text-green-400";
-    if (cpl < 210) return "text-yellow-400";
-    return "text-red-400";
-  };
+  // const getCPLColor = (cpl) => {
+  //   if (cpl < 180) return "text-green-400";
+  //   if (cpl < 210) return "text-yellow-400";
+  //   return "text-red-400";
+  // };
 
   const getProjectSpend = (p) => {
     const base = p.cpl * p.totalLeads;
@@ -233,7 +239,7 @@ export default function RetainerSection() {
   const hybridTotalSpent = createMemo(() =>
     hybrid_projects.reduce((sum, p) => sum + p.spent, 0)
   );
- 
+
   // HYBRID AVG MODIFIED CPL
   const hybridAvgCPL = createMemo(() => {
     return (hybridTotalSpent() / hybridTotalLeads()).toFixed(2);
@@ -262,7 +268,7 @@ export default function RetainerSection() {
           <Stat label="Total Leads" value={`₹${totalLeads().toLocaleString()}`} />
           <Stat label="Total spent" value={`₹${totalSpend().toLocaleString()}`} />
           <Stat label="Average CPL" value={`₹${avgCPL()}`} />
-          <Stat label="Remaining Balance" value={projects.length} />
+          <Stat label="Total Project" value={projects.length} />
         </div>
         {/* TABLE */}
         <div class="px-6 pb-6 overflow-x-auto">
@@ -377,9 +383,10 @@ export default function RetainerSection() {
             <thead class="text-gray-400 border-b border-gray-300 dark:border-gray-700">
               <tr>
                 <th class="text-left py-3 px-4">Project</th>
+                <th>Commitment Leads</th>
                 <th>Qualification</th>
                 <th>CPL</th>
-                <th>Total leads</th>
+                <th>Total Delivered leads</th>
                 <th>Qualified</th>
                 <th>Actual delivery</th>
                 <th>Progress</th>
@@ -390,49 +397,67 @@ export default function RetainerSection() {
 
             <tbody>
               <For each={CPLprojects}>
-                {(p) => (
-                  <tr class="border-b border-gray-200 dark:border-gray-700">
+                {(p) => {
+                  const qualificationPercent = getQualificationPercent(p.qualification);
 
-                    <td class="py-3 px-4 font-medium">{p.name}</td>
-                    <td class="text-center">{p.qualification}</td>
-                    {/* CPL */}
-                    <td class="text-center">
-                      ₹{p.cpl}
-                    </td>
-                    <td class="text-center">{p.totalLeads}</td>
-                    <td class="text-center">{p.qualified_leads}</td>
-                    <td class="text-center">{p.actual_delivery} </td>
+                  //  ACTUAL DELIVERY
+                  const actualDelivery = p.qualified_leads / qualificationPercent;
 
-                    {/* PROGRESS BAR */}
-                    <td class="text-center">
-                      <div class="flex items-center gap-2 justify-center">
-                        <div class="w-24 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                          <div
-                            class={`h-full ${p.progress >= 60
-                              ? "bg-green-500"
-                              : "bg-yellow-500"
-                              }`}
-                            style={{ width: `${p.progress}%` }}
-                          ></div>
+                  //  PROGRESS %
+                  const progress = (actualDelivery / p.commitmentLeads) * 100;
+
+                  return (
+                    <tr class="border-b border-gray-200 dark:border-gray-700">
+
+                      <td class="py-3 px-4 font-medium">{p.name}</td>
+                      <td class="text-center">{p.commitmentLeads}</td>
+
+                      <td class="text-center">{p.qualification}</td>
+
+                      <td class="text-center">₹{p.cpl}</td>
+
+                      <td class="text-center">{p.totalLeads}</td>
+
+                      {/*  QUALIFIED */}
+                      <td class="text-center">{p.qualified_leads}</td>
+
+                      {/*  ACTUAL DELIVERY (DYNAMIC) */}
+                      <td class="text-center">
+                        {Math.floor(actualDelivery)}
+                      </td>
+
+                      {/* PROGRESS BAR (DYNAMIC) */}
+                      <td class="text-center">
+                        <div class="flex items-center gap-2 justify-center">
+                          <div class="w-24 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                            <div
+                              class={`h-full ${progress >= 100
+                                ? "bg-green-500"
+                                : progress >= 60
+                                  ? "bg-yellow-500"
+                                  : "bg-red-500"
+                                }`}
+                              style={{ width: `${Math.min(progress, 100)}%` }}
+                            ></div>
+                          </div>
+                          <span class="text-xs">
+                            {Math.round(progress)}%
+                          </span>
                         </div>
-                        <span class="text-xs">{p.progress}%</span>
-                      </div>
-                    </td>
+                      </td>
 
+                      <td class="text-center font-semibold">
+                        ₹{Math.round(getProjectSpend(p)).toLocaleString()}
+                      </td>
 
-                    <td class="text-center font-semibold">
-                      ₹{Math.round(getProjectSpend(p)).toLocaleString()}
-                    </td>
-
-                    {/* STATUS */}
-                    <td class="text-center">
-                      <span class={`px-3 py-1 rounded-full text-xs font-medium ${getStatusStyle(p.status)}`}>
-                        {p.status}
-                      </span>
-                    </td>
-
-                  </tr>
-                )}
+                      <td class="text-center">
+                        <span class={`px-3 py-1 rounded-full text-xs font-medium ${cpl_getStatusStyle(progress)}`}>
+                          {cpl_getStatus(progress)}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                }}
               </For>
             </tbody>
           </table>
