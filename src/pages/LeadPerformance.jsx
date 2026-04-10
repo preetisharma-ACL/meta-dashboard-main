@@ -115,10 +115,9 @@ const LeadsPage = () => {
         filteredLeads().filter((l) => getCategory(l.status) === "junk")
     );
 
-    const totalFiltered = createMemo(() => filteredLeads().length || 1);
+    const totalLeads = createMemo(() => leads().length || 1);
 
-    const getPct = (count) => Math.round((count / totalFiltered()) * 100);
-
+    const getPct = (count) => Math.round((count / totalLeads()) * 100);
     // ─── Block Toggle ────────────────────────────────────────────────────────
     const toggleBlock = (key) => {
         setActiveBlock((prev) => (prev === key ? null : key));
@@ -423,7 +422,7 @@ const LeadsPage = () => {
                         key="positive"
                         label="Positive Outcomes"
                         sublabel="Converted / High Intent"
-                        count={() => positiveLeads().length} 
+                        count={() => positiveLeads().length}
                         pct={() => getPct(positiveLeads().length)}
                         colorScheme="positive"
                     >
@@ -451,7 +450,7 @@ const LeadsPage = () => {
                         key="junk"
                         label="Junk / Invalid Leads"
                         sublabel="Low Quality"
-                        count={()=> junkLeads().length}
+                        count={() => junkLeads().length}
                         pct={() => getPct(junkLeads().length)}
                         colorScheme="junk"
                     >
