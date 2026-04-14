@@ -3,6 +3,33 @@ import { onMount } from "solid-js";
 import { leads, setLeads, fetchLeads } from "../store/leadsStore";
 
 // ─── Category Mapping ───────────────────────────────────────────────────────
+const POSITIVE_OPTIONS = [
+    "Site Visit Done",
+    "Site Visit Scheduled",
+    "Meeting Done",
+    "Video Call Done",
+    "Booking Done",
+    "Interested",
+];
+
+const PROSPECT_OPTIONS = [
+    "Fresh Leads",
+    "Call Later",
+    "Not Picked",
+    "Always Busy",
+    "Asked to call later",
+    "Follow-Up",
+];
+
+const JUNK_OPTIONS = [
+    "Not Interested",
+    "Invalid",
+    "Fake Lead",
+    "Feeded Leads",
+    "Broker",
+    "Low Budget",
+    "Always Not Picked",
+];
 const POSITIVE_STATUSES = new Set([
     "Site Visit Done",
     "Site Visit Scheduled",
@@ -34,6 +61,22 @@ const LeadsPage = () => {
     onMount(() => {
         fetchLeads();
     });
+
+
+    // dynamic filter
+    const filteredStatusOptions = createMemo(() => {
+        if (activeBlock() === "positive") return POSITIVE_OPTIONS;
+        if (activeBlock() === "prospects") return PROSPECT_OPTIONS;
+        if (activeBlock() === "junk") return JUNK_OPTIONS;
+
+        // default → sab dikhao
+        return [
+            ...POSITIVE_OPTIONS,
+            ...PROSPECT_OPTIONS,
+            ...JUNK_OPTIONS,
+        ];
+    });
+
 
     // ─── Status Normalizer ───────────────────────────────────────────────────
     const normalizeStatus = (status) => {
@@ -120,7 +163,11 @@ const LeadsPage = () => {
     const getPct = (count) => Math.round((count / totalLeads()) * 100);
     // ─── Block Toggle ────────────────────────────────────────────────────────
     const toggleBlock = (key) => {
-        setActiveBlock((prev) => (prev === key ? null : key));
+        setActiveBlock((prev) => {
+            const newBlock = prev === key ? null : key;
+            setStatusFilter(""); // reset filter
+            return newBlock;
+        });
     };
 
     // ─── Edit Handlers ───────────────────────────────────────────────────────
@@ -327,6 +374,9 @@ const LeadsPage = () => {
         <span class={`text-xs px-2 py-0.5 rounded-full ${style}`}>{label}</span>
     );
 
+    // reset filter when block change
+
+
     return (
         <div class=" min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-200">
 
@@ -377,31 +427,10 @@ const LeadsPage = () => {
                             onChange={(e) => setStatusFilter(e.target.value)}
                         >
                             <option value="">All Statuses</option>
-                            <optgroup label="Positive Outcomes">
-                                <option>Site Visit Done</option>
-                                <option>Site Visit Scheduled</option>
-                                <option>Meeting Done</option>
-                                <option>Video Call Done</option>
-                                <option>Booking Done</option>
-                                <option>Interested</option>
-                            </optgroup>
-                            <optgroup label="Prospects">
-                                <option>Fresh Leads</option>
-                                <option>Call Later</option>
-                                <option>Not Picked</option>
-                                <option>Always Busy</option>
-                                <option>Asked to call later</option>
-                                <option>Follow-Up</option>
-                            </optgroup>
-                            <optgroup label="Junk / Invalid">
-                                <option>Not Interested</option>
-                                <option>Invalid</option>
-                                <option>Fake Lead</option>
-                                <option>Feeded Leads</option>
-                                <option>Broker</option>
-                                <option>Low Budget</option>
-                                <option>Always Not Picked</option>
-                            </optgroup>
+
+                            <For each={filteredStatusOptions()}>
+                                {(status) => <option value={status}>{status}</option>}
+                            </For>
                         </select>
                         <button
                             onClick={handleClearFilters}
