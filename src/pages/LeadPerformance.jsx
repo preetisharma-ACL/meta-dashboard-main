@@ -693,5 +693,4 @@ const LeadsPage = () => {
         </div>
     );
 };
-
 export default LeadsPage;

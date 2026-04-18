@@ -42,10 +42,6 @@ const FollowUp = () => {
         }, 300); // matches transition-duration below
     };
 
-
-
-
-
     const handleFormChange = (field, value) => {
         setFormData((prev) => ({ ...prev, [field]: value }));
     };
@@ -54,8 +50,6 @@ const FollowUp = () => {
         updateLead({ ...formData() });
         closeEdit();
     };
-
-
 
     const followStatuses = [
         "call later", "not picked", "call not picked",
@@ -302,11 +296,9 @@ const FollowUp = () => {
                                 Save Changes
                             </button>
                         </div>
-
                     </div>
                 </div>
             </Show>
-
         </div>
     );
 };
