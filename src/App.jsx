@@ -17,6 +17,7 @@ import Billing from './pages/Billing';
 import LeadPerformance from './pages/LeadPerformance';
 import WhatIsPerforming from './pages/WhatisPerforming';
 import Login from './pages/login/LoginForm';
+import ProtectedRoute from './routes/ProtectedRoute';
 
 function Layout(props) {
   const { isCollapsed } = useSidebar();
@@ -43,18 +44,19 @@ function App() {
       <SidebarProvider>
         <Router>
           {/* <Route path="/" component={() => <Layout><Dashboard /></Layout>} /> */}
-          <Route path="/" component={() => <Layout><ClientDashboard /></Layout>} />
-          <Route path="/add-project" component={() => <Layout><AddProject /></Layout>} />
-          <Route path="/billing" component={() => <Layout><Billing /></Layout>} />
-          <Route path="/client-delivery" component={() => <Layout><ClientDelivery/></Layout>} />
-          <Route path="/leads-performance" component={() => <Layout><LeadPerformance /></Layout>} />
-          <Route path="/what-is-performing" component={() => <Layout><WhatIsPerforming /></Layout>} />
-          <Route path="/leads" component={() => <Layout><Leads /></Layout>} />
-          <Route path="/follow-up" component={() => <Layout><FollowUp /></Layout>} />
-          <Route path="/settings" component={() => <Layout><Settings /></Layout>} />
-          <Route path="/billing" component={() => <Layout><Billing /></Layout>} />
-          <Route path="/all-campaigns" component={() => <Layout><ProjectDetails /></Layout>} />
-          <Route path="/campaign/:id" component={() => <Layout> <CampaignDetails /> </Layout>} />
+          
+          <Route path="/" component={() => <ProtectedRoute><Layout><ClientDashboard /></Layout></ProtectedRoute>} />
+          <Route path="/add-project" component={() =>  <ProtectedRoute><Layout><AddProject /></Layout></ProtectedRoute>} />
+          <Route path="/billing" component={() =><ProtectedRoute><Layout><Billing /></Layout></ProtectedRoute>} />
+          <Route path="/client-delivery" component={() => <ProtectedRoute><Layout><ClientDelivery/></Layout></ProtectedRoute>} />
+          <Route path="/leads-performance" component={() => <ProtectedRoute><Layout><LeadPerformance /></Layout></ProtectedRoute>} />
+          <Route path="/what-is-performing" component={() => <ProtectedRoute><Layout><WhatIsPerforming /></Layout></ProtectedRoute>} />
+          <Route path="/leads" component={() => <ProtectedRoute><Layout><Leads /></Layout></ProtectedRoute>} />
+          <Route path="/follow-up" component={() => <ProtectedRoute><Layout><FollowUp /></Layout></ProtectedRoute>} />
+          <Route path="/settings" component={() =><ProtectedRoute><Layout><Settings /></Layout></ProtectedRoute>} />
+          <Route path="/billing" component={() => <ProtectedRoute><Layout><Billing /></Layout></ProtectedRoute>} />
+          <Route path="/project/:id" component={() => <ProtectedRoute><Layout><ProjectDetails /></Layout></ProtectedRoute>} />
+          <Route path="/campaign/:id" component={() => <ProtectedRoute><Layout> <CampaignDetails /> </Layout></ProtectedRoute>} />
           <Route path="/login" component={() => <Login />} />
         </Router>
       </SidebarProvider>

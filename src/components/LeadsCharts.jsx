@@ -167,7 +167,7 @@ export default function PerformanceChart() {
 
   // ---------------- UI ----------------
   return (
-    <div class="bg-white dark:bg-gray-900 p-6 rounded-lg shadow">
+    <div class="bg-white dark:bg-gray-900 p-2 rounded-lg shadow">
 
       {/* HEADER */}
       <div class="flex justify-between items-center mb-4">

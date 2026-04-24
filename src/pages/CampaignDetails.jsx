@@ -3,46 +3,56 @@ import LeadsChart from "../components/LeadsCharts";
 import { Folder, Target, CalendarDays, CalendarClock, Activity } from "lucide-solid";
 import { Eye, Users, IndianRupee, TrendingDown, TrendingUp } from "lucide-solid";
 import { User, MapPin, Crosshair } from "lucide-solid";
+import { createSignal, onMount } from "solid-js";
+import { fetchCampaignDetails } from "../services/campaignDetails-service";
 
 export default function CampaignDetails() {
     const params = useParams();
+    const [campaign, setCampaign] = createSignal(null);
+    // const campaign = {
+    //     name: "Summer Sale Campaign",
+    //     objective: "Conversions",
+    //     startDate: "2026-02-01",
+    //     stopDate: "2026-02-28",
+    //     status: "Active",
 
-    const campaign = {
-        name: "Summer Sale Campaign",
-        objective: "Conversions",
-        startDate: "2026-02-01",
-        stopDate: "2026-02-28",
-        status: "Active",
+    //     impressions: "120,450",
+    //     reach: "95,300",
+    //     spend: "₹45,200",
+    //     costPerResult: "₹120",
+    //     roas: "3.8x",
 
-        impressions: "120,450",
-        reach: "95,300",
-        spend: "₹45,200",
-        costPerResult: "₹120",
-        roas: "3.8x",
-
-        age: "18 - 35",
-        gender: "Male & Female",
-        region: "Delhi, Mumbai, Bangalore",
-        targeting: "Shopping & Fashion Interests"
-    };
+    //     age: "18 - 35",
+    //     gender: "Male & Female",
+    //     region: "Delhi, Mumbai, Bangalore",
+    //     targeting: "Shopping & Fashion Interests"
+    // };
+    onMount(async () => {
+        try {
+            const res = await fetchCampaignDetails(params.id);
+            setCampaign(res.data); //  IMPORTANT
+        } catch (err) {
+            console.log(err);
+        }
+    });
 
     return (
-        <div class="p-6 bg-gray-50 dark:bg-gray-900 min-h-screen">
+        <div class="p-6  bg-gray-50 dark:bg-gray-900 min-h-screen">
 
             {/* Header */}
 
-            <div class=" flex items-center gap-4">
+            <div class=" flex flex-col  gap-4">
                 <div>
-                    <h1 class="text-2xl font-semibold text-gray-800 dark:text-white">
-                        Campaign Details : {params.id}
+                    <h1 class="md:text-2xl text-xl font-semibold text-gray-800 dark:text-white">
+                        Campaign Details : {campaign()?.name}
                     </h1>
                     {/* <p class="text-sm text-gray-500 dark:text-gray-400">
                         Campaign ID: {params.id}
                     </p> */}
                 </div>
 
-                <span class="px-4 py-1 text-sm rounded-full bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
-                    {campaign.status}
+                <span class="px-4 py-1 text-sm rounded-full w-20 bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
+                   {campaign()?.status_label}
                 </span>
             </div>
             <nav>
@@ -91,7 +101,7 @@ export default function CampaignDetails() {
                         <div>
                             <p class="text-lg text-blue-800 dark:text-gray-400">Impressions</p>
                             <h3 class="text-xl font-semibold mt-2 dark:text-white">
-                                {campaign.impressions}
+                                {campaign()?.impressions}
                             </h3>
                         </div>
                         <div class="flex bg-blue-100 dark:bg-blue-500 p-3 rounded items-center gap-1 mt-2 text-sm text-gray-500 dark:text-gray-400">
@@ -104,7 +114,7 @@ export default function CampaignDetails() {
                         <div>
                             <p class="text-lg text-red-800 dark:text-gray-400">Reach</p>
                             <h3 class="text-xl font-semibold mt-2 dark:text-white">
-                                {campaign.reach}
+                               {campaign()?.reach}
                             </h3>
                         </div>
                         <div class="flex bg-red-100 dark:bg-purple-500 p-3 rounded items-center gap-1 mt-2 text-sm text-gray-500 dark:text-gray-400">
@@ -117,7 +127,7 @@ export default function CampaignDetails() {
                         <div>
                             <p class="text-lg text-green-800 dark:text-gray-400">Spend</p>
                             <h3 class="text-xl font-semibold mt-2 dark:text-white">
-                                {campaign.spend}
+                               ₹{campaign()?.spend}
                             </h3>
                         </div>
                         <div class="flex bg-green-100 dark:bg-green-500 p-3 rounded items-center gap-1 mt-2 text-sm text-gray-500 dark:text-gray-400">
@@ -130,7 +140,7 @@ export default function CampaignDetails() {
                         <div>
                             <p class="text-lg text-purple-800 dark:text-gray-400">ROAS</p>
                             <h3 class="text-xl font-semibold mt-2 dark:text-white">
-                                {campaign.roas}
+                               {campaign()?.roas || "N/A"}
                             </h3>
                         </div>
                         <div class="flex bg-purple-100 dark:bg-purple-500 p-3 rounded items-center gap-1 mt-2 text-sm text-gray-500 dark:text-gray-400">
@@ -157,7 +167,7 @@ export default function CampaignDetails() {
                                     <Folder size={16} />
                                     Campaign Name
                                 </td>
-                                <td class="p-4 font-medium dark:text-white">{campaign.name}</td>
+                                <td class="p-4 md:font-medium text-sm dark:text-white">{campaign()?.name}</td>
                             </tr>
 
                             <tr class="border-b dark:border-gray-700">
@@ -165,15 +175,15 @@ export default function CampaignDetails() {
                                     <Target size={16} />
                                     Objective
                                 </td>
-                                <td class="p-4 font-medium dark:text-white">{campaign.objective}</td>
-                            </tr>
+                                <td class="p-4 font-medium dark:text-white">{campaign()?.objective_label}</td>
+                            </tr> 
 
                             <tr class="border-b dark:border-gray-700">
                                 <td class="p-4 text-gray-500 dark:text-gray-400 flex items-center gap-2">
                                     <CalendarDays size={16} />
                                     Start Date
                                 </td>
-                                <td class="p-4 font-medium dark:text-white">{campaign.startDate}</td>
+                                <td class="p-4 font-medium dark:text-white">{campaign()?.start_date}</td>
                             </tr>
 
                             <tr class="border-b dark:border-gray-700">
@@ -181,7 +191,7 @@ export default function CampaignDetails() {
                                     <CalendarClock size={16} />
                                     Stop Date
                                 </td>
-                                <td class="p-4 font-medium dark:text-white">{campaign.stopDate}</td>
+                                <td class="p-4 font-medium dark:text-white">{campaign()?.stop_date}</td>
                             </tr>
 
                             <tr>
@@ -191,7 +201,7 @@ export default function CampaignDetails() {
                                 </td>
                                 <td class="p-4 font-medium dark:text-white">
                                     <span class="px-4 py-1 text-sm rounded-full bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
-                                        {campaign.status}
+                                        {campaign()?.status_label}
                                     </span>
                                 </td>
                             </tr>
@@ -217,7 +227,7 @@ export default function CampaignDetails() {
                                     <Eye size={16} class="text-gray-400 dark:text-gray-300" />
                                     Impressions
                                 </td>
-                                <td class="p-4 font-medium dark:text-white">{campaign.impressions}</td>
+                                <td class="p-4 font-medium dark:text-white">{campaign()?.impressions}</td>
                             </tr>
 
                             <tr class="border-b dark:border-gray-700">
@@ -225,7 +235,7 @@ export default function CampaignDetails() {
                                     <Users size={16} class="text-gray-400 dark:text-gray-300" />
                                     Reach
                                 </td>
-                                <td class="p-4 font-medium dark:text-white">{campaign.reach}</td>
+                                <td class="p-4 font-medium dark:text-white">{campaign()?.reach}</td>
                             </tr>
 
                             <tr class="border-b dark:border-gray-700">
@@ -233,7 +243,7 @@ export default function CampaignDetails() {
                                     <IndianRupee size={16} class="text-green-500" />
                                     Spend
                                 </td>
-                                <td class="p-4 font-medium dark:text-white">{campaign.spend}</td>
+                                <td class="p-4 font-medium dark:text-white">₹{campaign()?.spend}</td>
                             </tr>
 
                             <tr class="border-b dark:border-gray-700">
@@ -241,7 +251,7 @@ export default function CampaignDetails() {
                                     <TrendingDown size={16} class="text-yellow-500" />
                                     Cost Per Result
                                 </td>
-                                <td class="p-4 font-medium dark:text-white">{campaign.costPerResult}</td>
+                                <td class="p-4 font-medium dark:text-white">{campaign()?.cpl || "N/A"}</td>
                             </tr>
 
                             <tr>
@@ -249,7 +259,7 @@ export default function CampaignDetails() {
                                     <TrendingUp size={16} class="text-green-500" />
                                     ROAS
                                 </td>
-                                <td class="p-4 font-medium dark:text-white">{campaign.roas}</td>
+                                <td class="p-4 font-medium dark:text-white">{campaign()?.roas || "N/A"}</td>
                             </tr>
                         </tbody>
                     </table>
@@ -276,28 +286,28 @@ export default function CampaignDetails() {
                                 <Users size={16} class="text-gray-400 dark:text-gray-300" />
                                 Age Group
                             </td>
-                            <td class="p-4 font-medium dark:text-white">{campaign.age}</td>
+                            <td class="p-4 font-medium dark:text-white">{campaign()?.age}</td>
                         </tr>
                         <tr class="border-b dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 transition">
                             <td class="p-4 text-gray-500 dark:text-gray-400 flex items-center gap-2">
                                 <User size={16} class="text-gray-400 dark:text-gray-300" />
                                 Gender
                             </td>
-                            <td class="p-4 font-medium dark:text-white">{campaign.gender}</td>
+                            <td class="p-4 font-medium dark:text-white">{campaign()?.gender}</td>
                         </tr>
                         <tr class="border-b dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 transition">
                             <td class="p-4 text-gray-500 dark:text-gray-400 flex items-center gap-2">
                                 <MapPin size={16} class="text-red-500" />
                                 Region
                             </td>
-                            <td class="p-4 font-medium dark:text-white">{campaign.region}</td>
+                            <td class="p-4 font-medium dark:text-white">{campaign()?.region}</td>
                         </tr>
                         <tr class="hover:bg-gray-50 dark:hover:bg-gray-800 transition">
                             <td class="p-4 text-gray-500 dark:text-gray-400 flex items-center gap-2">
                                 <Crosshair size={16} class="text-blue-500" />
                                 Targeting
                             </td>
-                            <td class="p-4 font-medium dark:text-white">{campaign.targeting}</td>
+                            <td class="p-4 font-medium dark:text-white">{campaign()?.targeting}</td>
                         </tr>
                     </tbody>
                 </table>

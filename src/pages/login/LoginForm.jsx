@@ -1,13 +1,89 @@
-import { createSignal } from "solid-js";
+import { createSignal, onMount } from "solid-js";
 import { useNavigate } from "@solidjs/router";
+import { loginUser } from "../../services/login-service";
+
+
+// ✅ Logout Function (FIXED)
+export const handleLogout = () => {
+    console.log("User Logout");
+
+    // ✅ 1. Remove auth
+    localStorage.removeItem("auth");
+
+    // ✅ 2. Force redirect (works globally)
+    window.location.href = "/login";
+};
 
 export default function Login() {
     const [email, setEmail] = createSignal("");
     const [password, setPassword] = createSignal("");
     const [loading, setLoading] = createSignal(false);
     const [error, setError] = createSignal("");
+    const [isLoggedIn, setIsLoggedIn] = createSignal(false);
 
     const navigate = useNavigate();
+
+    // ✅ Check if already logged in
+    onMount(() => {
+        const auth = JSON.parse(localStorage.getItem("auth"));
+        if (auth?.token) {
+            setIsLoggedIn(true);
+            navigate("/", { replace: true });
+        }
+    });
+
+    // const handleSubmit = async (e) => {
+    //     e.preventDefault();
+
+    //     setLoading(true);
+    //     setError("");
+
+    //     try {
+    //         const res = await fetch("http://192.168.1.48:4756/api/auth/login/", {
+    //             method: "POST",
+    //             headers: {
+    //                 "Content-Type": "application/json",
+    //             },
+    //             body: JSON.stringify({
+    //                 email: email(),
+    //                 password: password(),
+    //             }),
+    //         });
+
+    //         const data = await res.json();
+    //         console.log("Login response:", data);
+
+    //         if (!res.ok) {
+    //             throw new Error(data?.message || "Invalid credentials");
+    //         }
+
+    //         const token = data?.data?.access_token;
+
+    //         if (!token) {
+    //             throw new Error("Token not found in response");
+    //         }
+
+    //         const authData = {
+    //             token: token,
+    //             user: data?.data?.user || null,
+    //             isAuthenticated: true,
+    //         };
+
+    //         localStorage.setItem("auth", JSON.stringify(authData));
+
+    //         setIsLoggedIn(true);
+
+    //         // 🚀 Redirect after login
+    //         navigate("/", { replace: true });
+
+    //     } catch (err) {
+    //         console.error(err);
+    //         setError(err.message);
+    //     } finally {
+    //         setLoading(false);
+    //     }
+    // };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
 
@@ -15,43 +91,29 @@ export default function Login() {
         setError("");
 
         try {
-            const res = await fetch("http://192.168.1.38:4756/api/auth/login/", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                    email: email(),
-                    password: password(),
-                }),
-            });
+            // ✅ Call reusable function
+            const res = await loginUser(email(), password());
 
-            const data = await res.json();
-            console.log("Login response:", data);
+            console.log("Login response:", res);
 
-            if (!res.ok) {
-                throw new Error(data?.message || "Invalid credentials");
-            }
-
-            // ✅ Extract correct token
-            const token = data?.data?.access_token;
+            const token = res?.data?.access_token;
 
             if (!token) {
-                throw new Error("Token not found in response");
+                throw new Error("Token not found");
             }
 
-            // ✅ Create single auth object
             const authData = {
                 token: token,
-                user: data.user || null, // depends on API
+                user: res?.data?.user || null,
                 isAuthenticated: true,
             };
 
-            // ✅ Store in localStorage
             localStorage.setItem("auth", JSON.stringify(authData));
+            window.dispatchEvent(new Event("storage")); // 👈 triggers sidebar to update instantly
 
-            // 🚀 Redirect
-            navigate("/");
+            setIsLoggedIn(true);
+
+            navigate("/", { replace: true });
 
         } catch (err) {
             console.error(err);
@@ -60,6 +122,7 @@ export default function Login() {
             setLoading(false);
         }
     };
+
     return (
         <div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-100 via-white to-blue-100 px-4">
 
@@ -70,48 +133,62 @@ export default function Login() {
                 </h2>
 
                 <p class="text-sm text-gray-500 text-center mb-6">
-                    Login to your account
+                    {isLoggedIn() ? "You are logged in" : "Login to your account"}
                 </p>
 
-                {/* ❌ Error Message */}
+                {/* ❌ Error */}
                 {error() && (
                     <div class="mb-4 text-red-500 text-sm text-center">
                         {error()}
                     </div>
                 )}
 
-                <form onSubmit={handleSubmit} class="space-y-4">
+                {/* ✅ Show Login Form only if NOT logged in */}
+                {!isLoggedIn() && (
+                    <form onSubmit={handleSubmit} class="space-y-4">
 
-                    <div>
-                        <label class="text-sm text-gray-600">Email</label>
-                        <input
-                            type="email"
-                            value={email()}
-                            onInput={(e) => setEmail(e.target.value)}
-                            class="w-full mt-1 px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-400"
-                            required
-                        />
-                    </div>
+                        <div>
+                            <label class="text-sm text-gray-600">Email</label>
+                            <input
+                                type="email"
+                                value={email()}
+                                onInput={(e) => setEmail(e.target.value)}
+                                class="w-full mt-1 px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-400"
+                                required
+                            />
+                        </div>
 
-                    <div>
-                        <label class="text-sm text-gray-600">Password</label>
-                        <input
-                            type="password"
-                            value={password()}
-                            onInput={(e) => setPassword(e.target.value)}
-                            class="w-full mt-1 px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-400"
-                            required
-                        />
-                    </div>
+                        <div>
+                            <label class="text-sm text-gray-600">Password</label>
+                            <input
+                                type="password"
+                                value={password()}
+                                onInput={(e) => setPassword(e.target.value)}
+                                class="w-full mt-1 px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-400"
+                                required
+                            />
+                        </div>
 
+                        <button
+                            type="submit"
+                            disabled={loading()}
+                            class="w-full bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700 transition shadow-md disabled:opacity-50"
+                        >
+                            {loading() ? "Logging in..." : "Login"}
+                        </button>
+                    </form>
+                )}
+
+                {/* ✅ Logout Button */}
+                {isLoggedIn() && (
                     <button
-                        type="submit"
-                        disabled={loading()}
-                        class="w-full bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700 transition shadow-md disabled:opacity-50"
+                        onClick={handleLogout}
+                        class="w-full mt-4 bg-red-500 text-white py-2 rounded-lg hover:bg-red-600 transition shadow-md"
                     >
-                        {loading() ? "Logging in..." : "Login"}
+                        Logout
                     </button>
-                </form>
+                )}
+
             </div>
         </div>
     );

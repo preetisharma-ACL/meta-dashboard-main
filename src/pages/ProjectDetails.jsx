@@ -1,6 +1,6 @@
 import { For, Show, createMemo, createSignal } from "solid-js";
 import { DateRangeFilter } from "../components/DateRangeFilter";
-import { A } from "@solidjs/router";
+import { A, useParams } from "@solidjs/router";
 import { useLocation } from "@solidjs/router";
 import { Users, PhoneCall, BadgeCheck, MapPin, Home, TrendingUp } from "lucide-solid";
 import {
@@ -12,6 +12,8 @@ import {
 import { onMount, onCleanup } from "solid-js";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
+import { fetchCampaigns, fetchCampaignInsights, fetchProjectById } from "../services/campaigns";
+
 
 /* ================= STATIC PROJECT INFO ================= */
 
@@ -38,9 +40,17 @@ export default function ProjectDetails() {
 
     const location = useLocation();
     const project = location.state?.project;
+
+
     const today = new Date();
 
+    const params = useParams();
+    const projectId = params.id;
+    console.log('project id ', projectId);
+
     const [showNotifications, setShowNotifications] = createSignal(false);
+
+
 
 
     /* ================= FILTER STATES ================= */
@@ -50,134 +60,262 @@ export default function ProjectDetails() {
     const [search, setSearch] = createSignal("");
     const [statusFilter, setStatusFilter] = createSignal("All");
     const [page, setPage] = createSignal(1);
+    const [campaigns, setCampaigns] = createSignal([]);
+    const [pageSize, setPageSize] = createSignal(20);
+    const [total, setTotal] = createSignal(0);
+    const [totalPages, setTotalPages] = createSignal(1);
+    const [hasNext, setHasNext] = createSignal(false);
+    const [hasPrev, setHasPrev] = createSignal(false);
 
     const rowsPerPage = 10;
 
     /* ================= RAW CAMPAIGN DATA ================= */
 
-    const initialData = [
-        {
-            number: 1,
-            id: "birla-1",
-            campaign_name: "Birla 1",
-            location: "Noida NCR",
-            ad_account: "preeti sharma",
-            status: "Live",
-            reach: "20",
-            clicks: "40",
-            cpl: 200,
-            spent: 34890,
-            leadsByDate: {
-                "2026-02-05": 12,
-                "2026-02-14": 8,
-                "2026-02-12": 5,
-            },
-        },
-        {
-            number: 2,
-            id: "birla-2",
-            campaign_name: "Birla 2",
-            location: "Noida NCR",
-            ad_account: "preeti sharma",
-            status: "paused",
-            reach: "20",
-            clicks: "40",
-            cpl: 150,
-            spent: 34890,
-            leadsByDate: {
-                "2026-02-13": 20,
-                "2026-02-15": 20,
-                "2026-02-14": 10,
-                "2026-02-16": 6,
-            },
-        },
-        {
-            number: 3,
-            id: "birla-3",
-            campaign_name: "Birla 3",
-            location: "Noida NCR",
-            ad_account: "preeti sharma",
-            status: "Live",
-            reach: "20",
-            clicks: "40",
-            cpl: 250,
-            spent: 34890,
-            leadsByDate: {
-                "2026-02-02": 20,
-                "2026-02-14": 10,
-                "2026-02-11": 6,
-            },
-        },
-        {
-            number: 4,
-            id: "birla-4",
-            campaign_name: "Birla 4",
-            location: "Noida NCR",
-            ad_account: "preeti sharma",
-            status: "Live",
-            reach: "20",
-            clicks: "40",
-            cpl: 150,
-            spent: 34890,
-            leadsByDate: {
-                "2026-02-02": 20,
-                "2026-02-14": 10,
-                "2026-02-16": 6,
-            },
-        },
-        {
-            number: 5,
-            id: "birla-5",
-            campaign_name: "Birla 5",
-            location: "Noida NCR",
-            ad_account: "preeti sharma",
-            status: "Live",
-            reach: "20",
-            clicks: "40",
-            spent: 34890,
-            cpl: 200,
-            leadsByDate: {
-                "2026-02-02": 20,
-                "2026-02-14": 10,
-                "2026-02-16": 6,
-            },
-        },
-        {
-            number: 6,
-            id: "birla-6",
-            campaign_name: "Birla 6",
-            location: "Noida NCR",
-            ad_account: "preeti sharma",
-            status: "Live",
-            reach: "20",
-            clicks: "40",
-            cpl: 200,
-            spent: 34890,
-            leadsByDate: {
-                "2026-02-02": 20,
-                "2026-02-14": 10,
-                "2026-02-17": 6,
-            },
-        },
-        {
-            number: 7,
-            id: "birla-7",
-            campaign_name: "Birla 7",
-            location: "Noida NCR",
-            ad_account: "preeti sharma",
-            status: "Live",
-            reach: "20",
-            clicks: "40",
-            cpl: 200,
-            spent: 34890,
-            leadsByDate: {
-                "2026-02-02": 20,
-                "2026-02-15": 10,
-                "2026-02-16": 6,
-            },
-        },
-    ];
+    // const campaigns() = [
+    //     {
+    //         number: 1,
+    //         id: "birla-1",
+    //         campaign_name: "Birla 1",
+    //         location: "Noida NCR",
+    //         ad_account: "preeti sharma",
+    //         status: "Live",
+    //         reach: "20",
+    //         clicks: "40",
+    //         cpl: 200,
+    //         spent: 34890,
+    //         leadsByDate: {
+    //             "2026-02-05": 12,
+    //             "2026-02-14": 8,
+    //             "2026-02-12": 5,
+    //         },
+    //     },
+    //     {
+    //         number: 2,
+    //         id: "birla-2",
+    //         campaign_name: "Birla 2",
+    //         location: "Noida NCR",
+    //         ad_account: "preeti sharma",
+    //         status: "paused",
+    //         reach: "20",
+    //         clicks: "40",
+    //         cpl: 150,
+    //         spent: 34890,
+    //         leadsByDate: {
+    //             "2026-02-13": 20,
+    //             "2026-02-15": 20,
+    //             "2026-02-14": 10,
+    //             "2026-02-16": 6,
+    //         },
+    //     },
+    //     {
+    //         number: 3,
+    //         id: "birla-3",
+    //         campaign_name: "Birla 3",
+    //         location: "Noida NCR",
+    //         ad_account: "preeti sharma",
+    //         status: "Live",
+    //         reach: "20",
+    //         clicks: "40",
+    //         cpl: 250,
+    //         spent: 34890,
+    //         leadsByDate: {
+    //             "2026-02-02": 20,
+    //             "2026-02-14": 10,
+    //             "2026-02-11": 6,
+    //         },
+    //     },
+    //     {
+    //         number: 4,
+    //         id: "birla-4",
+    //         campaign_name: "Birla 4",
+    //         location: "Noida NCR",
+    //         ad_account: "preeti sharma",
+    //         status: "Live",
+    //         reach: "20",
+    //         clicks: "40",
+    //         cpl: 150,
+    //         spent: 34890,
+    //         leadsByDate: {
+    //             "2026-02-02": 20,
+    //             "2026-02-14": 10,
+    //             "2026-02-16": 6,
+    //         },
+    //     },
+    //     {
+    //         number: 5,
+    //         id: "birla-5",
+    //         campaign_name: "Birla 5",
+    //         location: "Noida NCR",
+    //         ad_account: "preeti sharma",
+    //         status: "Live",
+    //         reach: "20",
+    //         clicks: "40",
+    //         spent: 34890,
+    //         cpl: 200,
+    //         leadsByDate: {
+    //             "2026-02-02": 20,
+    //             "2026-02-14": 10,
+    //             "2026-02-16": 6,
+    //         },
+    //     },
+    //     {
+    //         number: 6,
+    //         id: "birla-6",
+    //         campaign_name: "Birla 6",
+    //         location: "Noida NCR",
+    //         ad_account: "preeti sharma",
+    //         status: "Live",
+    //         reach: "20",
+    //         clicks: "40",
+    //         cpl: 200,
+    //         spent: 34890,
+    //         leadsByDate: {
+    //             "2026-02-02": 20,
+    //             "2026-02-14": 10,
+    //             "2026-02-17": 6,
+    //         },
+    //     },
+    //     {
+    //         number: 7,
+    //         id: "birla-7",
+    //         campaign_name: "Birla 7",
+    //         location: "Noida NCR",
+    //         ad_account: "preeti sharma",
+    //         status: "Live",
+    //         reach: "20",
+    //         clicks: "40",
+    //         cpl: 200,
+    //         spent: 34890,
+    //         leadsByDate: {
+    //             "2026-02-02": 20,
+    //             "2026-02-15": 10,
+    //             "2026-02-16": 6,
+    //         },
+    //     },
+    // ];
 
+
+
+    const loadProject = async () => {
+        try {
+            const res = await fetchProjectById(projectId);
+        } catch (err) {
+            console.error(err);
+        }
+    };
+
+    // ✅ No floating code here — insightsResults belongs INSIDE loadCampaigns below
+
+    const loadCampaigns = async (pageNo = 1, searchValue = "") => {
+        try {
+            const res = await fetchCampaigns(pageNo, projectId, searchValue);
+            const apiData = res.data.results || res.data || [];
+
+            if (!Array.isArray(apiData)) {
+                setCampaigns([]);
+                return;
+            }
+
+            // ✅ insightsResults is INSIDE loadCampaigns
+            const insightsResults = await Promise.all(
+                apiData.map(item =>
+                    fetchCampaignInsights(item.id)
+                        .then(r => {
+                            console.log(`✅ insights for ${item.id}:`, r);
+                            return { id: item.id, insights: r.data || [] };
+                        })
+                        .catch((err) => {
+                            console.error(`❌ insights FAILED for ${item.id}:`, err);
+                            return { id: item.id, insights: [] };
+                        })
+                )
+            );
+
+            const insightsMap = {};
+            insightsResults.forEach(({ id, insights }) => {
+                insightsMap[id] = insights;
+            });
+
+            const formatted = apiData.map((item, index) => ({
+                number: index + 1,
+                id: item.id,
+                campaign_name: item.name
+                    ? `${item.name.split("|").slice(1, 2).map(s => s.trim()).join(" | ")} | ${item.start_date || "No Date"}`
+                    : "No Name",
+                start_date: item.start_date || "No Date",
+                location: item.project_name || "-",
+                ad_account: item.ad_account_name || "-",
+                status: item.status === "paused" ? "paused" : "Live",
+                cpl: item.cpl || 0,
+                insights: insightsMap[item.id] || [],
+            }));
+
+            setCampaigns(formatted);
+            console.log("formatted campaigns with insights:", formatted.map(c => ({
+                id: c.id,
+                insightsCount: c.insights?.length,
+                firstInsight: c.insights?.[0]
+            })));
+
+            const meta = res?.meta?.pagination;
+            if (meta) {
+                setPage(meta.page);
+                setPageSize(meta.page_size);
+                setTotal(meta.total);
+                setTotalPages(meta.total_pages);
+                setHasNext(meta.has_next);
+                setHasPrev(meta.has_prev);
+            }
+        } catch (err) {
+            console.error("API error:", err);
+            setCampaigns([]);
+        }
+    };
+    onMount(() => {
+        if (projectId) {
+            loadProject();      // 👈 NEW
+            loadCampaigns(1);   // 👈 existing
+        }
+    });
+
+
+    // Add this inside ProjectDetails component
+    const getInsightsInRange = (insights, from, to) => {
+        console.log("=== getInsightsInRange called ===");
+        console.log("from:", from);
+        console.log("to:", to);
+        console.log("insights length:", insights?.length);
+        console.log("insights sample:", insights?.[0]);
+
+        if (!insights?.length) {
+            return { leads: 0, clicks: 0, reach: 0, spent: 0, cpl: 0 };
+        }
+
+        const filtered = (!from || !to)
+            ? insights
+            : insights.filter(d => {
+                const date = new Date(d.date + "T00:00:00");
+                const start = new Date(from);
+                const end = new Date(to);
+                start.setHours(0, 0, 0, 0);
+                end.setHours(23, 59, 59, 999);
+
+                console.log(`date: ${d.date} → ${date} | start: ${start} | end: ${end} | match: ${date >= start && date <= end}`);
+                return date >= start && date <= end;
+            });
+
+        console.log("filtered length:", filtered.length);
+
+        const totalLeads = filtered.reduce((s, d) => s + (d.leads || 0), 0);
+        const totalClicks = filtered.reduce((s, d) => s + (d.clicks || 0), 0);
+        const totalReach = filtered.reduce((s, d) => s + (d.impressions || 0), 0);
+        const totalSpent = filtered.reduce((s, d) => s + parseFloat(d.spend || 0), 0);
+        const avgCPL = totalLeads > 0 ? Math.round(totalSpent / totalLeads) : 0;
+
+        console.log("result:", { totalLeads, totalClicks, totalReach, totalSpent, avgCPL });
+
+        return { leads: totalLeads, clicks: totalClicks, reach: totalReach, spent: totalSpent, cpl: avgCPL };
+    };
 
     onMount(() => {
         const handleClickOutside = (e) => {
@@ -222,15 +360,15 @@ export default function ProjectDetails() {
     /* ================= BASE FILTER (SEARCH + STATUS) ================= */
 
     const baseFilteredData = createMemo(() => {
-        return initialData.filter((item) => {
-            const matchesSearch = item.campaign_name
-                .toLowerCase()
-                .includes(search().toLowerCase());
+        return campaigns().filter((item) => {
+            // const matchesSearch = item.campaign_name
+            //     .toLowerCase()
+            //     .includes(search().toLowerCase());
 
             const matchesStatus =
                 statusFilter() === "All" || item.status === statusFilter();
 
-            return matchesSearch && matchesStatus;
+            return matchesStatus;
         });
     });
 
@@ -240,34 +378,24 @@ export default function ProjectDetails() {
         const map = new Map();
 
         for (const row of baseFilteredData()) {
-            const key = row.campaign_name;
+            const key = row.id;
 
             if (!map.has(key)) {
+                // 👇 Calculate from insights based on selected date range
+                const stats = getInsightsInRange(row.insights, fromDate(), toDate());
+
                 map.set(key, {
                     ...row,
-                    totalLeads: 0,
-                    totalClicks: 0,
-                    totalReach: 0,
-                    totalSpent: 0,
+                    totalLeads: stats.leads,
+                    totalClicks: stats.clicks,
+                    totalReach: stats.reach,
+                    totalSpent: stats.spent,
+                    totalCPL: stats.cpl,
                 });
             }
-
-            const entry = map.get(key);
-
-            entry.totalLeads += getLeadsInRange(
-                row.leadsByDate,
-                fromDate(),
-                toDate()
-            );
-            entry.totalClicks += Number(row.clicks || 0);
-            entry.totalReach += Number(row.reach || 0);
-            entry.totalSpent += Number(row.spent || 0);
         }
 
-        // MOST LEADS ON TOP
-        return Array.from(map.values()).sort(
-            (a, b) => b.totalLeads - a.totalLeads
-        );
+        return Array.from(map.values()).sort((a, b) => b.totalLeads - a.totalLeads);
     });
 
     const suggestions = createMemo(() => {
@@ -307,12 +435,12 @@ export default function ProjectDetails() {
 
     /* ================= PAGINATION ================= */
 
-    const paginatedData = createMemo(() =>
-        sortedCampaigns().slice(
-            (page() - 1) * rowsPerPage,
-            page() * rowsPerPage
-        )
-    );
+    // const paginatedData = createMemo(() =>
+    //     sortedCampaigns().slice(
+    //         (page() - 1) * rowsPerPage,
+    //         page() * rowsPerPage
+    //     )
+    // );
 
     /* ================= CLEAR FILTERS ================= */
 
@@ -556,7 +684,11 @@ export default function ProjectDetails() {
                     <input
                         placeholder="Search campaign..."
                         value={search()}
-                        onInput={(e) => setSearch(e.target.value)}
+                        onInput={(e) => {
+                            const value = e.target.value;
+                            setSearch(value);
+                            loadCampaigns(1, value);
+                        }}
                         class="px-3 py-2 border rounded-lg dark:bg-gray-800"
                     />
 
@@ -663,6 +795,7 @@ export default function ProjectDetails() {
                     <thead class="bg-gray-100 dark:bg-gray-800">
                         <tr class="[&_th]:text-center [&_th:first-child]:text-left">
                             <th class="p-3">Campaign</th>
+                            <th class="p-3">Start Date</th>
                             <th class="p-3">Ad Account</th>
                             <th class="p-3">Status</th>
                             <th class="p-3">{rangeLabel()} Leads</th>
@@ -673,7 +806,7 @@ export default function ProjectDetails() {
                         </tr>
                     </thead>
                     <tbody>
-                        <For each={paginatedData()}>
+                        <For each={sortedCampaigns()}>
                             {(row, i) => (
                                 <tr class={`[&_td]:text-center [&_td:first-child]:text-left border-t    ${i() % 2 === 0
                                     ? "bg-white dark:bg-gray-900"
@@ -688,6 +821,7 @@ export default function ProjectDetails() {
                                             </span>
                                         </Show>
                                     </td>
+                                    <td class="p-3 ">{row.start_date || "No Date"}</td>
                                     <td class="p-3 ">{row.ad_account}</td>
                                     <td class="px-4 py-3">
                                         <span class="px-2 py-1 text-sm rounded-full capitalize"
@@ -702,28 +836,55 @@ export default function ProjectDetails() {
                                     <td class="p-3">{row.totalClicks}</td>
                                     <td class="p-3">{row.totalReach}</td>
                                     <td class="p-3">₹{row.totalSpent.toLocaleString("en-IN")}</td>
-                                    <td class="p-3">₹{row.cpl}</td>
-                                </tr>
+                                    <td class="p-3">₹{row.totalCPL}</td>  {/* 👈 was row.cpl */}                                </tr>
                             )}
                         </For>
                     </tbody>
                 </table>
             </div>
-            <div class="flex justify-end gap-2 mt-4">
-                <button
-                    onClick={() => setPage(page() - 1)}
-                    disabled={page() === 1}
-                    class="px-3 py-1 border border-blue-800  rounded bg-blue-900 text-white"
-                >
-                    Prev
-                </button>
-                <button
-                    onClick={() => setPage(page() + 1)}
-                    disabled={page() * rowsPerPage >= sortedCampaigns().length}
-                    class="px-3 py-1 border border-blue-800  bg-blue-900 text-white rounded"
-                >
-                    Next
-                </button>
+            <div class="flex items-center justify-between mt-4 flex-wrap gap-3">
+                <span class="text-sm text-gray-500">
+                    {total() === 0
+                        ? "No results"
+                        : `Showing ${(page() - 1) * pageSize() + 1}–${Math.min(page() * pageSize(), total())} of ${total()} results`
+                    }
+                </span>
+
+                <div class="flex items-center gap-2">
+                    <button
+                        onClick={() => {
+                            if (hasPrev()) {
+                                const newPage = page() - 1;
+                                loadCampaigns(newPage, search());
+                            }
+                        }}
+                        disabled={!hasPrev()}
+                        class="flex items-center gap-1.5 px-4 h-9 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-35 disabled:cursor-default transition-colors"
+                    >
+                        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.8">
+                            <path d="M10 12L6 8l4-4" />
+                        </svg>
+                        Prev
+                    </button>
+
+                    <span class="text-sm text-gray-500 px-1">Page {page()} of {totalPages()}</span>
+
+                    <button
+                        onClick={() => {
+                            if (hasNext()) {
+                                const newPage = page() + 1;
+                                loadCampaigns(newPage, search());
+                            }
+                        }}
+                        disabled={!hasNext()}
+                        class="flex items-center gap-1.5 px-4 h-9 text-sm rounded-lg bg-blue-600 border border-blue-600 text-white hover:bg-blue-700 disabled:opacity-35 disabled:cursor-default transition-colors"
+                    >
+                        Next
+                        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.8">
+                            <path d="M6 4l4 4-4 4" />
+                        </svg>
+                    </button>
+                </div>
             </div>
 
             {/* ================= Lead Quality Insights ================= */}

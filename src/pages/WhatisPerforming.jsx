@@ -741,7 +741,7 @@ const WhatIsPerforming = () => {
               <button
                 onClick={() => {
                   if (editIndex() !== null) {
-                    // ✏️ UPDATE EXISTING PROJECT
+                    //  UPDATE EXISTING PROJECT
                     const updated = projects().map((p, i) =>
                       i === editIndex() ? formData() : p
                     );

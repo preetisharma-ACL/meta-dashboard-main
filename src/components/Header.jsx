@@ -1,18 +1,50 @@
 import { createSignal, Show } from 'solid-js';
 import { useSidebar } from '../context/SidebarContext';
 import { useTheme } from '../context/ThemeContext';
+import { fetchUser } from '../services/userProfile';
+import { onMount } from 'solid-js';
+import { handleLogout } from '../pages/login/LoginForm';
 
 export default function Header() {
     const { isCollapsed, toggleSidebar, toggleMobileSidebar } = useSidebar();
     const { isDark, toggleTheme } = useTheme();
     const [showUserMenu, setShowUserMenu] = createSignal(false);
     const [showNotifications, setShowNotifications] = createSignal(false);
+    const [user, setUser] = createSignal(null);
+
+    onMount(async () => {
+        try {
+            const res = await fetchUser();
+            setUser(res.data);
+        } catch (err) {
+            console.log(err);
+        }
+    });
 
     const notifications = [
         { id: 1, title: 'New lead assigned', message: 'ABC has been assigned to you', time: '5 min ago', unread: true },
         { id: 2, title: 'Meeting reminder', message: 'Sales meeting in 30 minutes', time: '25 min ago', unread: true },
         { id: 3, title: 'Deal closed', message: 'ABC Corp deal successfully closed', time: '2 hours ago', unread: false },
     ];
+
+    const getInitials = (name) => {
+        if (!name) return "";
+
+        // email case handle
+        if (name.includes("@")) {
+            return name.charAt(0).toUpperCase();
+        }
+
+        const words = name.trim().split(" ");
+
+        if (words.length === 1) {
+            return words[0].charAt(0).toUpperCase();
+        }
+
+        return (
+            words[0].charAt(0) + words[1].charAt(0)
+        ).toUpperCase();
+    };
 
     return (
         <header class="h-16 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-30">
@@ -126,11 +158,15 @@ export default function Header() {
                             class="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                         >
                             <div class="w-8 h-8 bg-blue-900 rounded-full flex items-center justify-center text-white font-semibold text-sm">
-                                PS
+                                {getInitials(user()?.username)}
                             </div>
                             <div class="hidden md:block text-left">
-                                <p class="text-sm font-medium text-gray-900 dark:text-white">Preeti Sharma</p>
-                                <p class="text-xs text-gray-500 dark:text-gray-400">Aajneeti Connect ltd</p>
+                                <p class="text-sm font-medium text-gray-900 dark:text-white">
+                                    {user()?.username}
+                                </p>
+                                <p class="text-xs text-gray-500 dark:text-gray-400">
+                                    {user()?.organization_name}
+                                </p>
                             </div>
                             <svg class="w-4 h-4 text-gray-600 dark:text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
@@ -141,8 +177,12 @@ export default function Header() {
                         <Show when={showUserMenu()}>
                             <div class="absolute right-0 mt-2 w-56 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
                                 <div class="p-3 border-b border-gray-200 dark:border-gray-700">
-                                    <p class="text-sm font-medium text-gray-900 dark:text-white">Preeti Sharma</p>
-                                    <p class="text-xs text-gray-500 dark:text-gray-400">admin@aajneeti.com</p>
+                                    <p class="text-sm font-medium text-gray-900 dark:text-white">
+                                        {user()?.username}
+                                    </p>
+                                    <p class="text-xs text-gray-500 dark:text-gray-400">
+                                        {user()?.organization_name}
+                                    </p>
                                 </div>
                                 <div class="py-2">
                                     <button class="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">
@@ -156,7 +196,7 @@ export default function Header() {
                                     </button>
                                 </div>
                                 <div class="border-t border-gray-200 dark:border-gray-700">
-                                    <button class="w-full text-left px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700">
+                                    <button onClick={handleLogout} class="w-full text-left px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700">
                                         Sign Out
                                     </button>
                                 </div>

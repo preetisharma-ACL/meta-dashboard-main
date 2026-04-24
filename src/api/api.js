@@ -1,4 +1,4 @@
-const BASE_URL = "http://192.168.1.38:4756/api";
+const BASE_URL = "http://192.168.1.48:4756/api";
 
 export async function api(endpoint, options = {}) {
   const auth = JSON.parse(localStorage.getItem("auth"));

@@ -6,7 +6,8 @@ import birlalogo from "../assets/project-logo/godrej.png";
 import prestigelogo from "../assets/project-logo/prestige.png";
 import { A } from "@solidjs/router";
 import { DateRangeFilter } from "../components/DateRangeFilter";
-import { fetchProfiles } from "../services/dashboard";
+import { fetchProjects } from "../services/dashboard";
+import { fetchCampaigns } from "../services/campaigns";
 
 export default function ClientDashboard() {
 
@@ -18,39 +19,111 @@ export default function ClientDashboard() {
     const [fromDate, setFromDate] = createSignal("");
     const [toDate, setToDate] = createSignal("");
     const [viewType, setViewType] = createSignal("table");
+    const [page, setPage] = createSignal(1);
+    const [hasNext, setHasNext] = createSignal(false);
+    const [hasPrev, setHasPrev] = createSignal(false);
+    const [pageSize, setPageSize] = createSignal(20);
+    const [total, setTotal] = createSignal(0);
+    const [totalPages, setTotalPages] = createSignal(1);
 
-    const loadData = async () => {
+
+    const loadData = async (pageNo = 1, search = "") => {
         try {
-            const data = await fetchProfiles();
-            setProjects(
-                (data?.data || []).map(item => ({
-                    id: item.id,
-                    name: item.name,
-                    logo: item.logo || "/default-logo.png",
-                    location: item.city,
-                    budget: item.budget ?? item.budget ?? 0,
-                    leadsgenerated: item.leads_generated ?? item.leadsgenerated ?? 0,
-                    type: item.property_type ?? item.property_type ?? "N/A",
-                    uploaddocument: item.upload_document ?? item.uploaddocument ?? null,
-                    activeCampaigns: item.active_campaigns ?? item.activeCampaigns ?? 0,
-                    pausedCampaigns: item.paused_campaigns ?? item.pausedCampaigns ?? 0,
-                    status: item.status ?? "active",
-                    clientRequest: item.client_request ?? null,
-                    priority: item.priority_label ?? "Standard",
-                    projectControl: item.project_control ?? "Live",
-                    url: item.url ?? "/all-campaigns",
-                    cpl: item.cpl ?? 0,
-                    spent: item.total_spend ?? item.total_spend ?? 0,
-                    leadsByDate: item.leads_by_date ?? item.leadsByDate ?? {},
-                }))
-            );
+            const res = await fetchProjects(pageNo, search);
+            const apiData = res?.data || [];
+            const meta = res?.meta?.pagination;
+
+            const mappedProjects = (apiData || []).map(item => ({
+                id: item.id,
+                name: item.name,
+                logo: item.logo || "/default-logo.png",
+                location: item.city,
+                budget: parseFloat(item.budget) || 0,        // 👈 was: item.budget ?? 0
+                leadsgenerated: item.leads_count ?? 0,
+                type: item.property_type ?? "N/A",
+                uploaddocument: item.upload_document ?? null,
+                activeCampaigns: item.campaign_count ?? 0,
+                pausedCampaigns: item.paused_campaigns ?? 0,
+                status: item.status,
+                clientRequest: item.client_request ?? null,
+                priority: item.priority_label ?? "Standard",
+                projectControl: item.project_control ?? "Live",
+                url: item.url ?? "/all-campaigns",
+                cpl: parseFloat(item.cpl) || 0,              // 👈 was: item.cpl ?? 0
+                spent: parseFloat(item.total_spend) || 0,    // 👈 was: item.total_spend ?? 0
+                leadsByDate: item.leads_by_date ?? {},
+            }));
+
+            setProjects(mappedProjects);
+            deriveProjectStatuses(mappedProjects); // 👈 async status patch
+
+            if (meta) {
+                setPage(meta.page);
+                setPageSize(meta.page_size);
+                setTotal(meta.total);
+                setTotalPages(meta.total_pages);
+                setHasNext(meta.has_next);
+                setHasPrev(meta.has_prev);
+            }
         } catch (err) {
             console.error(err);
         }
     };
 
+    // After setProjects(...) inside loadData, add:
+    const deriveProjectStatuses = async (projectList) => {
+        const statusUpdates = await Promise.all(
+            projectList.map(async (project) => {
+                try {
+                    // 👇 fetch all campaigns in one shot with large page_size
+                    const res = await fetchCampaigns(1, project.id, "", 1000);
+                    const campaigns = res.data.results || res.data || [];
+
+                    if (!Array.isArray(campaigns) || campaigns.length === 0) {
+                        return {
+                            id: project.id,
+                            status: "paused",
+                            activeCampaigns: 0,
+                            pausedCampaigns: 0,
+                        };
+                    }
+
+                    const activeCampaigns = campaigns.filter(c => c.status === "active").length;
+                    const pausedCampaigns = campaigns.filter(c => c.status === "paused").length;
+                    const hasActive = activeCampaigns > 0;
+
+                    return {
+                        id: project.id,
+                        status: hasActive ? "active" : "paused",
+                        activeCampaigns,
+                        pausedCampaigns,
+                    };
+
+                } catch (err) {
+                    return {
+                        id: project.id,
+                        status: project.status,
+                        activeCampaigns: project.activeCampaigns,
+                        pausedCampaigns: project.pausedCampaigns,
+                    };
+                }
+            })
+        );
+
+        setProjects(prev =>
+            prev.map(p => {
+                const update = statusUpdates.find(u => u.id === p.id);
+                return update ? {
+                    ...p,
+                    status: update.status,
+                    activeCampaigns: update.activeCampaigns,
+                    pausedCampaigns: update.pausedCampaigns,
+                } : p;
+            })
+        );
+    };
     onMount(() => {
-        loadData();
+        loadData(1);
     });
 
     const normalizeLocalDate = (d) => {
@@ -94,11 +167,11 @@ export default function ClientDashboard() {
             data = data.filter(p => p.status === statusFilter());
         }
 
-        if (searchText()) {
-            data = data.filter(p =>
-                (p.name ?? "").toLowerCase().includes(searchText().toLowerCase())
-            );
-        }
+        // if (searchText()) {
+        //     data = data.filter(p =>
+        //         (p.name ?? "").toLowerCase().includes(searchText().toLowerCase())
+        //     );
+        // }
 
         switch (sortType()) {
             case "budget":
@@ -170,6 +243,12 @@ export default function ClientDashboard() {
         return "Custom Range";
     });
 
+    const getColor = (name) => {
+        const colors = ["bg-red-100 text-red-600", "bg-blue-100 text-blue-600", "bg-green-100 text-green-600", "bg-yellow-100 text-yellow-600"];
+        const index = name ? name.charCodeAt(0) % colors.length : 0;
+        return colors[index];
+    };
+
     return (
         <section class="w-full px-4 sm:px-6 lg:px-8 py-6">
 
@@ -195,8 +274,7 @@ export default function ClientDashboard() {
                     <div>
                         <p class="text-md text-blue-800 dark:text-gray-400">Total Budget Allocated</p>
                         <h3 class="text-xl font-semibold mt-2 dark:text-white">
-                            {/* {"₹"}{overviewStats().totalBudget.toLocaleString("en-IN")} */}
-                            500.00
+                            {"₹"}{overviewStats().totalBudget.toLocaleString("en-IN")}
                         </h3>
                     </div>
                     <div class="p-3 rounded-lg bg-blue-100 dark:bg-blue-300">
@@ -299,11 +377,15 @@ export default function ClientDashboard() {
                     type="text"
                     placeholder="Search project..."
                     value={searchText()}
-                    onInput={(e) => setSearchText(e.target.value)}
+                    onInput={(e) => {
+                        const value = e.target.value;
+                        setSearchText(value);
+                        loadData(1, value);
+                    }}
                     class="border px-3 py-2 rounded-lg w-60 dark:bg-gray-800"
                 />
 
-                {/* ✅ No arrow characters — use plain text */}
+                {/* No arrow characters — use plain text */}
                 <select
                     class="border px-3 py-2 rounded-lg dark:bg-gray-800"
                     value={sortType()}
@@ -333,169 +415,201 @@ export default function ClientDashboard() {
             </div>
 
             {/* Table */}
-            <Show
-                when={viewType() === "grid"}
-                fallback={
-                    <div class="overflow-x-auto bg-white dark:bg-gray-900 rounded-xl border">
-                        <table class="w-full text-sm table-auto">
-                            <thead class="bg-gray-100 dark:bg-gray-800">
-                                <tr class="[&_th]:text-center [&_th]:whitespace-nowrap [&_th:first-child]:text-left text-gray-800 dark:text-gray-200">
-                                    <th class="p-3">Project Name</th>
-                                    <th class="p-3">Location</th>
-                                    <th class="p-3">Type</th>
-                                    <th class="p-3">Status</th>
-                                    <th class="p-3">Uploaded Document</th>
-                                    <th class="p-3">Customer Priority</th>
-                                    <th class="p-3">Project Control</th>
-                                    <th class="p-3">Budget</th>
-                                    <th class="p-3">{rangeLabel()} Total Leads</th>
-                                    <th class="p-3">{rangeLabel()} Total Spent</th>
-                                    <th class="p-3">{rangeLabel()} AVG CPL</th>
-                                    <th class="p-3">Active Campaigns</th>
-                                    <th class="p-3">Paused Campaigns</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {/* ✅ For callback with explicit return */}
-                                <For each={filteredProjects()}>
-                                    {(project, index) => {
-                                        const stats = getProjectStats(project);
-                                        return (
-                                            <tr
+
+            <div class="overflow-x-auto bg-white dark:bg-gray-900 rounded-xl border">
+                <table class="w-full text-sm table-auto">
+                    <thead class="bg-gray-100 dark:bg-gray-800">
+                        <tr class="[&_th]:text-center [&_th]:whitespace-nowrap [&_th:first-child]:text-left text-gray-800 dark:text-gray-200">
+                            <th class="p-3">S.No</th>
+                            <th class="p-3">Project Name</th>
+                            <th class="p-3">Location</th>
+                            <th class="p-3">Type</th>
+                            <th class="p-3">Status</th>
+                            {/* <th class="p-3">Uploaded Document</th> */}
+                            <th class="p-3">Customer Priority</th>
+                            <th class="p-3">Project Control</th>
+                            <th class="p-3">Budget</th>
+                            <th class="p-3">{rangeLabel()} Total Leads</th>
+                            <th class="p-3">{rangeLabel()} Total Spent</th>
+                            <th class="p-3">{rangeLabel()} AVG CPL</th>
+                            <th class="p-3">Active Campaigns</th>
+                            <th class="p-3">Paused Campaigns</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {/* ✅ For callback with explicit return */}
+                        <For each={filteredProjects()}>
+                            {(project, index) => {
+                                const stats = getProjectStats(project);
+                                return (
+                                    <tr
+                                        class={
+                                            "border-t transition-all duration-300 ease-in-out " +
+                                            "[&_td]:text-center [&_td]:px-6 [&_td:first-child]:px-2 " +
+                                            "[&_td]:whitespace-nowrap [&_td:first-child]:text-left " +
+                                            (index() % 2 === 0
+                                                ? "bg-white dark:bg-gray-900 "
+                                                : "bg-purple-50/40 dark:bg-gray-900 ") +
+                                            "hover:bg-purple-100/40 dark:hover:bg-gray-800"
+                                        }
+                                    >
+
+                                        <td class="px-1 py-2 text-center">
+                                            <span class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 text-xs font-semibold">
+                                                {(page() - 1) * pageSize() + index() + 1}
+                                            </span>
+                                        </td>
+                                        {/* Project Name */}
+                                        <td class="p-2">
+                                            <div class="flex items-center gap-2">
+                                                <div class={`rounded flex items-center justify-center w-10 h-10 font-bold text-lg uppercase ${getColor(project.name)}`}>
+                                                    {project.name ? project.name.charAt(0) : "?"}
+                                                </div>
+                                                <A
+                                                    href={`/project/${project.id}`}   // 👈 ADD THIS
+                                                    state={{ project }}
+                                                    class="text-purple-700 dark:text-purple-300 font-medium hover:underline transition"
+                                                >
+                                                    {project.name}
+                                                </A>
+                                            </div>
+                                        </td>
+
+                                        {/* Location */}
+                                        <td class="p-2">{project.location ?? "—"}</td>
+
+                                        {/* Type */}
+                                        <td class="p-2">{project.type ?? "—"}</td>
+
+                                        {/* Status Badge */}
+                                        <td class="px-4 py-3">
+                                            <span
                                                 class={
-                                                    "border-t transition-all duration-300 ease-in-out " +
-                                                    "[&_td]:text-center [&_td]:px-6 [&_td:first-child]:px-2 " +
-                                                    "[&_td]:whitespace-nowrap [&_td:first-child]:text-left " +
-                                                    (index() % 2 === 0
-                                                        ? "bg-white dark:bg-gray-900 "
-                                                        : "bg-purple-50/40 dark:bg-gray-900 ") +
-                                                    "hover:bg-purple-100/40 dark:hover:bg-gray-800"
+                                                    "px-3 py-1 text-sm rounded-full capitalize " +
+                                                    (project.status === "active"
+                                                        ? "bg-green-100 text-green-700"
+                                                        : project.status === "paused"
+                                                            ? "bg-yellow-100 text-yellow-700"
+                                                            : "bg-red-100 text-red-700")
                                                 }
                                             >
-                                                {/* Project Name */}
-                                                <td class="p-2">
-                                                    <div class="flex items-center gap-2">
-                                                        <div class="rounded bg-purple-50 dark:bg-gray-200 p-1 min-w-max">
-                                                            <img
-                                                                src={project.logo}
-                                                                class="w-10 h-10 object-contain"
-                                                                alt="logo"
-                                                            />
-                                                        </div>
-                                                        <A
-                                                            href={project.url}
-                                                            state={{ project }}
-                                                            class="text-purple-700 dark:text-purple-300 font-medium hover:underline transition"
-                                                        >
-                                                            {project.name}
-                                                        </A>
-                                                    </div>
-                                                </td>
+                                                {project.status}
+                                            </span>
+                                        </td>
 
-                                                {/* Location */}
-                                                <td class="p-2">{project.location ?? "—"}</td>
+                                        {/* Uploaded Document */}
+                                        {/* <td class="p-2">
+                                            {project.uploaddocument ? (
+                                                <a
+                                                    href={project.uploaddocument}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    class="text-blue-600 dark:text-blue-400 hover:underline text-sm"
+                                                >
+                                                    View PDF
+                                                </a>
+                                            ) : (
+                                                <span class="text-gray-400">No File</span>
+                                            )}
+                                        </td> */}
 
-                                                {/* Type */}
-                                                <td class="p-2">{project.type ?? "—"}</td>
+                                        {/* Priority */}
+                                        <td class="p-2">
+                                            <select
+                                                class="border border-purple-200 dark:border-gray-600 rounded px-2 py-1 text-sm bg-purple-100 dark:bg-gray-800 min-w-max"
+                                                value={project.priority}
+                                                onChange={(e) => handlePriorityChange(project.id, e.target.value)}
+                                            >
+                                                <option value="Urgent">Urgent</option>
+                                                <option value="High">High Priority</option>
+                                                <option value="Standard">Standard</option>
+                                            </select>
+                                        </td>
 
-                                                {/* Status Badge */}
-                                                <td class="px-4 py-3">
-                                                    <span
-                                                        class={
-                                                            "px-3 py-1 text-sm rounded-full capitalize " +
-                                                            (project.status === "active"
-                                                                ? "bg-green-100 text-green-700"
-                                                                : project.status === "paused"
-                                                                ? "bg-yellow-100 text-yellow-700"
-                                                                : "bg-red-100 text-red-700")
-                                                        }
-                                                    >
-                                                        {project.status}
-                                                    </span>
-                                                </td>
+                                        {/* Project Control */}
+                                        <td class="p-2">
+                                            <select
+                                                class="border border-blue-200 dark:border-gray-600 rounded px-2 py-1 text-sm bg-blue-50 dark:bg-gray-800 min-w-max"
+                                                value={
+                                                    project.status === "active"
+                                                        ? "Live"
+                                                        : project.status === "paused"
+                                                            ? "Temporary Pause"
+                                                            : "Stopped"
+                                                }
+                                                onChange={(e) => handleClientControlRequest(project.id, e.target.value)}
+                                            >
+                                                <option value="Live">Live</option>
+                                                <option value="Temporary Pause">Temporary Pause</option>
+                                                <option value="Stopped">Stopped</option>
+                                            </select>
+                                        </td>
 
-                                                {/* Uploaded Document */}
-                                                <td class="p-2">
-                                                    {project.uploaddocument ? (
-                                                        <a
-                                                            href={project.uploaddocument}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            class="text-blue-600 dark:text-blue-400 hover:underline text-sm"
-                                                        >
-                                                            View PDF
-                                                        </a>
-                                                    ) : (
-                                                        <span class="text-gray-400">No File</span>
-                                                    )}
-                                                </td>
+                                        {/* Budget */}
+                                        <td class="p-2">
+                                            {"₹"}{(project.budget ?? 0).toLocaleString("en-IN")}
+                                        </td>
 
-                                                {/* Priority */}
-                                                <td class="p-2">
-                                                    <select
-                                                        class="border border-purple-200 dark:border-gray-600 rounded px-2 py-1 text-sm bg-purple-100 dark:bg-gray-800 min-w-max"
-                                                        value={project.priority}
-                                                        onChange={(e) => handlePriorityChange(project.id, e.target.value)}
-                                                    >
-                                                        <option value="Urgent">Urgent</option>
-                                                        <option value="High">High Priority</option>
-                                                        <option value="Standard">Standard</option>
-                                                    </select>
-                                                </td>
+                                        {/* Date-range Leads */}
+                                        <td class="p-2">{stats.totalLeads}</td>
 
-                                                {/* Project Control */}
-                                                <td class="p-2">
-                                                    <select
-                                                        class="border border-blue-200 dark:border-gray-600 rounded px-2 py-1 text-sm bg-blue-50 dark:bg-gray-800 min-w-max"
-                                                        value={
-                                                            project.status === "active"
-                                                                ? "Live"
-                                                                : project.status === "paused"
-                                                                ? "Temporary Pause"
-                                                                : "Stopped"
-                                                        }
-                                                        onChange={(e) => handleClientControlRequest(project.id, e.target.value)}
-                                                    >
-                                                        <option value="Live">Live</option>
-                                                        <option value="Temporary Pause">Temporary Pause</option>
-                                                        <option value="Stopped">Stopped</option>
-                                                    </select>
-                                                </td>
+                                        {/* Date-range Spent */}
+                                        <td class="p-2">
+                                            {"₹"}{stats.totalSpent.toLocaleString("en-IN")}
+                                        </td>
 
-                                                {/* Budget */}
-                                                <td class="p-2">
-                                                    {"₹"}{(project.budget ?? 0).toLocaleString("en-IN")}
-                                                </td>
+                                        {/* Date-range AVG CPL */}
+                                        <td class="p-2">
+                                            {"₹"}{stats.avgCPL}
+                                        </td>
 
-                                                {/* Date-range Leads */}
-                                                <td class="p-2">{stats.totalLeads}</td>
+                                        {/* Active Campaigns */}
+                                        <td class="p-2 text-center">{project.activeCampaigns ?? 0}</td>
 
-                                                {/* Date-range Spent */}
-                                                <td class="p-2">
-                                                    {"₹"}{stats.totalSpent.toLocaleString("en-IN")}
-                                                </td>
+                                        {/* Paused Campaigns */}
+                                        <td class="p-2 text-center">{project.pausedCampaigns ?? 0}</td>
+                                    </tr>
+                                );
+                            }}
+                        </For>
+                    </tbody>
+                </table>
 
-                                                {/* Date-range AVG CPL */}
-                                                <td class="p-2">
-                                                    {"₹"}{stats.avgCPL}
-                                                </td>
+            </div>
+            <div class="flex items-center justify-between mt-4 flex-wrap gap-3">
+                <span class="text-sm text-gray-500">
+                    {total() === 0
+                        ? "No results"
+                        : `Showing ${(page() - 1) * pageSize() + 1}–${Math.min(page() * pageSize(), total())} of ${total()} results`
+                    }
+                </span>
 
-                                                {/* Active Campaigns */}
-                                                <td class="p-2 text-center">{project.activeCampaigns ?? 0}</td>
+                <div class="flex items-center gap-2">
+                    <button
+                        onClick={() => hasPrev() && loadData(page() - 1)}
+                        disabled={!hasPrev()}
+                        class="flex items-center gap-1.5 px-4 h-9 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:bg-gray-50 disabled:opacity-35 disabled:cursor-default transition-colors"
+                    >
+                        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.8">
+                            <path d="M10 12L6 8l4-4" />
+                        </svg>
+                        Prev
+                    </button>
 
-                                                {/* Paused Campaigns */}
-                                                <td class="p-2 text-center">{project.pausedCampaigns ?? 0}</td>
-                                            </tr>
-                                        );
-                                    }}
-                                </For>
-                            </tbody>
-                        </table>
-                    </div>
-                }
-            >
-            </Show>
+                    <span class="text-sm text-gray-500 px-1">Page {page()} of {totalPages()}</span>
 
+                    <button
+                        onClick={() => hasNext() && loadData(page() + 1)}
+                        disabled={!hasNext()}
+                        class="flex items-center gap-1.5 px-4 h-9 text-sm rounded-lg bg-blue-600 border border-blue-600 text-white hover:bg-blue-700 disabled:opacity-35 disabled:cursor-default transition-colors"
+                    >
+                        Next
+                        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.8">
+                            <path d="M6 4l4 4-4 4" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
             {/* Empty State */}
             <Show when={projects().length === 0}>
                 <div class="mt-8 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 p-6 text-center">
