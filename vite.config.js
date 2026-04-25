@@ -1,15 +1,9 @@
 import { defineConfig } from 'vite';
-import solidPlugin from 'vite-plugin-solid';
+import solid from 'vite-plugin-solid';
 
 export default defineConfig({
-  plugins: [solidPlugin()],
+  plugins: [solid()],
   server: {
-    proxy: {
-      '/api': {
-        target: 'http://142.93.211.38',
-        changeOrigin: true,
-        rewrite: (path) => path  // keeps /api/auth/login/ as-is
-      }
-    }
-  }
+    port: 3000,
+  },
 });
