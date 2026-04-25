@@ -14,7 +14,16 @@ export async function api(endpoint, options = {}) {
       },
     });
 
-    const data = await res.json();
+    // ✅ Safely parse JSON — don't crash on empty responses
+    let data = null;
+    const text = await res.text();
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = { message: text };
+      }
+    }
 
     if (res.status === 401 || res.status === 403) {
       localStorage.removeItem("auth");
@@ -23,7 +32,7 @@ export async function api(endpoint, options = {}) {
     }
 
     if (!res.ok) {
-      throw new Error(data?.message || "API Error");
+      throw new Error(data?.message || data?.detail || "API Error");
     }
 
     return data;
