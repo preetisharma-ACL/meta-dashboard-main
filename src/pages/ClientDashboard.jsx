@@ -644,7 +644,7 @@ export default function ClientDashboard() {
                 </table>
 
             </div>
-            <div class="flex items-center justify-between mt-4 flex-wrap gap-3">
+            <div class="flex items-center justify-between mt-5 flex-wrap gap-3">
                 <span class="text-sm text-gray-500">
                     {total() === 0
                         ? "No results"
