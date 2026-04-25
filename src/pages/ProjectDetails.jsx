@@ -455,7 +455,7 @@ export default function ProjectDetails() {
     /* ================= RANGE LABEL ================= */
 
     const rangeLabel = createMemo(() => {
-        if (!fromDate() || !toDate()) return "Today";
+        if (!fromDate() || !toDate()) return "Total";
 
         const from = new Date(fromDate());
         const to = new Date(toDate());

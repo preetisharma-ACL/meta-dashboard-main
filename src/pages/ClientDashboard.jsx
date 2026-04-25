@@ -8,6 +8,8 @@ import { A } from "@solidjs/router";
 import { DateRangeFilter } from "../components/DateRangeFilter";
 import { fetchProjects } from "../services/dashboard";
 import { fetchCampaigns } from "../services/campaigns";
+import { fetchCampaignInsights } from "../services/campaigns";
+// fetchCampaigns is already imported, just ADD fetchCampaignInsights
 
 export default function ClientDashboard() {
 
@@ -25,6 +27,9 @@ export default function ClientDashboard() {
     const [pageSize, setPageSize] = createSignal(20);
     const [total, setTotal] = createSignal(0);
     const [totalPages, setTotalPages] = createSignal(1);
+    const [projectInsightsMap, setProjectInsightsMap] = createSignal({});
+    // { projectId: [ ...all flattened insight records ] }
+    const [insightsLoading, setInsightsLoading] = createSignal(false);
 
 
     const loadData = async (pageNo = 1, search = "") => {
@@ -56,6 +61,7 @@ export default function ClientDashboard() {
 
             setProjects(mappedProjects);
             deriveProjectStatuses(mappedProjects); // 👈 async status patch
+            loadAllProjectInsights(mappedProjects);
 
             if (meta) {
                 setPage(meta.page);
@@ -122,6 +128,42 @@ export default function ClientDashboard() {
             })
         );
     };
+
+    const loadAllProjectInsights = async (projectList) => {
+        setInsightsLoading(true);
+        const result = {};
+
+        await Promise.all(
+            projectList.map(async (project) => {
+                try {
+                    const res = await fetchCampaigns(1, project.id, "", 1000);
+                    const campaigns = res.data?.results || res.data || [];
+
+                    if (!Array.isArray(campaigns) || campaigns.length === 0) {
+                        result[project.id] = [];
+                        return;
+                    }
+
+                    // fetch insights for every campaign in parallel
+                    const insightArrays = await Promise.all(
+                        campaigns.map(c =>
+                            fetchCampaignInsights(c.id)
+                                .then(r => r.data || [])
+                                .catch(() => [])
+                        )
+                    );
+
+                    result[project.id] = insightArrays.flat();
+                } catch {
+                    result[project.id] = [];
+                }
+            })
+        );
+
+        setProjectInsightsMap(result);
+        setInsightsLoading(false);
+    };
+
     onMount(() => {
         loadData(1);
     });
@@ -142,24 +184,49 @@ export default function ClientDashboard() {
         }, 0);
     };
 
-    const getProjectStats = (project) => {
-        const totalLeads = getLeadsInRange(project.leadsByDate, fromDate(), toDate());
-        const totalSpent = project.spent ?? 0;
-        const avgCPL = totalLeads > 0 ? Math.round(totalSpent / totalLeads) : 0;
-        return { totalLeads, totalSpent, avgCPL };
-    };
+    const allProjectStats = createMemo(() => {
+        const map = projectInsightsMap(); // reactive dependency
+        const from = fromDate();
+        const to = toDate();
+        const result = {};
 
+        for (const project of projects()) {
+            const insights = map[project.id] || [];
+
+            const filtered = (!from || !to)
+                ? insights
+                : insights.filter(d => {
+                    const date = new Date(d.date + "T00:00:00");
+                    const start = new Date(from);
+                    const end = new Date(to);
+                    start.setHours(0, 0, 0, 0);
+                    end.setHours(23, 59, 59, 999);
+                    return date >= start && date <= end;
+                });
+
+            const totalLeads = filtered.reduce((s, d) => s + (d.leads || 0), 0);
+            const totalSpent = filtered.reduce((s, d) => s + parseFloat(d.spend || 0), 0);
+            const avgCPL = totalLeads > 0 ? Math.round(totalSpent / totalLeads) : 0;
+
+            result[project.id] = { totalLeads, totalSpent, avgCPL };
+        }
+
+        return result;
+    });
     const overviewStats = createMemo(() => {
         const all = projects();
+        const statsMap = allProjectStats(); // reactive
+
         const totalBudget = all.reduce((s, p) => s + (p.budget ?? 0), 0);
-        const totalSpent = all.reduce((s, p) => s + (p.spent ?? 0), 0);
-        const totalLeads = all.reduce((s, p) => s + getLeadsInRange(p.leadsByDate, fromDate(), toDate()), 0);
-        const avgCPL = totalLeads > 0 ? Math.round(totalSpent / totalLeads) : 0;
         const activeCampaigns = all.reduce((s, p) => s + (p.activeCampaigns ?? 0), 0);
         const activeProjects = all.filter(p => p.status === "active").length;
+
+        const totalLeads = all.reduce((s, p) => s + (statsMap[p.id]?.totalLeads ?? 0), 0);
+        const totalSpent = all.reduce((s, p) => s + (statsMap[p.id]?.totalSpent ?? 0), 0);
+        const avgCPL = totalLeads > 0 ? Math.round(totalSpent / totalLeads) : 0;
+
         return { totalBudget, totalSpent, totalLeads, avgCPL, activeCampaigns, activeProjects };
     });
-
     const filteredProjects = createMemo(() => {
         let data = [...projects()];
 
@@ -226,7 +293,7 @@ export default function ClientDashboard() {
     };
 
     const rangeLabel = createMemo(() => {
-        if (!fromDate() || !toDate()) return "Today";
+        if (!fromDate() || !toDate()) return "";
         const from = new Date(fromDate());
         const to = new Date(toDate());
         from.setHours(0, 0, 0, 0);
@@ -440,7 +507,8 @@ export default function ClientDashboard() {
                         {/* ✅ For callback with explicit return */}
                         <For each={filteredProjects()}>
                             {(project, index) => {
-                                const stats = getProjectStats(project);
+                                const stats = () => allProjectStats()[project.id] || { totalLeads: 0, totalSpent: 0, avgCPL: 0 }; // 👈 changed
+
                                 return (
                                     <tr
                                         class={
@@ -551,16 +619,16 @@ export default function ClientDashboard() {
                                         </td>
 
                                         {/* Date-range Leads */}
-                                        <td class="p-2">{stats.totalLeads}</td>
+                                        <td class="p-2">{stats().totalLeads}</td>
 
                                         {/* Date-range Spent */}
                                         <td class="p-2">
-                                            {"₹"}{stats.totalSpent.toLocaleString("en-IN")}
+                                            {"₹"}{stats().totalSpent.toLocaleString("en-IN")}
                                         </td>
 
                                         {/* Date-range AVG CPL */}
                                         <td class="p-2">
-                                            {"₹"}{stats.avgCPL}
+                                            {"₹"}{stats().avgCPL}
                                         </td>
 
                                         {/* Active Campaigns */}
