@@ -493,8 +493,8 @@ export default function ClientDashboard() {
                             <th class="p-3">Type</th>
                             <th class="p-3">Status</th>
                             {/* <th class="p-3">Uploaded Document</th> */}
-                            <th class="p-3">Customer Priority</th>
-                            <th class="p-3">Project Control</th>
+                            {/* <th class="p-3">Customer Priority</th> */}
+                            {/* <th class="p-3">Project Control</th> */}
                             <th class="p-3">Budget</th>
                             <th class="p-3">{rangeLabel()} Total Leads</th>
                             <th class="p-3">{rangeLabel()} Total Spent</th>
@@ -582,7 +582,7 @@ export default function ClientDashboard() {
                                         </td> */}
 
                                         {/* Priority */}
-                                        <td class="p-2">
+                                        {/* <td class="p-2">
                                             <select
                                                 class="border border-purple-200 dark:border-gray-600 rounded px-2 py-1 text-sm bg-purple-100 dark:bg-gray-800 min-w-max"
                                                 value={project.priority}
@@ -592,10 +592,10 @@ export default function ClientDashboard() {
                                                 <option value="High">High Priority</option>
                                                 <option value="Standard">Standard</option>
                                             </select>
-                                        </td>
+                                        </td> */}
 
                                         {/* Project Control */}
-                                        <td class="p-2">
+                                        {/* <td class="p-2">
                                             <select
                                                 class="border border-blue-200 dark:border-gray-600 rounded px-2 py-1 text-sm bg-blue-50 dark:bg-gray-800 min-w-max"
                                                 value={
@@ -611,7 +611,7 @@ export default function ClientDashboard() {
                                                 <option value="Temporary Pause">Temporary Pause</option>
                                                 <option value="Stopped">Stopped</option>
                                             </select>
-                                        </td>
+                                        </td> */}
 
                                         {/* Budget */}
                                         <td class="p-2">

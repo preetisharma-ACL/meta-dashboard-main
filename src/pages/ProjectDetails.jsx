@@ -587,6 +587,7 @@ export default function ProjectDetails() {
                     </div>
                 </section>
             </Show>
+            <div class="hidden">
             <Show when={project}>
 
                 <div class="mt-8 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm">
@@ -678,6 +679,7 @@ export default function ProjectDetails() {
                 </div>
 
             </Show>
+            </div>
             {/* ================= FILTERS ================= */}
             <div class="flex justify-between">
                 <div class="flex flex-wrap gap-2 items-center">
@@ -886,7 +888,7 @@ export default function ProjectDetails() {
                     </button>
                 </div>
             </div>
-
+            <div class="hidden">
             {/* ================= Lead Quality Insights ================= */}
             <h3 class="mt-8 mb-4 text-lg font-semibold text-gray-800 dark:text-white">
                 Lead Quality Insights
@@ -1559,6 +1561,7 @@ export default function ProjectDetails() {
                 </div>
             </div>
             {/* pdf payment report end */}
+            </div>
         </div>
     );
 }

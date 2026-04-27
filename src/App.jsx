@@ -18,6 +18,7 @@ import LeadPerformance from './pages/LeadPerformance';
 import WhatIsPerforming from './pages/WhatisPerforming';
 import Login from './pages/login/LoginForm';
 import ProtectedRoute from './routes/ProtectedRoute';
+import Notifications from './pages/Alert';
 
 function Layout(props) {
   const { isCollapsed } = useSidebar();
@@ -54,7 +55,7 @@ function App() {
           <Route path="/leads" component={() => <ProtectedRoute><Layout><Leads /></Layout></ProtectedRoute>} />
           <Route path="/follow-up" component={() => <ProtectedRoute><Layout><FollowUp /></Layout></ProtectedRoute>} />
           <Route path="/settings" component={() =><ProtectedRoute><Layout><Settings /></Layout></ProtectedRoute>} />
-          <Route path="/billing" component={() => <ProtectedRoute><Layout><Billing /></Layout></ProtectedRoute>} />
+          <Route path="/notifications" component={() => <ProtectedRoute><Layout><Notifications /></Layout></ProtectedRoute>} />
           <Route path="/project/:id" component={() => <ProtectedRoute><Layout><ProjectDetails /></Layout></ProtectedRoute>} />
           <Route path="/campaign/:id" component={() => <ProtectedRoute><Layout> <CampaignDetails /> </Layout></ProtectedRoute>} />
           <Route path="/login" component={() => <Login />} />
