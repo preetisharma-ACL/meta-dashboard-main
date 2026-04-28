@@ -1,252 +1,564 @@
-import { createSignal, createMemo, For, Show } from "solid-js";
+import { createSignal, createMemo, For, Show, onMount } from "solid-js";
+import { fetchAlerts } from "../services/alert-service";
 
 const ICONS = {
-  message: (
-    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
-    </svg>
-  ),
-  alert: (
+  danger: (
     <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
       <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
       <line x1="12" y1="9" x2="12" y2="13" />
       <line x1="12" y1="17" x2="12.01" y2="17" />
     </svg>
   ),
-  update: (
+  warning: (
     <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+      <circle cx="12" cy="12" r="10" />
+      <line x1="12" y1="8" x2="12" y2="12" />
+      <line x1="12" y1="16" x2="12.01" y2="16" />
+    </svg>
+  ),
+  info: (
+    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <line x1="12" y1="16" x2="12" y2="12" />
+      <line x1="12" y1="8" x2="12.01" y2="8" />
     </svg>
   ),
   bell: (
-    <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
       <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" />
       <path d="M13.73 21a2 2 0 01-3.46 0" />
     </svg>
   ),
   check: (
-    <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
       <polyline points="20 6 9 17 4 12" />
     </svg>
   ),
   trash: (
-    <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <polyline points="3 6 5 6 21 6" />
       <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" />
       <path d="M10 11v6M14 11v6" />
     </svg>
   ),
+  refresh: (
+    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="23 4 23 10 17 10" />
+      <polyline points="1 20 1 14 7 14" />
+      <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
+    </svg>
+  ),
+  chevronLeft: (
+    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="15 18 9 12 15 6" />
+    </svg>
+  ),
+  chevronRight: (
+    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="9 18 15 12 9 6" />
+    </svg>
+  ),
 };
 
-const ICON_STYLES = {
-  message: "bg-indigo-100 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-400",
-  alert:   "bg-orange-100 text-orange-500 dark:bg-orange-500/20 dark:text-orange-400",
-  update:  "bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400",
+// Maps API `type` field → colors & labels
+const TYPE_CONFIG = {
+  danger: {
+    icon: "bg-red-100 text-red-600 dark:bg-red-500/20 dark:text-red-400",
+    badge: "bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300",
+    bar: "bg-red-500",
+    dot: "bg-red-500",
+    label: "Danger",
+  },
+  warning: {
+    icon: "bg-orange-100 text-orange-500 dark:bg-orange-500/20 dark:text-orange-400",
+    badge: "bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-300",
+    bar: "bg-orange-500",
+    dot: "bg-orange-500",
+    label: "Warning",
+  },
+  info: {
+    icon: "bg-blue-100 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400",
+    badge: "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300",
+    bar: "bg-blue-500",
+    dot: "bg-blue-500",
+    label: "Info",
+  },
 };
+
+// Fallback config for unknown types
+const DEFAULT_CONFIG = {
+  icon: "bg-gray-100 text-gray-600 dark:bg-gray-500/20 dark:text-gray-400",
+  badge: "bg-gray-100 text-gray-700 dark:bg-gray-500/20 dark:text-gray-300",
+  bar: "bg-gray-400",
+  dot: "bg-gray-400",
+  label: "Alert",
+};
+
+function formatTime(dateStr) {
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now - date;
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffMins < 1) return "Just now";
+  if (diffMins < 60) return `${diffMins} min ago`;
+  if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? "s" : ""} ago`;
+  return `${diffDays} day${diffDays > 1 ? "s" : ""} ago`;
+}
 
 export default function Notifications() {
-  const [notifications, setNotifications] = createSignal([
-    {
-      id: 1,
-      title: "New Message",
-      description: "You received a message from a client requesting a project update.",
-      time: "2 min ago",
-      read: false,
-      type: "message",
-    },
-    {
-      id: 2,
-      title: "Server Alert",
-      description: "CPU usage exceeded 90% threshold on the production server.",
-      time: "10 min ago",
-      read: false,
-      type: "alert",
-    },
-    {
-      id: 3,
-      title: "Project Update",
-      description: 'The Q4 dashboard project has been moved to "In Review" status.',
-      time: "1 hour ago",
-      read: true,
-      type: "update",
-    },
-  ]);
-
+  const [notifications, setNotifications] = createSignal([]);
+  const [loading, setLoading] = createSignal(true);
+  const [error, setError] = createSignal(null);
   const [activeTab, setActiveTab] = createSignal("all");
-  const [dropdownOpen, setDropdownOpen] = createSignal(false);
+  const [categoryFilter, setCategoryFilter] = createSignal("all");
 
-  const filteredNotifications = createMemo(() =>
-    activeTab() === "unread"
-      ? notifications().filter((n) => !n.read)
-      : notifications()
-  );
+  // Pagination state from API meta
+  const [page, setPage] = createSignal(1);
+  const [totalPages, setTotalPages] = createSignal(1);
+  const [total, setTotal] = createSignal(0);
+  const [hasNext, setHasNext] = createSignal(false);
+  const [hasPrev, setHasPrev] = createSignal(false);
+  const [allNotifications, setAllNotifications] = createSignal([]);
+
+  const loadAlerts = async (pageNo = 1) => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const res = await fetchAlerts(pageNo);
+      const data = res?.data || [];
+
+      // ✅ get saved read ids
+      const readIds = JSON.parse(localStorage.getItem("readAlerts") || "[]");  //for locally store acknowledged alerts, since API doesn't support it yet
+
+      // ✅ map AFTER data comes
+      const mapped = data.map((item) => ({
+        id: item.id,
+        title: item.type_label,
+        category: item.category_label,
+        description: item.message,
+        project: item.project_name,
+        campaign: item.campaign_name,
+        time: formatTime(item.created_at),
+        rawTime: item.created_at,
+
+        // 🔥 FIX HERE
+        read: readIds.includes(item.id) || item.is_acknowledged, // mark as read if in localStorage OR acknowledged in API
+
+        type: item.type,
+        categoryKey: item.category,
+      }));
+
+      setNotifications(mapped);
+
+      const meta = res?.meta?.pagination;
+      if (meta) {
+        setPage(meta.page);
+        setTotalPages(meta.total_pages);
+        setTotal(meta.total);
+        setHasNext(meta.has_next);
+        setHasPrev(meta.has_prev);
+      }
+
+    } catch (err) {
+      console.error("Failed to fetch alerts:", err);
+      setError("Failed to load notifications. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  let hasLoadedAll = false;
+
+  const loadAllAlerts = async () => {
+    if (hasLoadedAll) return;
+    hasLoadedAll = true;
+    let pageNo = 1;
+    let allData = [];
+
+    while (true) {
+      const res = await fetchAlerts(pageNo);
+      const data = res?.data || [];
+
+      allData = [...allData, ...data];
+
+      if (!res?.meta?.pagination?.has_next) break;
+      pageNo++;
+    }
+
+    // apply localStorage read logic
+    const readIds = JSON.parse(localStorage.getItem("readAlerts") || "[]");
+
+    const mapped = allData.map((item) => ({
+      id: item.id,
+      read: readIds.includes(item.id) || item.is_acknowledged,
+    }));
+
+    setAllNotifications(mapped);
+  };
+
+  onMount(() => {
+    loadAlerts(1);     // current page
+    loadAllAlerts();   // full count
+  });
+
+  // All unique categories from current data for filter tabs
+  const categories = createMemo(() => {
+    const cats = new Map();
+    notifications().forEach((n) => {
+      if (!cats.has(n.categoryKey)) {
+        cats.set(n.categoryKey, n.category);
+      }
+    });
+    return Array.from(cats.entries()); // [[key, label], ...]
+  });
+
+  const filteredNotifications = createMemo(() => {
+    let list = notifications();
+    if (activeTab() === "unread") list = list.filter((n) => !n.read);
+    if (categoryFilter() !== "all") list = list.filter((n) => n.categoryKey === categoryFilter());
+    return list;
+  });
 
   const unreadCount = createMemo(() =>
-    notifications().filter((n) => !n.read).length
+    allNotifications().filter((n) => !n.read).length
   );
 
   const markAsRead = (id) => {
+    // ✅ 1. Update current page
     setNotifications((prev) =>
       prev.map((n) => (n.id === id ? { ...n, read: true } : n))
     );
+
+    // ✅ 2. Update ALL notifications (THIS WAS MISSING)
+    setAllNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
+    );
+
+    // ✅ 3. Save in localStorage
+    const readIds = JSON.parse(localStorage.getItem("readAlerts") || "[]");
+
+    if (!readIds.includes(id)) {
+      localStorage.setItem("readAlerts", JSON.stringify([...readIds, id]));
+    }
+    // try {
+    //   // 2. API call
+    //   await fetch(`/api/alerts/${id}/acknowledge`, {
+    //     method: "POST",
+    //   });
+    // } catch (err) {
+    //   console.error("Failed to mark as read", err);
+
+    //   // 3. rollback if failed
+    //   setNotifications((prev) =>
+    //     prev.map((n) => (n.id === id ? { ...n, read: false } : n))
+    //   );
+    // }
   };
 
   const markAllRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    // current page
+    setNotifications((prev) =>
+      prev.map((n) => ({ ...n, read: true }))
+    );
+
+    // ALL pages (IMPORTANT)
+    setAllNotifications((prev) =>
+      prev.map((n) => ({ ...n, read: true }))
+    );
+
+    // localStorage update
+    const allIds = allNotifications().map((n) => n.id);
+    localStorage.setItem("readAlerts", JSON.stringify(allIds));
   };
 
-  const deleteNotification = (id) => {
+
+  const deleteNotification = (id) =>
     setNotifications((prev) => prev.filter((n) => n.id !== id));
-  };
 
   return (
     <div class="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 md:p-8">
+      <div class="mx-auto space-y-6">
 
-      {/* ─── Header Bar ─── */}
-      <div class=" mx-auto mb-6 flex items-center justify-between">
-        <div>
-          <h1 class="text-2xl font-semibold text-gray-900 dark:text-gray-100 tracking-tight">
-            Notifications
-          </h1>
-          <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-            {unreadCount() > 0
-              ? `You have ${unreadCount()} unread notification${unreadCount() > 1 ? "s" : ""}`
-              : "You're all caught up!"}
-          </p>
-        </div>  
-      </div>
-
-      {/* ─── Main Panel ─── */}
-      <div class="mx-auto bg-white dark:bg-gray-900 rounded-2xl border border-gray-50 dark:border-gray-800 shadow-sm overflow-hidden">
-
-        {/* Tabs + Mark All */}
-        <div class="flex items-center justify-between px-5 pt-5 pb-4 border-b border-gray-100 dark:border-gray-800">
-          <div class="flex gap-1.5">
-            <button
-              onClick={() => setActiveTab("all")}
-              class={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 ${
-                activeTab() === "all"
-                  ? "bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900"
-                  : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
-              }`}
-            >
-              All
-            </button>
-            <button
-              onClick={() => setActiveTab("unread")}
-              class={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 ${
-                activeTab() === "unread"
-                  ? "bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900"
-                  : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
-              }`}
-            >
-              Unread
-              <Show when={unreadCount() > 0}>
-                <span class={`text-[11px] font-semibold px-1.5 py-0.5 rounded-md tabular-nums ${
-                  activeTab() === "unread"
-                    ? "bg-white/20 dark:bg-gray-900/20"
-                    : "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-400"
-                }`}>
-                  {unreadCount()}
-                </span>
-              </Show>
-            </button>
+        {/* ── Header ── */}
+        <div class="flex items-start justify-between flex-wrap gap-3">
+          <div>
+            <h1 class="text-2xl font-semibold text-gray-900 dark:text-gray-100 tracking-tight">
+              Notifications
+            </h1>
+            <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              {loading()
+                ? "Loading alerts..."
+                : unreadCount() > 0
+                  ? `${unreadCount()} unread alert${unreadCount() > 1 ? "s" : ""} need attention`
+                  : "You're all caught up — nice work!"}
+            </p>
           </div>
 
-          <Show when={unreadCount() > 0}>
-            <button
-              onClick={markAllRead}
-              class="text-xs font-medium text-gray-400 dark:text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors duration-150"
-            >
-              Mark all as read
-            </button>
-          </Show>
-        </div>
-
-        {/* Notification List */}
-        <div class="divide-y divide-gray-100 dark:divide-gray-800">
-          <For each={filteredNotifications()}>
-            {(item) => (
-              <div
-                class={`group flex gap-4 px-5 py-4 transition-colors duration-150 ${
-                  !item.read
-                    ? "bg-indigo-50/40 dark:bg-indigo-500/[0.04] hover:bg-indigo-50/70 dark:hover:bg-indigo-500/[0.07]"
-                    : "hover:bg-gray-50 dark:hover:bg-gray-800/50"
-                }`}
-              >
-                {/* Unread dot */}
-                <div class="flex-shrink-0 flex items-center pt-1">
-                  <span class={`w-1.5 h-1.5 rounded-full transition-colors ${
-                    !item.read
-                      ? "bg-indigo-500 dark:bg-indigo-400"
-                      : "bg-transparent"
-                  }`} />
-                </div>
-
-                {/* Icon */}
-                <div class={`flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center ${ICON_STYLES[item.type]}`}>
-                  {ICONS[item.type]}
-                </div>
-
-                {/* Body */}
-                <div class="flex-1 min-w-0">
-                  <p class={`text-sm font-medium leading-snug ${
-                    item.read
-                      ? "text-gray-600 dark:text-gray-300"
-                      : "text-gray-900 dark:text-gray-100"
-                  }`}>
-                    {item.title}
-                  </p>
-                  <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5 leading-relaxed">
-                    {item.description}
-                  </p>
-                  <p class="text-xs text-gray-400 dark:text-gray-500 mt-1.5 font-mono">
-                    {item.time}
-                  </p>
-                </div>
-
-                {/* Actions */}
-                <div class="flex-shrink-0 flex items-start gap-1.5 pt-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-                  <Show when={!item.read}>
-                    <button
-                      onClick={() => markAsRead(item.id)}
-                      title="Mark as read"
-                      class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 text-white transition-colors duration-150"
-                    >
-                      {ICONS.check}
-                      Read
-                    </button>
-                  </Show>
-                  <button
-                    onClick={() => deleteNotification(item.id)}
-                    title="Delete"
-                    class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-gray-500 dark:text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10 dark:hover:text-red-400 transition-colors duration-150"
-                  >
-                    {ICONS.trash}
-                    Delete
-                  </button>
-                </div>
+          <div class="flex items-center gap-2">
+            {/* Total badge */}
+            <Show when={!loading() && total() > 0}>
+              <div class="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20">
+                <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                <span class="text-sm font-semibold text-red-700 dark:text-red-300">
+                  {total()} total
+                </span>
               </div>
-            )}
-          </For>
+            </Show>
+
+            {/* Refresh button */}
+            <button
+              onClick={() => loadAlerts(page())}
+              disabled={loading()}
+              class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
+            >
+              <span classList={{ "animate-spin": loading() }}>
+                {ICONS.refresh}
+              </span>
+              Refresh
+            </button>
+          </div>
         </div>
 
-        {/* Empty State */}
-        <Show when={filteredNotifications().length === 0}>
-          <div class="flex flex-col items-center justify-center py-16 px-6 text-center">
-            <div class="w-12 h-12 rounded-2xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-4 text-gray-400 dark:text-gray-500">
-              {ICONS.bell}
-            </div>
-            <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              {activeTab() === "unread" ? "No unread notifications" : "No notifications"}
-            </p>
-            <p class="text-xs text-gray-400 dark:text-gray-500">
-              {activeTab() === "unread"
-                ? "All caught up — nothing left to read."
-                : "New alerts and messages will appear here."}
-            </p>
+        {/* ── Error state ── */}
+        <Show when={error()}>
+          <div class="flex items-center gap-3 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-700 dark:text-red-300 text-sm">
+            {ICONS.danger}
+            {error()}
+            <button
+              onClick={() => loadAlerts(1)}
+              class="ml-auto underline font-medium"
+            >
+              Retry
+            </button>
           </div>
         </Show>
+
+        {/* ── Main Panel ── */}
+        <div class="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+
+          {/* ── Tabs row ── */}
+          <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800 flex-wrap gap-3">
+
+            {/* Read / Unread tabs */}
+            <div class="flex gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl">
+              {["all", "unread"].map((tab) => (
+                <button
+                  onClick={() => setActiveTab(tab)}
+                  class={`relative px-4 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 capitalize ${activeTab() === tab
+                    ? "bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm"
+                    : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                    }`}
+                >
+                  {tab}
+                  <Show when={tab === "unread" && unreadCount() > 0}>
+                    <span class="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-500 text-white">
+                      {unreadCount()}
+                    </span>
+                  </Show>
+                </button>
+              ))}
+            </div>
+
+            {/* Mark all read */}
+            <Show when={unreadCount() > 0}>
+              <button
+                onClick={markAllRead}
+                class="flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors px-3 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800"
+              >
+                {ICONS.check}
+                Mark all read
+              </button>
+            </Show>
+          </div>
+
+          {/* ── Category filter chips ── */}
+          <Show when={categories().length > 1}>
+            <div class="flex items-center gap-2 px-5 py-3 border-b border-gray-100 dark:border-gray-800 overflow-x-auto">
+              <button
+                onClick={() => setCategoryFilter("all")}
+                class={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-colors ${categoryFilter() === "all"
+                  ? "bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900"
+                  : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700"
+                  }`}
+              >
+                All categories
+              </button>
+              <For each={categories()}>
+                {([key, label]) => (
+                  <button
+                    onClick={() => setCategoryFilter(key)}
+                    class={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-colors ${categoryFilter() === key
+                      ? "bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900"
+                      : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700"
+                      }`}
+                  >
+                    {label}
+                  </button>
+                )}
+              </For>
+            </div>
+          </Show>
+
+          {/* ── Loading skeleton ── */}
+          <Show when={loading()}>
+            <div class="divide-y divide-gray-100 dark:divide-gray-800">
+              <For each={[1, 2, 3, 4, 5]}>
+                {() => (
+                  <div class="flex gap-4 px-5 py-4 animate-pulse">
+                    <div class="w-10 h-10 rounded-xl bg-gray-100 dark:bg-gray-800 flex-shrink-0" />
+                    <div class="flex-1 space-y-2 py-1">
+                      <div class="flex gap-2">
+                        <div class="h-3 bg-gray-100 dark:bg-gray-800 rounded w-20" />
+                        <div class="h-3 bg-gray-100 dark:bg-gray-800 rounded w-16" />
+                      </div>
+                      <div class="h-3 bg-gray-100 dark:bg-gray-800 rounded w-full" />
+                      <div class="h-3 bg-gray-100 dark:bg-gray-800 rounded w-3/4" />
+                      <div class="h-2.5 bg-gray-100 dark:bg-gray-800 rounded w-16" />
+                    </div>
+                  </div>
+                )}
+              </For>
+            </div>
+          </Show>
+
+          {/* ── Notification list ── */}
+          <Show when={!loading()}>
+            <div class="divide-y divide-gray-100 dark:divide-gray-800/70">
+              <For each={filteredNotifications()}>
+                {(item) => {
+                  const cfg = TYPE_CONFIG[item.type] || DEFAULT_CONFIG;
+                  return (
+                    <div
+                      class={`group relative flex gap-4 px-5 py-4 transition-colors duration-150 ${!item.read
+                        ? "bg-red-50/30 dark:bg-red-500/[0.03] hover:bg-red-50/60 dark:hover:bg-red-500/[0.06]"
+                        : "hover:bg-gray-50 dark:hover:bg-gray-800/40"
+                        }`}
+                    >
+                      {/* Left accent bar */}
+                      <Show when={!item.read}>
+                        <div class={`absolute left-0 top-3 bottom-3 w-0.5 rounded-r-full ${cfg.bar}`} />
+                      </Show>
+
+                      {/* Icon */}
+                      <div class={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center ${cfg.icon}`}>
+                        {ICONS[item.type] || ICONS.danger}
+                      </div>
+
+                      {/* Body */}
+                      <div class="flex-1 min-w-0 space-y-1">
+
+                        {/* Title row */}
+                        <div class="flex items-center gap-2 flex-wrap">
+                          <p class={`text-sm font-semibold leading-snug ${item.read
+                            ? "text-gray-600 dark:text-gray-300"
+                            : "text-gray-900 dark:text-gray-100"
+                            }`}>
+                            {item.project}
+                          </p>
+                          <span class={`text-[10px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-wide ${cfg.badge}`}>
+                            {cfg.label}
+                          </span>
+                          <span class="text-[10px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 uppercase tracking-wide">
+                            {item.category}
+                          </span>
+                          <Show when={!item.read}>
+                            <span class={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${cfg.dot}`} />
+                          </Show>
+                        </div>
+
+                        {/* Message */}
+                        <p class="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
+                          {item.description}
+                        </p>
+
+                        {/* Time */}
+                        <p class="text-xs text-gray-400 dark:text-gray-500">
+                          {item.time}
+                        </p>
+                      </div>
+
+                      {/* Actions */}
+                      <div class="flex-shrink-0 flex items-start gap-1.5 pt-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                        <Show when={!item.read}>
+                          <button
+                            onClick={() => markAsRead(item.id)}
+                            class="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-gray-700 hover:bg-gray-800 dark:bg-gray-600 dark:hover:bg-gray-500 text-white transition-colors"
+                          >
+                            {ICONS.check}
+                            Read
+                          </button>
+                        </Show>
+                        <button
+                          onClick={() => deleteNotification(item.id)}
+                          class="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-gray-400 dark:text-gray-500 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-500/10 dark:hover:text-red-400 transition-colors"
+                        >
+                          {ICONS.trash}
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }}
+              </For>
+            </div>
+          </Show>
+
+          {/* ── Empty state ── */}
+          <Show when={!loading() && filteredNotifications().length === 0}>
+            <div class="flex flex-col items-center justify-center py-20 px-6 text-center">
+              <div class="w-14 h-14 rounded-2xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-4 text-gray-400 dark:text-gray-500">
+                {ICONS.bell}
+              </div>
+              <p class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                {activeTab() === "unread" ? "No unread notifications" : "No notifications"}
+              </p>
+              <p class="text-xs text-gray-400 dark:text-gray-500 max-w-xs leading-relaxed">
+                {activeTab() === "unread"
+                  ? "All caught up — nothing left to read."
+                  : "New alerts will appear here when they arrive."}
+              </p>
+            </div>
+          </Show>
+
+          {/* ── Footer: count + pagination ── */}
+          <Show when={!loading() && notifications().length > 0}>
+            <div class="px-5 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between flex-wrap gap-3">
+
+              <p class="text-xs text-gray-400 dark:text-gray-500">
+                Showing {filteredNotifications().length} of {total()} alerts
+              </p>
+
+              {/* Pagination */}
+              <div class="flex items-center gap-2">
+                <button
+                  onClick={() => { if (hasPrev()) loadAlerts(page() - 1); }}
+                  disabled={!hasPrev() || loading()}
+                  class="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40 disabled:cursor-default transition-colors"
+                >
+                  {ICONS.chevronLeft}
+                  Prev
+                </button>
+
+                <span class="text-xs text-gray-500 dark:text-gray-400 px-1">
+                  Page {page()} of {totalPages()}
+                </span>
+
+                <button
+                  onClick={() => { if (hasNext()) loadAlerts(page() + 1); }}
+                  disabled={!hasNext() || loading()}
+                  class="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-800 dark:bg-gray-700 text-white hover:bg-gray-900 dark:hover:bg-gray-600 disabled:opacity-40 disabled:cursor-default transition-colors"
+                >
+                  Next
+                  {ICONS.chevronRight}
+                </button>
+              </div>
+            </div>
+          </Show>
+        </div>
       </div>
     </div>
   );

@@ -35,23 +35,14 @@ const leadStats = {
 
 
 export default function ProjectDetails() {
-
-
-
     const location = useLocation();
     const project = location.state?.project;
-
-
     const today = new Date();
-
     const params = useParams();
     const projectId = params.id;
     console.log('project id ', projectId);
 
     const [showNotifications, setShowNotifications] = createSignal(false);
-
-
-
 
     /* ================= FILTER STATES ================= */
 

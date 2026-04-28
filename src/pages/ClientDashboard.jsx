@@ -30,10 +30,12 @@ export default function ClientDashboard() {
     const [projectInsightsMap, setProjectInsightsMap] = createSignal({});
     // { projectId: [ ...all flattened insight records ] }
     const [insightsLoading, setInsightsLoading] = createSignal(false);
+    const [loading, setLoading] = createSignal(true);
 
 
     const loadData = async (pageNo = 1, search = "") => {
         try {
+            setLoading(true);   // 👈 START LOADING
             const res = await fetchProjects(pageNo, search);
             const apiData = res?.data || [];
             const meta = res?.meta?.pagination;
@@ -60,8 +62,10 @@ export default function ClientDashboard() {
             }));
 
             setProjects(mappedProjects);
-            deriveProjectStatuses(mappedProjects); // 👈 async status patch
-            loadAllProjectInsights(mappedProjects);
+            await Promise.all([
+                deriveProjectStatuses(mappedProjects), // 👈 async status patch
+                loadAllProjectInsights(mappedProjects)
+            ]);
 
             if (meta) {
                 setPage(meta.page);
@@ -73,6 +77,9 @@ export default function ClientDashboard() {
             }
         } catch (err) {
             console.error(err);
+        }
+        finally {
+            setLoading(false);   // 👈 STOP LOADING
         }
     };
 
@@ -316,6 +323,29 @@ export default function ClientDashboard() {
         return colors[index];
     };
 
+    const TableSkeleton = () => {
+        return (
+            <tbody>
+                <For each={Array(6).fill(0)}>
+                    {(_, i) => (
+                        <tr class="border-t animate-pulse">
+                            <td class="p-3"><div class="h-6 w-6 bg-gray-300 rounded-full"></div></td>
+                            <td class="p-3"><div class="h-4 w-32 bg-gray-300 rounded"></div></td>
+                            <td class="p-3"><div class="h-4 w-24 bg-gray-300 rounded"></div></td>
+                            <td class="p-3"><div class="h-4 w-20 bg-gray-300 rounded"></div></td>
+                            <td class="p-3"><div class="h-6 w-16 bg-gray-300 rounded-full"></div></td>
+                            <td class="p-3"><div class="h-4 w-20 bg-gray-300 rounded"></div></td>
+                            <td class="p-3"><div class="h-4 w-20 bg-gray-300 rounded"></div></td>
+                            <td class="p-3"><div class="h-4 w-20 bg-gray-300 rounded"></div></td>
+                            <td class="p-3"><div class="h-4 w-16 bg-gray-300 rounded"></div></td>
+                            <td class="p-3"><div class="h-4 w-16 bg-gray-300 rounded"></div></td>
+                        </tr>
+                    )}
+                </For>
+            </tbody>
+        );
+    };
+
     return (
         <section class="w-full px-4 sm:px-6 lg:px-8 py-6">
 
@@ -503,70 +533,71 @@ export default function ClientDashboard() {
                             <th class="p-3">Paused Campaigns</th>
                         </tr>
                     </thead>
-                    <tbody>
-                        {/* ✅ For callback with explicit return */}
-                        <For each={filteredProjects()}>
-                            {(project, index) => {
-                                const stats = () => allProjectStats()[project.id] || { totalLeads: 0, totalSpent: 0, avgCPL: 0 }; // 👈 changed
+                    <Show when={!loading()} fallback={<TableSkeleton />}>
+                        <tbody>
+                            {/* ✅ For callback with explicit return */}
+                            <For each={filteredProjects()}>
+                                {(project, index) => {
+                                    const stats = () => allProjectStats()[project.id] || { totalLeads: 0, totalSpent: 0, avgCPL: 0 }; // 👈 changed
 
-                                return (
-                                    <tr
-                                        class={
-                                            "border-t transition-all duration-300 ease-in-out " +
-                                            "[&_td]:text-center [&_td]:px-6 [&_td:first-child]:px-2 " +
-                                            "[&_td]:whitespace-nowrap [&_td:first-child]:text-left " +
-                                            (index() % 2 === 0
-                                                ? "bg-white dark:bg-gray-900 "
-                                                : "bg-purple-50/40 dark:bg-gray-900 ") +
-                                            "hover:bg-purple-100/40 dark:hover:bg-gray-800"
-                                        }
-                                    >
+                                    return (
+                                        <tr
+                                            class={
+                                                "border-t transition-all duration-300 ease-in-out " +
+                                                "[&_td]:text-center [&_td]:px-6 [&_td:first-child]:px-2 " +
+                                                "[&_td]:whitespace-nowrap [&_td:first-child]:text-left " +
+                                                (index() % 2 === 0
+                                                    ? "bg-white dark:bg-gray-900 "
+                                                    : "bg-purple-50/40 dark:bg-gray-900 ") +
+                                                "hover:bg-purple-100/40 dark:hover:bg-gray-800"
+                                            }
+                                        >
 
-                                        <td class="px-1 py-2 text-center">
-                                            <span class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 text-xs font-semibold">
-                                                {(page() - 1) * pageSize() + index() + 1}
-                                            </span>
-                                        </td>
-                                        {/* Project Name */}
-                                        <td class="p-2">
-                                            <div class="flex items-center gap-2">
-                                                <div class={`rounded flex items-center justify-center w-10 h-10 font-bold text-lg uppercase ${getColor(project.name)}`}>
-                                                    {project.name ? project.name.charAt(0) : "?"}
+                                            <td class="px-1 py-2 text-center">
+                                                <span class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 text-xs font-semibold">
+                                                    {(page() - 1) * pageSize() + index() + 1}
+                                                </span>
+                                            </td>
+                                            {/* Project Name */}
+                                            <td class="p-2">
+                                                <div class="flex items-center gap-2">
+                                                    <div class={`rounded flex items-center justify-center w-10 h-10 font-bold text-lg uppercase ${getColor(project.name)}`}>
+                                                        {project.name ? project.name.charAt(0) : "?"}
+                                                    </div>
+                                                    <A
+                                                        href={`/project/${project.id}`}   // 👈 ADD THIS
+                                                        state={{ project }}
+                                                        class="text-purple-700 dark:text-purple-300 font-medium hover:underline transition"
+                                                    >
+                                                        {project.name}
+                                                    </A>
                                                 </div>
-                                                <A
-                                                    href={`/project/${project.id}`}   // 👈 ADD THIS
-                                                    state={{ project }}
-                                                    class="text-purple-700 dark:text-purple-300 font-medium hover:underline transition"
+                                            </td>
+
+                                            {/* Location */}
+                                            <td class="p-2">{project.location ?? "—"}</td>
+
+                                            {/* Type */}
+                                            <td class="p-2">{project.type ?? "—"}</td>
+
+                                            {/* Status Badge */}
+                                            <td class="px-4 py-3">
+                                                <span
+                                                    class={
+                                                        "px-3 py-1 text-sm rounded-full capitalize " +
+                                                        (project.status === "active"
+                                                            ? "bg-green-100 text-green-700"
+                                                            : project.status === "paused"
+                                                                ? "bg-yellow-100 text-yellow-700"
+                                                                : "bg-red-100 text-red-700")
+                                                    }
                                                 >
-                                                    {project.name}
-                                                </A>
-                                            </div>
-                                        </td>
+                                                    {project.status}
+                                                </span>
+                                            </td>
 
-                                        {/* Location */}
-                                        <td class="p-2">{project.location ?? "—"}</td>
-
-                                        {/* Type */}
-                                        <td class="p-2">{project.type ?? "—"}</td>
-
-                                        {/* Status Badge */}
-                                        <td class="px-4 py-3">
-                                            <span
-                                                class={
-                                                    "px-3 py-1 text-sm rounded-full capitalize " +
-                                                    (project.status === "active"
-                                                        ? "bg-green-100 text-green-700"
-                                                        : project.status === "paused"
-                                                            ? "bg-yellow-100 text-yellow-700"
-                                                            : "bg-red-100 text-red-700")
-                                                }
-                                            >
-                                                {project.status}
-                                            </span>
-                                        </td>
-
-                                        {/* Uploaded Document */}
-                                        {/* <td class="p-2">
+                                            {/* Uploaded Document */}
+                                            {/* <td class="p-2">
                                             {project.uploaddocument ? (
                                                 <a
                                                     href={project.uploaddocument}
@@ -581,8 +612,8 @@ export default function ClientDashboard() {
                                             )}
                                         </td> */}
 
-                                        {/* Priority */}
-                                        {/* <td class="p-2">
+                                            {/* Priority */}
+                                            {/* <td class="p-2">
                                             <select
                                                 class="border border-purple-200 dark:border-gray-600 rounded px-2 py-1 text-sm bg-purple-100 dark:bg-gray-800 min-w-max"
                                                 value={project.priority}
@@ -594,8 +625,8 @@ export default function ClientDashboard() {
                                             </select>
                                         </td> */}
 
-                                        {/* Project Control */}
-                                        {/* <td class="p-2">
+                                            {/* Project Control */}
+                                            {/* <td class="p-2">
                                             <select
                                                 class="border border-blue-200 dark:border-gray-600 rounded px-2 py-1 text-sm bg-blue-50 dark:bg-gray-800 min-w-max"
                                                 value={
@@ -613,34 +644,35 @@ export default function ClientDashboard() {
                                             </select>
                                         </td> */}
 
-                                        {/* Budget */}
-                                        <td class="p-2">
-                                            {"₹"}{(project.budget ?? 0).toLocaleString("en-IN")}
-                                        </td>
+                                            {/* Budget */}
+                                            <td class="p-2">
+                                                {"₹"}{(project.budget ?? 0).toLocaleString("en-IN")}
+                                            </td>
 
-                                        {/* Date-range Leads */}
-                                        <td class="p-2">{stats().totalLeads}</td>
+                                            {/* Date-range Leads */}
+                                            <td class="p-2">{stats().totalLeads}</td>
 
-                                        {/* Date-range Spent */}
-                                        <td class="p-2">
-                                            {"₹"}{stats().totalSpent.toLocaleString("en-IN")}
-                                        </td>
+                                            {/* Date-range Spent */}
+                                            <td class="p-2">
+                                                {"₹"}{stats().totalSpent.toLocaleString("en-IN")}
+                                            </td>
 
-                                        {/* Date-range AVG CPL */}
-                                        <td class="p-2">
-                                            {"₹"}{stats().avgCPL}
-                                        </td>
+                                            {/* Date-range AVG CPL */}
+                                            <td class="p-2">
+                                                {"₹"}{stats().avgCPL}
+                                            </td>
 
-                                        {/* Active Campaigns */}
-                                        <td class="p-2 text-center">{project.activeCampaigns ?? 0}</td>
+                                            {/* Active Campaigns */}
+                                            <td class="p-2 text-center">{project.activeCampaigns ?? 0}</td>
 
-                                        {/* Paused Campaigns */}
-                                        <td class="p-2 text-center">{project.pausedCampaigns ?? 0}</td>
-                                    </tr>
-                                );
-                            }}
-                        </For>
-                    </tbody>
+                                            {/* Paused Campaigns */}
+                                            <td class="p-2 text-center">{project.pausedCampaigns ?? 0}</td>
+                                        </tr>
+                                    );
+                                }}
+                            </For>
+                        </tbody>
+                    </Show>
                 </table>
 
             </div>
@@ -688,5 +720,7 @@ export default function ClientDashboard() {
                 </div>
             </Show>
         </section>
+
     );
+
 }

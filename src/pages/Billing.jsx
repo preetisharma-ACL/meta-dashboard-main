@@ -54,7 +54,6 @@ function transformProject(apiData, projectMeta = {}) {
     budgetAllocated: parseFloat(apiData.budget_allocated) || 0,
     totalSpend: parseFloat(apiData.total_spent) || 0,
     remaining: parseFloat(apiData.remaining) || 0,
-    proposedCPL: 500, // placeholder — add to API when available
     qualificationPct: apiData.cpl?.qualification_percent || 30,
     qualifiedLeads: apiData.cpl?.qualified_leads || 0,
     expectedQualifiedLeads: apiData.cpl?.expected_qualified_leads || 0,
@@ -267,71 +266,15 @@ function ProjectRow(props) {
             <p class="text-sm text-blue-900 dark:text-gray-400">Avg CPL</p>
             <p class="text-sm font-semibold text-gray-800 dark:text-gray-200">{fmt(p().avgCPL)}</p>
           </div>
-          <div class="p-1.5 rounded-lg bg-blue-100 dark:bg-gray-800 group-hover:bg-blue-200 dark:group-hover:bg-gray-700 transition">
-            <svg class={`w-4 h-4 text-blue-500 dark:text-blue-400 transition-transform duration-300 ${open() ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-            </svg>
-          </div>
         </div>
       </button>
-
-      {/* Collapsible body */}
-      <div style={{ overflow: "hidden", "max-height": open() ? "2000px" : "0px", opacity: open() ? "1" : "0", transition: "all 0.4s ease" }}>
-        <div class="px-5 pb-5 pt-4 space-y-5 border-t border-gray-100 dark:border-gray-700">
-          {/* CPL Summary Strip */}
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {[
-              { label: "Total Leads", value: p().totalLeads },
-              { label: "Qualified Leads", value: p().qualifiedLeads },
-              { label: "Expected Qualified", value: p().expectedQualifiedLeads },
-              { label: "Qualification %", value: `${p().qualificationPct}%` },
-            ].map((item) => (
-              <div class="bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-xl p-3 text-center">
-                <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">{item.label}</p>
-                <p class="text-lg font-bold text-gray-800 dark:text-gray-100">{item.value}</p>
-              </div>
-            ))}
-          </div>
-
-          <SectionLabel>Campaign-Level Spend Details</SectionLabel>
-          <CampaignTable campaigns={p().campaigns} />
-        </div>
-      </div>
     </Card>
   );
 }
 
 // --- CPL Comparison Panel -----------------------------------------------------
 function CPLComparisonPanel(props) {
-  return (
-    <Card class="p-5 space-y-4">
-      <SectionLabel>CPL Comparison Across Projects</SectionLabel>
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div class="rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 p-4 space-y-2">
-          <p class="text-md text-gray-500 dark:text-gray-400 font-medium">Overall Avg CPL</p>
-          <p class="text-3xl font-bold text-gray-900 dark:text-gray-100">{fmt(props.overallCPL)}</p>
-          <p class="text-sm text-gray-500 dark:text-gray-400">{fmt(props.totalSpend)} ÷ {props.totalLeads} leads</p>
-        </div>
-        <For each={props.projectStats}>
-          {(proj) => (
-            <div class="rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 p-4 space-y-2">
-              <div class="flex items-center justify-between gap-2">
-                <p class="text-md text-gray-600 dark:text-gray-400 font-medium">{proj.name}</p>
-                <Tag variant={proj.avgCPL <= proj.proposedCPL ? "green" : "amber"}>
-                  {proj.avgCPL <= proj.proposedCPL ? "On Target" : "Over"}
-                </Tag>
-              </div>
-              <p class="text-2xl font-bold text-gray-900 dark:text-gray-100">{fmt(proj.avgCPL)}</p>
-              <p class="text-md text-gray-500 dark:text-gray-400">
-                Proposed: <span class="font-semibold text-gray-600 dark:text-gray-400">{fmt(proj.proposedCPL)}</span>
-              </p>
-              <CPLIndicator actual={proj.avgCPL} proposed={proj.proposedCPL} />
-            </div>
-          )}
-        </For>
-      </div>
-    </Card>
-  );
+  
 }
 
 // --- Payment History ----------------------------------------------------------
@@ -718,14 +661,6 @@ export default function Billing() {
                 </For>
               </div>
             </section>
-
-            {/* ④ CPL Comparison */}
-            <CPLComparisonPanel
-              projectStats={projects()}
-              overallCPL={overallCPL()}
-              totalLeads={totalLeads()}
-              totalSpend={totalSpend()}
-            />
           </Show>
         </div>
       </Show>
