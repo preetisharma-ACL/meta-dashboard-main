@@ -329,16 +329,18 @@ export default function ClientDashboard() {
                 <For each={Array(6).fill(0)}>
                     {(_, i) => (
                         <tr class="border-t animate-pulse">
-                            <td class="p-3"><div class="h-6 w-6 bg-gray-300 rounded-full"></div></td>
-                            <td class="p-3"><div class="h-4 w-32 bg-gray-300 rounded"></div></td>
-                            <td class="p-3"><div class="h-4 w-24 bg-gray-300 rounded"></div></td>
-                            <td class="p-3"><div class="h-4 w-20 bg-gray-300 rounded"></div></td>
-                            <td class="p-3"><div class="h-6 w-16 bg-gray-300 rounded-full"></div></td>
-                            <td class="p-3"><div class="h-4 w-20 bg-gray-300 rounded"></div></td>
-                            <td class="p-3"><div class="h-4 w-20 bg-gray-300 rounded"></div></td>
-                            <td class="p-3"><div class="h-4 w-20 bg-gray-300 rounded"></div></td>
-                            <td class="p-3"><div class="h-4 w-16 bg-gray-300 rounded"></div></td>
-                            <td class="p-3"><div class="h-4 w-16 bg-gray-300 rounded"></div></td>
+                            <td class="p-3"><div class="h-6 w-6 bg-gray-300 dark:bg-gray-700 rounded-full"></div></td>
+                            <td class="p-3"><div class="h-4 w-32 bg-gray-300 dark:bg-gray-700 rounded"></div></td>
+                            <td class="p-3"><div class="h-4 w-24 bg-gray-300 dark:bg-gray-700 rounded"></div></td>
+                            <td class="p-3"><div class="h-4 w-20 bg-gray-300 dark:bg-gray-700 rounded"></div></td>
+                            <td class="p-3"><div class="h-6 w-16 bg-gray-300 dark:bg-gray-700 rounded-full"></div></td>
+                            <td class="p-3"><div class="h-4 w-20 bg-gray-300 dark:bg-gray-700 rounded"></div></td>
+                            <td class="p-3"><div class="h-4 w-20 bg-gray-300 dark:bg-gray-700 rounded"></div></td>
+                            <td class="p-3"><div class="h-4 w-20 bg-gray-300 dark:bg-gray-700 rounded"></div></td>
+                            <td class="p-3"><div class="h-4 w-16 bg-gray-300 dark:bg-gray-700 rounded"></div></td>
+                            <td class="p-3"><div class="h-4 w-16 bg-gray-300 dark:bg-gray-700 rounded"></div></td>
+                            <td class="p-3"><div class="h-4 w-20 bg-gray-300 dark:bg-gray-700 rounded"></div></td>
+                            
                         </tr>
                     )}
                 </For>
