@@ -543,7 +543,7 @@ export default function MainDashboard() {
                             <th class="p-3">{rangeLabel()} Total Spent</th>
                             <th class="p-3">{rangeLabel()} AVG CPL</th>
                             {userRole() === "admin" && (
-                                <th class="p-3">Modified CPL</th>
+                                <th class="p-3">Premium CPL</th>
                             )}
                             <th class="p-3">Active Campaigns</th>
                             <th class="p-3">Paused Campaigns</th>
@@ -551,7 +551,7 @@ export default function MainDashboard() {
                     </thead>
                     <Show when={!loading()} fallback={<TableSkeleton />}>
                         <tbody>
-                            {/* ✅ For callback with explicit return */}
+                            {/*  For callback with explicit return */}
                             <For each={filteredProjects()}>
                                 {(project, index) => {
                                     const stats = () => allProjectStats()[project.id] || { totalLeads: 0, totalSpent: 0, avgCPL: 0 }; //  changed

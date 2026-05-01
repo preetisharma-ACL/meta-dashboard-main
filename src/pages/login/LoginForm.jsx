@@ -2,15 +2,9 @@ import { createSignal, onMount } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { loginUser } from "../../services/login-service";
 
-
-// ✅ Logout Function (FIXED)
 export const handleLogout = () => {
     console.log("User Logout");
-
-    // ✅ 1. Remove auth
     localStorage.removeItem("auth");
-
-    // ✅ 2. Force redirect (works globally)
     window.location.href = "/login";
 };
 
@@ -23,7 +17,6 @@ export default function Login() {
 
     const navigate = useNavigate();
 
-    // ✅ Check if already logged in
     onMount(() => {
         const auth = JSON.parse(localStorage.getItem("auth"));
         if (auth?.token) {
@@ -32,58 +25,6 @@ export default function Login() {
         }
     });
 
-    // const handleSubmit = async (e) => {
-    //     e.preventDefault();
-
-    //     setLoading(true);
-    //     setError("");
-
-    //     try {
-    //         const res = await fetch("http://192.168.1.48:4756/api/auth/login/", {
-    //             method: "POST",
-    //             headers: {
-    //                 "Content-Type": "application/json",
-    //             },
-    //             body: JSON.stringify({
-    //                 email: email(),
-    //                 password: password(),
-    //             }),
-    //         });
-
-    //         const data = await res.json();
-    //         console.log("Login response:", data);
-
-    //         if (!res.ok) {
-    //             throw new Error(data?.message || "Invalid credentials");
-    //         }
-
-    //         const token = data?.data?.access_token;
-
-    //         if (!token) {
-    //             throw new Error("Token not found in response");
-    //         }
-
-    //         const authData = {
-    //             token: token,
-    //             user: data?.data?.user || null,
-    //             isAuthenticated: true,
-    //         };
-
-    //         localStorage.setItem("auth", JSON.stringify(authData));
-
-    //         setIsLoggedIn(true);
-
-    //         // 🚀 Redirect after login
-    //         navigate("/", { replace: true });
-
-    //     } catch (err) {
-    //         console.error(err);
-    //         setError(err.message);
-    //     } finally {
-    //         setLoading(false);
-    //     }
-    // };
-
     const handleSubmit = async (e) => {
         e.preventDefault();
         setLoading(true);
@@ -91,43 +32,43 @@ export default function Login() {
 
         try {
             const res = await loginUser(email(), password());
-            const token = res?.data?.access_token;
-            if (!token) throw new Error("Token not found");
+            const accessToken = res?.data?.access_token;
+            const refreshToken = res?.data?.refresh_token;
+            if (!accessToken) throw new Error("Access token not found");
 
-            // ✅ Fetch role
             const meRes = await fetch(
                 "https://metadashboard.aajneeticonnectltd.com/api/auth/me",
-                { headers: { Authorization: "Bearer " + token } }
+                { headers: { Authorization: "Bearer " + accessToken } }
             );
             const meData = await meRes.json();
             const role = meData?.data?.role ?? "client";
 
-            // ✅ NEW: Fetch client_type (only for client role)
             let client_type = null;
             if (role === "client") {
                 try {
                     const clientRes = await fetch(
                         "https://metadashboard.aajneeticonnectltd.com/api/clients/me/",
-                        { headers: { Authorization: "Bearer " + token } }
+                        { headers: { Authorization: "Bearer " + accessToken } }
                     );
                     const clientData = await clientRes.json();
-                    client_type = clientData?.data?.client_type ?? null; // "retainer" | "cpl" | "hybrid"
+                    client_type = clientData?.data?.client_type ?? null;
                 } catch (err) {
                     console.warn("Could not fetch client type:", err);
                 }
             }
 
             const authData = {
-                token,
+                token: accessToken,
+                refreshToken,
                 user: res?.data?.user || null,
                 isAuthenticated: true,
                 role,
-                client_type, // ✅ stored here
+                client_type,
             };
+                
 
             localStorage.setItem("auth", JSON.stringify(authData));
             window.dispatchEvent(new Event("storage"));
-
             setIsLoggedIn(true);
             navigate("/", { replace: true });
 
@@ -140,72 +81,122 @@ export default function Login() {
     };
 
     return (
-        <div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-100 via-white to-blue-100 px-4">
-
-            <div class="w-full max-w-md backdrop-blur-lg bg-white/70 shadow-xl rounded-2xl p-8 border border-gray-200">
-
-                <h2 class="text-2xl font-bold text-gray-800 text-center mb-2">
-                    Welcome Back 👋
-                </h2>
-
-                <p class="text-sm text-gray-500 text-center mb-6">
-                    {isLoggedIn() ? "You are logged in" : "Login to your account"}
-                </p>
-
-                {/* ❌ Error */}
-                {error() && (
-                    <div class="mb-4 text-red-500 text-sm text-center">
-                        {error()}
+        <>
+            <div class="login-root">
+                {/* ── LEFT DECORATIVE PANEL ── */}
+                <div class="login-left">
+                    <div class="blob blob-1" />
+                    <div class="blob blob-2" />
+                    <div class="blob blob-3" />
+                    <div class="left-glass-card">
+                        <div class="brand-dots">
+                            <div class="brand-dot" style="background:#5b7fa6" />
+                            <div class="brand-dot" style="background:#8a6fc4" />
+                            <div class="brand-dot" style="background:#f0a8b8" />
+                        </div>
+                        <h2 class="left-tagline">
+                            Campaigns that<br /><em>convert.</em><br />Insights that matter.
+                        </h2>
+                        <p class="left-desc">
+                            Your all-in-one marketing dashboard to track projects,
+                            manage campaigns, and measure real ROI — all in one place.
+                        </p>
+                        {/* <div class="left-email-row">
+                            <input
+                                class="left-email-input"
+                                type="text"
+                                placeholder="Enter your email address"
+                                disabled
+                            />
+                            <button class="left-signup-btn">Get access</button>
+                        </div> */}
+                        <div class="orb-ring" />
                     </div>
-                )}
+                </div>
 
-                {/* ✅ Show Login Form only if NOT logged in */}
-                {!isLoggedIn() && (
-                    <form onSubmit={handleSubmit} class="space-y-4">
+                {/* ── RIGHT LOGIN PANEL ── */}
+                <div class="login-right">
+                    <div class="form-wrapper">
 
-                        <div>
-                            <label class="text-sm text-gray-600">Email</label>
-                            <input
-                                type="email"
-                                value={email()}
-                                onInput={(e) => setEmail(e.target.value)}
-                                class="w-full mt-1 px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-400"
-                                required
-                            />
+                        {/* Logo */}
+                        <div class="form-logo">
+                            <div class="form-logo-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                                </svg>
+                            </div>
+                            <span class="form-logo-text">MetaDashboard</span>
                         </div>
 
-                        <div>
-                            <label class="text-sm text-gray-600">Password</label>
-                            <input
-                                type="password"
-                                value={password()}
-                                onInput={(e) => setPassword(e.target.value)}
-                                class="w-full mt-1 px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-400"
-                                required
-                            />
-                        </div>
+                        <h1 class="form-heading">
+                            {isLoggedIn() ? "You're in." : "Welcome back"}
+                        </h1>
+                        <p class="form-subheading">
+                            {isLoggedIn()
+                                ? "You are already logged in to your account."
+                                : "Sign in to your account to continue"}
+                        </p>
 
-                        <button
-                            type="submit"
-                            disabled={loading()}
-                            class="w-full bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700 transition shadow-md disabled:opacity-50"
-                        >
-                            {loading() ? "Logging in..." : "Login"}
-                        </button>
-                    </form>
-                )}
+                        {/* Error */}
+                        {error() && (
+                            <div class="error-box">
+                                {error()}
+                            </div>
+                        )}
 
-                {/* ✅ Logout Button */}
-                {isLoggedIn() && (
-                    <button
-                        onClick={handleLogout}
-                        class="w-full mt-4 bg-red-500 text-white py-2 rounded-lg hover:bg-red-600 transition shadow-md"
-                    >
-                        Logout
-                    </button>
-                )}
+                        {/* Login Form */}
+                        {!isLoggedIn() && (
+                            <form onSubmit={handleSubmit}>
+                                <div class="input-group">
+                                    <label class="input-label">Email address</label>
+                                    <input
+                                        type="email"
+                                        value={email()}
+                                        onInput={(e) => setEmail(e.target.value)}
+                                        class="input-field"
+                                        placeholder="you@company.com"
+                                        required
+                                    />
+                                </div>
+
+                                <div class="input-group">
+                                    <label class="input-label">Password</label>
+                                    <input
+                                        type="password"
+                                        value={password()}
+                                        onInput={(e) => setPassword(e.target.value)}
+                                        class="input-field"
+                                        placeholder="••••••••••"
+                                        required
+                                    />
+                                </div>
+
+                                <button
+                                    type="submit"
+                                    disabled={loading()}
+                                    class="submit-btn"
+                                >
+                                    {loading() && <span class="spinner" />}
+                                    {loading() ? "Signing in..." : "Sign in"}
+                                </button>
+                            </form>
+                        )}
+
+                        {/* Logout */}
+                        {isLoggedIn() && (
+                            <button onClick={handleLogout} class="logout-btn">
+                                Sign out
+                            </button>
+                        )}
+
+                        <p class="form-footer">
+                            Protected by enterprise-grade security.<br />
+                            &copy; {new Date().getFullYear()} MetaDashboard. All rights reserved.
+                        </p>
+                    </div>
+                </div>
 
             </div>
-        </div>
+        </>
     );
 }

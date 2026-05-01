@@ -1,4 +1,4 @@
-import { For, Show, createMemo, createSignal} from "solid-js";
+import { For, Show, createMemo, createSignal } from "solid-js";
 import { DateRangeFilter } from "../components/DateRangeFilter";
 import { A, useParams } from "@solidjs/router";
 import { useLocation } from "@solidjs/router";
@@ -62,7 +62,7 @@ export default function ProjectDetails() {
             document.removeEventListener("click", handleClickOutside);
         });
 
-       
+
     });
 
     const loadProject = async () => {
@@ -116,7 +116,7 @@ export default function ProjectDetails() {
                 ad_account: item.ad_account_name || "-",
                 status: item.status === "paused" ? "paused" : "Live",
                 cpl: item.cpl || 0,
-                modifiedCpl: item.modified_cpl ?? null,
+                premium_metrics: item.premium_metrics,
                 insights: insightsMap[item.id] || [],
             }));
 
@@ -175,7 +175,7 @@ export default function ProjectDetails() {
         const totalClicks = filtered.reduce((s, d) => s + (d.clicks || 0), 0);
         const totalReach = filtered.reduce((s, d) => s + (d.impressions || 0), 0);
         const totalSpent = filtered.reduce((s, d) => s + parseFloat(d.spend || 0), 0);
-        const avgCPL = totalLeads > 0 ? Math.round(totalSpent / totalLeads) : 0;
+        const avgCPL = filtered.reduce((s, d) => s + parseFloat(d.cpl || 0), 0);
 
         console.log("result:", { totalLeads, totalClicks, totalReach, totalSpent, avgCPL });
 
@@ -208,7 +208,14 @@ export default function ProjectDetails() {
             if (!map.has(key)) {
                 // 👇 Calculate from insights based on selected date range
                 const stats = getInsightsInRange(row.insights, fromDate(), toDate());
+                const label = row?.premium_metrics?.markup_rule?.label || "0%";
 
+                // extract number from "+25.00%" → 25
+                const percent = parseFloat(label.replace(/[^0-9.]/g, "")) || 0;
+
+                const modifiedCpl = parseFloat(
+                    ((stats.cpl || 0) + ((stats.cpl || 0) * percent / 100)).toFixed(2)
+                );
                 map.set(key, {
                     ...row,
                     totalLeads: stats.leads,
@@ -216,6 +223,7 @@ export default function ProjectDetails() {
                     totalReach: stats.reach,
                     totalSpent: stats.spent,
                     totalCPL: stats.cpl,
+                    modifiedCpl: modifiedCpl,
                 });
             }
         }
@@ -628,11 +636,11 @@ export default function ProjectDetails() {
                             <th class="p-3">Status</th>
                             <th class="p-3">{rangeLabel()} Leads</th>
                             <th class="p-3">{rangeLabel()} Clicks</th>
-                            <th class="p-3">{rangeLabel()} Reach</th>
+                            <th class="p-3">{rangeLabel()} Impression</th>
                             <th class="p-3">{rangeLabel()} Spent</th>
                             <th class="p-3">{rangeLabel()} CPL</th>
                             {userRole() === "admin" && (
-                                <th class="p-3">Modified CPL</th>
+                                <th class="p-3">Premium CPL</th>
                             )}
                         </tr>
                     </thead>
@@ -667,7 +675,7 @@ export default function ProjectDetails() {
                                     <td class="p-3">{row.totalClicks}</td>
                                     <td class="p-3">{row.totalReach}</td>
                                     <td class="p-3">₹{row.totalSpent.toLocaleString("en-IN")}</td>
-                                    <td class="p-3">₹{row.totalCPL}</td>  {/* 👈 was row.cpl */}
+                                    <td class="p-3">₹{(row.totalCPL ?? 0).toFixed(2)}</td>
                                     {userRole() === "admin" && (
                                         <td class="p-3">{"₹"}{row.modifiedCpl ?? "—"}</td>
                                     )}
