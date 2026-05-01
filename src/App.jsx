@@ -10,7 +10,7 @@ import FollowUp from './pages/FollowUp';
 import ClientDelivery from './pages/Client-Delivery';
 import { useSidebar } from './context/SidebarContext';
 import ProjectDetails from './pages/ProjectDetails';
-import ClientDashboard from './pages/ClientDashboard';
+import MainDashboard from './pages/ClientDashboard';
 import CampaignDetails from './pages/CampaignDetails';
 import AddProject from './pages/AddProjects';
 import Billing from './pages/Billing';
@@ -19,7 +19,6 @@ import WhatIsPerforming from './pages/WhatisPerforming';
 import Login from './pages/login/LoginForm';
 import ProtectedRoute from './routes/ProtectedRoute';
 import Notifications from './pages/Alert';
-
 function Layout(props) {
   const { isCollapsed } = useSidebar();
 
@@ -46,7 +45,7 @@ function App() {
         <Router>
           {/* <Route path="/" component={() => <Layout><Dashboard /></Layout>} /> */}
           
-          <Route path="/" component={() => <ProtectedRoute><Layout><ClientDashboard /></Layout></ProtectedRoute>} />
+          <Route path="/" component={() => <ProtectedRoute><Layout><MainDashboard /></Layout></ProtectedRoute>} />
           <Route path="/add-project" component={() =>  <ProtectedRoute><Layout><AddProject /></Layout></ProtectedRoute>} />
           <Route path="/billing" component={() =><ProtectedRoute><Layout><Billing /></Layout></ProtectedRoute>} />
           <Route path="/client-delivery" component={() => <ProtectedRoute><Layout><ClientDelivery/></Layout></ProtectedRoute>} />

@@ -1,4 +1,4 @@
-import { createSignal, createMemo, For, Show, onMount } from "solid-js";
+import { createSignal, createMemo, For, Show, onMount, createEffect, untrack } from "solid-js";
 import { fetchAlerts } from "../services/alert-service";
 
 const ICONS = {
@@ -107,15 +107,12 @@ function formatTime(dateStr) {
   if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? "s" : ""} ago`;
   return `${diffDays} day${diffDays > 1 ? "s" : ""} ago`;
 }
-
 export default function Notifications() {
   const [notifications, setNotifications] = createSignal([]);
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal(null);
   const [activeTab, setActiveTab] = createSignal("all");
   const [categoryFilter, setCategoryFilter] = createSignal("all");
-
-  // Pagination state from API meta
   const [page, setPage] = createSignal(1);
   const [totalPages, setTotalPages] = createSignal(1);
   const [total, setTotal] = createSignal(0);
@@ -123,18 +120,75 @@ export default function Notifications() {
   const [hasPrev, setHasPrev] = createSignal(false);
   const [allNotifications, setAllNotifications] = createSignal([]);
 
+  // ✅ FIX 1: signal, not plain variable
+  const [prevIds, setPrevIds] = createSignal([]);
+
+  const notificationSound = new Audio("/notification.mp3");
+  let isUnlocked = false;
+  fetch("/notification.mp3").then(r => console.log("File status:", r.status, r.ok))
+
+  // ✅ Request notification permission
+  onMount(() => {
+    if (Notification.permission !== "granted") {
+      Notification.requestPermission();
+    }
+  });
+
+  // ✅ Unlock audio on first user click (browser requirement)
+  onMount(() => {
+    const unlock = () => {
+      if (!isUnlocked) {
+        notificationSound.play().then(() => {
+          notificationSound.pause();
+          notificationSound.currentTime = 0;
+          isUnlocked = true;
+        }).catch(() => { });
+      }
+    };
+    window.addEventListener("click", unlock);
+    return () => window.removeEventListener("click", unlock);
+  });
+
+  // ✅ FIX 2: Properly detect new notifications using signal
+  createEffect(() => {
+  const current = notifications().map(n => n.id); // ✅ tracked — re-runs when notifications change
+  
+  // ✅ untrack prevIds so reading it doesn't re-trigger this effect
+  const prev = untrack(() => prevIds());
+
+  if (prev.length > 0) {
+    const newOnes = current.filter(id => !prev.includes(id));
+    if (newOnes.length > 0) {
+      console.log("🔊 Playing sound for", newOnes.length, "new alerts");
+      notificationSound.currentTime = 0;
+      notificationSound.play()
+        .then(() => console.log("✅ Sound played!"))
+        .catch(e => console.error("❌ Sound error:", e));
+
+      if (Notification.permission === "granted") {
+        new Notification("New Alert", {
+          body: `You have ${newOnes.length} new alert${newOnes.length > 1 ? "s" : ""}`,
+        });
+      }
+    }
+  }
+
+  // ✅ update prevIds — safe because we used untrack() above
+  setPrevIds(current);
+});
+
   const loadAlerts = async (pageNo = 1) => {
     setLoading(true);
     setError(null);
-
     try {
       const res = await fetchAlerts(pageNo);
+
+      // ✅ FIX 3: Handle undefined response (401 redirect case)
+      if (!res) return;
+
       const data = res?.data || [];
+      const readIds = JSON.parse(localStorage.getItem("readAlerts") || "[]");
 
-      // ✅ get saved read ids
-      const readIds = JSON.parse(localStorage.getItem("readAlerts") || "[]");  //for locally store acknowledged alerts, since API doesn't support it yet
-
-      // ✅ map AFTER data comes
       const mapped = data.map((item) => ({
         id: item.id,
         title: item.type_label,
@@ -144,10 +198,7 @@ export default function Notifications() {
         campaign: item.campaign_name,
         time: formatTime(item.created_at),
         rawTime: item.created_at,
-
-        // 🔥 FIX HERE
-        read: readIds.includes(item.id) || item.is_acknowledged, // mark as read if in localStorage OR acknowledged in API
-
+        read: readIds.includes(item.id) || item.is_acknowledged,
         type: item.type,
         categoryKey: item.category,
       }));
@@ -162,7 +213,6 @@ export default function Notifications() {
         setHasNext(meta.has_next);
         setHasPrev(meta.has_prev);
       }
-
     } catch (err) {
       console.error("Failed to fetch alerts:", err);
       setError("Failed to load notifications. Please try again.");
@@ -175,34 +225,45 @@ export default function Notifications() {
 
   const loadAllAlerts = async () => {
     if (hasLoadedAll) return;
-    hasLoadedAll = true;
-    let pageNo = 1;
-    let allData = [];
+    // ✅ FIX 4: wrap in try/catch + reset flag on failure
+    try {
+      hasLoadedAll = true;
+      let pageNo = 1;
+      let allData = [];
 
-    while (true) {
-      const res = await fetchAlerts(pageNo);
-      const data = res?.data || [];
+      while (true) {
+        const res = await fetchAlerts(pageNo);
+        if (!res) return; // ✅ stop if redirected to login
+        const data = res?.data || [];
+        allData = [...allData, ...data];
+        if (!res?.meta?.pagination?.has_next) break;
+        pageNo++;
+      }
 
-      allData = [...allData, ...data];
-
-      if (!res?.meta?.pagination?.has_next) break;
-      pageNo++;
+      const readIds = JSON.parse(localStorage.getItem("readAlerts") || "[]");
+      const mapped = allData.map((item) => ({
+        id: item.id,
+        read: readIds.includes(item.id) || item.is_acknowledged,
+      }));
+      setAllNotifications(mapped);
+    } catch (err) {
+      hasLoadedAll = false; // ✅ allow retry on next visit
+      console.error("loadAllAlerts failed:", err);
     }
-
-    // apply localStorage read logic
-    const readIds = JSON.parse(localStorage.getItem("readAlerts") || "[]");
-
-    const mapped = allData.map((item) => ({
-      id: item.id,
-      read: readIds.includes(item.id) || item.is_acknowledged,
-    }));
-
-    setAllNotifications(mapped);
   };
 
   onMount(() => {
-    loadAlerts(1);     // current page
-    loadAllAlerts();   // full count
+    loadAlerts(1);
+    loadAllAlerts();
+
+    // ✅ FIX 5: Poll every 30s, only when tab is visible
+    const interval = setInterval(() => {
+      if (!document.hidden) {
+        loadAlerts(page());
+      }
+    }, 30000);
+
+    return () => clearInterval(interval);
   });
 
   // All unique categories from current data for filter tabs
@@ -319,6 +380,30 @@ export default function Notifications() {
                 {ICONS.refresh}
               </span>
               Refresh
+            </button>
+            {/* ── TEMP TEST BUTTON — remove after testing ── */}
+            <button
+              onClick={() => {
+                setNotifications(prev => [
+                  {
+                    id: Date.now(), // fake unique ID
+                    title: "Test Alert",
+                    category: "Test",
+                    description: "This is a test notification to check sound",
+                    project: "Test Project",
+                    campaign: "Test Campaign",
+                    time: "Just now",
+                    rawTime: new Date().toISOString(),
+                    read: false,
+                    type: "danger",
+                    categoryKey: "test",
+                  },
+                  ...prev,
+                ]);
+              }}
+              class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium bg-green-600 text-white hover:bg-green-700"
+            >
+              + Test Sound
             </button>
           </div>
         </div>
@@ -444,9 +529,9 @@ export default function Notifications() {
                       </Show>
 
                       {/* Icon */}
-                      <div class={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center ${cfg.icon}`}>
+                      {/* <div class={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center ${cfg.icon}`}>
                         {ICONS[item.type] || ICONS.danger}
-                      </div>
+                      </div> */}
 
                       {/* Body */}
                       <div class="flex-1 min-w-0 space-y-1">

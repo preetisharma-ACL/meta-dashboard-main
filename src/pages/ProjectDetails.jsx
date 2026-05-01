@@ -1,4 +1,4 @@
-import { For, Show, createMemo, createSignal } from "solid-js";
+import { For, Show, createMemo, createSignal} from "solid-js";
 import { DateRangeFilter } from "../components/DateRangeFilter";
 import { A, useParams } from "@solidjs/router";
 import { useLocation } from "@solidjs/router";
@@ -15,29 +15,9 @@ import html2canvas from "html2canvas";
 import { fetchCampaigns, fetchCampaignInsights, fetchProjectById } from "../services/campaigns";
 
 
-/* ================= STATIC PROJECT INFO ================= */
-
-// const project = {
-//     name: "Godrej Arden",
-//     location: "Greater Noida",
-//     propertyType: "Residential Apartment",
-//     campaignManager: "Rishabh Pandey",
-//     model: "Hybrid",
-// };
-
-
-
-const leadStats = {
-    total: 65,
-    delivered: 45,
-    replaced: 5,
-};
-
-
 export default function ProjectDetails() {
     const location = useLocation();
     const project = location.state?.project;
-    const today = new Date();
     const params = useParams();
     const projectId = params.id;
     console.log('project id ', projectId);
@@ -57,135 +37,33 @@ export default function ProjectDetails() {
     const [totalPages, setTotalPages] = createSignal(1);
     const [hasNext, setHasNext] = createSignal(false);
     const [hasPrev, setHasPrev] = createSignal(false);
+    // Add near your other signals
+    const [userRole, setUserRole] = createSignal("client");
 
-    const rowsPerPage = 10;
+    onMount(() => {
+        // ✅ 1. Read role
+        const auth = JSON.parse(localStorage.getItem("auth"));
+        setUserRole(auth?.role ?? "client");
 
-    /* ================= RAW CAMPAIGN DATA ================= */
+        // ✅ 2. Load data
+        if (projectId) {
+            loadProject();
+            loadCampaigns(1);
+        }
 
-    // const campaigns() = [
-    //     {
-    //         number: 1,
-    //         id: "birla-1",
-    //         campaign_name: "Birla 1",
-    //         location: "Noida NCR",
-    //         ad_account: "preeti sharma",
-    //         status: "Live",
-    //         reach: "20",
-    //         clicks: "40",
-    //         cpl: 200,
-    //         spent: 34890,
-    //         leadsByDate: {
-    //             "2026-02-05": 12,
-    //             "2026-02-14": 8,
-    //             "2026-02-12": 5,
-    //         },
-    //     },
-    //     {
-    //         number: 2,
-    //         id: "birla-2",
-    //         campaign_name: "Birla 2",
-    //         location: "Noida NCR",
-    //         ad_account: "preeti sharma",
-    //         status: "paused",
-    //         reach: "20",
-    //         clicks: "40",
-    //         cpl: 150,
-    //         spent: 34890,
-    //         leadsByDate: {
-    //             "2026-02-13": 20,
-    //             "2026-02-15": 20,
-    //             "2026-02-14": 10,
-    //             "2026-02-16": 6,
-    //         },
-    //     },
-    //     {
-    //         number: 3,
-    //         id: "birla-3",
-    //         campaign_name: "Birla 3",
-    //         location: "Noida NCR",
-    //         ad_account: "preeti sharma",
-    //         status: "Live",
-    //         reach: "20",
-    //         clicks: "40",
-    //         cpl: 250,
-    //         spent: 34890,
-    //         leadsByDate: {
-    //             "2026-02-02": 20,
-    //             "2026-02-14": 10,
-    //             "2026-02-11": 6,
-    //         },
-    //     },
-    //     {
-    //         number: 4,
-    //         id: "birla-4",
-    //         campaign_name: "Birla 4",
-    //         location: "Noida NCR",
-    //         ad_account: "preeti sharma",
-    //         status: "Live",
-    //         reach: "20",
-    //         clicks: "40",
-    //         cpl: 150,
-    //         spent: 34890,
-    //         leadsByDate: {
-    //             "2026-02-02": 20,
-    //             "2026-02-14": 10,
-    //             "2026-02-16": 6,
-    //         },
-    //     },
-    //     {
-    //         number: 5,
-    //         id: "birla-5",
-    //         campaign_name: "Birla 5",
-    //         location: "Noida NCR",
-    //         ad_account: "preeti sharma",
-    //         status: "Live",
-    //         reach: "20",
-    //         clicks: "40",
-    //         spent: 34890,
-    //         cpl: 200,
-    //         leadsByDate: {
-    //             "2026-02-02": 20,
-    //             "2026-02-14": 10,
-    //             "2026-02-16": 6,
-    //         },
-    //     },
-    //     {
-    //         number: 6,
-    //         id: "birla-6",
-    //         campaign_name: "Birla 6",
-    //         location: "Noida NCR",
-    //         ad_account: "preeti sharma",
-    //         status: "Live",
-    //         reach: "20",
-    //         clicks: "40",
-    //         cpl: 200,
-    //         spent: 34890,
-    //         leadsByDate: {
-    //             "2026-02-02": 20,
-    //             "2026-02-14": 10,
-    //             "2026-02-17": 6,
-    //         },
-    //     },
-    //     {
-    //         number: 7,
-    //         id: "birla-7",
-    //         campaign_name: "Birla 7",
-    //         location: "Noida NCR",
-    //         ad_account: "preeti sharma",
-    //         status: "Live",
-    //         reach: "20",
-    //         clicks: "40",
-    //         cpl: 200,
-    //         spent: 34890,
-    //         leadsByDate: {
-    //             "2026-02-02": 20,
-    //             "2026-02-15": 10,
-    //             "2026-02-16": 6,
-    //         },
-    //     },
-    // ];
+        // ✅ 3. Click outside handler
+        const handleClickOutside = (e) => {
+            if (!e.target.closest(".notification-wrapper")) {
+                setShowNotifications(false);
+            }
+        };
+        document.addEventListener("click", handleClickOutside);
+        onCleanup(() => {
+            document.removeEventListener("click", handleClickOutside);
+        });
 
-
+       
+    });
 
     const loadProject = async () => {
         try {
@@ -238,6 +116,7 @@ export default function ProjectDetails() {
                 ad_account: item.ad_account_name || "-",
                 status: item.status === "paused" ? "paused" : "Live",
                 cpl: item.cpl || 0,
+                modifiedCpl: item.modified_cpl ?? null,
                 insights: insightsMap[item.id] || [],
             }));
 
@@ -262,12 +141,7 @@ export default function ProjectDetails() {
             setCampaigns([]);
         }
     };
-    onMount(() => {
-        if (projectId) {
-            loadProject();      // 👈 NEW
-            loadCampaigns(1);   // 👈 existing
-        }
-    });
+
 
 
     // Add this inside ProjectDetails component
@@ -285,7 +159,7 @@ export default function ProjectDetails() {
         const filtered = (!from || !to)
             ? insights
             : insights.filter(d => {
-                const date = new Date(d.date + "T00:00:00");
+                const date = new Date(d.date.includes("T") ? d.date : d.date + "T00:00:00");
                 const start = new Date(from);
                 const end = new Date(to);
                 start.setHours(0, 0, 0, 0);
@@ -307,46 +181,6 @@ export default function ProjectDetails() {
 
         return { leads: totalLeads, clicks: totalClicks, reach: totalReach, spent: totalSpent, cpl: avgCPL };
     };
-
-    onMount(() => {
-        const handleClickOutside = (e) => {
-            if (!e.target.closest(".notification-wrapper")) {
-                setShowNotifications(false);
-            }
-        };
-
-        document.addEventListener("click", handleClickOutside);
-
-        onCleanup(() => {
-            document.removeEventListener("click", handleClickOutside);
-        });
-    });
-
-    /* ================= UTILITY ================= */
-
-    const normalizeLocalDate = (d) => {
-        const date = new Date(d);
-        date.setHours(0, 0, 0, 0);
-        return date.getTime(); // number (safe)
-    };
-
-    const getLeadsInRange = (leadsByDate, from, to) => {
-        if (!from || !to) return 0;
-
-        const start = normalizeLocalDate(from);
-        const end = normalizeLocalDate(to);
-
-        return Object.entries(leadsByDate || {}).reduce(
-            (total, [dateStr, leads]) => {
-                const current = normalizeLocalDate(dateStr);
-                return current >= start && current <= end
-                    ? total + leads
-                    : total;
-            },
-            0
-        );
-    };
-
 
     /* ================= BASE FILTER (SEARCH + STATUS) ================= */
 
@@ -527,6 +361,7 @@ export default function ProjectDetails() {
             : leadSummary.totalLeads - leadSummary.deliveredLeads;
 
 
+
     return (
         <div class="space-y-6 m-4">
 
@@ -579,97 +414,97 @@ export default function ProjectDetails() {
                 </section>
             </Show>
             <div class="hidden">
-            <Show when={project}>
+                <Show when={project}>
 
-                <div class="mt-8 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm">
-                    {/* Header */}
-                    <div class="flex items-center justify-between mb-6">
-                        <h2 class="text-lg font-semibold text-gray-800 dark:text-white">
-                            Qualification Summary
-                        </h2>
-                        <span
-                            class="text-sm px-4 py-1 rounded-full font-medium"
-                            classList={{
-                                "bg-green-100 text-green-700": isCommitmentMet(),
-                                "bg-yellow-100 text-yellow-700": !isCommitmentMet(),
-                            }}
-                        >
-                            {isCommitmentMet() ? "Completed" : "In Progress"}
-                        </span>
-                    </div>
-                    {/* Cards */}
-                    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-
-                        {/* Card */}
-                        {[
-                            { label: "Total Required", value: leadSummary.totalLeads },
-                            { label: "Delivered", value: leadSummary.deliveredLeads },
-                            { label: "Commitment", value: `${leadSummary.commitment}%` },
-                            { label: "Target Qualified", value: requiredQualified(), color: "text-blue-600" },
-                            { label: "Achieved", value: leadSummary.qualifiedLeads, color: "text-green-600" },
-                            { label: "Remaining", value: remainingLeads(), color: "text-yellow-500" },
-                        ].map((item) => (
-                            <div class="group bg-white dark:bg-gray-800/70 backdrop-blur-sm p-4 rounded-xl border border-gray-100 shadow-md dark:border-gray-700 hover:shadow-lg transition-all duration-300">
-
-                                <p class="text-sm text-gray-700 dark:text-gray-400 mb-1">
-                                    {item.label}
-                                </p>
-
-                                <h2 class={`text-2xl font-semibold ${item.color || "text-gray-800 dark:text-white"}`}>
-                                    {item.value}
-                                </h2>
-
-                            </div>
-                        ))}
-                    </div>
-
-                    {/* Progress Bar */}
-                    <div class="mt-6">
-                        <div class="flex justify-between text-xs text-gray-500 mb-1">
-                            <span>Qualification Progress</span>
-                            <span>
-                                {leadSummary.qualifiedLeads} / {requiredQualified()}
-                            </span>
-                        </div>
-
-                        <div class="w-full bg-gray-200 dark:bg-gray-700 h-1 rounded-full overflow-hidden">
-                            <div
-                                class="h-1 rounded-full transition-all duration-700"
+                    <div class="mt-8 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm">
+                        {/* Header */}
+                        <div class="flex items-center justify-between mb-6">
+                            <h2 class="text-lg font-semibold text-gray-800 dark:text-white">
+                                Qualification Summary
+                            </h2>
+                            <span
+                                class="text-sm px-4 py-1 rounded-full font-medium"
                                 classList={{
-                                    "bg-green-700": isCommitmentMet(),
-                                    "bg-yellow-500": !isCommitmentMet(),
+                                    "bg-green-100 text-green-700": isCommitmentMet(),
+                                    "bg-yellow-100 text-yellow-700": !isCommitmentMet(),
                                 }}
-                                style={{
-                                    width: `${Math.min(
-                                        (leadSummary.qualifiedLeads / requiredQualified()) * 100,
-                                        100
-                                    )}%`,
-                                }}
-                            />
-                        </div>
-                    </div>
-
-                    {/* Insight Box */}
-                    <div class="mt-6 p-4 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
-
-                        <p class="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
-                            You have received <span class="font-semibold text-gray-900 dark:text-white">{leadSummary.deliveredLeads}</span> leads.
-                            Based on <span class="font-semibold">{leadSummary.commitment}%</span> commitment,
-                            <span class="font-semibold">{requiredQualified()}</span> should be qualified.
-                            Currently, <span class="font-semibold text-green-600">{leadSummary.qualifiedLeads}</span> are achieved.
-
-                            <span class={`ml-1 font-medium ${isCommitmentMet() ? "text-green-600" : "text-yellow-600"}`}>
-                                {isCommitmentMet()
-                                    ? "Requirement has been fulfilled."
-                                    : "More qualified leads are required."}
+                            >
+                                {isCommitmentMet() ? "Completed" : "In Progress"}
                             </span>
-                        </p>
+                        </div>
+                        {/* Cards */}
+                        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+
+                            {/* Card */}
+                            {[
+                                { label: "Total Required", value: leadSummary.totalLeads },
+                                { label: "Delivered", value: leadSummary.deliveredLeads },
+                                { label: "Commitment", value: `${leadSummary.commitment}%` },
+                                { label: "Target Qualified", value: requiredQualified(), color: "text-blue-600" },
+                                { label: "Achieved", value: leadSummary.qualifiedLeads, color: "text-green-600" },
+                                { label: "Remaining", value: remainingLeads(), color: "text-yellow-500" },
+                            ].map((item) => (
+                                <div class="group bg-white dark:bg-gray-800/70 backdrop-blur-sm p-4 rounded-xl border border-gray-100 shadow-md dark:border-gray-700 hover:shadow-lg transition-all duration-300">
+
+                                    <p class="text-sm text-gray-700 dark:text-gray-400 mb-1">
+                                        {item.label}
+                                    </p>
+
+                                    <h2 class={`text-2xl font-semibold ${item.color || "text-gray-800 dark:text-white"}`}>
+                                        {item.value}
+                                    </h2>
+
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Progress Bar */}
+                        <div class="mt-6">
+                            <div class="flex justify-between text-xs text-gray-500 mb-1">
+                                <span>Qualification Progress</span>
+                                <span>
+                                    {leadSummary.qualifiedLeads} / {requiredQualified()}
+                                </span>
+                            </div>
+
+                            <div class="w-full bg-gray-200 dark:bg-gray-700 h-1 rounded-full overflow-hidden">
+                                <div
+                                    class="h-1 rounded-full transition-all duration-700"
+                                    classList={{
+                                        "bg-green-700": isCommitmentMet(),
+                                        "bg-yellow-500": !isCommitmentMet(),
+                                    }}
+                                    style={{
+                                        width: `${Math.min(
+                                            (leadSummary.qualifiedLeads / requiredQualified()) * 100,
+                                            100
+                                        )}%`,
+                                    }}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Insight Box */}
+                        <div class="mt-6 p-4 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+
+                            <p class="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+                                You have received <span class="font-semibold text-gray-900 dark:text-white">{leadSummary.deliveredLeads}</span> leads.
+                                Based on <span class="font-semibold">{leadSummary.commitment}%</span> commitment,
+                                <span class="font-semibold">{requiredQualified()}</span> should be qualified.
+                                Currently, <span class="font-semibold text-green-600">{leadSummary.qualifiedLeads}</span> are achieved.
+
+                                <span class={`ml-1 font-medium ${isCommitmentMet() ? "text-green-600" : "text-yellow-600"}`}>
+                                    {isCommitmentMet()
+                                        ? "Requirement has been fulfilled."
+                                        : "More qualified leads are required."}
+                                </span>
+                            </p>
+
+                        </div>
 
                     </div>
 
-                </div>
-
-            </Show>
+                </Show>
             </div>
             {/* ================= FILTERS ================= */}
             <div class="flex justify-between">
@@ -796,6 +631,9 @@ export default function ProjectDetails() {
                             <th class="p-3">{rangeLabel()} Reach</th>
                             <th class="p-3">{rangeLabel()} Spent</th>
                             <th class="p-3">{rangeLabel()} CPL</th>
+                            {userRole() === "admin" && (
+                                <th class="p-3">Modified CPL</th>
+                            )}
                         </tr>
                     </thead>
                     <tbody>
@@ -829,7 +667,11 @@ export default function ProjectDetails() {
                                     <td class="p-3">{row.totalClicks}</td>
                                     <td class="p-3">{row.totalReach}</td>
                                     <td class="p-3">₹{row.totalSpent.toLocaleString("en-IN")}</td>
-                                    <td class="p-3">₹{row.totalCPL}</td>  {/* 👈 was row.cpl */}                                </tr>
+                                    <td class="p-3">₹{row.totalCPL}</td>  {/* 👈 was row.cpl */}
+                                    {userRole() === "admin" && (
+                                        <td class="p-3">{"₹"}{row.modifiedCpl ?? "—"}</td>
+                                    )}
+                                </tr>
                             )}
                         </For>
                     </tbody>
@@ -879,282 +721,284 @@ export default function ProjectDetails() {
                     </button>
                 </div>
             </div>
+
+
             <div class="hidden">
-            {/* ================= Lead Quality Insights ================= */}
-            <h3 class="mt-8 mb-4 text-lg font-semibold text-gray-800 dark:text-white">
-                Lead Quality Insights
-            </h3>
-            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-
-                {/* Total Leads */}
-                <div class="p-4 rounded-lg bg-blue-50 dark:bg-gray-800 border border-blue-100 dark:border-gray-700 shadow-sm hover:shadow-md transition">
-                    <div class="flex items-center justify-between">
-                        <p class="text-sm text-gray-600 dark:text-gray-400">Total Leads</p>
-                        <div class="p-2 bg-blue-100 dark:bg-blue-500 rounded">
-                            <Users size={18} class="text-blue-500 dark:text-blue-100" />
-                        </div>
-                    </div>
-                    <h3 class="mt-2 text-xl font-semibold text-gray-800 dark:text-white">120</h3>
-                </div>
-
-                {/* Contacted */}
-                <div class="p-4 rounded-lg bg-purple-50 dark:bg-gray-800 border border-purple-100 dark:border-gray-700 shadow-sm hover:shadow-md transition">
-                    <div class="flex items-center justify-between">
-                        <p class="text-sm text-gray-600 dark:text-gray-400">Contacted</p>
-                        <div class="p-2 bg-purple-100 dark:bg-purple-500 rounded">
-                            <PhoneCall size={18} class="text-purple-500 dark:text-purple-100" />
-                        </div>
-                    </div>
-                    <h3 class="mt-2 text-xl font-semibold text-gray-800 dark:text-white">95</h3>
-                </div>
-                {/* Qualified */}
-                <div class="p-4 rounded-lg bg-green-50 dark:bg-gray-800 border border-green-100 dark:border-gray-700 shadow-sm hover:shadow-md transition">
-                    <div class="flex items-center justify-between">
-                        <p class="text-sm text-gray-600 dark:text-gray-400">Qualified</p>
-                        <div class="p-2 bg-green-100 dark:bg-green-500 rounded">
-                            <BadgeCheck size={18} class="text-green-500 dark:text-green-100" />
-                        </div>
-                    </div>
-                    <h3 class="mt-2 text-xl font-semibold text-gray-800 dark:text-white">60</h3>
-                </div>
-
-                {/* Site Visits */}
-                <div class="p-4 rounded-lg bg-yellow-50 dark:bg-gray-800 border border-yellow-100 dark:border-gray-700 shadow-sm hover:shadow-md transition">
-                    <div class="flex items-center justify-between">
-                        <p class="text-sm text-gray-600 dark:text-gray-400">Site Visits</p>
-                        <div class="p-2 bg-yellow-100 dark:bg-yellow-500 rounded">
-                            <MapPin size={18} class="text-yellow-500 dark:text-yellow-100" />
-                        </div>
-                    </div>
-                    <h3 class="mt-2 text-xl font-semibold text-gray-800 dark:text-white">30</h3>
-                </div>
-
-                {/* Bookings */}
-                <div class="p-4 rounded-lg bg-pink-50 dark:bg-gray-800 border border-pink-100 dark:border-gray-700 shadow-sm hover:shadow-md transition">
-                    <div class="flex items-center justify-between">
-                        <p class="text-sm text-gray-600 dark:text-gray-400">Bookings</p>
-                        <div class="p-2 bg-pink-100 dark:bg-pink-500 rounded">
-                            <Home size={18} class="text-pink-500 dark:text-pink-100" />
-                        </div>
-                    </div>
-                    <h3 class="mt-2 text-xl font-semibold text-gray-800 dark:text-white">12</h3>
-                </div>
-
-                {/* Conversion */}
-                <div class="p-4 rounded-lg bg-emerald-50 dark:bg-gray-800 border border-emerald-100 dark:border-gray-700 shadow-sm hover:shadow-md transition">
-                    <div class="flex items-center justify-between">
-                        <p class="text-sm text-gray-600 dark:text-gray-400">Conversion %</p>
-                        <div class="p-2 bg-emerald-100 dark:bg-emerald-500 rounded">
-                            <TrendingUp size={18} class="text-emerald-500 dark:text-emerald-100" />
-                        </div>
-                    </div>
-                    <h3 class="mt-2 text-xl font-semibold text-emerald-600 dark:text-emerald-400">
-                        10%
-                    </h3>
-                </div>
-            </div>
-
-            {/* leads report */}
-            <div class="flex items-center justify-between mt-8">
-                <h3 class="text-lg font-semibold text-gray-800 dark:text-white">
-                    Project Leads Report
+                {/* ================= Lead Quality Insights ================= */}
+                <h3 class="mt-8 mb-4 text-lg font-semibold text-gray-800 dark:text-white">
+                    Lead Quality Insights
                 </h3>
-                <button
-                    onClick={() => downloadPDF("pdf-leads", "leads-report.pdf")}
-                    class="flex items-center gap-2 px-4 py-2 rounded-lg 
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+
+                    {/* Total Leads */}
+                    <div class="p-4 rounded-lg bg-blue-50 dark:bg-gray-800 border border-blue-100 dark:border-gray-700 shadow-sm hover:shadow-md transition">
+                        <div class="flex items-center justify-between">
+                            <p class="text-sm text-gray-600 dark:text-gray-400">Total Leads</p>
+                            <div class="p-2 bg-blue-100 dark:bg-blue-500 rounded">
+                                <Users size={18} class="text-blue-500 dark:text-blue-100" />
+                            </div>
+                        </div>
+                        <h3 class="mt-2 text-xl font-semibold text-gray-800 dark:text-white">120</h3>
+                    </div>
+
+                    {/* Contacted */}
+                    <div class="p-4 rounded-lg bg-purple-50 dark:bg-gray-800 border border-purple-100 dark:border-gray-700 shadow-sm hover:shadow-md transition">
+                        <div class="flex items-center justify-between">
+                            <p class="text-sm text-gray-600 dark:text-gray-400">Contacted</p>
+                            <div class="p-2 bg-purple-100 dark:bg-purple-500 rounded">
+                                <PhoneCall size={18} class="text-purple-500 dark:text-purple-100" />
+                            </div>
+                        </div>
+                        <h3 class="mt-2 text-xl font-semibold text-gray-800 dark:text-white">95</h3>
+                    </div>
+                    {/* Qualified */}
+                    <div class="p-4 rounded-lg bg-green-50 dark:bg-gray-800 border border-green-100 dark:border-gray-700 shadow-sm hover:shadow-md transition">
+                        <div class="flex items-center justify-between">
+                            <p class="text-sm text-gray-600 dark:text-gray-400">Qualified</p>
+                            <div class="p-2 bg-green-100 dark:bg-green-500 rounded">
+                                <BadgeCheck size={18} class="text-green-500 dark:text-green-100" />
+                            </div>
+                        </div>
+                        <h3 class="mt-2 text-xl font-semibold text-gray-800 dark:text-white">60</h3>
+                    </div>
+
+                    {/* Site Visits */}
+                    <div class="p-4 rounded-lg bg-yellow-50 dark:bg-gray-800 border border-yellow-100 dark:border-gray-700 shadow-sm hover:shadow-md transition">
+                        <div class="flex items-center justify-between">
+                            <p class="text-sm text-gray-600 dark:text-gray-400">Site Visits</p>
+                            <div class="p-2 bg-yellow-100 dark:bg-yellow-500 rounded">
+                                <MapPin size={18} class="text-yellow-500 dark:text-yellow-100" />
+                            </div>
+                        </div>
+                        <h3 class="mt-2 text-xl font-semibold text-gray-800 dark:text-white">30</h3>
+                    </div>
+
+                    {/* Bookings */}
+                    <div class="p-4 rounded-lg bg-pink-50 dark:bg-gray-800 border border-pink-100 dark:border-gray-700 shadow-sm hover:shadow-md transition">
+                        <div class="flex items-center justify-between">
+                            <p class="text-sm text-gray-600 dark:text-gray-400">Bookings</p>
+                            <div class="p-2 bg-pink-100 dark:bg-pink-500 rounded">
+                                <Home size={18} class="text-pink-500 dark:text-pink-100" />
+                            </div>
+                        </div>
+                        <h3 class="mt-2 text-xl font-semibold text-gray-800 dark:text-white">12</h3>
+                    </div>
+
+                    {/* Conversion */}
+                    <div class="p-4 rounded-lg bg-emerald-50 dark:bg-gray-800 border border-emerald-100 dark:border-gray-700 shadow-sm hover:shadow-md transition">
+                        <div class="flex items-center justify-between">
+                            <p class="text-sm text-gray-600 dark:text-gray-400">Conversion %</p>
+                            <div class="p-2 bg-emerald-100 dark:bg-emerald-500 rounded">
+                                <TrendingUp size={18} class="text-emerald-500 dark:text-emerald-100" />
+                            </div>
+                        </div>
+                        <h3 class="mt-2 text-xl font-semibold text-emerald-600 dark:text-emerald-400">
+                            10%
+                        </h3>
+                    </div>
+                </div>
+
+                {/* leads report */}
+                <div class="flex items-center justify-between mt-8">
+                    <h3 class="text-lg font-semibold text-gray-800 dark:text-white">
+                        Project Leads Report
+                    </h3>
+                    <button
+                        onClick={() => downloadPDF("pdf-leads", "leads-report.pdf")}
+                        class="flex items-center gap-2 px-4 py-2 rounded-lg 
                     bg-blue-900 hover:bg-blue-800 
                     text-white text-sm font-medium 
                     shadow-sm hover:shadow-md 
                     transition-all duration-200"
-                >
-                    {/* Download Icon */}
-                    <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        class="w-4 h-4"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        stroke-width="2"
                     >
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V4" />
-                    </svg>
-                    Download Report
-                </button>
+                        {/* Download Icon */}
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            class="w-4 h-4"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            stroke-width="2"
+                        >
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V4" />
+                        </svg>
+                        Download Report
+                    </button>
 
-            </div>
-            <div class="mt-4 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden  dark:bg-gray-900">
-                <table class="w-full text-sm" id="leads-report">
-                    <thead class="border-b border-gray-200 dark:border-gray-700">
-                        <tr class="text-md font-bold text-gray-800 dark:text-gray-200 bg-gray-100 dark:bg-gray-800  ">
+                </div>
+                <div class="mt-4 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden  dark:bg-gray-900">
+                    <table class="w-full text-sm" id="leads-report">
+                        <thead class="border-b border-gray-200 dark:border-gray-700">
+                            <tr class="text-md font-bold text-gray-800 dark:text-gray-200 bg-gray-100 dark:bg-gray-800  ">
 
-                            {[
-                                "Total Leads",
-                                "Follow Up / Interested",
-                                "Delay in Feedback",
-                                "Qualified Leads",
-                                "Call Later / CNP",
-                                "Not Interested",
-                                "Broker",
-                                "Extra Leed"
-                            ].map((head) => (
-                                <th class="p-3 text-center whitespace-nowrap">
-                                    {head}
-                                </th>
-                            ))}
+                                {[
+                                    "Total Leads",
+                                    "Follow Up / Interested",
+                                    "Delay in Feedback",
+                                    "Qualified Leads",
+                                    "Call Later / CNP",
+                                    "Not Interested",
+                                    "Broker",
+                                    "Extra Leed"
+                                ].map((head) => (
+                                    <th class="p-3 text-center whitespace-nowrap">
+                                        {head}
+                                    </th>
+                                ))}
 
-                        </tr>
-                    </thead>
+                            </tr>
+                        </thead>
 
-                    {/*  VALUES */}
-                    <tbody>
-                        <tr class="text-center hover:bg-gray-50 dark:hover:bg-gray-800/40 transition">
+                        {/*  VALUES */}
+                        <tbody>
+                            <tr class="text-center hover:bg-gray-50 dark:hover:bg-gray-800/40 transition">
 
-                            {[
-                                115,
-                                40,
-                                17,
-                                57,
-                                31,
-                                24,
-                                3,
-                                5
-                            ].map((val) => (
-                                <td class="p-3  text-gray-900 dark:text-gray-100">
-                                    {val}
-                                </td>
-                            ))}
+                                {[
+                                    115,
+                                    40,
+                                    17,
+                                    57,
+                                    31,
+                                    24,
+                                    3,
+                                    5
+                                ].map((val) => (
+                                    <td class="p-3  text-gray-900 dark:text-gray-100">
+                                        {val}
+                                    </td>
+                                ))}
 
-                        </tr>
-                    </tbody>
+                            </tr>
+                        </tbody>
 
-                </table>
-            </div>
-            {/* pdf leads report start */}
-            <div id="pdf-leads" style="position: absolute; left: -9999px; top: 0;">
-                <div style="width: 950px; background: #fbfbfb; padding: 32px; font-family: 'Georgia', serif; position: relative; box-sizing: border-box;">
+                    </table>
+                </div>
+                {/* pdf leads report start */}
+                <div id="pdf-leads" style="position: absolute; left: -9999px; top: 0;">
+                    <div style="width: 950px; background: #fbfbfb; padding: 32px; font-family: 'Georgia', serif; position: relative; box-sizing: border-box;">
 
-                    {/* Diagonal stripe texture overlay */}
-                    <div style="position: absolute; inset: 0; background-image: repeating-linear-gradient(135deg, transparent, transparent 18px, rgba(255,255,255,0.015) 18px, rgba(255,255,255,0.015) 19px); pointer-events: none;" />
+                        {/* Diagonal stripe texture overlay */}
+                        <div style="position: absolute; inset: 0; background-image: repeating-linear-gradient(135deg, transparent, transparent 18px, rgba(255,255,255,0.015) 18px, rgba(255,255,255,0.015) 19px); pointer-events: none;" />
 
-                    {/* Outer gold border frame */}
-                    <div style="position: absolute; inset: 20px; border: 2.5px solid #C9A84C; border-radius: 10px; pointer-events: none;" />
+                        {/* Outer gold border frame */}
+                        <div style="position: absolute; inset: 20px; border: 2.5px solid #C9A84C; border-radius: 10px; pointer-events: none;" />
 
-                    {/* Inner gold thin border */}
-                    <div style="position: absolute; inset: 30px; border: 0.8px solid #C9A84C; border-radius: 7px; pointer-events: none;" />
+                        {/* Inner gold thin border */}
+                        <div style="position: absolute; inset: 30px; border: 0.8px solid #C9A84C; border-radius: 7px; pointer-events: none;" />
 
-                    {/* Corner ornaments - Top Left */}
-                    <div style="position: absolute; top: 20px; left: 20px; width: 40px; height: 40px; pointer-events: none;">
-                        <div style="position: absolute; top: -1px; left: -1px; width: 22px; height: 3px; background: #C9A84C;" />
-                        <div style="position: absolute; top: -1px; left: -1px; width: 3px; height: 22px; background: #C9A84C;" />
-                        <div style="position: absolute; top: 6px; left: 6px; width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg);" />
-                    </div>
+                        {/* Corner ornaments - Top Left */}
+                        <div style="position: absolute; top: 20px; left: 20px; width: 40px; height: 40px; pointer-events: none;">
+                            <div style="position: absolute; top: -1px; left: -1px; width: 22px; height: 3px; background: #C9A84C;" />
+                            <div style="position: absolute; top: -1px; left: -1px; width: 3px; height: 22px; background: #C9A84C;" />
+                            <div style="position: absolute; top: 6px; left: 6px; width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg);" />
+                        </div>
 
-                    {/* Corner ornaments - Top Right */}
-                    <div style="position: absolute; top: 20px; right: 20px; width: 40px; height: 40px; pointer-events: none;">
-                        <div style="position: absolute; top: -1px; right: -1px; width: 22px; height: 3px; background: #C9A84C;" />
-                        <div style="position: absolute; top: -1px; right: -1px; width: 3px; height: 22px; background: #C9A84C;" />
-                        <div style="position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg);" />
-                    </div>
+                        {/* Corner ornaments - Top Right */}
+                        <div style="position: absolute; top: 20px; right: 20px; width: 40px; height: 40px; pointer-events: none;">
+                            <div style="position: absolute; top: -1px; right: -1px; width: 22px; height: 3px; background: #C9A84C;" />
+                            <div style="position: absolute; top: -1px; right: -1px; width: 3px; height: 22px; background: #C9A84C;" />
+                            <div style="position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg);" />
+                        </div>
 
-                    {/* Corner ornaments - Bottom Left */}
-                    <div style="position: absolute; bottom: 20px; left: 20px; width: 40px; height: 40px; pointer-events: none;">
-                        <div style="position: absolute; bottom: -1px; left: -1px; width: 22px; height: 3px; background: #C9A84C;" />
-                        <div style="position: absolute; bottom: -1px; left: -1px; width: 3px; height: 22px; background: #C9A84C;" />
-                        <div style="position: absolute; bottom: 6px; left: 6px; width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg);" />
-                    </div>
+                        {/* Corner ornaments - Bottom Left */}
+                        <div style="position: absolute; bottom: 20px; left: 20px; width: 40px; height: 40px; pointer-events: none;">
+                            <div style="position: absolute; bottom: -1px; left: -1px; width: 22px; height: 3px; background: #C9A84C;" />
+                            <div style="position: absolute; bottom: -1px; left: -1px; width: 3px; height: 22px; background: #C9A84C;" />
+                            <div style="position: absolute; bottom: 6px; left: 6px; width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg);" />
+                        </div>
 
-                    {/* Corner ornaments - Bottom Right */}
-                    <div style="position: absolute; bottom: 20px; right: 20px; width: 40px; height: 40px; pointer-events: none;">
-                        <div style="position: absolute; bottom: -1px; right: -1px; width: 22px; height: 3px; background: #C9A84C;" />
-                        <div style="position: absolute; bottom: -1px; right: -1px; width: 3px; height: 22px; background: #C9A84C;" />
-                        <div style="position: absolute; bottom: 6px; right: 6px; width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg);" />
-                    </div>
+                        {/* Corner ornaments - Bottom Right */}
+                        <div style="position: absolute; bottom: 20px; right: 20px; width: 40px; height: 40px; pointer-events: none;">
+                            <div style="position: absolute; bottom: -1px; right: -1px; width: 22px; height: 3px; background: #C9A84C;" />
+                            <div style="position: absolute; bottom: -1px; right: -1px; width: 3px; height: 22px; background: #C9A84C;" />
+                            <div style="position: absolute; bottom: 6px; right: 6px; width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg);" />
+                        </div>
 
-                    {/* Inner cream content area */}
-                    <div style="position: relative; margin: 14px; background: #FDF8EE; border-radius: 6px; padding: 0 0 36px 0; overflow: hidden; z-index: 1;">
-                        {/* ── HEADER BAND ── */}
-                        <div style="background: #0A1628; padding: 28px 40px 22px; position: relative; overflow: hidden;">
-                            {/* Header stripe texture */}
-                            <div style="position: absolute; inset: 0; background-image: repeating-linear-gradient(135deg, transparent, transparent 18px, rgba(255,255,255,0.02) 18px, rgba(255,255,255,0.02) 19px);" />
-                            {/* Gold top bar */}
-                            <div style="position: absolute; top: 0; left: 0; right: 0; height: 5px; background: #C9A84C;" />
-                            {/* Gold bottom bar */}
-                            <div style="position: absolute; bottom: 0; left: 0; right: 0; height: 4px; background: #C9A84C;" />
+                        {/* Inner cream content area */}
+                        <div style="position: relative; margin: 14px; background: #FDF8EE; border-radius: 6px; padding: 0 0 36px 0; overflow: hidden; z-index: 1;">
+                            {/* ── HEADER BAND ── */}
+                            <div style="background: #0A1628; padding: 28px 40px 22px; position: relative; overflow: hidden;">
+                                {/* Header stripe texture */}
+                                <div style="position: absolute; inset: 0; background-image: repeating-linear-gradient(135deg, transparent, transparent 18px, rgba(255,255,255,0.02) 18px, rgba(255,255,255,0.02) 19px);" />
+                                {/* Gold top bar */}
+                                <div style="position: absolute; top: 0; left: 0; right: 0; height: 5px; background: #C9A84C;" />
+                                {/* Gold bottom bar */}
+                                <div style="position: absolute; bottom: 0; left: 0; right: 0; height: 4px; background: #C9A84C;" />
 
-                            {/* Tag line */}
-                            {/* <p style="text-align: center; color: #d8b75b; font-size: 20px; font-family: 'Arial', sans-serif;  font-weight: bold; margin: 0 0 10px; text-transform: uppercase;">
+                                {/* Tag line */}
+                                {/* <p style="text-align: center; color: #d8b75b; font-size: 20px; font-family: 'Arial', sans-serif;  font-weight: bold; margin: 0 0 10px; text-transform: uppercase;">
                                 Real Estate Analytics
                             </p> */}
-                            <p style="text-align: center; color: #E8D5A3; font-size: 18px; font-family: 'Arial', sans-serif; margin: 0; letter-spacing: 1px;">
-                                [Aajneeti Connect Ltd.]
-                            </p>
+                                <p style="text-align: center; color: #E8D5A3; font-size: 18px; font-family: 'Arial', sans-serif; margin: 0; letter-spacing: 1px;">
+                                    [Aajneeti Connect Ltd.]
+                                </p>
 
-                            {/* Main title */}
-                            <h1 style="text-align: center; color: white; font-size: 32px; font-family: 'Georgia', serif; letter-spacing: 2px; margin: 0 0 8px; font-weight: bold; text-transform: uppercase;">
-                                Project Leads Report
-                            </h1>
-                            {/* Date */}
-                            <p style="text-align: center; color: #E8D5A3; font-size: 18px; font-family: 'Arial', sans-serif; margin: 0; letter-spacing: 1px;">
-                                Generated on: {new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
-                            </p>
-                        </div>
-                        {/* ── CLIENT INFO BAND ── */}
-                        <div style="background: #F5EDD8; padding: 15px 30px 15px; position: relative; border-bottom: 2px solid #C9A84C; border-top: 1px solid rgba(201,168,76,0.3);">
-                            <div style="position: absolute; inset: 0; background-image: radial-gradient(circle, rgba(201,168,76,0.1) 1px, transparent 1px); background-size: 18px 18px; pointer-events: none;" />
-
-                            <div style="position: relative; display: flex; align-items: center; gap: 0;">
-
-                                {/* LEFT — client fields */}
-                                <div style="flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 28px;">
-
-                                    <div style="display: flex; align-items: center; gap: 6px;">
-                                        <span style="color: #7A5C1E;  font-size: 12px; font-family: 'Arial', sans-serif; margin: 0;margin-bottom:2px; letter-spacing: 1px;">Client Name</span>
-                                        <span style="flex: 1; height: 1px; background: rgba(201,168,76,0.4);" />
-                                        <span style="color: #0A1628; font-size: 12px; font-family: Georgia; font-weight: bold;">ABC sdxd ddgdfhgh</span>
-                                    </div>
-
-                                    <div style="display: flex; align-items: center; gap: 6px;">
-                                        <span style="color: #7A5C1E;  font-size: 12px; font-family: 'Arial', sans-serif; margin: 0;margin-bottom:2px; letter-spacing: 1px;">Company</span>
-                                        <span style="flex: 1; height: 1px; background: rgba(201,168,76,0.4);" />
-                                        <span style="color: #0A1628; font-size: 12px; font-family: Georgia; font-weight: bold;">ABC pvt ltd</span>
-                                    </div>
-
-                                    <div style="display: flex; align-items: center; gap: 6px;">
-                                        <span style="color: #7A5C1E;  font-size: 12px; font-family: 'Arial', sans-serif; margin: 0;margin-bottom:2px; letter-spacing: 1px;">City</span>
-                                        <span style="flex: 1; height: 1px; background: rgba(201,168,76,0.4);" />
-                                        <span style="color: #0A1628; font-size: 12px; font-family: Georgia; font-weight: bold;">Greater Noida</span>
-                                    </div>
-
-                                    <div style="display: flex; align-items: center; gap: 6px;">
-                                        <span style="color: #7A5C1E;  font-size: 12px; font-family: 'Arial', sans-serif; margin: 0;margin-bottom:2px; letter-spacing: 1px;">Mobile No</span>
-                                        <span style="flex: 1; height: 1px; background: rgba(201,168,76,0.4);" />
-                                        <span style="color: #0A1628; font-size: 12px; font-family: Georgia; font-weight: bold;">9292876787</span>
-                                    </div>
-
-                                </div>
-
-                                {/* VERTICAL DIVIDER */}
-                                <div style="width: 1px; background: linear-gradient(to bottom, transparent, #C9A84C, transparent); height: 60px; margin: 0 28px; flex-shrink: 0;" />
-
-                                {/* RIGHT — project name badge */}
-                                <div style="flex-shrink: 0; text-align: center;">
-                                    <div style="display: inline-block; border: 1.5px solid #C9A84C; border-radius: 6px; padding: 10px 20px; background: white; position: relative; box-shadow: 2px 2px 0 #C9A84C;">
-                                        <div style="position: absolute; top: 0; left: 12px; right: 12px; height: 2px; background: #C9A84C; border-radius: 2px;" />
-                                        <div style="position: absolute; bottom: 0; left: 12px; right: 12px; height: 2px; background: #C9A84C; border-radius: 2px;" />
-                                        <p style="color: #7A5C1E; font-size: 10px; font-family: Arial; font-weight: bold;  text-transform: uppercase; margin: 0 0 5px;">Project</p>
-                                        <p style="color: #0A1628; font-size: 13px; font-family: Georgia; font-weight: bold; margin: 0;  white-space: nowrap;">Birla Estates Campaign</p>
-                                    </div>
-                                </div>
-
+                                {/* Main title */}
+                                <h1 style="text-align: center; color: white; font-size: 32px; font-family: 'Georgia', serif; letter-spacing: 2px; margin: 0 0 8px; font-weight: bold; text-transform: uppercase;">
+                                    Project Leads Report
+                                </h1>
+                                {/* Date */}
+                                <p style="text-align: center; color: #E8D5A3; font-size: 18px; font-family: 'Arial', sans-serif; margin: 0; letter-spacing: 1px;">
+                                    Generated on: {new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
+                                </p>
                             </div>
-                        </div>
-                        {/* ── DETAILED TABLE ── */}
-                        <div style="padding: 24px 36px 0;">
-                            {/* Section divider */}
-                            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
-                                <div style="width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg); flex-shrink: 0;" />
-                                <div style="flex: 1; height: 1px; background: #C9A84C; opacity: 0.4;" />
-                                <div style="
+                            {/* ── CLIENT INFO BAND ── */}
+                            <div style="background: #F5EDD8; padding: 15px 30px 15px; position: relative; border-bottom: 2px solid #C9A84C; border-top: 1px solid rgba(201,168,76,0.3);">
+                                <div style="position: absolute; inset: 0; background-image: radial-gradient(circle, rgba(201,168,76,0.1) 1px, transparent 1px); background-size: 18px 18px; pointer-events: none;" />
+
+                                <div style="position: relative; display: flex; align-items: center; gap: 0;">
+
+                                    {/* LEFT — client fields */}
+                                    <div style="flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 28px;">
+
+                                        <div style="display: flex; align-items: center; gap: 6px;">
+                                            <span style="color: #7A5C1E;  font-size: 12px; font-family: 'Arial', sans-serif; margin: 0;margin-bottom:2px; letter-spacing: 1px;">Client Name</span>
+                                            <span style="flex: 1; height: 1px; background: rgba(201,168,76,0.4);" />
+                                            <span style="color: #0A1628; font-size: 12px; font-family: Georgia; font-weight: bold;">ABC sdxd ddgdfhgh</span>
+                                        </div>
+
+                                        <div style="display: flex; align-items: center; gap: 6px;">
+                                            <span style="color: #7A5C1E;  font-size: 12px; font-family: 'Arial', sans-serif; margin: 0;margin-bottom:2px; letter-spacing: 1px;">Company</span>
+                                            <span style="flex: 1; height: 1px; background: rgba(201,168,76,0.4);" />
+                                            <span style="color: #0A1628; font-size: 12px; font-family: Georgia; font-weight: bold;">ABC pvt ltd</span>
+                                        </div>
+
+                                        <div style="display: flex; align-items: center; gap: 6px;">
+                                            <span style="color: #7A5C1E;  font-size: 12px; font-family: 'Arial', sans-serif; margin: 0;margin-bottom:2px; letter-spacing: 1px;">City</span>
+                                            <span style="flex: 1; height: 1px; background: rgba(201,168,76,0.4);" />
+                                            <span style="color: #0A1628; font-size: 12px; font-family: Georgia; font-weight: bold;">Greater Noida</span>
+                                        </div>
+
+                                        <div style="display: flex; align-items: center; gap: 6px;">
+                                            <span style="color: #7A5C1E;  font-size: 12px; font-family: 'Arial', sans-serif; margin: 0;margin-bottom:2px; letter-spacing: 1px;">Mobile No</span>
+                                            <span style="flex: 1; height: 1px; background: rgba(201,168,76,0.4);" />
+                                            <span style="color: #0A1628; font-size: 12px; font-family: Georgia; font-weight: bold;">9292876787</span>
+                                        </div>
+
+                                    </div>
+
+                                    {/* VERTICAL DIVIDER */}
+                                    <div style="width: 1px; background: linear-gradient(to bottom, transparent, #C9A84C, transparent); height: 60px; margin: 0 28px; flex-shrink: 0;" />
+
+                                    {/* RIGHT — project name badge */}
+                                    <div style="flex-shrink: 0; text-align: center;">
+                                        <div style="display: inline-block; border: 1.5px solid #C9A84C; border-radius: 6px; padding: 10px 20px; background: white; position: relative; box-shadow: 2px 2px 0 #C9A84C;">
+                                            <div style="position: absolute; top: 0; left: 12px; right: 12px; height: 2px; background: #C9A84C; border-radius: 2px;" />
+                                            <div style="position: absolute; bottom: 0; left: 12px; right: 12px; height: 2px; background: #C9A84C; border-radius: 2px;" />
+                                            <p style="color: #7A5C1E; font-size: 10px; font-family: Arial; font-weight: bold;  text-transform: uppercase; margin: 0 0 5px;">Project</p>
+                                            <p style="color: #0A1628; font-size: 13px; font-family: Georgia; font-weight: bold; margin: 0;  white-space: nowrap;">Birla Estates Campaign</p>
+                                        </div>
+                                    </div>
+
+                                </div>
+                            </div>
+                            {/* ── DETAILED TABLE ── */}
+                            <div style="padding: 24px 36px 0;">
+                                {/* Section divider */}
+                                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+                                    <div style="width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg); flex-shrink: 0;" />
+                                    <div style="flex: 1; height: 1px; background: #C9A84C; opacity: 0.4;" />
+                                    <div style="
                                             display:flex;
                                             align-items:center;
                                             justify-content:center;
@@ -1163,7 +1007,7 @@ export default function ProjectDetails() {
                                             border-radius:20px;
                                             height:28px;   /* IMPORTANT */
                                         ">
-                                    <span style="
+                                        <span style="
                                             color:#C9A84C;
                                             font-size:12px;
                                             font-family:Arial;
@@ -1171,387 +1015,387 @@ export default function ProjectDetails() {
                                             line-height:1;   /* IMPORTANT */
                                             margin-bottom:12px;
                                         ">
-                                        DETAILED BREAKDOWN
-                                    </span>
+                                            DETAILED BREAKDOWN
+                                        </span>
+                                    </div>
+                                    <div style="flex: 1; height: 1px; background: #C9A84C; opacity: 0.4;" />
+                                    <div style="width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg); flex-shrink: 0;" />
                                 </div>
-                                <div style="flex: 1; height: 1px; background: #C9A84C; opacity: 0.4;" />
-                                <div style="width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg); flex-shrink: 0;" />
-                            </div>
 
-                            {/* Table */}
-                            <div style="border-radius: 8px; overflow: hidden; box-shadow: 4px 4px 0 #C8B89A; border: 1px solid #C9A84C;">
-                                <table style="width: 100%; border-collapse: collapse; font-family: Arial;">
-                                    <thead>
-                                        <tr style="background: #0A1628;">
-                                            <th style="padding: 11px 16px; text-align: left; color:   #C9A84C; padding-bottom:25px; font-size: 18px;   border-right: 1px solid rgba(201,168,76,0.2);">Category</th>
-                                            <th style="padding: 11px 16px; text-align: center; color: #C9A84C; padding-bottom:25px; font-size: 18px;   border-right: 1px solid rgba(201,168,76,0.2);">Count</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {[
-                                            { cat: "Total Leads", count: 115, even: true },
-                                            { cat: "Follow Up / Interested", count: 40, even: false },
-                                            { cat: "Delay in Feedback	", count: 17, even: true },
-                                            { cat: "Qualified Leads", count: 57, even: false },
-                                            { cat: "Call Later / CNP", count: 31, even: true },
-                                            { cat: "Not Interested", count: 24, even: false },
-                                            { cat: "Broker", count: 3, even: true },
-                                            { cat: "Extra Leeds", count: 5, even: false },
-                                        ].map((row) => (
-                                            <tr style={`background: ${row.even ? '#F5EDD8' : '#FDF8EE'};`}>
-                                                <td style="padding: 10px 16px; align-items:center; padding-bottom:25px; font-size: 18px; font-weight: bold; color: #0A1628; border-right: 1px solid rgba(201,168,76,0.2); position: relative;">
-                                                    <span style="position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: #C9A84C;" />
-                                                    {row.cat}
-                                                </td>
-                                                <td style="padding: 10px 16px; text-align: center; padding-bottom:25px; font-size: 18px; font-weight: bold; color: #1E3A5F; border-right: 1px solid rgba(201,168,76,0.2);">{row.count}</td>
+                                {/* Table */}
+                                <div style="border-radius: 8px; overflow: hidden; box-shadow: 4px 4px 0 #C8B89A; border: 1px solid #C9A84C;">
+                                    <table style="width: 100%; border-collapse: collapse; font-family: Arial;">
+                                        <thead>
+                                            <tr style="background: #0A1628;">
+                                                <th style="padding: 11px 16px; text-align: left; color:   #C9A84C; padding-bottom:25px; font-size: 18px;   border-right: 1px solid rgba(201,168,76,0.2);">Category</th>
+                                                <th style="padding: 11px 16px; text-align: center; color: #C9A84C; padding-bottom:25px; font-size: 18px;   border-right: 1px solid rgba(201,168,76,0.2);">Count</th>
                                             </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
+                                        </thead>
+                                        <tbody>
+                                            {[
+                                                { cat: "Total Leads", count: 115, even: true },
+                                                { cat: "Follow Up / Interested", count: 40, even: false },
+                                                { cat: "Delay in Feedback	", count: 17, even: true },
+                                                { cat: "Qualified Leads", count: 57, even: false },
+                                                { cat: "Call Later / CNP", count: 31, even: true },
+                                                { cat: "Not Interested", count: 24, even: false },
+                                                { cat: "Broker", count: 3, even: true },
+                                                { cat: "Extra Leeds", count: 5, even: false },
+                                            ].map((row) => (
+                                                <tr style={`background: ${row.even ? '#F5EDD8' : '#FDF8EE'};`}>
+                                                    <td style="padding: 10px 16px; align-items:center; padding-bottom:25px; font-size: 18px; font-weight: bold; color: #0A1628; border-right: 1px solid rgba(201,168,76,0.2); position: relative;">
+                                                        <span style="position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: #C9A84C;" />
+                                                        {row.cat}
+                                                    </td>
+                                                    <td style="padding: 10px 16px; text-align: center; padding-bottom:25px; font-size: 18px; font-weight: bold; color: #1E3A5F; border-right: 1px solid rgba(201,168,76,0.2);">{row.count}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
-                        </div>
 
-                        {/* ── FOOTER ── */}
-                        <div style="margin: 28px 36px 0; padding-top: 16px; border-top: 1px solid rgba(201,168,76,0.4); display: flex; align-items: center; justify-content: space-between;">
-                            <div style="width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg);" />
-                            <p style="color: #645132; font-size: 12px; font-family: Arial; letter-spacing: 1.5px; text-align: center; margin: 0; text-transform: uppercase;">
-                                © 2026 Project Analytics
-                            </p>
-                            <div style="width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg);" />
+                            {/* ── FOOTER ── */}
+                            <div style="margin: 28px 36px 0; padding-top: 16px; border-top: 1px solid rgba(201,168,76,0.4); display: flex; align-items: center; justify-content: space-between;">
+                                <div style="width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg);" />
+                                <p style="color: #645132; font-size: 12px; font-family: Arial; letter-spacing: 1.5px; text-align: center; margin: 0; text-transform: uppercase;">
+                                    © 2026 Project Analytics
+                                </p>
+                                <div style="width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg);" />
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
-            {/* pdf leads report end */}
+                {/* pdf leads report end */}
 
 
-            {/* Payment report */}
-            <div class="flex items-center justify-between mt-8">
-                <h3 class="text-lg font-semibold text-gray-800 dark:text-white">
-                    Project Payment Report
-                </h3>
-                <button
-                    onClick={() => downloadPDF("pdf-budget", "payment-report.pdf")}
-                    class="flex items-center gap-2 px-4 py-2 rounded-lg 
+                {/* Payment report */}
+                <div class="flex items-center justify-between mt-8">
+                    <h3 class="text-lg font-semibold text-gray-800 dark:text-white">
+                        Project Payment Report
+                    </h3>
+                    <button
+                        onClick={() => downloadPDF("pdf-budget", "payment-report.pdf")}
+                        class="flex items-center gap-2 px-4 py-2 rounded-lg 
                         bg-blue-900 hover:bg-blue-800 
                         text-white text-sm font-medium 
                         shadow-sm hover:shadow-md 
                         transition-all duration-200"
-                >
-                    {/* Download Icon */}
-                    <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        class="w-4 h-4"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        stroke-width="2"
                     >
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V4" />
-                    </svg>
-                    Download Report
-                </button>
-            </div>
-            <div class="mt-8 rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 ">
-                <div class="overflow-x-auto">
-                    <table class="w-full text-sm" id="budget-report">
-                        <thead>
-                            <tr class="bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-200">
-                                <th class="px-5 py-4 text-left font-bold text-md   whitespace-nowrap">
-                                    <div class="flex items-center gap-2">
+                        {/* Download Icon */}
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            class="w-4 h-4"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            stroke-width="2"
+                        >
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V4" />
+                        </svg>
+                        Download Report
+                    </button>
+                </div>
+                <div class="mt-8 rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 ">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm" id="budget-report">
+                            <thead>
+                                <tr class="bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-200">
+                                    <th class="px-5 py-4 text-left font-bold text-md   whitespace-nowrap">
+                                        <div class="flex items-center gap-2">
 
-                                        Metric
-                                    </div>
-                                </th>
+                                            Metric
+                                        </div>
+                                    </th>
 
-                                <th class="px-5 py-4 text-center font-bold text-md   whitespace-nowrap">Birla 1</th>
-                                <th class="px-5 py-4 text-center font-bold text-md   whitespace-nowrap">Birla 2</th>
-                                <th class="px-5 py-4 text-center font-bold text-md   whitespace-nowrap">Birla 3</th>
-                                <th class="px-5 py-4 text-center font-bold text-md   whitespace-nowrap">Birla 4</th>
-                                <th class="px-5 py-4 text-center font-bold text-md   whitespace-nowrap">Birla 5</th>
-                                <th class="px-5 py-4 text-center font-bold text-md  text-gray-900 dark:text-gray-200 whitespace-nowrap ">
-                                    Total
-                                </th>
-                            </tr>
+                                    <th class="px-5 py-4 text-center font-bold text-md   whitespace-nowrap">Birla 1</th>
+                                    <th class="px-5 py-4 text-center font-bold text-md   whitespace-nowrap">Birla 2</th>
+                                    <th class="px-5 py-4 text-center font-bold text-md   whitespace-nowrap">Birla 3</th>
+                                    <th class="px-5 py-4 text-center font-bold text-md   whitespace-nowrap">Birla 4</th>
+                                    <th class="px-5 py-4 text-center font-bold text-md   whitespace-nowrap">Birla 5</th>
+                                    <th class="px-5 py-4 text-center font-bold text-md  text-gray-900 dark:text-gray-200 whitespace-nowrap ">
+                                        Total
+                                    </th>
+                                </tr>
 
-                            {/* Gold accent line under header */}
-                            <tr class="bg-gray-200 dark:bg-gray-700">
-                                <td colspan="7" class="h-[1px] p-0"></td>
-                            </tr>
-                        </thead>
+                                {/* Gold accent line under header */}
+                                <tr class="bg-gray-200 dark:bg-gray-700">
+                                    <td colspan="7" class="h-[1px] p-0"></td>
+                                </tr>
+                            </thead>
 
-                        <tbody>
-                            {[
-                                ["Total Leads Generated", 40, 93, 20, 17324, 32, 120],
-                                ["Average CPL", 251, 210, 150, 320, 300, 300],
-                                ["Total Spent Amount", 10049, 19571, 17324, 21000, 1567, 80000],
-                                ["Total Qualified Leads", 21, 29, 45, 30, 55, "-"],
-                                ["Follow ups / Interested", 22, 39, 65, 70, 15, "-"],
-                                ["Delay in Feedback", 14, 22, 39, 65, 70, "-"],
-                                ["Not Interested", 20, 42, 29, 25, 50, "-"],
-                                ["Call Not Picked / Call Later", 25, 22, 32, 49, 35, "-"],
-                                ["Broker", 17, 65, 32, 32, 49, "-"],
-                            ].map((row, i) => {
-                                const Icon = metricIcons[row[0]];
-                                const isEven = i % 2 === 0;
+                            <tbody>
+                                {[
+                                    ["Total Leads Generated", 40, 93, 20, 17324, 32, 120],
+                                    ["Average CPL", 251, 210, 150, 320, 300, 300],
+                                    ["Total Spent Amount", 10049, 19571, 17324, 21000, 1567, 80000],
+                                    ["Total Qualified Leads", 21, 29, 45, 30, 55, "-"],
+                                    ["Follow ups / Interested", 22, 39, 65, 70, 15, "-"],
+                                    ["Delay in Feedback", 14, 22, 39, 65, 70, "-"],
+                                    ["Not Interested", 20, 42, 29, 25, 50, "-"],
+                                    ["Call Not Picked / Call Later", 25, 22, 32, 49, 35, "-"],
+                                    ["Broker", 17, 65, 32, 32, 49, "-"],
+                                ].map((row, i) => {
+                                    const Icon = metricIcons[row[0]];
+                                    const isEven = i % 2 === 0;
 
-                                return (
-                                    <tr class={`
+                                    return (
+                                        <tr class={`
                             border-b border-gray-200 dark:border-gray-700
                             transition-colors duration-150
                            
                             ${isEven
-                                            ? 'bg-gray-50 dark:bg-gray-900'
-                                            : 'bg-purple-50 dark:bg-gray-800/60'
-                                        }
+                                                ? 'bg-gray-50 dark:bg-gray-900'
+                                                : 'bg-purple-50 dark:bg-gray-800/60'
+                                            }
                         `}>
 
-                                        {/* Metric with icon */}
-                                        <td class="px-5 py-3.5 ">
-                                            <div class="flex items-center gap-2.5">
+                                            {/* Metric with icon */}
+                                            <td class="px-5 py-3.5 ">
+                                                <div class="flex items-center gap-2.5">
 
 
 
-                                                {Icon && (
-                                                    <Icon class="w-4 h-4 text-purple-800 dark:text-amber-500 flex-shrink-0" />
-                                                )}
+                                                    {Icon && (
+                                                        <Icon class="w-4 h-4 text-purple-800 dark:text-amber-500 flex-shrink-0" />
+                                                    )}
 
-                                                <span class="font-semibold text-[#0A1628] dark:text-gray-200 text-sm whitespace-nowrap">
-                                                    {row[0]}
-                                                </span>
-                                            </div>
-                                        </td>
+                                                    <span class="font-semibold text-[#0A1628] dark:text-gray-200 text-sm whitespace-nowrap">
+                                                        {row[0]}
+                                                    </span>
+                                                </div>
+                                            </td>
 
-                                        {/* Birla 1 */}
-                                        <td class="px-5 py-3.5 text-center text-[#1E3A5F] dark:text-gray-200 font-medium ">
-                                            {row[1]}
-                                        </td>
+                                            {/* Birla 1 */}
+                                            <td class="px-5 py-3.5 text-center text-[#1E3A5F] dark:text-gray-200 font-medium ">
+                                                {row[1]}
+                                            </td>
 
-                                        {/* Birla 2 */}
-                                        <td class="px-5 py-3.5 text-center text-[#1E3A5F] dark:text-gray-200 font-medium ">
-                                            {row[2]}
-                                        </td>
+                                            {/* Birla 2 */}
+                                            <td class="px-5 py-3.5 text-center text-[#1E3A5F] dark:text-gray-200 font-medium ">
+                                                {row[2]}
+                                            </td>
 
-                                        {/* Birla 3 */}
-                                        <td class="px-5 py-3.5 text-center text-[#1E3A5F] dark:text-gray-200 font-medium ">
-                                            {row[3]}
-                                        </td>
+                                            {/* Birla 3 */}
+                                            <td class="px-5 py-3.5 text-center text-[#1E3A5F] dark:text-gray-200 font-medium ">
+                                                {row[3]}
+                                            </td>
 
-                                        {/* Birla 4 */}
-                                        <td class="px-5 py-3.5 text-center text-[#1E3A5F] dark:text-gray-200 font-medium ">
-                                            {row[4]}
-                                        </td>
+                                            {/* Birla 4 */}
+                                            <td class="px-5 py-3.5 text-center text-[#1E3A5F] dark:text-gray-200 font-medium ">
+                                                {row[4]}
+                                            </td>
 
-                                        {/* Birla 5 */}
-                                        <td class="px-5 py-3.5 text-center text-[#1E3A5F] dark:text-gray-200 font-medium ">
-                                            {row[5]}
-                                        </td>
+                                            {/* Birla 5 */}
+                                            <td class="px-5 py-3.5 text-center text-[#1E3A5F] dark:text-gray-200 font-medium ">
+                                                {row[5]}
+                                            </td>
 
-                                        {/* Total — gold highlighted column */}
-                                        <td class="px-5 py-3.5 text-center font-bold text-[#7A5C1E] dark:text-amber-400 ">
-                                            {row[6]}
-                                        </td>
+                                            {/* Total — gold highlighted column */}
+                                            <td class="px-5 py-3.5 text-center font-bold text-[#7A5C1E] dark:text-amber-400 ">
+                                                {row[6]}
+                                            </td>
 
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            {/* pdf payment report start */}
-            <div id="pdf-budget" style="position: absolute; left: -9999px; top: 0;">
-                <div style="width: 950px; background: #fbfbfb; padding: 32px; font-family: 'Georgia', serif; position: relative; box-sizing: border-box;">
-
-                    {/* Diagonal stripe texture overlay */}
-                    <div style="position: absolute; inset: 0; background-image: repeating-linear-gradient(135deg, transparent, transparent 18px, rgba(255,255,255,0.015) 18px, rgba(255,255,255,0.015) 19px); pointer-events: none;" />
-
-                    {/* Outer gold border frame */}
-                    <div style="position: absolute; inset: 20px; border: 2.5px solid #C9A84C; border-radius: 10px; pointer-events: none;" />
-
-                    {/* Inner gold thin border */}
-                    <div style="position: absolute; inset: 30px; border: 0.8px solid #C9A84C; border-radius: 7px; pointer-events: none;" />
-
-                    {/* Corner ornaments - Top Left */}
-                    <div style="position: absolute; top: 20px; left: 20px; width: 40px; height: 40px; pointer-events: none;">
-                        <div style="position: absolute; top: -1px; left: -1px; width: 22px; height: 3px; background: #C9A84C;" />
-                        <div style="position: absolute; top: -1px; left: -1px; width: 3px; height: 22px; background: #C9A84C;" />
-                        <div style="position: absolute; top: 6px; left: 6px; width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg);" />
-                    </div>
-
-                    {/* Corner ornaments - Top Right */}
-                    <div style="position: absolute; top: 20px; right: 20px; width: 40px; height: 40px; pointer-events: none;">
-                        <div style="position: absolute; top: -1px; right: -1px; width: 22px; height: 3px; background: #C9A84C;" />
-                        <div style="position: absolute; top: -1px; right: -1px; width: 3px; height: 22px; background: #C9A84C;" />
-                        <div style="position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg);" />
-                    </div>
-
-                    {/* Corner ornaments - Bottom Left */}
-                    <div style="position: absolute; bottom: 20px; left: 20px; width: 40px; height: 40px; pointer-events: none;">
-                        <div style="position: absolute; bottom: -1px; left: -1px; width: 22px; height: 3px; background: #C9A84C;" />
-                        <div style="position: absolute; bottom: -1px; left: -1px; width: 3px; height: 22px; background: #C9A84C;" />
-                        <div style="position: absolute; bottom: 6px; left: 6px; width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg);" />
-                    </div>
-
-                    {/* Corner ornaments - Bottom Right */}
-                    <div style="position: absolute; bottom: 20px; right: 20px; width: 40px; height: 40px; pointer-events: none;">
-                        <div style="position: absolute; bottom: -1px; right: -1px; width: 22px; height: 3px; background: #C9A84C;" />
-                        <div style="position: absolute; bottom: -1px; right: -1px; width: 3px; height: 22px; background: #C9A84C;" />
-                        <div style="position: absolute; bottom: 6px; right: 6px; width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg);" />
-                    </div>
-
-                    {/* Inner cream content area */}
-                    <div style="position: relative; margin: 14px; background: #FDF8EE; border-radius: 6px; padding: 0 0 36px 0; overflow: hidden; z-index: 1;">
-
-                        {/* ── HEADER BAND ── */}
-                        <div style="background: #0A1628; padding: 28px 40px 22px; position: relative; overflow: hidden;">
-                            <div style="position: absolute; inset: 0; background-image: repeating-linear-gradient(135deg, transparent, transparent 18px, rgba(255,255,255,0.02) 18px, rgba(255,255,255,0.02) 19px);" />
-                            <div style="position: absolute; top: 0; left: 0; right: 0; height: 5px; background: #C9A84C;" />
-                            <div style="position: absolute; bottom: 0; left: 0; right: 0; height: 4px; background: #C9A84C;" />
-
-                            <p style="text-align: center; color: #E8D5A3; font-size: 18px; font-family: 'Arial', sans-serif; margin: 0 0 6px; letter-spacing: 1px;">
-                                [Aajneeti Connect Ltd.]
-                            </p>
-                            <h1 style="text-align: center; color: white; font-size: 32px; font-family: 'Georgia', serif; letter-spacing: 2px; margin: 0 0 8px; font-weight: bold; text-transform: uppercase;">
-                                Payment Report
-                            </h1>
-                            <p style="text-align: center; color: #E8D5A3; font-size: 18px; font-family: 'Arial', sans-serif; margin: 0; letter-spacing: 1px;">
-                                Generated on: {new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
-                            </p>
-                        </div>
-
-                        {/* ── CLIENT INFO BAND ── */}
-                        <div style="background: #F5EDD8; padding: 15px 30px 15px; position: relative; border-bottom: 2px solid #C9A84C; border-top: 1px solid rgba(201,168,76,0.3);">
-                            <div style="position: absolute; inset: 0; background-image: radial-gradient(circle, rgba(201,168,76,0.1) 1px, transparent 1px); background-size: 18px 18px; pointer-events: none;" />
-
-                            <div style="position: relative; display: flex; align-items: center; gap: 0;">
-
-                                {/* LEFT — client fields */}
-                                <div style="flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 28px;">
-
-                                    <div style="display: flex; align-items: center; gap: 6px;">
-                                        <span style="color: #7A5C1E; font-size: 12px; font-family: 'Arial', sans-serif; margin: 0; letter-spacing: 1px;">Client Name</span>
-                                        <span style="flex: 1; height: 1px; background: rgba(201,168,76,0.4);" />
-                                        <span style="color: #0A1628; font-size: 12px; font-family: Georgia; font-weight: bold;">ABC sdxd ddgdfhgh</span>
-                                    </div>
-
-                                    <div style="display: flex; align-items: center; gap: 6px;">
-                                        <span style="color: #7A5C1E; font-size: 12px; font-family: 'Arial', sans-serif; margin: 0; letter-spacing: 1px;">Company</span>
-                                        <span style="flex: 1; height: 1px; background: rgba(201,168,76,0.4);" />
-                                        <span style="color: #0A1628; font-size: 12px; font-family: Georgia; font-weight: bold;">ABC pvt ltd</span>
-                                    </div>
-
-                                    <div style="display: flex; align-items: center; gap: 6px;">
-                                        <span style="color: #7A5C1E; font-size: 12px; font-family: 'Arial', sans-serif; margin: 0; letter-spacing: 1px;">City</span>
-                                        <span style="flex: 1; height: 1px; background: rgba(201,168,76,0.4);" />
-                                        <span style="color: #0A1628; font-size: 12px; font-family: Georgia; font-weight: bold;">Greater Noida</span>
-                                    </div>
-
-                                    <div style="display: flex; align-items: center; gap: 6px;">
-                                        <span style="color: #7A5C1E; font-size: 12px; font-family: 'Arial', sans-serif; margin: 0; letter-spacing: 1px;">Mobile No</span>
-                                        <span style="flex: 1; height: 1px; background: rgba(201,168,76,0.4);" />
-                                        <span style="color: #0A1628; font-size: 12px; font-family: Georgia; font-weight: bold;">9292876787</span>
-                                    </div>
-
-                                </div>
-
-                                {/* VERTICAL DIVIDER */}
-                                <div style="width: 1px; background: linear-gradient(to bottom, transparent, #C9A84C, transparent); height: 60px; margin: 0 28px; flex-shrink: 0;" />
-
-                                {/* RIGHT — project name badge */}
-                                <div style="flex-shrink: 0; text-align: center;">
-                                    <div style="display: inline-block; border: 1.5px solid #C9A84C; border-radius: 6px; padding: 10px 20px; background: white; position: relative; box-shadow: 2px 2px 0 #C9A84C;">
-                                        <div style="position: absolute; top: 0; left: 12px; right: 12px; height: 2px; background: #C9A84C; border-radius: 2px;" />
-                                        <div style="position: absolute; bottom: 0; left: 12px; right: 12px; height: 2px; background: #C9A84C; border-radius: 2px;" />
-                                        <p style="color: #7A5C1E; font-size: 10px; font-family: Arial; font-weight: bold; text-transform: uppercase; margin: 0 0 5px;">Project</p>
-                                        <p style="color: #0A1628; font-size: 13px; font-family: Georgia; font-weight: bold; margin: 0; white-space: nowrap;">Birla Estates </p>
-                                    </div>
-                                </div>
-
-                            </div>
-                        </div>
-
-                        {/* ── DETAILED TABLE ── */}
-                        <div style="padding: 24px 36px 0;">
-
-                            {/* Section divider */}
-                            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
-                                <div style="width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg); flex-shrink: 0;" />
-                                <div style="flex: 1; height: 1px; background: #C9A84C; opacity: 0.4;" />
-                                <div style="display: flex; align-items: center; justify-content: center; background: #0A1628; padding: 6px 16px; border-radius: 20px; height: 28px;">
-                                    <span style="color: #C9A84C; font-size: 12px; font-family: Arial; margin-bottom:12px; font-weight: bold; line-height: 1;">
-                                        CAMPAIGN PERFORMANCE BREAKDOWN
-                                    </span>
-                                </div>
-                                <div style="flex: 1; height: 1px; background: #C9A84C; opacity: 0.4;" />
-                                <div style="width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg); flex-shrink: 0;" />
-                            </div>
-
-                            {/* Table */}
-                            <div style="border-radius: 8px; overflow: hidden; box-shadow: 4px 4px 0 #C8B89A; border: 1px solid #C9A84C;">
-                                <table style="width: 100%; border-collapse: collapse; font-family: Arial;">
-                                    <thead>
-                                        <tr style="background: #0A1628;">
-                                            <th style="padding: 12px 16px 20px; text-align: left;   color: #C9A84C; font-size: 14px; border-right: 1px solid rgba(201,168,76,0.2); white-space: nowrap;">Metric</th>
-                                            <th style="padding: 12px 16px 20px; text-align: center; color: #C9A84C; font-size: 14px; border-right: 1px solid rgba(201,168,76,0.2); white-space: nowrap;">Birla 1</th>
-                                            <th style="padding: 12px 16px 20px; text-align: center; color: #C9A84C; font-size: 14px; border-right: 1px solid rgba(201,168,76,0.2); white-space: nowrap;">Birla 2</th>
-                                            <th style="padding: 12px 16px 20px; text-align: center; color: #C9A84C; font-size: 14px; border-right: 1px solid rgba(201,168,76,0.2); white-space: nowrap;">Birla 3</th>
-                                            <th style="padding: 12px 16px 20px; text-align: center; color: #C9A84C; font-size: 14px; border-right: 1px solid rgba(201,168,76,0.2); white-space: nowrap;">Birla 4</th>
-                                            <th style="padding: 12px 16px 20px; text-align: center; color: #C9A84C; font-size: 14px; border-right: 1px solid rgba(201,168,76,0.2); white-space: nowrap;">Birla 5</th>
-                                            <th style="padding: 12px 16px 20px; text-align: center; color: #E8D5A3; font-size: 14px; white-space: nowrap;">Total</th>
                                         </tr>
-                                    </thead>
-                                    <tbody>
-                                        {[
-                                            { metric: "Total Leads Generated", b1: 40, b2: 93, b3: 20, b4: 67, b5: 32, total: 120, even: true },
-                                            { metric: "Average CPL", b1: 251, b2: 210, b3: 150, b4: 320, b5: 300, total: 300, even: false },
-                                            { metric: "Total Spent Amount", b1: 10049, b2: 19571, b3: 17324, b4: 21000, b5: 1567, total: 80000, even: true },
-                                            { metric: "Total Qualified Leads", b1: 21, b2: 29, b3: 45, b4: 30, b5: 55, total: "—", even: false },
-                                            { metric: "Follow Ups / Interested", b1: 22, b2: 39, b3: 65, b4: 70, b5: 15, total: "—", even: true },
-                                            { metric: "Delay in Feedback", b1: 14, b2: 22, b3: 39, b4: 65, b5: 70, total: "—", even: false },
-                                            { metric: "Not Interested", b1: 20, b2: 42, b3: 29, b4: 25, b5: 50, total: "—", even: true },
-                                            { metric: "Call Not Picked / Call Later", b1: 25, b2: 22, b3: 32, b4: 49, b5: 35, total: "—", even: false },
-                                            { metric: "Broker", b1: 17, b2: 65, b3: 32, b4: 32, b5: 49, total: "—", even: true },
-                                        ].map((row) => (
-                                            <tr style={`background: ${row.even ? '#F5EDD8' : '#FDF8EE'};`}>
-
-                                                {/* Metric */}
-                                                <td style="padding: 10px 16px 22px; font-size: 14px; font-weight: bold; color: #0A1628; border-right: 1px solid rgba(201,168,76,0.2); position: relative; white-space: nowrap;">
-                                                    <span style="position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: #C9A84C;" />
-                                                    {row.metric}
-                                                </td>
-
-                                                {/* Birla columns */}
-                                                <td style="padding: 10px 16px 22px; text-align: center; font-size: 14px; font-weight: bold; color: #1E3A5F; border-right: 1px solid rgba(201,168,76,0.2);">{row.b1}</td>
-                                                <td style="padding: 10px 16px 22px; text-align: center; font-size: 14px; font-weight: bold; color: #1E3A5F; border-right: 1px solid rgba(201,168,76,0.2);">{row.b2}</td>
-                                                <td style="padding: 10px 16px 22px; text-align: center; font-size: 14px; font-weight: bold; color: #1E3A5F; border-right: 1px solid rgba(201,168,76,0.2);">{row.b3}</td>
-                                                <td style="padding: 10px 16px 22px; text-align: center; font-size: 14px; font-weight: bold; color: #1E3A5F; border-right: 1px solid rgba(201,168,76,0.2);">{row.b4}</td>
-                                                <td style="padding: 10px 16px 22px; text-align: center; font-size: 14px; font-weight: bold; color: #1E3A5F; border-right: 1px solid rgba(201,168,76,0.2);">{row.b5}</td>
-
-                                                {/* Total — highlighted */}
-                                                <td style="padding: 10px 16px 22px; text-align: center; font-size: 14px; font-weight: bold; color: #7A5C1E; background: rgba(201,168,76,0.12);">{row.total}</td>
-
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-
-                        {/* ── FOOTER ── */}
-                        <div style="margin: 28px 36px 0; padding-top: 16px; border-top: 1px solid rgba(201,168,76,0.4); display: flex; align-items: center; justify-content: space-between;">
-                            <div style="width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg);" />
-                            <p style="color: #604c2c; font-size: 12px; font-family: Arial; letter-spacing: 1.5px; text-align: center; margin: 0; text-transform: uppercase;">
-                                © 2026 Project Analytics
-                            </p>
-                            <div style="width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg);" />
-                        </div>
-
+                                    );
+                                })}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
-            </div>
-            {/* pdf payment report end */}
+
+                {/* pdf payment report start */}
+                <div id="pdf-budget" style="position: absolute; left: -9999px; top: 0;">
+                    <div style="width: 950px; background: #fbfbfb; padding: 32px; font-family: 'Georgia', serif; position: relative; box-sizing: border-box;">
+
+                        {/* Diagonal stripe texture overlay */}
+                        <div style="position: absolute; inset: 0; background-image: repeating-linear-gradient(135deg, transparent, transparent 18px, rgba(255,255,255,0.015) 18px, rgba(255,255,255,0.015) 19px); pointer-events: none;" />
+
+                        {/* Outer gold border frame */}
+                        <div style="position: absolute; inset: 20px; border: 2.5px solid #C9A84C; border-radius: 10px; pointer-events: none;" />
+
+                        {/* Inner gold thin border */}
+                        <div style="position: absolute; inset: 30px; border: 0.8px solid #C9A84C; border-radius: 7px; pointer-events: none;" />
+
+                        {/* Corner ornaments - Top Left */}
+                        <div style="position: absolute; top: 20px; left: 20px; width: 40px; height: 40px; pointer-events: none;">
+                            <div style="position: absolute; top: -1px; left: -1px; width: 22px; height: 3px; background: #C9A84C;" />
+                            <div style="position: absolute; top: -1px; left: -1px; width: 3px; height: 22px; background: #C9A84C;" />
+                            <div style="position: absolute; top: 6px; left: 6px; width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg);" />
+                        </div>
+
+                        {/* Corner ornaments - Top Right */}
+                        <div style="position: absolute; top: 20px; right: 20px; width: 40px; height: 40px; pointer-events: none;">
+                            <div style="position: absolute; top: -1px; right: -1px; width: 22px; height: 3px; background: #C9A84C;" />
+                            <div style="position: absolute; top: -1px; right: -1px; width: 3px; height: 22px; background: #C9A84C;" />
+                            <div style="position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg);" />
+                        </div>
+
+                        {/* Corner ornaments - Bottom Left */}
+                        <div style="position: absolute; bottom: 20px; left: 20px; width: 40px; height: 40px; pointer-events: none;">
+                            <div style="position: absolute; bottom: -1px; left: -1px; width: 22px; height: 3px; background: #C9A84C;" />
+                            <div style="position: absolute; bottom: -1px; left: -1px; width: 3px; height: 22px; background: #C9A84C;" />
+                            <div style="position: absolute; bottom: 6px; left: 6px; width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg);" />
+                        </div>
+
+                        {/* Corner ornaments - Bottom Right */}
+                        <div style="position: absolute; bottom: 20px; right: 20px; width: 40px; height: 40px; pointer-events: none;">
+                            <div style="position: absolute; bottom: -1px; right: -1px; width: 22px; height: 3px; background: #C9A84C;" />
+                            <div style="position: absolute; bottom: -1px; right: -1px; width: 3px; height: 22px; background: #C9A84C;" />
+                            <div style="position: absolute; bottom: 6px; right: 6px; width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg);" />
+                        </div>
+
+                        {/* Inner cream content area */}
+                        <div style="position: relative; margin: 14px; background: #FDF8EE; border-radius: 6px; padding: 0 0 36px 0; overflow: hidden; z-index: 1;">
+
+                            {/* ── HEADER BAND ── */}
+                            <div style="background: #0A1628; padding: 28px 40px 22px; position: relative; overflow: hidden;">
+                                <div style="position: absolute; inset: 0; background-image: repeating-linear-gradient(135deg, transparent, transparent 18px, rgba(255,255,255,0.02) 18px, rgba(255,255,255,0.02) 19px);" />
+                                <div style="position: absolute; top: 0; left: 0; right: 0; height: 5px; background: #C9A84C;" />
+                                <div style="position: absolute; bottom: 0; left: 0; right: 0; height: 4px; background: #C9A84C;" />
+
+                                <p style="text-align: center; color: #E8D5A3; font-size: 18px; font-family: 'Arial', sans-serif; margin: 0 0 6px; letter-spacing: 1px;">
+                                    [Aajneeti Connect Ltd.]
+                                </p>
+                                <h1 style="text-align: center; color: white; font-size: 32px; font-family: 'Georgia', serif; letter-spacing: 2px; margin: 0 0 8px; font-weight: bold; text-transform: uppercase;">
+                                    Payment Report
+                                </h1>
+                                <p style="text-align: center; color: #E8D5A3; font-size: 18px; font-family: 'Arial', sans-serif; margin: 0; letter-spacing: 1px;">
+                                    Generated on: {new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
+                                </p>
+                            </div>
+
+                            {/* ── CLIENT INFO BAND ── */}
+                            <div style="background: #F5EDD8; padding: 15px 30px 15px; position: relative; border-bottom: 2px solid #C9A84C; border-top: 1px solid rgba(201,168,76,0.3);">
+                                <div style="position: absolute; inset: 0; background-image: radial-gradient(circle, rgba(201,168,76,0.1) 1px, transparent 1px); background-size: 18px 18px; pointer-events: none;" />
+
+                                <div style="position: relative; display: flex; align-items: center; gap: 0;">
+
+                                    {/* LEFT — client fields */}
+                                    <div style="flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 28px;">
+
+                                        <div style="display: flex; align-items: center; gap: 6px;">
+                                            <span style="color: #7A5C1E; font-size: 12px; font-family: 'Arial', sans-serif; margin: 0; letter-spacing: 1px;">Client Name</span>
+                                            <span style="flex: 1; height: 1px; background: rgba(201,168,76,0.4);" />
+                                            <span style="color: #0A1628; font-size: 12px; font-family: Georgia; font-weight: bold;">ABC sdxd ddgdfhgh</span>
+                                        </div>
+
+                                        <div style="display: flex; align-items: center; gap: 6px;">
+                                            <span style="color: #7A5C1E; font-size: 12px; font-family: 'Arial', sans-serif; margin: 0; letter-spacing: 1px;">Company</span>
+                                            <span style="flex: 1; height: 1px; background: rgba(201,168,76,0.4);" />
+                                            <span style="color: #0A1628; font-size: 12px; font-family: Georgia; font-weight: bold;">ABC pvt ltd</span>
+                                        </div>
+
+                                        <div style="display: flex; align-items: center; gap: 6px;">
+                                            <span style="color: #7A5C1E; font-size: 12px; font-family: 'Arial', sans-serif; margin: 0; letter-spacing: 1px;">City</span>
+                                            <span style="flex: 1; height: 1px; background: rgba(201,168,76,0.4);" />
+                                            <span style="color: #0A1628; font-size: 12px; font-family: Georgia; font-weight: bold;">Greater Noida</span>
+                                        </div>
+
+                                        <div style="display: flex; align-items: center; gap: 6px;">
+                                            <span style="color: #7A5C1E; font-size: 12px; font-family: 'Arial', sans-serif; margin: 0; letter-spacing: 1px;">Mobile No</span>
+                                            <span style="flex: 1; height: 1px; background: rgba(201,168,76,0.4);" />
+                                            <span style="color: #0A1628; font-size: 12px; font-family: Georgia; font-weight: bold;">9292876787</span>
+                                        </div>
+
+                                    </div>
+
+                                    {/* VERTICAL DIVIDER */}
+                                    <div style="width: 1px; background: linear-gradient(to bottom, transparent, #C9A84C, transparent); height: 60px; margin: 0 28px; flex-shrink: 0;" />
+
+                                    {/* RIGHT — project name badge */}
+                                    <div style="flex-shrink: 0; text-align: center;">
+                                        <div style="display: inline-block; border: 1.5px solid #C9A84C; border-radius: 6px; padding: 10px 20px; background: white; position: relative; box-shadow: 2px 2px 0 #C9A84C;">
+                                            <div style="position: absolute; top: 0; left: 12px; right: 12px; height: 2px; background: #C9A84C; border-radius: 2px;" />
+                                            <div style="position: absolute; bottom: 0; left: 12px; right: 12px; height: 2px; background: #C9A84C; border-radius: 2px;" />
+                                            <p style="color: #7A5C1E; font-size: 10px; font-family: Arial; font-weight: bold; text-transform: uppercase; margin: 0 0 5px;">Project</p>
+                                            <p style="color: #0A1628; font-size: 13px; font-family: Georgia; font-weight: bold; margin: 0; white-space: nowrap;">Birla Estates </p>
+                                        </div>
+                                    </div>
+
+                                </div>
+                            </div>
+
+                            {/* ── DETAILED TABLE ── */}
+                            <div style="padding: 24px 36px 0;">
+
+                                {/* Section divider */}
+                                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+                                    <div style="width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg); flex-shrink: 0;" />
+                                    <div style="flex: 1; height: 1px; background: #C9A84C; opacity: 0.4;" />
+                                    <div style="display: flex; align-items: center; justify-content: center; background: #0A1628; padding: 6px 16px; border-radius: 20px; height: 28px;">
+                                        <span style="color: #C9A84C; font-size: 12px; font-family: Arial; margin-bottom:12px; font-weight: bold; line-height: 1;">
+                                            CAMPAIGN PERFORMANCE BREAKDOWN
+                                        </span>
+                                    </div>
+                                    <div style="flex: 1; height: 1px; background: #C9A84C; opacity: 0.4;" />
+                                    <div style="width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg); flex-shrink: 0;" />
+                                </div>
+
+                                {/* Table */}
+                                <div style="border-radius: 8px; overflow: hidden; box-shadow: 4px 4px 0 #C8B89A; border: 1px solid #C9A84C;">
+                                    <table style="width: 100%; border-collapse: collapse; font-family: Arial;">
+                                        <thead>
+                                            <tr style="background: #0A1628;">
+                                                <th style="padding: 12px 16px 20px; text-align: left;   color: #C9A84C; font-size: 14px; border-right: 1px solid rgba(201,168,76,0.2); white-space: nowrap;">Metric</th>
+                                                <th style="padding: 12px 16px 20px; text-align: center; color: #C9A84C; font-size: 14px; border-right: 1px solid rgba(201,168,76,0.2); white-space: nowrap;">Birla 1</th>
+                                                <th style="padding: 12px 16px 20px; text-align: center; color: #C9A84C; font-size: 14px; border-right: 1px solid rgba(201,168,76,0.2); white-space: nowrap;">Birla 2</th>
+                                                <th style="padding: 12px 16px 20px; text-align: center; color: #C9A84C; font-size: 14px; border-right: 1px solid rgba(201,168,76,0.2); white-space: nowrap;">Birla 3</th>
+                                                <th style="padding: 12px 16px 20px; text-align: center; color: #C9A84C; font-size: 14px; border-right: 1px solid rgba(201,168,76,0.2); white-space: nowrap;">Birla 4</th>
+                                                <th style="padding: 12px 16px 20px; text-align: center; color: #C9A84C; font-size: 14px; border-right: 1px solid rgba(201,168,76,0.2); white-space: nowrap;">Birla 5</th>
+                                                <th style="padding: 12px 16px 20px; text-align: center; color: #E8D5A3; font-size: 14px; white-space: nowrap;">Total</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {[
+                                                { metric: "Total Leads Generated", b1: 40, b2: 93, b3: 20, b4: 67, b5: 32, total: 120, even: true },
+                                                { metric: "Average CPL", b1: 251, b2: 210, b3: 150, b4: 320, b5: 300, total: 300, even: false },
+                                                { metric: "Total Spent Amount", b1: 10049, b2: 19571, b3: 17324, b4: 21000, b5: 1567, total: 80000, even: true },
+                                                { metric: "Total Qualified Leads", b1: 21, b2: 29, b3: 45, b4: 30, b5: 55, total: "—", even: false },
+                                                { metric: "Follow Ups / Interested", b1: 22, b2: 39, b3: 65, b4: 70, b5: 15, total: "—", even: true },
+                                                { metric: "Delay in Feedback", b1: 14, b2: 22, b3: 39, b4: 65, b5: 70, total: "—", even: false },
+                                                { metric: "Not Interested", b1: 20, b2: 42, b3: 29, b4: 25, b5: 50, total: "—", even: true },
+                                                { metric: "Call Not Picked / Call Later", b1: 25, b2: 22, b3: 32, b4: 49, b5: 35, total: "—", even: false },
+                                                { metric: "Broker", b1: 17, b2: 65, b3: 32, b4: 32, b5: 49, total: "—", even: true },
+                                            ].map((row) => (
+                                                <tr style={`background: ${row.even ? '#F5EDD8' : '#FDF8EE'};`}>
+
+                                                    {/* Metric */}
+                                                    <td style="padding: 10px 16px 22px; font-size: 14px; font-weight: bold; color: #0A1628; border-right: 1px solid rgba(201,168,76,0.2); position: relative; white-space: nowrap;">
+                                                        <span style="position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: #C9A84C;" />
+                                                        {row.metric}
+                                                    </td>
+
+                                                    {/* Birla columns */}
+                                                    <td style="padding: 10px 16px 22px; text-align: center; font-size: 14px; font-weight: bold; color: #1E3A5F; border-right: 1px solid rgba(201,168,76,0.2);">{row.b1}</td>
+                                                    <td style="padding: 10px 16px 22px; text-align: center; font-size: 14px; font-weight: bold; color: #1E3A5F; border-right: 1px solid rgba(201,168,76,0.2);">{row.b2}</td>
+                                                    <td style="padding: 10px 16px 22px; text-align: center; font-size: 14px; font-weight: bold; color: #1E3A5F; border-right: 1px solid rgba(201,168,76,0.2);">{row.b3}</td>
+                                                    <td style="padding: 10px 16px 22px; text-align: center; font-size: 14px; font-weight: bold; color: #1E3A5F; border-right: 1px solid rgba(201,168,76,0.2);">{row.b4}</td>
+                                                    <td style="padding: 10px 16px 22px; text-align: center; font-size: 14px; font-weight: bold; color: #1E3A5F; border-right: 1px solid rgba(201,168,76,0.2);">{row.b5}</td>
+
+                                                    {/* Total — highlighted */}
+                                                    <td style="padding: 10px 16px 22px; text-align: center; font-size: 14px; font-weight: bold; color: #7A5C1E; background: rgba(201,168,76,0.12);">{row.total}</td>
+
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            {/* ── FOOTER ── */}
+                            <div style="margin: 28px 36px 0; padding-top: 16px; border-top: 1px solid rgba(201,168,76,0.4); display: flex; align-items: center; justify-content: space-between;">
+                                <div style="width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg);" />
+                                <p style="color: #604c2c; font-size: 12px; font-family: Arial; letter-spacing: 1.5px; text-align: center; margin: 0; text-transform: uppercase;">
+                                    © 2026 Project Analytics
+                                </p>
+                                <div style="width: 8px; height: 8px; background: #C9A84C; transform: rotate(45deg);" />
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+                {/* pdf payment report end */}
             </div>
         </div>
     );

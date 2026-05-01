@@ -9,9 +9,10 @@ import { DateRangeFilter } from "../components/DateRangeFilter";
 import { fetchProjects } from "../services/dashboard";
 import { fetchCampaigns } from "../services/campaigns";
 import { fetchCampaignInsights } from "../services/campaigns";
+
 // fetchCampaigns is already imported, just ADD fetchCampaignInsights
 
-export default function ClientDashboard() {
+export default function MainDashboard() {
 
     const [statusFilter, setStatusFilter] = createSignal("all");
     const [searchText, setSearchText] = createSignal("");
@@ -31,11 +32,20 @@ export default function ClientDashboard() {
     // { projectId: [ ...all flattened insight records ] }
     const [insightsLoading, setInsightsLoading] = createSignal(false);
     const [loading, setLoading] = createSignal(true);
+    // Add near your other signals
+    const [userRole, setUserRole] = createSignal("client");
+
+    // Update onMount to read the role
+    onMount(() => {
+        const auth = JSON.parse(localStorage.getItem("auth"));
+        setUserRole(auth?.role ?? "client");
+        loadData(1);
+    });
 
 
     const loadData = async (pageNo = 1, search = "") => {
         try {
-            setLoading(true);   // 👈 START LOADING
+            setLoading(true);   //  START LOADING
             const res = await fetchProjects(pageNo, search);
             const apiData = res?.data || [];
             const meta = res?.meta?.pagination;
@@ -45,7 +55,7 @@ export default function ClientDashboard() {
                 name: item.name,
                 logo: item.logo || "/default-logo.png",
                 location: item.city,
-                budget: parseFloat(item.budget) || 0,        // 👈 was: item.budget ?? 0
+                budget: parseFloat(item.budget) || 0,        //  was: item.budget ?? 0
                 leadsgenerated: item.leads_count ?? 0,
                 type: item.property_type ?? "N/A",
                 uploaddocument: item.upload_document ?? null,
@@ -56,16 +66,18 @@ export default function ClientDashboard() {
                 priority: item.priority_label ?? "Standard",
                 projectControl: item.project_control ?? "Live",
                 url: item.url ?? "/all-campaigns",
-                cpl: parseFloat(item.cpl) || 0,              // 👈 was: item.cpl ?? 0
-                spent: parseFloat(item.total_spend) || 0,    // 👈 was: item.total_spend ?? 0
+                cpl: parseFloat(item.cpl) || 0,
+                //  was: item.cpl ?? 0
+                modifiedCpl: item.modified_cpl ?? null,  //  was: item.modified_cpl ?? null
+                spent: parseFloat(item.total_spend) || 0,    //  was: item.total_spend ?? 0
                 leadsByDate: item.leads_by_date ?? {},
             }));
 
             setProjects(mappedProjects);
-            await Promise.all([
-                deriveProjectStatuses(mappedProjects), // 👈 async status patch
+
+            deriveProjectStatuses(mappedProjects), //  async status patch
                 loadAllProjectInsights(mappedProjects)
-            ]);
+
 
             if (meta) {
                 setPage(meta.page);
@@ -79,7 +91,7 @@ export default function ClientDashboard() {
             console.error(err);
         }
         finally {
-            setLoading(false);   // 👈 STOP LOADING
+            setLoading(false);   //  STOP LOADING
         }
     };
 
@@ -171,9 +183,6 @@ export default function ClientDashboard() {
         setInsightsLoading(false);
     };
 
-    onMount(() => {
-        loadData(1);
-    });
 
     const normalizeLocalDate = (d) => {
         const date = new Date(d);
@@ -326,7 +335,7 @@ export default function ClientDashboard() {
     const TableSkeleton = () => {
         return (
             <tbody>
-                <For each={Array(6).fill(0)}>
+                <For each={Array(8).fill(0)}>
                     {(_, i) => (
                         <tr class="border-t animate-pulse">
                             <td class="p-3"><div class="h-6 w-6 bg-gray-300 dark:bg-gray-700 rounded-full"></div></td>
@@ -340,7 +349,7 @@ export default function ClientDashboard() {
                             <td class="p-3"><div class="h-4 w-16 bg-gray-300 dark:bg-gray-700 rounded"></div></td>
                             <td class="p-3"><div class="h-4 w-16 bg-gray-300 dark:bg-gray-700 rounded"></div></td>
                             <td class="p-3"><div class="h-4 w-20 bg-gray-300 dark:bg-gray-700 rounded"></div></td>
-                            
+
                         </tr>
                     )}
                 </For>
@@ -519,8 +528,10 @@ export default function ClientDashboard() {
                 <table class="w-full text-sm table-auto">
                     <thead class="bg-gray-100 dark:bg-gray-800">
                         <tr class="[&_th]:text-center [&_th]:whitespace-nowrap [&_th:first-child]:text-left text-gray-800 dark:text-gray-200">
-                            <th class="p-3">S.No</th>
-                            <th class="p-3">Project Name</th>
+                            <th class="p-3 w-12 sticky left-0 z-20 bg-gray-100 dark:bg-gray-800">S.No</th>
+                            <th class="p-3 sticky left-[57px] z-20 bg-gray-100 dark:bg-gray-800 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.10)]">
+                                Project Name
+                            </th>
                             <th class="p-3">Location</th>
                             <th class="p-3">Type</th>
                             <th class="p-3">Status</th>
@@ -531,6 +542,9 @@ export default function ClientDashboard() {
                             <th class="p-3">{rangeLabel()} Total Leads</th>
                             <th class="p-3">{rangeLabel()} Total Spent</th>
                             <th class="p-3">{rangeLabel()} AVG CPL</th>
+                            {userRole() === "admin" && (
+                                <th class="p-3">Modified CPL</th>
+                            )}
                             <th class="p-3">Active Campaigns</th>
                             <th class="p-3">Paused Campaigns</th>
                         </tr>
@@ -540,34 +554,42 @@ export default function ClientDashboard() {
                             {/* ✅ For callback with explicit return */}
                             <For each={filteredProjects()}>
                                 {(project, index) => {
-                                    const stats = () => allProjectStats()[project.id] || { totalLeads: 0, totalSpent: 0, avgCPL: 0 }; // 👈 changed
+                                    const stats = () => allProjectStats()[project.id] || { totalLeads: 0, totalSpent: 0, avgCPL: 0 }; //  changed
 
                                     return (
                                         <tr
                                             class={
-                                                "border-t transition-all duration-300 ease-in-out " +
+                                                "border-t transition-all duration-300 ease-in-out group " +
                                                 "[&_td]:text-center [&_td]:px-6 [&_td:first-child]:px-2 " +
                                                 "[&_td]:whitespace-nowrap [&_td:first-child]:text-left " +
                                                 (index() % 2 === 0
                                                     ? "bg-white dark:bg-gray-900 "
-                                                    : "bg-purple-50/40 dark:bg-gray-900 ") +
-                                                "hover:bg-purple-100/40 dark:hover:bg-gray-800"
+                                                    : "bg-purple-50 dark:bg-gray-900 ") 
+                                                
                                             }
                                         >
 
-                                            <td class="px-1 py-2 text-center">
+                                            <td class={
+                                                "px-1 py-2 w-12 text-center sticky left-0 z-10 " +
+                                                " " +
+                                                (index() % 2 === 0 ? "bg-white dark:bg-gray-900" : "bg-purple-50 dark:bg-gray-900")
+                                            }>
                                                 <span class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 text-xs font-semibold">
                                                     {(page() - 1) * pageSize() + index() + 1}
                                                 </span>
                                             </td>
                                             {/* Project Name */}
-                                            <td class="p-2">
+                                            <td class={
+                                                "px-2 py-2 sticky left-[57px] z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.08)] " +
+                                                " " +
+                                                (index() % 2 === 0 ? "bg-white dark:bg-gray-900" : "bg-purple-50 dark:bg-gray-900")
+                                            }>
                                                 <div class="flex items-center gap-2">
                                                     <div class={`rounded flex items-center justify-center w-10 h-10 font-bold text-lg uppercase ${getColor(project.name)}`}>
                                                         {project.name ? project.name.charAt(0) : "?"}
                                                     </div>
                                                     <A
-                                                        href={`/project/${project.id}`}   // 👈 ADD THIS
+                                                        href={`/project/${project.id}`}   //  ADD THIS
                                                         state={{ project }}
                                                         class="text-purple-700 dark:text-purple-300 font-medium hover:underline transition"
                                                     >
@@ -663,6 +685,11 @@ export default function ClientDashboard() {
                                             <td class="p-2">
                                                 {"₹"}{stats().avgCPL}
                                             </td>
+                                            {userRole() === "admin" && (
+                                                <td class="p-2">
+                                                    {"₹"}{project.modifiedCpl ?? "—"}
+                                                </td>
+                                            )}
 
                                             {/* Active Campaigns */}
                                             <td class="p-2 text-center">{project.activeCampaigns ?? 0}</td>

@@ -86,33 +86,49 @@ export default function Login() {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-
         setLoading(true);
         setError("");
 
         try {
-            // ✅ Call reusable function
             const res = await loginUser(email(), password());
-
-            console.log("Login response:", res);
-
             const token = res?.data?.access_token;
+            if (!token) throw new Error("Token not found");
 
-            if (!token) {
-                throw new Error("Token not found");
+            // ✅ Fetch role
+            const meRes = await fetch(
+                "https://metadashboard.aajneeticonnectltd.com/api/auth/me",
+                { headers: { Authorization: "Bearer " + token } }
+            );
+            const meData = await meRes.json();
+            const role = meData?.data?.role ?? "client";
+
+            // ✅ NEW: Fetch client_type (only for client role)
+            let client_type = null;
+            if (role === "client") {
+                try {
+                    const clientRes = await fetch(
+                        "https://metadashboard.aajneeticonnectltd.com/api/clients/me/",
+                        { headers: { Authorization: "Bearer " + token } }
+                    );
+                    const clientData = await clientRes.json();
+                    client_type = clientData?.data?.client_type ?? null; // "retainer" | "cpl" | "hybrid"
+                } catch (err) {
+                    console.warn("Could not fetch client type:", err);
+                }
             }
 
             const authData = {
-                token: token,
+                token,
                 user: res?.data?.user || null,
                 isAuthenticated: true,
+                role,
+                client_type, // ✅ stored here
             };
 
             localStorage.setItem("auth", JSON.stringify(authData));
-            window.dispatchEvent(new Event("storage")); // 👈 triggers sidebar to update instantly
+            window.dispatchEvent(new Event("storage"));
 
             setIsLoggedIn(true);
-
             navigate("/", { replace: true });
 
         } catch (err) {

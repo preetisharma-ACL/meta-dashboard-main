@@ -1,9 +1,23 @@
 import { For, createMemo, createSignal } from "solid-js";
 
-export default function RetainerSection() {
+export default function ClientDelivery() {
 
-  // ---------- TAB STATE ----------
-  const [activeTab, setActiveTab] = createSignal("retainer");
+
+  // ✅ Read client_type from stored auth
+  const auth = JSON.parse(localStorage.getItem("auth") || "{}");
+  const clientType = auth?.client_type; // "retainer" | "cpl" | "hybrid" | null (admin sees all)
+
+  // ✅ Map client_type → tab id
+  const clientTypeToTab = {
+    retainer: "retainer",
+    cpl: "cpl",
+    hybrid: "hybrid",
+  };
+
+  // ✅ If client_type exists, lock to that tab; else default to "retainer"
+  const defaultTab = clientType ? clientTypeToTab[clientType] ?? "retainer" : "retainer";
+  const [activeTab, setActiveTab] = createSignal(defaultTab);
+
 
   // ---------- DUMMY DATA ----------
   const projects = [
@@ -85,19 +99,24 @@ export default function RetainerSection() {
   const hybridAvgCPL = createMemo(() => (hybridTotalSpent() / hybridTotalLeads()).toFixed(2));
 
   // ---------- TABS CONFIG ----------
-  const tabs = [
+  const allTabs = [
     { id: "retainer", label: "Retainer" },
     { id: "cpl", label: "CPL breakdown" },
     { id: "hybrid", label: "Hybrid breakdown" },
   ];
 
+  // ✅ Admins (no client_type) see all tabs; clients see only their own
+  const tabs = clientType
+    ? allTabs.filter(t => t.id === clientTypeToTab[clientType])
+    : allTabs;
+
   // ---------- UI ----------
   return (
-    <div class="p-4 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200">
-      <div class="rounded-xl border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden">
+    <div class="p-4  dark:bg-gray-900 text-gray-800 dark:text-gray-200">
+      <div class="rounded-xl  dark:bg-gray-900 overflow-hidden">
 
         {/* TAB BAR */}
-        <div class="flex border-b border-gray-300 dark:border-gray-700">
+        {/* <div class="flex border-b border-gray-300 dark:border-gray-700">
           <For each={tabs}>
             {(tab) => (
               <button
@@ -112,7 +131,7 @@ export default function RetainerSection() {
               </button>
             )}
           </For>
-        </div>
+        </div> */}
 
         {/* ─── RETAINER TAB ─── */}
         {activeTab() === "retainer" && (
@@ -123,7 +142,7 @@ export default function RetainerSection() {
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
                 </svg>
                 <div class="text-xl text-blue-900 dark:text-blue-400 font-semibold mb-2">
-                  All Projects - Retainer
+                  All Projects Breakdown 
                 </div>
               </div>
               <p>Get a clear overview of all projects, including total leads generated, overall spend, and average cost per lead (CPL).</p>
@@ -189,7 +208,7 @@ export default function RetainerSection() {
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
                 </svg>
                 <div class="text-xl text-blue-900 dark:text-blue-400 font-semibold mb-2">
-                  All projects — CPL breakdown
+                  All Projects Breakdown 
                 </div>
               </div>
               <p>Get a clear overview of all projects, including total leads generated, overall spend, and average cost per lead (CPL).</p>
@@ -270,7 +289,7 @@ export default function RetainerSection() {
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
                 </svg>
                 <div class="text-xl text-blue-900 dark:text-blue-400 font-semibold mb-2">
-                  All projects — Hybrid breakdown
+                  All Projects Breakdown
                 </div>
               </div>
               <p>Get a clear overview of all projects, including total leads generated, overall spend, and average cost per lead (CPL).</p>

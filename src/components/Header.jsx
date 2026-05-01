@@ -4,6 +4,8 @@ import { useTheme } from '../context/ThemeContext';
 import { fetchUser } from '../services/userProfile';
 import { onMount } from 'solid-js';
 import { handleLogout } from '../pages/login/LoginForm';
+import { fetchAlerts } from "../services/alert-service";
+import { useNavigate } from "@solidjs/router";
 
 export default function Header() {
     const { isCollapsed, toggleSidebar, toggleMobileSidebar } = useSidebar();
@@ -11,21 +13,53 @@ export default function Header() {
     const [showUserMenu, setShowUserMenu] = createSignal(false);
     const [showNotifications, setShowNotifications] = createSignal(false);
     const [user, setUser] = createSignal(null);
+    const [notifications, setNotifications] = createSignal([]);
+    const navigate = useNavigate();
+
+    function formatTime(dateStr) {
+        const date = new Date(dateStr);
+        const now = new Date();
+        const diffMs = now - date;
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMins / 60);
+        const diffDays = Math.floor(diffHours / 24);
+
+        if (diffMins < 1) return "Just now";
+        if (diffMins < 60) return `${diffMins} min ago`;
+        if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? "s" : ""} ago`;
+        return `${diffDays} day${diffDays > 1 ? "s" : ""} ago`;
+    }
 
     onMount(async () => {
         try {
-            const res = await fetchUser();
-            setUser(res.data);
+            const [userRes, alertRes] = await Promise.all([
+                fetchUser(),
+                fetchAlerts(1)
+            ]);
+
+            setUser(userRes.data);
+
+            const data = alertRes?.data || [];
+
+            const mapped = data.map(item => ({
+                id: item.id,
+
+                title: item.project_name || "Project",
+
+                message: item.message,
+
+                time: formatTime(item.created_at),
+
+                unread: !item.is_acknowledged
+            }));
+
+            setNotifications(mapped.slice(0, 5));
+
         } catch (err) {
             console.log(err);
         }
     });
 
-    const notifications = [
-        { id: 1, title: 'New lead assigned', message: 'ABC has been assigned to you', time: '5 min ago', unread: true },
-        { id: 2, title: 'Meeting reminder', message: 'Sales meeting in 30 minutes', time: '25 min ago', unread: true },
-        { id: 3, title: 'Deal closed', message: 'ABC Corp deal successfully closed', time: '2 hours ago', unread: false },
-    ];
 
     const getInitials = (name) => {
         if (!name) return "";
@@ -120,30 +154,42 @@ export default function Header() {
 
                         {/* Notifications Dropdown */}
                         <Show when={showNotifications()}>
-                            <div class="absolute right-0 mt-2 w-80 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+                            <div class="absolute right-0 mt-4 w-80 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
                                 <div class="p-4 border-b border-gray-200 dark:border-gray-700">
                                     <h3 class="font-semibold text-gray-900 dark:text-white">Notifications</h3>
                                 </div>
                                 <div class="max-h-96 overflow-y-auto">
-                                    <For each={notifications}>
-                                        {(notif) => (
-                                            <div class={`p-4 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer ${notif.unread ? 'bg-primary-50 dark:bg-primary-900/10' : ''
-                                                }`}>
-                                                <div class="flex items-start gap-3">
-                                                    <div class={`w-2 h-2 rounded-full mt-2 flex-shrink-0 ${notif.unread ? 'bg-primary-500' : 'bg-gray-300'
-                                                        }`}></div>
-                                                    <div class="flex-1">
-                                                        <h4 class="text-sm font-medium text-gray-900 dark:text-white">{notif.title}</h4>
-                                                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{notif.message}</p>
-                                                        <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">{notif.time}</p>
+                                    <Show when={notifications().length > 0} fallback={
+                                        <p class="p-4 text-sm text-gray-500">No notifications</p>
+                                    }>
+                                        <For each={notifications()}>
+
+
+                                            {(notif) => (
+                                                <div class={`p-4 border-b border-gray-100 dark:border-gray-700 hover:bg-blue-50 dark:hover:bg-gray-700 cursor-pointer ${notif.unread ? 'bg-gray-50 dark:bg-blue-900/10' : ''
+                                                    }`}>
+                                                    <div class="flex items-start gap-3">
+                                                        <div class={`w-2 h-2 rounded-full mt-2 flex-shrink-0 ${notif.unread ? 'bg-blue-800' : 'bg-gray-300'
+                                                            }`}></div>
+                                                        <div class="flex-1">
+                                                            <h4 class="text-sm font-medium text-blue-800 dark:text-white">{notif.title}</h4>
+                                                            <p class="text-xs text-gray-700 dark:text-gray-400 mt-1">{notif.message}</p>
+                                                            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">{notif.time}</p>
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            </div>
-                                        )}
-                                    </For>
+                                            )}
+                                        </For>
+                                    </Show>
                                 </div>
                                 <div class="p-3 text-center border-t border-gray-200 dark:border-gray-700">
-                                    <button class="text-sm text-primary-600 dark:text-primary-400 hover:underline">
+                                    <button
+                                        onClick={() => {
+                                            setShowNotifications(false);
+                                            navigate("/notifications"); // 👈 your alert page route
+                                        }}
+                                        class="text-sm text-blue-800 dark:text-blue-400 hover:underline"
+                                    >
                                         View all notifications
                                     </button>
                                 </div>
@@ -185,13 +231,13 @@ export default function Header() {
                                     </p>
                                 </div>
                                 <div class="py-2">
-                                    <button class="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">
+                                    <button class="w-full text-left px-4 py-2 text-sm text-blue-800 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-gray-700">
                                         Profile Settings
                                     </button>
-                                    <button class="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">
+                                    <button class="w-full text-left px-4 py-2 text-sm text-blue-800 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-gray-700">
                                         Account Settings
                                     </button>
-                                    <button class="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">
+                                    <button class="w-full text-left px-4 py-2 text-sm text-blue-800 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-gray-700">
                                         Help Center
                                     </button>
                                 </div>
@@ -204,7 +250,7 @@ export default function Header() {
                         </Show>
                     </div>
                 </div>
-            </div>
-        </header>
+            </div >
+        </header >
     );
 }
