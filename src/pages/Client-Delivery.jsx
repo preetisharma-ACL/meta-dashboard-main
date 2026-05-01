@@ -367,7 +367,6 @@ export default function ClientDelivery() {
             </div>
           </div>
         )}
-
       </div>
     </div>
   );

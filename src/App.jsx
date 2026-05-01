@@ -49,10 +49,10 @@ function App() {
           <Route path="/add-project" component={() =>  <ProtectedRoute><Layout><AddProject /></Layout></ProtectedRoute>} />
           <Route path="/billing" component={() =><ProtectedRoute><Layout><Billing /></Layout></ProtectedRoute>} />
           <Route path="/client-delivery" component={() => <ProtectedRoute><Layout><ClientDelivery/></Layout></ProtectedRoute>} />
-          <Route path="/leads-performance" component={() => <ProtectedRoute><Layout><LeadPerformance /></Layout></ProtectedRoute>} />
+          {/* <Route path="/leads-performance" component={() => <ProtectedRoute><Layout><LeadPerformance /></Layout></ProtectedRoute>} /> */}
           <Route path="/what-is-performing" component={() => <ProtectedRoute><Layout><WhatIsPerforming /></Layout></ProtectedRoute>} />
-          <Route path="/leads" component={() => <ProtectedRoute><Layout><Leads /></Layout></ProtectedRoute>} />
-          <Route path="/follow-up" component={() => <ProtectedRoute><Layout><FollowUp /></Layout></ProtectedRoute>} />
+          {/* <Route path="/leads" component={() => <ProtectedRoute><Layout><Leads /></Layout></ProtectedRoute>} /> */}
+          {/* <Route path="/follow-up" component={() => <ProtectedRoute><Layout><FollowUp /></Layout></ProtectedRoute>} /> */}
           <Route path="/settings" component={() =><ProtectedRoute><Layout><Settings /></Layout></ProtectedRoute>} />
           <Route path="/notifications" component={() => <ProtectedRoute><Layout><Notifications /></Layout></ProtectedRoute>} />
           <Route path="/project/:id" component={() => <ProtectedRoute><Layout><ProjectDetails /></Layout></ProtectedRoute>} />
