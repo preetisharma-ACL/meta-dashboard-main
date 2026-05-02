@@ -222,7 +222,7 @@ export default function MainDashboard() {
 
             const totalLeads = filtered.reduce((s, d) => s + (d.leads || 0), 0);
             const totalSpent = filtered.reduce((s, d) => s + parseFloat(d.spend || 0), 0);
-            const avgCPL = totalLeads > 0 ? Math.round(totalSpent / totalLeads) : 0;
+            const avgCPL = totalLeads > 0 ? parseFloat(totalSpent / totalLeads).toFixed(2): 0;
 
             result[project.id] = { totalLeads, totalSpent, avgCPL };
         }
@@ -269,15 +269,15 @@ export default function MainDashboard() {
 
         const totalBudget = all.reduce((s, p) => s + (p.budget ?? 0), 0);
         const activeCampaigns = all.reduce((s, p) => s + (p.activeCampaigns ?? 0), 0);
+        const pausedCampaigns = all.reduce((s, p) => s + (p.pausedCampaigns ?? 0), 0);
         const activeProjects = all.filter(p => p.status === "active").length;
-
         const totalLeads = all.reduce((s, p) => s + (statsMap[p.id]?.totalLeads ?? 0), 0);
         const totalSpent = all.reduce((s, p) => s + (statsMap[p.id]?.totalSpent ?? 0), 0);
-        const avgCPL = totalLeads > 0 ? Math.round(totalSpent / totalLeads) : 0;
+        const avgCPL = totalLeads > 0 ? parseFloat(totalSpent / totalLeads).toFixed(2) : 0;
 
-        return { totalBudget, totalSpent, totalLeads, avgCPL, activeCampaigns, activeProjects };
+        return { totalBudget, totalSpent, totalLeads, avgCPL, activeCampaigns, pausedCampaigns, activeProjects };
     });
-    
+
 
     const handlePriorityChange = (id, value) => {
         setProjects(prev =>
@@ -744,7 +744,7 @@ export default function MainDashboard() {
                                 </td>
 
                                 {/* Paused Campaigns */}
-                                <td></td>
+                                <td> {overviewStats().pausedCampaigns}</td>
 
                             </tr>
                         </tfoot>
