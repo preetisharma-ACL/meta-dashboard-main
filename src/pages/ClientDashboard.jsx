@@ -229,20 +229,7 @@ export default function MainDashboard() {
 
         return result;
     });
-    const overviewStats = createMemo(() => {
-        const all = projects();
-        const statsMap = allProjectStats(); // reactive
 
-        const totalBudget = all.reduce((s, p) => s + (p.budget ?? 0), 0);
-        const activeCampaigns = all.reduce((s, p) => s + (p.activeCampaigns ?? 0), 0);
-        const activeProjects = all.filter(p => p.status === "active").length;
-
-        const totalLeads = all.reduce((s, p) => s + (statsMap[p.id]?.totalLeads ?? 0), 0);
-        const totalSpent = all.reduce((s, p) => s + (statsMap[p.id]?.totalSpent ?? 0), 0);
-        const avgCPL = totalLeads > 0 ? Math.round(totalSpent / totalLeads) : 0;
-
-        return { totalBudget, totalSpent, totalLeads, avgCPL, activeCampaigns, activeProjects };
-    });
     const filteredProjects = createMemo(() => {
         let data = [...projects()];
 
@@ -276,6 +263,21 @@ export default function MainDashboard() {
 
         return data;
     });
+    const overviewStats = createMemo(() => {
+        const all = filteredProjects(); // ✅ IMPORTANT FIX
+        const statsMap = allProjectStats();
+
+        const totalBudget = all.reduce((s, p) => s + (p.budget ?? 0), 0);
+        const activeCampaigns = all.reduce((s, p) => s + (p.activeCampaigns ?? 0), 0);
+        const activeProjects = all.filter(p => p.status === "active").length;
+
+        const totalLeads = all.reduce((s, p) => s + (statsMap[p.id]?.totalLeads ?? 0), 0);
+        const totalSpent = all.reduce((s, p) => s + (statsMap[p.id]?.totalSpent ?? 0), 0);
+        const avgCPL = totalLeads > 0 ? Math.round(totalSpent / totalLeads) : 0;
+
+        return { totalBudget, totalSpent, totalLeads, avgCPL, activeCampaigns, activeProjects };
+    });
+    
 
     const handlePriorityChange = (id, value) => {
         setProjects(prev =>
@@ -564,8 +566,8 @@ export default function MainDashboard() {
                                                 "[&_td]:whitespace-nowrap [&_td:first-child]:text-left " +
                                                 (index() % 2 === 0
                                                     ? "bg-white dark:bg-gray-900 "
-                                                    : "bg-purple-50 dark:bg-gray-900 ") 
-                                                
+                                                    : "bg-purple-50 dark:bg-gray-900 ")
+
                                             }
                                         >
 
@@ -701,6 +703,51 @@ export default function MainDashboard() {
                                 }}
                             </For>
                         </tbody>
+                        <tfoot class="bg-gray-100 dark:bg-gray-800 font-semibold">
+                            <tr class="[&_td]:text-center [&_td]:px-6 [&_td]:py-3">
+
+                                <td class="sticky left-0 bg-gray-100 dark:bg-gray-800 z-20"></td>
+
+                                <td class="sticky left-[57px] bg-gray-100 dark:bg-gray-800 z-20 text-left">
+                                    Total
+                                </td>
+
+                                <td></td>
+                                <td></td>
+                                <td></td>
+
+                                {/* Budget Total */}
+                                <td>
+                                    {"₹"}{overviewStats().totalBudget.toLocaleString("en-IN")}
+                                </td>
+
+                                {/* Leads Total */}
+                                <td>
+                                    {overviewStats().totalLeads}
+                                </td>
+
+                                {/* Spent Total */}
+                                <td>
+                                    {"₹"}{overviewStats().totalSpent.toLocaleString("en-IN")}
+                                </td>
+
+                                {/* Avg CPL */}
+                                <td>
+                                    {"₹"}{overviewStats().avgCPL}
+                                </td>
+
+                                {userRole() === "admin" && <td></td>}
+
+                                {/* Active Campaigns */}
+                                <td>
+                                    {overviewStats().activeCampaigns}
+                                </td>
+
+                                {/* Paused Campaigns */}
+                                <td></td>
+
+                            </tr>
+                        </tfoot>
                     </Show>
                 </table>
 
@@ -751,5 +798,4 @@ export default function MainDashboard() {
         </section>
 
     );
-
 }
