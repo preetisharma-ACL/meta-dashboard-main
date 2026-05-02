@@ -369,7 +369,27 @@ export default function ProjectDetails() {
             : leadSummary.totalLeads - leadSummary.deliveredLeads;
 
 
+    const footerTotals = createMemo(() => {
+        const data = sortedCampaigns(); // ✅ IMPORTANT (filtered + date applied)
 
+        const totalLeads = data.reduce((s, r) => s + (r.totalLeads || 0), 0);
+        const totalClicks = data.reduce((s, r) => s + (r.totalClicks || 0), 0);
+        const totalReach = data.reduce((s, r) => s + (r.totalReach || 0), 0);
+        const totalSpent = data.reduce((s, r) => s + (r.totalSpent || 0), 0);
+
+        const avgCPL = totalLeads > 0
+            ? (totalSpent / totalLeads).toFixed(2)
+            : 0;
+            
+
+        return {
+            totalLeads,
+            totalClicks,
+            totalReach,
+            totalSpent,
+            avgCPL
+        };
+    });
     return (
         <div class="space-y-6 m-4">
 
@@ -683,6 +703,54 @@ export default function ProjectDetails() {
                             )}
                         </For>
                     </tbody>
+                    <tfoot class="sticky bottom-0 z-30">
+                        <tr class="
+    bg-gradient-to-r from-purple-100 to-purple-50 
+    dark:from-gray-800 dark:to-gray-900
+    border-t-2 border-purple-300 dark:border-gray-600
+    shadow-[0_-2px_10px_rgba(0,0,0,0.08)]
+    font-semibold text-center
+  ">
+
+                            {/* Label */}
+                            <td class="p-3 text-left">
+                                <span class="px-3 py-1 bg-purple-600 text-white rounded-lg text-xs font-bold">
+                                    TOTAL
+                                </span>
+                            </td>
+
+                            <td></td>
+                            <td></td>
+                            <td></td>
+
+                            {/* Leads */}
+                            <td class="text-green-700 dark:text-green-300 font-bold">
+                                {footerTotals().totalLeads}
+                            </td>
+
+                            {/* Clicks */}
+                            <td class="text-blue-700 dark:text-blue-300 font-bold">
+                                {footerTotals().totalClicks}
+                            </td>
+
+                            {/* Reach */}
+                            <td class="text-indigo-700 dark:text-indigo-300 font-bold">
+                                {footerTotals().totalReach}
+                            </td>
+
+                            {/* Spend */}
+                            <td class="text-red-700 dark:text-red-300 font-bold">
+                                ₹{footerTotals().totalSpent.toLocaleString("en-IN")}
+                            </td>
+
+                            {/* CPL */}
+                            <td class="text-purple-700 dark:text-purple-300 font-bold">
+                                ₹{footerTotals().avgCPL}
+                            </td>
+
+                            {userRole() === "admin" && <td></td>}
+                        </tr>
+                    </tfoot>
                 </table>
             </div>
             <div class="flex items-center justify-between mt-4 flex-wrap gap-3">
