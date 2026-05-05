@@ -13,6 +13,7 @@ import { onMount, onCleanup } from "solid-js";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { fetchCampaigns, fetchCampaignInsights, fetchProjectById } from "../services/campaigns";
+import useColumnSort from "../components/Columnsorting";
 
 
 export default function ProjectDetails() {
@@ -39,6 +40,7 @@ export default function ProjectDetails() {
     const [hasPrev, setHasPrev] = createSignal(false);
     // Add near your other signals
     const [userRole, setUserRole] = createSignal("client");
+    const { handleSort, getSortIcon, sortData } = useColumnSort();
 
     onMount(() => {
         // ✅ 1. Read role
@@ -228,7 +230,8 @@ export default function ProjectDetails() {
             }
         }
 
-        return Array.from(map.values()).sort((a, b) => b.totalLeads - a.totalLeads);
+        let data= Array.from(map.values()).sort((a, b) => b.totalLeads - a.totalLeads);
+        return sortData(data);
     });
 
     const suggestions = createMemo(() => {
@@ -649,17 +652,37 @@ export default function ProjectDetails() {
                 <table class="min-w-full text-sm">
                     <thead class="bg-gray-100 dark:bg-gray-800">
                         <tr class="[&_th]:text-center [&_th:first-child]:text-left">
-                            <th class="p-3">Campaign</th>
-                            <th class="p-3">Start Date</th>
-                            <th class="p-3">Ad Account</th>
-                            <th class="p-3">Status</th>
-                            <th class="p-3">{rangeLabel()} Leads</th>
-                            <th class="p-3">{rangeLabel()} Clicks</th>
-                            <th class="p-3">{rangeLabel()} Impression</th>
-                            <th class="p-3">{rangeLabel()} Spent</th>
-                            <th class="p-3">{rangeLabel()} CPL</th>
+                            <th class="p-3" onClick={() => handleSort("campaign_name")}>
+                                Campaign {getSortIcon("campaign_name")}
+                            </th>
+                            <th class="p-3" onClick={() => handleSort("start_date")}>
+                                Start Date {getSortIcon("start_date")}
+                            </th>
+                            <th class="p-3" onClick={() => handleSort("ad_account")}>
+                                Ad Account {getSortIcon("ad_account")}
+                            </th>
+                            <th class="p-3" onClick={() => handleSort("status")}>
+                                Status {getSortIcon("status")}
+                            </th>
+                            <th class="p-3" onClick={() => handleSort("totalLeads")}>
+                                {rangeLabel()} Leads {getSortIcon("totalLeads")}
+                            </th>
+                            <th class="p-3" onClick={() => handleSort("totalClicks")}>
+                                {rangeLabel()} Clicks {getSortIcon("totalClicks")}
+                            </th>
+                            <th class="p-3" onClick={() => handleSort("totalReach")}>
+                                {rangeLabel()} Impression {getSortIcon("totalReach")}
+                            </th>
+                            <th class="p-3" onClick={() => handleSort("totalSpent")}>
+                                {rangeLabel()} Spent {getSortIcon("totalSpent")}
+                            </th>
+                            <th class="p-3" onClick={() => handleSort("cpl")}>
+                                {rangeLabel()} CPL {getSortIcon("cpl")}
+                            </th>
                             {userRole() === "admin" && (
-                                <th class="p-3">Premium CPL</th>
+                                <th class="p-3" onClick={() => handleSort("premium_cpl")}>
+                                    Premium CPL {getSortIcon("premium_cpl")}
+                                </th>
                             )}
                         </tr>
                     </thead>
