@@ -709,7 +709,7 @@ export default function MainDashboard() {
             <div class="overflow-x-auto bg-white dark:bg-gray-900 rounded-xl border">
                 <table class="w-full text-sm table-auto">
                     <thead class="bg-gray-100 dark:bg-gray-800">
-                        <tr class="[&_th]:text-center [&_th]:whitespace-nowrap [&_th:first-child]:text-left text-gray-800 dark:text-gray-200">
+                        <tr class="[&_th]:text-center [&_th]:cursor-pointer [&_th]:whitespace-nowrap [&_th:first-child]:text-left text-gray-800 dark:text-gray-200">
                             <th class="p-3 w-12 sticky left-0 z-20 bg-gray-100 dark:bg-gray-800">S.No</th>
                             <th class="p-3 sticky left-[57px] z-20 bg-gray-100 dark:bg-gray-800 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.10)]" onClick={() => handleColumnSort("name")}>
                                 Project Name {getSortIcon("name")}

@@ -227,54 +227,115 @@ function CampaignTable(props) {
   );
 }
 
-// --- Project Row (Accordion) --------------------------------------------------
-function ProjectRow(props) {
-  const [open, setOpen] = createSignal(false);
+// Replace ProjectRow with this ProjectTable component
+function ProjectTable(props) {
+  const [sortKey, setSortKey] = createSignal("");
+  const [sortDir, setSortDir] = createSignal("desc");
 
-  const p = () => props.project;
+  const textCols = new Set(["name", "status"]);
+
+  const handleSort = (key) => {
+    if (sortKey() === key) {
+      setSortDir(d => d === "asc" ? "desc" : "asc");
+    } else {
+      setSortKey(key);
+      setSortDir(textCols.has(key) ? "asc" : "desc");
+    }
+  };
+
+  const sortIcon = (key) => {
+    if (sortKey() !== key) return "⇅";
+    return sortDir() === "asc" ? "↑" : "↓";
+  };
+
+  const sorted = createMemo(() => {
+    const key = sortKey();
+    const dir = sortDir();
+    return [...props.projects].sort((a, b) => {
+      let va, vb;
+      if (key === "name") { va = a.name; vb = b.name; }
+      else if (key === "status") { va = a.status; vb = b.status; }
+      else if (key === "campaigns") { va = a.campaigns.length; vb = b.campaigns.length; }
+      else if (key === "leads") { va = a.totalLeads; vb = b.totalLeads; }
+      else if (key === "budget") { va = a.budgetAllocated; vb = b.budgetAllocated; }
+      else if (key === "spent") { va = a.totalSpend; vb = b.totalSpend; }
+      else if (key === "cpl") { va = a.avgCPL; vb = b.avgCPL; }
+      else return 0;
+      if (typeof va === "string") return dir === "asc" ? va.localeCompare(vb) : vb.localeCompare(va);
+      return dir === "asc" ? va - vb : vb - va;
+    });
+  });
+
+  const totals = createMemo(() => ({
+    campaigns: props.projects.reduce((s, p) => s + p.campaigns.length, 0),
+    leads: props.projects.reduce((s, p) => s + p.totalLeads, 0),
+    budget: props.projects.reduce((s, p) => s + p.budgetAllocated, 0),
+    spent: props.projects.reduce((s, p) => s + p.totalSpend, 0),
+    cpl: (() => {
+      const tl = props.projects.reduce((s, p) => s + p.totalLeads, 0);
+      const ts = props.projects.reduce((s, p) => s + p.totalSpend, 0);
+      return tl > 0 ? Math.round(ts / tl) : 0;
+    })(),
+  }));
+
+  const thClass = "py-3 px-4 text-md font-semibold text-gray-700 dark:text-gray-400  cursor-pointer select-none hover:text-gray-800 dark:hover:text-gray-200 transition-colors";
 
   return (
-    <Card class="group overflow-hidden rounded-2xl border border-gray-200 dark:border-gray-700 dark:bg-gray-900/70 backdrop-blur-sm shadow-sm transition-all duration-300">
-      <button
-        class="w-full flex items-center justify-between px-5 py-4 text-left bg-blue-50 dark:bg-gray-800 gap-4 dark:hover:bg-gray-800/50 transition-all duration-200"
-        onClick={() => setOpen((v) => !v)}
-      >
-        {/* LEFT */}
-        <div class="flex items-center gap-3 min-w-0">
-          <div class="w-10 h-10 rounded bg-gradient-to-br from-blue-900 to-blue-600 flex items-center justify-center text-white text-sm font-semibold">
-            {p().name?.charAt(0).toUpperCase()}
-          </div>
-          <div class="min-w-0">
-            <p class="font-semibold text-gray-900 dark:text-white text-sm truncate">{p().name}</p>
-            <p class="text-sm text-gray-500 dark:text-gray-400">
-              {p().campaigns.length} campaigns · {p().totalLeads} leads
-            </p>
-          </div>
-        </div>
+    <div class="overflow-x-auto rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm hover:shadow-md transition">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+            <th class={`${thClass} text-left`} onClick={() => handleSort("name")}>Project name {sortIcon("name")}</th>
+            <th class={`${thClass} text-center`} onClick={() => handleSort("campaigns")}>Campaigns {sortIcon("campaigns")}</th>
+            <th class={`${thClass} text-center`} onClick={() => handleSort("leads")}>Total leads {sortIcon("leads")}</th>
+            <th class={`${thClass} text-center`} onClick={() => handleSort("budget")}>Budget allocated {sortIcon("budget")}</th>
+            <th class={`${thClass} text-center`} onClick={() => handleSort("spent")}>Total spent {sortIcon("spent")}</th>
+            <th class={`${thClass} text-right`} onClick={() => handleSort("cpl")}>Avg CPL {sortIcon("cpl")}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <For each={sorted()}>
+            {(p, i) => (
+              <tr class={`transition-all hover:bg-blue-50 dark:hover:bg-gray-800/60 ${i() < sorted().length - 1 ? "border-b border-gray-100 dark:border-gray-700" : ""}`}>
+                <td class="py-3 px-4">
+                  <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-900 to-blue-600 flex items-center justify-center text-white text-sm font-semibold flex-shrink-0">
+                      {p.name?.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <p class="font-semibold text-gray-900 dark:text-white text-sm">{p.name}</p>
+                      <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{p.campaigns.length} campaign{p.campaigns.length !== 1 ? "s" : ""}</p>
+                    </div>
+                  </div>
+                </td>
 
-        {/* RIGHT STATS */}
-        <div class="flex items-center gap-6 flex-shrink-0">
-          <div class="hidden sm:block text-right border border-blue-200 dark:border-gray-700 py-2 px-4 rounded-lg">
-            <p class="text-sm text-blue-900 dark:text-gray-400">Allocated</p>
-            <p class="text-sm font-semibold text-gray-800 dark:text-gray-200">{fmt(p().budgetAllocated)}</p>
-          </div>
-          <div class="hidden sm:block text-right border border-blue-200 dark:border-gray-700 py-2 px-4 rounded-lg">
-            <p class="text-sm text-blue-900 dark:text-gray-400">Spent</p>
-            <p class="text-sm font-semibold text-gray-800 dark:text-gray-200">{fmt(p().totalSpend)}</p>
-          </div>
-          <div class="hidden md:block text-right border border-blue-200 dark:border-gray-700 py-2 px-4 rounded-lg">
-            <p class="text-sm text-blue-900 dark:text-gray-400">Avg CPL</p>
-            <p class="text-sm font-semibold text-gray-800 dark:text-gray-200">{fmt(p().avgCPL)}</p>
-          </div>
-        </div>
-      </button>
-    </Card>
+                <td class="py-3 px-4 text-center font-medium text-gray-700 dark:text-gray-300">{p.campaigns.length}</td>
+                <td class="py-3 px-4 text-center font-semibold text-gray-800 dark:text-gray-200">{p.totalLeads.toLocaleString()}</td>
+                <td class="py-3 px-4 text-center text-gray-600 dark:text-gray-400">{fmt(p.budgetAllocated)}</td>
+                <td class="py-3 px-4 text-center font-medium text-gray-700 dark:text-gray-300">{fmt(p.totalSpend)}</td>
+                <td class="py-3 px-4 text-right font-semibold text-indigo-600 dark:text-indigo-400">{p.avgCPL > 0 ? fmt(p.avgCPL) : "—"}</td>
+              </tr>
+            )}
+          </For>
+        </tbody>
+        <tfoot>
+          <tr class="bg-gray-50 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700">
+            <td class="py-3 px-4 text-xs font-bold uppercase tracking-wider text-gray-500">Total</td>
+            <td class="py-3 px-4 text-center font-bold text-gray-900 dark:text-white">{totals().campaigns}</td>
+            <td class="py-3 px-4 text-center font-bold text-gray-900 dark:text-white">{totals().leads.toLocaleString()}</td>
+            <td class="py-3 px-4 text-center font-bold text-gray-900 dark:text-white">{fmt(totals().budget)}</td>
+            <td class="py-3 px-4 text-center font-bold text-gray-900 dark:text-white">{fmt(totals().spent)}</td>
+            <td class="py-3 px-4 text-right font-bold text-indigo-600 dark:text-indigo-400">{fmt(totals().cpl)}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
   );
 }
 
 // --- CPL Comparison Panel -----------------------------------------------------
 function CPLComparisonPanel(props) {
-  
+
 }
 
 // --- Payment History ----------------------------------------------------------
@@ -373,42 +434,7 @@ function DeliveryBreakdown(props) {
   );
 }
 
-// --- Alerts Tab ---------------------------------------------------------------
-function AlertsTab(props) {
-  const [enabled, setEnabled] = createSignal(
-    Object.fromEntries(props.alerts.map((a) => [a.id, a.defaultOn]))
-  );
-  const toggle = (id) => setEnabled((prev) => ({ ...prev, [id]: !prev[id] }));
 
-  const borderMap = { warning: "border-l-amber-400", info: "border-l-blue-400", caution: "border-l-orange-400", success: "border-l-green-400" };
-  const msgMap = { warning: "bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400", info: "bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400", caution: "bg-orange-50 dark:bg-orange-950/30 text-orange-700 dark:text-orange-400", success: "bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400" };
-
-  return (
-    <div class="space-y-3">
-      <For each={props.alerts}>
-        {(alert) => (
-          <Card class={`p-4 flex items-start gap-4 border-l-4 ${borderMap[alert.type]}`}>
-            <div class="flex-1 min-w-0">
-              <div class="flex items-start justify-between gap-3 flex-wrap">
-                <div>
-                  <p class="font-semibold text-gray-800 dark:text-gray-200 text-sm">{alert.label}</p>
-                  <p class="text-sm text-gray-700 dark:text-gray-400 mt-0.5">{alert.desc}</p>
-                </div>
-                <Toggle checked={enabled()[alert.id]} onChange={() => toggle(alert.id)} />
-              </div>
-              <Show when={alert.activeMsg && enabled()[alert.id]}>
-                <div class={`mt-3 rounded-lg px-3 py-2 text-sm font-medium flex items-center gap-2 ${msgMap[alert.type]}`}>
-                  <span class="w-1.5 h-1.5 rounded-full bg-current animate-pulse flex-shrink-0" />
-                  {alert.activeMsg}
-                </div>
-              </Show>
-            </div>
-          </Card>
-        )}
-      </For>
-    </div>
-  );
-}
 
 // --- Add Funds Modal ----------------------------------------------------------
 function AddFundsModal(props) {
@@ -512,49 +538,42 @@ export default function Billing() {
   const [tab, setTab] = createSignal("overview");
   const [showModal, setShowModal] = createSignal(false);
 
-  // -- Fetch overview data --------------------------------------------------
-  const [overviewResource] = createResource(fetchBillingOverview);
-
-  // -- Fetch ALL projects dynamically, then load billing for each ----------
-  const [projectsResource] = createResource(async () => {
-    // fetchAllProjectsBilling: fetches /projects/ list first, then
-    // calls /billing/project/:id for every project in parallel
-    const results = await fetchAllProjectsBilling();
-    return results.map(({ projectMeta, billing }) =>
-      transformProject(billing, projectMeta)
-    );
+  // ✅ Single combined resource — fires overview + projects in parallel
+  const [billingResource] = createResource(async () => {
+    const [overviewRes, projectsRes] = await Promise.all([
+      fetchBillingOverview(),
+      fetchAllProjectsBilling(),
+    ]);
+    return {
+      overview: overviewRes?.data || {},
+      projects: projectsRes.map(({ projectMeta, billing }) =>
+        transformProject(billing, projectMeta)
+      ),
+    };
   });
 
-  // -- Derived totals from project data -------------------------------------
-  const projects = () => projectsResource() || [];
+  // ✅ Derived accessors from single resource
+  const overview        = () => billingResource()?.overview || {};
+  const projects        = () => billingResource()?.projects || [];
 
-  const totalLeads = createMemo(() =>
-    projects().reduce((s, p) => s + p.totalLeads, 0)
-  );
-  const totalSpend = createMemo(() =>
-    projects().reduce((s, p) => s + p.totalSpend, 0)
-  );
-  const overallCPL = createMemo(() =>
-    totalLeads() > 0 ? Math.round(totalSpend() / totalLeads()) : 0
-  );
+  const totalLeads      = createMemo(() => projects().reduce((s, p) => s + p.totalLeads, 0));
+  const totalSpend      = createMemo(() => projects().reduce((s, p) => s + p.totalSpend, 0));
+  const overallCPL      = createMemo(() => totalLeads() > 0 ? Math.round(totalSpend() / totalLeads()) : 0);
 
-  // -- Overview budget numbers (from overview API) ---------------------------
-  const overview = () => overviewResource()?.data || {};
-  const budgetCommitted = () => parseFloat(overview().total_budget) || 0;
-  const budgetUtilized  = () => parseFloat(overview().utilized) || 0;
-  const budgetRemaining = () => parseFloat(overview().remaining) || 0;
-  const pendingPayment  = () => parseFloat(overview().pending_payment) || 0;
+  const budgetCommitted = () => parseFloat(overview().total_budget)          || 0;
+  const budgetUtilized  = () => parseFloat(overview().utilized)              || 0;
+  const budgetRemaining = () => parseFloat(overview().remaining)             || 0;
+  const pendingPayment  = () => parseFloat(overview().pending_payment)       || 0;
   const utilizationPct  = () => parseFloat(overview().utilization_percentage) || 0;
 
   const tabs = [
     { id: "overview", label: "Overview" },
     { id: "payments", label: "Payments & Invoices" },
-    { id: "alerts",   label: "Alerts" },
   ];
 
   return (
     <div class="min-h-screen bg-white p-6 dark:bg-gray-900 text-gray-800 dark:text-gray-200 transition-all duration-300">
-      {/* -- Header -- */}
+      {/* Header */}
       <header>
         <div class="flex flex-col md:flex-row md:justify-between md:items-center gap-4 mb-3">
           <div>
@@ -594,8 +613,8 @@ export default function Billing() {
             All amounts shown <span class="font-semibold text-gray-800 dark:text-gray-200 mx-1">excluding GST (18%)</span> unless stated otherwise.
           </div>
 
-          {/* ① Budget Overview — from /billing/overview/ */}
-          <Show when={!overviewResource.loading} fallback={<Skeleton />}>
+          {/* ✅ Single loading gate for everything */}
+          <Show when={!billingResource.loading} fallback={<Skeleton />}>
             <section>
               <SectionLabel>Budget Overview</SectionLabel>
               <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -633,10 +652,7 @@ export default function Billing() {
                 />
               </div>
             </section>
-          </Show>
 
-          {/* ② KPI Strip — from project APIs */}
-          <Show when={!projectsResource.loading} fallback={<div class="h-20 rounded-xl bg-gray-100 dark:bg-gray-800 animate-pulse" />}>
             <div class="grid grid-cols-3 gap-3">
               <Card class="p-4 text-center">
                 <p class="text-md text-gray-700 dark:text-gray-400 font-medium">Total Leads</p>
@@ -652,14 +668,9 @@ export default function Billing() {
               </Card>
             </div>
 
-            {/* ③ Project Breakdown */}
             <section>
               <SectionLabel>Project-wise Budget Breakdown</SectionLabel>
-              <div class="space-y-3">
-                <For each={projects()}>
-                  {(p) => <ProjectRow project={p} />}
-                </For>
-              </div>
+              <ProjectTable projects={projects()} />
             </section>
           </Show>
         </div>
@@ -692,17 +703,6 @@ export default function Billing() {
           </div>
           <DeliveryBreakdown deliveries={MOCK_DELIVERIES} totalPaid={budgetCommitted()} />
           <PaymentHistory payments={MOCK_PAYMENTS} />
-        </div>
-      </Show>
-
-      {/* ══ ALERTS TAB ══ */}
-      <Show when={tab() === "alerts"}>
-        <div class="space-y-4">
-          <div class="flex items-center justify-between">
-            <SectionLabel>Alerts & Notifications</SectionLabel>
-            <Tag variant="gray">Proactive System</Tag>
-          </div>
-          <AlertsTab alerts={MOCK_ALERTS} />
         </div>
       </Show>
 

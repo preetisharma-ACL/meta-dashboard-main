@@ -651,7 +651,7 @@ export default function ProjectDetails() {
             <div class="overflow-x-auto border rounded-xl">
                 <table class="min-w-full text-sm">
                     <thead class="bg-gray-100 dark:bg-gray-800">
-                        <tr class="[&_th]:text-center [&_th:first-child]:text-left">
+                        <tr class="[&_th]:text-center [&_th]:cursor-pointer [&_th]:whitespace-nowrap [&_th:first-child]:text-left">
                             <th class="p-3" onClick={() => handleSort("campaign_name")}>
                                 Campaign {getSortIcon("campaign_name")}
                             </th>

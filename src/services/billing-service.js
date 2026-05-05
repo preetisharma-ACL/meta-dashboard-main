@@ -22,8 +22,9 @@ export const fetchBillingProject = async (projectId) => {
 };
 
 // ✅ Fetch all projects then load billing details for each in parallel
+// billing-service.js — add this overload so caller can pass project list in
 export const fetchAllProjectsBilling = async () => {
-  const projectsRes = await fetchAllProjects();
+  const [projectsRes] = await Promise.all([fetchAllProjects()]);
   const projectList = projectsRes?.data || [];
 
   const billingResults = await Promise.all(
