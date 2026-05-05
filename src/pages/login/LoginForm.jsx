@@ -2,6 +2,16 @@ import { createSignal, onMount } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { loginUser } from "../../services/login-service";
 
+// ✅ Decode JWT expiry
+const getTokenExpiry = (token) => {
+    try {
+        const payload = JSON.parse(atob(token.split(".")[1]));
+        return payload.exp * 1000;
+    } catch {
+        return null;
+    }
+};
+
 export const handleLogout = () => {
     console.log("User Logout");
     localStorage.removeItem("auth");
@@ -18,11 +28,32 @@ export default function Login() {
     const navigate = useNavigate();
 
     onMount(() => {
-        const auth = JSON.parse(localStorage.getItem("auth"));
-        if (auth?.token) {
+        const auth = JSON.parse(localStorage.getItem("auth") || "null");
+
+        if (auth?.token && auth?.refreshToken) {
+            // ✅ Both tokens present — safe to continue session
             setIsLoggedIn(true);
             navigate("/", { replace: true });
+        } else if (auth?.token && !auth?.refreshToken) {
+            // ⚠️ Access token only, no refresh token — clear and re-login
+            console.warn("No refresh token found — clearing session");
+            localStorage.removeItem("auth");
         }
+
+        // ✅ Listen for token updates from other tabs
+        try {
+            const channel = new BroadcastChannel("token_refresh");
+            channel.onmessage = (e) => {
+                if (e.data.type === "TOKEN_REFRESHED") {
+                    const auth = JSON.parse(localStorage.getItem("auth") || "null");
+                    if (auth) {
+                        auth.token = e.data.token;
+                        auth.tokenExpiresAt = e.data.tokenExpiresAt;
+                        localStorage.setItem("auth", JSON.stringify(auth));
+                    }
+                }
+            };
+        } catch {}
     });
 
     const handleSubmit = async (e) => {
@@ -34,15 +65,27 @@ export default function Login() {
             const res = await loginUser(email(), password());
             const accessToken = res?.data?.access_token;
             const refreshToken = res?.data?.refresh_token;
+
             if (!accessToken) throw new Error("Access token not found");
 
-            const meRes = await fetch(
-                "https://metadashboard.aajneeticonnectltd.com/api/auth/me",
-                { headers: { Authorization: "Bearer " + accessToken } }
-            );
-            const meData = await meRes.json();
-            const role = meData?.data?.role ?? "client";
+            if (!refreshToken) {
+                console.warn("⚠️ No refresh token received — user may be logged out when access token expires");
+            }
 
+            // ✅ Fetch user role — don't block login if it fails
+            let role = "client";
+            try {
+                const meRes = await fetch(
+                    "https://metadashboard.aajneeticonnectltd.com/api/auth/me",
+                    { headers: { Authorization: "Bearer " + accessToken } }
+                );
+                const meData = await meRes.json();
+                role = meData?.data?.role ?? "client";
+            } catch (err) {
+                console.warn("Could not fetch user role, defaulting to client:", err);
+            }
+
+            // ✅ Fetch client type — don't block login if it fails
             let client_type = null;
             if (role === "client") {
                 try {
@@ -59,22 +102,25 @@ export default function Login() {
 
             const authData = {
                 token: accessToken,
-                refreshToken,
+                refreshToken: refreshToken ?? null,
+                tokenExpiresAt: getTokenExpiry(accessToken), // ✅ store expiry
                 user: res?.data?.user || null,
                 isAuthenticated: true,
                 role,
                 client_type,
             };
-                
 
             localStorage.setItem("auth", JSON.stringify(authData));
-            window.dispatchEvent(new Event("storage"));
+
+            // ✅ Use CustomEvent instead of "storage" (storage doesn't fire in same tab)
+            window.dispatchEvent(new CustomEvent("auth-changed", { detail: authData }));
+
             setIsLoggedIn(true);
             navigate("/", { replace: true });
 
         } catch (err) {
             console.error(err);
-            setError(err.message);
+            setError(err.message || "Login failed. Please try again.");
         } finally {
             setLoading(false);
         }
@@ -101,15 +147,6 @@ export default function Login() {
                             Your all-in-one marketing dashboard to track projects,
                             manage campaigns, and measure real ROI — all in one place.
                         </p>
-                        {/* <div class="left-email-row">
-                            <input
-                                class="left-email-input"
-                                type="text"
-                                placeholder="Enter your email address"
-                                disabled
-                            />
-                            <button class="left-signup-btn">Get access</button>
-                        </div> */}
                         <div class="orb-ring" />
                     </div>
                 </div>
@@ -195,7 +232,6 @@ export default function Login() {
                         </p>
                     </div>
                 </div>
-
             </div>
         </>
     );
