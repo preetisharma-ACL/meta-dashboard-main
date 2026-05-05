@@ -145,7 +145,7 @@ export default function MainDashboard() {
             const filtered = insights.filter(d => {
                 if (!from || !to) return true;
 
-                if (!d.date) return false; // ❗ important safeguard
+                if (!d.date) return false; //  important safeguard
 
                 const date = new Date(d.date + "T00:00:00");
 
