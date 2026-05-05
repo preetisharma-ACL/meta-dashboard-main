@@ -36,6 +36,26 @@ export default function MainDashboard() {
     const [userRole, setUserRole] = createSignal("client");
     const [cardRange, setCardRange] = createSignal(null);
     // values: today, yesterday, last7, lastMonth, thisMonth, custom
+    const [columnSort, setColumnSort] = createSignal({
+        key: "",
+        direction: "desc",
+    });
+
+    const textColumns = new Set(["name", "location", "type", "status"]);
+
+    const handleColumnSort = (key) => {
+        setColumnSort((prev) => {
+            if (prev.key === key) {
+                return {
+                    key,
+                    direction: prev.direction === "asc" ? "desc" : "asc",
+                };
+            }
+            // ✅ text columns default to asc (A→Z), numeric columns default to desc (high→low)
+            const defaultDirection = textColumns.has(key) ? "asc" : "desc";
+            return { key, direction: defaultDirection };
+        });
+    };
 
     // Update onMount to read the role
     onMount(() => {
@@ -145,7 +165,7 @@ export default function MainDashboard() {
             const filtered = insights.filter(d => {
                 if (!from || !to) return true;
 
-                if (!d.date) return false; //  important safeguard
+                if (!d.date) return false; // ❗ important safeguard
 
                 const date = new Date(d.date + "T00:00:00");
 
@@ -336,8 +356,49 @@ export default function MainDashboard() {
                 break;
         }
 
+        // 🔥 NEW COLUMN SORTING (ADD THIS)
+        const { key, direction } = columnSort();
+
+        if (key) {   // ✅ ADD THIS GUARD
+            data.sort((a, b) => {
+                let valA = a[key];
+                let valB = b[key];
+
+                if (key === "totalLeads") {
+                    valA = allProjectStats()[a.id]?.totalLeads || 0;
+                    valB = allProjectStats()[b.id]?.totalLeads || 0;
+                }
+
+                if (key === "totalSpent") {
+                    valA = allProjectStats()[a.id]?.totalSpent || 0;
+                    valB = allProjectStats()[b.id]?.totalSpent || 0;
+                }
+
+                if (key === "avgCPL") {
+                    valA = parseFloat(allProjectStats()[a.id]?.avgCPL || 0);
+                    valB = parseFloat(allProjectStats()[b.id]?.avgCPL || 0);
+                }
+
+                const isNumber = typeof valA === "number" && typeof valB === "number";
+
+                if (isNumber) {
+                    return direction === "asc" ? valA - valB : valB - valA;
+                }
+
+                return direction === "asc"
+                    ? String(valA || "").localeCompare(String(valB || ""), undefined, { sensitivity: "base" })
+                    : String(valB || "").localeCompare(String(valA || ""), undefined, { sensitivity: "base" });
+            });
+        }   // ✅ close the guard
         return data;
     });
+
+    const getSortIcon = (key) => {
+        const current = columnSort();
+        if (current.key !== key) return "⇅";
+        return current.direction === "asc" ? "↑" : "↓";
+    };
+
     const overviewStats = createMemo(() => {
         const all = filteredProjects();
         const statsMap = allProjectStats();
@@ -645,30 +706,49 @@ export default function MainDashboard() {
             </div>
 
             {/* Table */}
-
             <div class="overflow-x-auto bg-white dark:bg-gray-900 rounded-xl border">
                 <table class="w-full text-sm table-auto">
                     <thead class="bg-gray-100 dark:bg-gray-800">
                         <tr class="[&_th]:text-center [&_th]:whitespace-nowrap [&_th:first-child]:text-left text-gray-800 dark:text-gray-200">
                             <th class="p-3 w-12 sticky left-0 z-20 bg-gray-100 dark:bg-gray-800">S.No</th>
-                            <th class="p-3 sticky left-[57px] z-20 bg-gray-100 dark:bg-gray-800 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.10)]">
-                                Project Name
+                            <th class="p-3 sticky left-[57px] z-20 bg-gray-100 dark:bg-gray-800 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.10)]" onClick={() => handleColumnSort("name")}>
+                                Project Name {getSortIcon("name")}
                             </th>
-                            <th class="p-3">Location</th>
-                            <th class="p-3">Type</th>
-                            <th class="p-3">Status</th>
+                            <th class="p-3" onClick={() => handleColumnSort("location")}>
+                                Location {getSortIcon("location")}
+                            </th>
+                            <th class="p-3" onClick={() => handleColumnSort("type")}>
+                                Type {getSortIcon("type")}
+                            </th>
+                            <th class="p-3" onClick={() => handleColumnSort("status")}>
+                                Status {getSortIcon("status")}
+                            </th>
                             {/* <th class="p-3">Uploaded Document</th> */}
                             {/* <th class="p-3">Customer Priority</th> */}
                             {/* <th class="p-3">Project Control</th> */}
-                            <th class="p-3">Budget</th>
-                            <th class="p-3">{rangeLabel()} Total Leads</th>
-                            <th class="p-3">{rangeLabel()} Total Spent</th>
-                            <th class="p-3">{rangeLabel()} AVG CPL</th>
+                            <th class="p-3" onClick={() => handleColumnSort("budget")}>
+                                Budget {getSortIcon("budget")}
+                            </th>
+                            <th class="p-3" onClick={() => handleColumnSort("totalLeads")}>
+                                {rangeLabel()} Total Leads {getSortIcon("totalLeads")}
+                            </th>
+                            <th class="p-3" onClick={() => handleColumnSort("totalSpent")}>
+                                {rangeLabel()} Total Spent {getSortIcon("totalSpent")}
+                            </th>
+                            <th class="p-3" onClick={() => handleColumnSort("avgCPL")}>
+                                {rangeLabel()} AVG CPL {getSortIcon("avgCPL")}
+                            </th>
                             {userRole() === "admin" && (
-                                <th class="p-3">Premium CPL</th>
+                                <th class="p-3" onClick={() => handleColumnSort("premiumCPL")}>
+                                    Premium CPL {getSortIcon("premiumCPL")}
+                                </th>
                             )}
-                            <th class="p-3">Active Campaigns</th>
-                            <th class="p-3">Paused Campaigns</th>
+                            <th class="p-3" onClick={() => handleColumnSort("activeCampaigns")}>
+                                Active Campaigns {getSortIcon("activeCampaigns")}
+                            </th>
+                            <th class="p-3" onClick={() => handleColumnSort("pausedCampaigns")}>
+                                Paused Campaigns {getSortIcon("pausedCampaigns")}
+                            </th>
                         </tr>
                     </thead>
                     <Show when={!loading()} fallback={<TableSkeleton />}>
