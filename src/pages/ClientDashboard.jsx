@@ -34,6 +34,8 @@ export default function MainDashboard() {
     const [loading, setLoading] = createSignal(true);
     // Add near your other signals
     const [userRole, setUserRole] = createSignal("client");
+    const [cardRange, setCardRange] = createSignal(null);
+    // values: today, yesterday, last7, lastMonth, thisMonth, custom
 
     // Update onMount to read the role
     onMount(() => {
@@ -94,6 +96,79 @@ export default function MainDashboard() {
             setLoading(false);   //  STOP LOADING
         }
     };
+
+    const getCardDateRange = () => {
+        const today = new Date();
+        let from, to = new Date();
+
+        switch (cardRange()) {
+            case "today":
+                from = new Date();
+                break;
+
+            case "yesterday":
+                from = new Date();
+                from.setDate(today.getDate() - 1);
+                to = new Date(from);
+                break;
+
+            case "last7":
+                from = new Date();
+                from.setDate(today.getDate() - 6);
+                break;
+
+            case "thisMonth":
+                from = new Date(today.getFullYear(), today.getMonth(), 1);
+                break;
+
+            case "lastMonth":
+                from = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+                to = new Date(today.getFullYear(), today.getMonth(), 0);
+                break;
+
+            default:
+                return { from: fromDate(), to: toDate() }; // fallback to calendar
+        }
+
+        return { from, to };
+    };
+
+    const cardStats = createMemo(() => {
+        const map = projectInsightsMap();
+        const { from, to } = getCardDateRange();
+
+        const result = {};
+
+        for (const project of projects()) {
+            const insights = map[project.id] || [];
+
+            const filtered = insights.filter(d => {
+                if (!from || !to) return true;
+
+                if (!d.date) return false; // ❗ important safeguard
+
+                const date = new Date(d.date + "T00:00:00");
+
+                const start = new Date(from);
+                const end = new Date(to);
+
+                start.setHours(0, 0, 0, 0);
+                end.setHours(23, 59, 59, 999);
+
+                return date >= start && date <= end;
+            });
+
+            const totalLeads = filtered.reduce((s, d) => s + (d.leads || 0), 0);
+            const totalSpent = filtered.reduce((s, d) => s + parseFloat(d.spend || 0), 0);
+            const avgCPL = totalLeads > 0
+                ? parseFloat(totalSpent / totalLeads).toFixed(2)
+                : 0;
+
+            result[project.id] = { totalLeads, totalSpent, avgCPL };
+        }
+
+        return result;
+    });
 
     // After setProjects(...) inside loadData, add:
     const deriveProjectStatuses = async (projectList) => {
@@ -222,7 +297,7 @@ export default function MainDashboard() {
 
             const totalLeads = filtered.reduce((s, d) => s + (d.leads || 0), 0);
             const totalSpent = filtered.reduce((s, d) => s + parseFloat(d.spend || 0), 0);
-            const avgCPL = totalLeads > 0 ? parseFloat(totalSpent / totalLeads).toFixed(2): 0;
+            const avgCPL = totalLeads > 0 ? parseFloat(totalSpent / totalLeads).toFixed(2) : 0;
 
             result[project.id] = { totalLeads, totalSpent, avgCPL };
         }
@@ -264,7 +339,7 @@ export default function MainDashboard() {
         return data;
     });
     const overviewStats = createMemo(() => {
-        const all = filteredProjects(); // ✅ IMPORTANT FIX
+        const all = filteredProjects();
         const statsMap = allProjectStats();
 
         const totalBudget = all.reduce((s, p) => s + (p.budget ?? 0), 0);
@@ -276,6 +351,19 @@ export default function MainDashboard() {
         const avgCPL = totalLeads > 0 ? parseFloat(totalSpent / totalLeads).toFixed(2) : 0;
 
         return { totalBudget, totalSpent, totalLeads, avgCPL, activeCampaigns, pausedCampaigns, activeProjects };
+    });
+
+    const overviewStatsCards = createMemo(() => {
+        const all = filteredProjects();
+        const statsMap = cardStats();
+        const totalBudget = all.reduce((s, p) => s + (p.budget ?? 0), 0);
+        const activeCampaigns = all.reduce((s, p) => s + (p.activeCampaigns ?? 0), 0);
+        const pausedCampaigns = all.reduce((s, p) => s + (p.pausedCampaigns ?? 0), 0);
+        const activeProjects = all.filter(p => p.status === "active").length;
+        const totalLeads = all.reduce((s, p) => s + (statsMap[p.id]?.totalLeads ?? 0), 0);
+        const totalSpent = all.reduce((s, p) => s + (statsMap[p.id]?.totalSpent ?? 0), 0);
+        const avgCPL = totalLeads > 0 ? (totalSpent / totalLeads).toFixed(2) : 0;
+        return { totalLeads, totalSpent, avgCPL, activeCampaigns, pausedCampaigns, activeProjects, totalBudget };
     });
 
 
@@ -351,7 +439,6 @@ export default function MainDashboard() {
                             <td class="p-3"><div class="h-4 w-16 bg-gray-300 dark:bg-gray-700 rounded"></div></td>
                             <td class="p-3"><div class="h-4 w-16 bg-gray-300 dark:bg-gray-700 rounded"></div></td>
                             <td class="p-3"><div class="h-4 w-20 bg-gray-300 dark:bg-gray-700 rounded"></div></td>
-
                         </tr>
                     )}
                 </For>
@@ -378,13 +465,46 @@ export default function MainDashboard() {
                 </div>
             </div>
 
+            <div class="flex flex-wrap gap-2 mb-5">
+
+                {[
+                    { label: "Today", value: "today" },
+                    { label: "Yesterday", value: "yesterday" },
+                    { label: "Last 7 Days", value: "last7" },
+                    { label: "This Month", value: "thisMonth" },
+                    { label: "Last Month", value: "lastMonth" }
+                ].map((item) => (
+                    <button
+                        onClick={() => setCardRange(item.value)}
+                        class={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 border
+
+            ${cardRange() === item.value
+                                ? "bg-blue-600 text-white border-blue-600 shadow-md"
+                                : "bg-white text-gray-700 border-gray-300 hover:bg-blue-50 hover:text-blue-700 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700 dark:hover:text-white"
+                            }
+            `}
+                    >
+                        {item.label}
+                    </button>
+                ))}
+
+                {/* Clear Button */}
+                <button
+                    onClick={() => setCardRange(null)}
+                    class="px-4 py-2 rounded-lg text-sm font-medium border border-red-300 text-red-600 bg-red-50 hover:bg-red-100 transition dark:bg-red-900/30 dark:text-red-300 dark:border-red-700 dark:hover:bg-red-900/50"
+                >
+                    Clear
+                </button>
+
+            </div>
+
             {/* Overview Cards Row 1 */}
             <div class="grid md:grid-cols-4 gap-6 mb-10">
                 <div class="bg-blue-50 dark:bg-gray-800 px-5 py-9 gap-4 shadow-sm hover:shadow-lg transition-all rounded-xl border border-blue-200 dark:border-gray-600 flex justify-between items-center">
                     <div>
                         <p class="text-md text-blue-800 dark:text-gray-400">Total Budget Allocated</p>
                         <h3 class="text-xl font-semibold mt-2 dark:text-white">
-                            {"₹"}{overviewStats().totalBudget.toLocaleString("en-IN")}
+                            {"₹"}{overviewStatsCards().totalBudget.toLocaleString("en-IN")}
                         </h3>
                     </div>
                     <div class="p-3 rounded-lg bg-blue-100 dark:bg-blue-300">
@@ -398,7 +518,7 @@ export default function MainDashboard() {
                     <div>
                         <p class="text-md text-red-800 dark:text-gray-400">Total Spend Till Date</p>
                         <h3 class="text-xl font-semibold mt-1 dark:text-white">
-                            {"₹"}{overviewStats().totalSpent.toLocaleString("en-IN")}
+                            {"₹"}{overviewStatsCards().totalSpent.toLocaleString("en-IN")}
                         </h3>
                     </div>
                     <div class="p-3 rounded-lg bg-red-100 dark:bg-red-300">
@@ -413,7 +533,7 @@ export default function MainDashboard() {
                     <div>
                         <p class="text-md text-green-800 dark:text-gray-400">Total Leads Generated</p>
                         <h3 class="text-xl font-semibold mt-1 dark:text-white">
-                            {overviewStats().totalLeads}
+                            {overviewStatsCards().totalLeads}
                         </h3>
                     </div>
                     <div class="p-3 rounded-lg bg-green-100 dark:bg-green-300">
@@ -427,7 +547,7 @@ export default function MainDashboard() {
                     <div>
                         <p class="text-md text-purple-800 dark:text-gray-400">Average CPL</p>
                         <h3 class="text-xl font-semibold mt-1 dark:text-white">
-                            {"₹"}{overviewStats().avgCPL.toLocaleString("en-IN")}
+                            {"₹"}{overviewStatsCards().avgCPL.toLocaleString("en-IN")}
                         </h3>
                     </div>
                     <div class="p-3 rounded-lg bg-purple-100 dark:bg-purple-300">
@@ -445,7 +565,7 @@ export default function MainDashboard() {
                     <div>
                         <p class="text-md text-blue-800 dark:text-gray-400">Active Campaigns Count</p>
                         <h3 class="text-xl font-semibold mt-1 dark:text-white">
-                            {overviewStats().activeCampaigns}
+                            {overviewStatsCards().activeCampaigns}
                         </h3>
                     </div>
                     <div class="p-3 rounded-lg bg-blue-100 dark:bg-blue-300">
@@ -460,7 +580,7 @@ export default function MainDashboard() {
                     <div>
                         <p class="text-md text-red-800 dark:text-gray-400">Active Projects</p>
                         <h3 class="text-xl font-semibold mt-1 dark:text-white">
-                            {overviewStats().activeProjects}
+                            {overviewStatsCards().activeProjects}
                         </h3>
                     </div>
                     <div class="p-3 rounded-lg bg-red-100 dark:bg-red-300">

@@ -381,7 +381,6 @@ export default function ProjectDetails() {
             ? (totalSpent / totalLeads).toFixed(2)
             : 0;
             
-
         return {
             totalLeads,
             totalClicks,
