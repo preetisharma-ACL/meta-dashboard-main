@@ -1,6 +1,7 @@
-import { createSignal, createMemo, createResource, For, Show , onMount } from "solid-js";
+import { createSignal, createMemo, createResource, For, Show, onMount } from "solid-js";
 import { fetchBillingOverview, fetchAllProjectsBilling } from "../services/billing-service";
 import { billingCache, setBillingCache, isCacheStale } from "../cacheStore/appStore";
+import { fetchPaymentsDetails } from "../services/payments-service";
 
 
 
@@ -8,12 +9,7 @@ import { billingCache, setBillingCache, isCacheStale } from "../cacheStore/appSt
 const fmt = (n) => "₹" + Number(n).toLocaleString("en-IN");
 const pct = (a, b) => (b === 0 ? 0 : Math.min(100, Math.round((a / b) * 100)));
 
-// --- Static mock data (payments, alerts, deliveries) -------------------------
-// These remain mock until you have real APIs for them
-const MOCK_PAYMENTS = [
-  { id: "INV-002", date: "28 Feb 2025", amount: 100000, method: "UPI", status: "paid", gstFiled: true, invoiceUrl: "#", credit: false, creditedBy: null, creditDate: null },
-  { id: "INV-001", date: "11 Jan 2025", amount: 100000, method: null, status: "credit", gstFiled: false, invoiceUrl: "#", credit: true, creditedBy: "ACL", creditDate: "21 Feb 2025" },
-];
+
 
 const MOCK_DELIVERIES = [
   { project: "Project 1", leads: 50, amountExGST: 25000, amountWithGST: 29500 },
@@ -357,7 +353,17 @@ function PaymentHistory(props) {
                   <div>
                     <div class="flex items-center gap-2 flex-wrap">
                       <span class="font-semibold text-gray-900 dark:text-gray-100">{fmt(pay.amount)}</span>
-                      <Show when={pay.credit} fallback={<Tag variant="green">PAID</Tag>}>
+                      <Show when={pay.credit} fallback={<Tag
+                        variant={
+                          pay.status === "succeeded"
+                            ? "green"
+                            : pay.status === "pending"
+                              ? "amber"
+                              : "red"
+                        }
+                      >
+                        {pay.status_label || pay.status?.toUpperCase()}
+                      </Tag>}>
                         <Tag variant="gray">CREDITED by {pay.creditedBy}</Tag>
                       </Show>
                       <Show when={pay.gstFiled}>
@@ -370,12 +376,13 @@ function PaymentHistory(props) {
                   </div>
                 </div>
                 <Show when={!pay.credit}>
-                  <a href={pay.invoiceUrl} class="flex items-center gap-1.5 text-sm font-semibold text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5 transition-colors">
+                  <button
+                    onClick={() => props.onViewInvoice(pay)} class="flex items-center gap-1.5 text-sm font-semibold text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5 transition-colors">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
                     Invoice
-                  </a>
+                  </button>
                 </Show>
               </div>
             </div>
@@ -401,7 +408,7 @@ function DeliveryBreakdown(props) {
           <thead>
             <tr class="border-b border-gray-100 dark:border-gray-700">
               <th class="pb-2.5 text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-left pr-4">Project</th>
-              <th class="pb-2.5 text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-center">Leads</th>
+              {/* <th class="pb-2.5 text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-center">Leads</th> */}
               <th class="pb-2.5 text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-center">Amount (ex-GST)</th>
               <th class="pb-2.5 text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-right">With GST (18%)</th>
             </tr>
@@ -411,7 +418,7 @@ function DeliveryBreakdown(props) {
               {(d) => (
                 <tr class="border-b border-gray-50 dark:border-gray-700">
                   <td class="py-2.5 pr-4 font-medium text-gray-800 dark:text-gray-200">{d.project}</td>
-                  <td class="py-2.5 text-center text-gray-600 dark:text-gray-400">{d.leads}</td>
+                  {/* <td class="py-2.5 text-center text-gray-600 dark:text-gray-400">{d.leads}</td> */}
                   <td class="py-2.5 text-center text-gray-600 dark:text-gray-400">{fmt(d.amountExGST)}</td>
                   <td class="py-2.5 text-right font-semibold text-gray-900 dark:text-gray-100">{fmt(d.amountWithGST)}</td>
                 </tr>
@@ -421,7 +428,7 @@ function DeliveryBreakdown(props) {
           <tfoot>
             <tr class="border-t border-gray-200 dark:border-gray-700 font-bold text-gray-900 dark:text-gray-100">
               <td class="pt-3">Total</td>
-              <td class="pt-3 text-center">{totalLeads}</td>
+              {/* <td class="pt-3 text-center">{totalLeads}</td> */}
               <td class="pt-3 text-center">{fmt(totalExGST)}</td>
               <td class="pt-3 text-right text-base">{fmt(totalWithGST)}</td>
             </tr>
@@ -522,6 +529,116 @@ function AddFundsModal(props) {
   );
 }
 
+function InvoiceModal(props) {
+  const gst = () => (props.invoice ? props.invoice.amount * 0.18 : 0);
+  const total = () => (props.invoice ? props.invoice.amount + gst() : 0);
+
+  const handleBackdrop = (e) => {
+    if (e.target === e.currentTarget) props.onClose();
+  };
+
+  return (
+    <div
+      class={`fixed inset-0 z-50 flex items-center justify-center p-4 transition-all duration-200 ${props.open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+        }`}
+      style={{ background: "rgba(0,0,0,0.45)", "backdrop-filter": "blur(4px)" }}
+      onClick={handleBackdrop}
+    >
+      <div
+        class={`w-full max-w-md transition-all duration-200 ${props.open ? "scale-100 translate-y-0" : "scale-95 translate-y-4"
+          }`}
+      >
+        <Card class="p-6 space-y-5 shadow-2xl">
+
+          {/* ── Header ── */}
+          <div class="flex items-start justify-between">
+            <div>
+              <h3 class="font-bold text-gray-900 dark:text-gray-100 text-lg">Invoice</h3>
+              <p class="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
+                {props.invoice?.id ?? "—"}
+              </p>
+            </div>
+            <button
+              onClick={props.onClose}
+              class="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          {/* ── Issued by / Date row ── */}
+          <div class="flex items-start justify-between gap-4">
+            <div class="space-y-0.5">
+              <p class="text-sm font-semibold text-gray-600 dark:text-gray-400">Issued by</p>
+              <p class="text-sm font-bold text-gray-900 dark:text-gray-100">Aajneeti Connect Ltd.</p>
+              <p class="text-xs text-gray-500 dark:text-gray-500">Delhi, India</p>
+            </div>
+            <div class="text-right space-y-0.5">
+              <p class="text-sm font-semibold text-gray-600 dark:text-gray-400">Payment Date</p>
+              <p class="text-sm font-bold text-gray-900 dark:text-gray-100">
+                {props.invoice?.date ?? "—"}
+              </p>
+            </div>
+          </div>
+
+          {/* ── Amount Breakdown ── */}
+          <div class="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+            {[
+              { label: "Payment Received", value: props.invoice?.amount ?? 0 },
+              { label: "GST (18%)", value: gst() },
+            ].map(({ label, value }) => (
+              <div class="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700 last:border-0">
+                <span class="text-sm text-gray-600 dark:text-gray-400">{label}</span>
+                <span class="text-sm font-semibold text-gray-800 dark:text-gray-200">{fmt(value)}</span>
+              </div>
+            ))}
+            <div class="flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-800/60">
+              <span class="text-sm font-bold text-gray-900 dark:text-gray-100">Total</span>
+              <span class="text-base font-bold text-gray-900 dark:text-gray-100">{fmt(total())}</span>
+            </div>
+          </div>
+
+          {/* ── Status ── */}
+          <div class="flex items-center justify-between">
+            <div class="space-y-1">
+              <p class="text-sm font-semibold text-gray-600 dark:text-gray-400">Payment Status</p>
+              <Tag
+                variant={
+                  props.invoice?.status === "succeeded" ? "green"
+                    : props.invoice?.status === "pending" ? "amber"
+                      : "red"
+                }
+              >
+                {props.invoice?.status?.toUpperCase() ?? "—"}
+              </Tag>
+            </div>
+            <button
+              onClick={() => window.print()}
+              class="flex items-center gap-1.5 text-sm font-semibold text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5 transition-colors"
+            >
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Download Invoice
+            </button>
+          </div>
+
+          {/* ── Primary CTA ── */}
+          <button
+            onClick={props.onClose}
+            class="w-full py-3 rounded-2xl bg-gray-800 dark:bg-gray-100 text-white dark:text-gray-900 font-bold text-sm hover:opacity-85 transition-opacity"
+          >
+            Done
+          </button>
+
+        </Card>
+      </div>
+    </div>
+  );
+}
+
 // --- Skeleton Loader ----------------------------------------------------------
 function Skeleton() {
   return (
@@ -539,6 +656,46 @@ function Skeleton() {
 export default function Billing() {
   const [tab, setTab] = createSignal("overview");
   const [showModal, setShowModal] = createSignal(false);
+  const [selectedInvoice, setSelectedInvoice] = createSignal(null);
+  const [showInvoiceModal, setShowInvoiceModal] = createSignal(false);
+  const [paymentsData] = createResource(fetchPaymentsDetails);
+
+
+
+  const payments = createMemo(() => {
+    const apiData = paymentsData()?.data || [];
+
+    return apiData.map((item) => ({
+      id: `PAY-${item.id}`,
+
+      date: new Date(item.date).toLocaleDateString("en-IN", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      }),
+
+      amount: parseFloat(item.amount),
+
+      method: "Online",
+
+      status: item.status,
+
+      gstFiled: false,
+
+      invoiceUrl: "#",
+
+      credit: false,
+
+      creditedBy: null,
+
+      creditDate: null,
+    }));
+  });
+  const totalReceived = createMemo(() => {
+    return payments().reduce((sum, payment) => {
+      return sum + (payment.amount || 0);
+    }, 0);
+  });
 
   // ✅ Single combined resource — fires overview + projects in parallel
   // ✅ Replace createResource with a manual effect that respects cache
@@ -699,28 +856,52 @@ export default function Billing() {
           </div>
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <Card class="p-4">
-              <p class="text-md text-gray-600 dark:text-gray-400">Total Received</p>
-              <p class="text-xl font-bold mt-2 text-gray-900 dark:text-white">{fmt(budgetCommitted())}</p>
+              <p class="text-md text-gray-600 dark:text-gray-400">
+                Total Received
+              </p>
+              <p class="text-xl font-bold mt-2 text-gray-900 dark:text-white">
+                {fmt(totalReceived())}
+              </p>
             </Card>
             <Card class="p-4">
               <p class="text-md text-gray-600 dark:text-gray-400">Total Utilized</p>
-              <p class="text-xl font-bold mt-2 text-gray-900 dark:text-gray-100">{fmt(budgetUtilized())}</p>
+              <p class="text-xl font-bold mt-2 text-gray-900 dark:text-gray-100">0</p>
             </Card>
             <Card class="p-4">
               <p class="text-md text-gray-600 dark:text-gray-400">Remaining Balance</p>
-              <p class="text-xl font-bold mt-2 text-green-600 dark:text-green-400">{fmt(budgetRemaining())}</p>
+              <p class="text-xl font-bold mt-2 text-green-600 dark:text-green-400">0</p>
             </Card>
             <Card class="p-4">
               <p class="text-md text-gray-600 dark:text-gray-400">Pending Payment</p>
-              <p class="text-xl font-bold mt-2 text-gray-900 dark:text-gray-100">{fmt(pendingPayment())}</p>
+              <p class="text-xl font-bold mt-2 text-gray-900 dark:text-gray-100">0</p>
             </Card>
           </div>
           <DeliveryBreakdown deliveries={MOCK_DELIVERIES} totalPaid={budgetCommitted()} />
-          <PaymentHistory payments={MOCK_PAYMENTS} />
+          <Show
+            when={!paymentsData.loading}
+            fallback={
+              <p class="text-sm text-gray-500 dark:text-gray-400">
+                Loading payments...
+              </p>
+            }
+          >
+            <PaymentHistory
+              payments={payments()}
+              onViewInvoice={(payment) => {
+                setSelectedInvoice(payment);
+                setShowInvoiceModal(true);
+              }}
+            />
+          </Show>
         </div>
       </Show>
 
       <AddFundsModal open={showModal()} onClose={() => setShowModal(false)} />
+      <InvoiceModal
+        open={showInvoiceModal()}
+        invoice={selectedInvoice()}
+        onClose={() => setShowInvoiceModal(false)}
+      />
     </div>
   );
 }
