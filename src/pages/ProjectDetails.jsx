@@ -1,4 +1,4 @@
-import { For, Show, createMemo, createSignal } from "solid-js";
+import { For, Show, createMemo, createSignal, createEffect } from "solid-js";
 import { DateRangeFilter } from "../components/DateRangeFilter";
 import { A, useParams } from "@solidjs/router";
 import { useLocation } from "@solidjs/router";
@@ -19,6 +19,8 @@ import {
     setProjectDetailsCache,
     isProjectCacheStale,
 } from "../cacheStore/appStore";
+import Chart from "chart.js/auto";  // or load via CDN script tag
+
 
 
 export default function ProjectDetails() {
@@ -26,6 +28,106 @@ export default function ProjectDetails() {
     const project = location.state?.project;
     const params = useParams();
     const projectId = params.id;
+
+
+
+    // ── Drive the analytics chart from the same filtered data ──────────────────────
+    createEffect(() => {
+        const data = sortedCampaigns();     // already date-filtered + sorted
+        const label = rangeLabel();         // "Today" / "Last 7 Days" / "Custom Range" etc.
+
+        if (typeof window.__updateCampaignChart === "function") {
+            window.__updateCampaignChart(data, `Showing: ${label}`);
+        }
+    });
+
+
+    // Build chart once on mount; createEffect above will re-feed data reactively
+    let chartInstance = null;
+
+    const buildChart = (campaigns, label) => {
+        const canvas = document.getElementById("campaignChartCanvas");
+        if (!canvas) return;
+
+        const labels = campaigns.map(c => (c.campaign_name?.split("|")[0] ?? "").trim().slice(0, 18));
+        const leads = campaigns.map(c => c.totalLeads ?? 0);
+        const spent = campaigns.map(c => c.totalSpent ?? 0);
+
+        if (chartInstance) chartInstance.destroy();
+
+        chartInstance = new Chart(canvas, {
+            data: {
+                labels,
+                datasets: [
+                    {
+                        type: "bar",
+                        label: "Leads",
+                        data: leads,
+                        backgroundColor: "rgba(83,74,183,0.82)",
+                        borderColor: "#3C3489",
+                        borderWidth: 1.5,
+                        borderRadius: 5,
+                        yAxisID: "yLeads",
+                        order: 2,
+                    },
+                    {
+                        type: "line",
+                        label: "Spent (₹)",
+                        data: spent,
+                        borderColor: "#D85A30",
+                        backgroundColor: "rgba(216,90,48,0.08)",
+                        pointBackgroundColor: "#D85A30",
+                        pointRadius: 5,
+                        pointHoverRadius: 7,
+                        fill: true,
+                        tension: 0.38,
+                        borderWidth: 2.5,
+                        yAxisID: "ySpent",
+                        order: 1,
+                    },
+                ],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: { duration: 600, easing: "easeOutQuart" },
+                interaction: { mode: "index", intersect: false },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            title: (items) => campaigns[items[0].dataIndex]?.campaign_name ?? items[0].label,
+                            label: (item) =>
+                                item.dataset.label === "Leads"
+                                    ? `  Leads: ${item.raw}`
+                                    : `  Spent: ₹${Number(item.raw).toLocaleString("en-IN")}`,
+                        },
+                    },
+                },
+                scales: {
+                    x: { ticks: { autoSkip: false, maxRotation: 35 } },
+                    yLeads: {
+                        type: "linear", position: "left",
+                        title: { display: true, text: "Leads", color: "#534AB7", font: { size: 11 } },
+                        ticks: { color: "#534AB7" },
+                    },
+                    ySpent: {
+                        type: "linear", position: "right",
+                        grid: { drawOnChartArea: false },
+                        title: { display: true, text: "Spent (₹)", color: "#D85A30", font: { size: 11 } },
+                        ticks: {
+                            color: "#D85A30",
+                            callback: (v) => "₹" + Number(v).toLocaleString("en-IN"),
+                        },
+                    },
+                },
+            },
+        });
+    };
+
+    // Wire into the reactive effect
+    window.__updateCampaignChart = (campaigns) => buildChart(campaigns, rangeLabel());
+
 
     const [showNotifications, setShowNotifications] = createSignal(false);
 
@@ -57,6 +159,7 @@ export default function ProjectDetails() {
     const totalPages = () => cachedProject().meta?.total_pages ?? 1;
     const hasNext = () => cachedProject().meta?.has_next ?? false;
     const hasPrev = () => cachedProject().meta?.has_prev ?? false;
+
 
     // ── Write helper — merges into this project's cache slot ────────────────────
     const setProjectCache = (patch) =>
@@ -827,6 +930,70 @@ export default function ProjectDetails() {
                             <path d="M6 4l4 4-4 4" />
                         </svg>
                     </button>
+                </div>
+            </div>
+
+            {/* ================= ANALYTICS CHART ================= */}
+            <div class="mt-8 p-5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl">
+
+                {/* Header row */}
+                <div class="flex items-center justify-between flex-wrap gap-3 mb-4">
+                    <div>
+                        <h3 class="text-[15px] font-medium text-gray-800 dark:text-white">
+                            Campaign performance
+                        </h3>
+                        <p class="text-sm text-gray-400 mt-0.5">
+                            {rangeLabel()} · leads vs spend
+                        </p>
+                    </div>
+
+                    {/* Legend */}
+                    <div class="flex items-center gap-4 text-xs text-gray-500">
+                        <span class="flex items-center gap-1.5">
+                            <span class="w-3 h-3 rounded-sm bg-purple-600 inline-block" />
+                            Leads (bar)
+                        </span>
+                        <span class="flex items-center gap-1.5">
+                            <span class="w-4 h-0.5 bg-orange-500 inline-block relative">
+                                <span class="w-2 h-2 rounded-full bg-orange-500 absolute -top-[3px] left-1/2 -translate-x-1/2" />
+                            </span>
+                            <span class="ml-1">Spent ₹ (line)</span>
+                        </span>
+                    </div>
+                </div>
+
+                {/* Summary cards */}
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+                    <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
+                        <p class="text-xs text-gray-400 mb-1">Campaigns</p>
+                        <p class="text-xl font-medium text-gray-800 dark:text-white">
+                            {sortedCampaigns().length}
+                        </p>
+                    </div>
+                    <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
+                        <p class="text-xs text-gray-400 mb-1">Total leads</p>
+                        <p class="text-xl font-medium text-purple-600">
+                            {footerTotals().totalLeads}
+                        </p>
+                    </div>
+                    <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
+                        <p class="text-xs text-gray-400 mb-1">Total spent</p>
+                        <p class="text-xl font-medium text-orange-500">
+                            ₹{footerTotals().totalSpent.toLocaleString("en-IN")}
+                        </p>
+                    </div>
+                    <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
+                        <p class="text-xs text-gray-400 mb-1">Top campaign</p>
+                        <p class="text-sm font-medium text-gray-800 dark:text-white truncate">
+                            {sortedCampaigns()[0]?.campaign_name?.split("|")[0]?.trim() ?? "—"}
+                        </p>
+                    </div>
+                </div>
+
+                {/* Chart canvas */}
+                <div class="relative w-full h-72 sm:h-80">
+                    <canvas id="campaignChartCanvas" role="img"
+                        aria-label="Combined bar and line chart: purple bars for leads, orange line for spend per campaign" />
                 </div>
             </div>
 
