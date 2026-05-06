@@ -1,6 +1,7 @@
 import { createSignal, onMount } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { loginUser } from "../../services/login-service";
+import { clearAllCache } from "../../cacheStore/appStore";
 
 // ✅ Decode JWT expiry
 const getTokenExpiry = (token) => {
@@ -13,7 +14,7 @@ const getTokenExpiry = (token) => {
 };
 
 export const handleLogout = () => {
-    console.log("User Logout");
+    clearAllCache();          // ✅ wipe sessionStorage cache so next login starts fresh
     localStorage.removeItem("auth");
     window.location.href = "/login";
 };
@@ -53,7 +54,7 @@ export default function Login() {
                     }
                 }
             };
-        } catch {}
+        } catch { }
     });
 
     const handleSubmit = async (e) => {

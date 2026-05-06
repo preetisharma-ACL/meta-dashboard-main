@@ -1,34 +1,32 @@
 import { Router, Route } from '@solidjs/router';
 import { ThemeProvider } from './context/ThemeContext';
 import { SidebarProvider } from './context/SidebarContext';
+import { useSidebar } from './context/SidebarContext';
+import { useNavigate } from '@solidjs/router';
+import { onMount, onCleanup } from 'solid-js';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
-import Dashboard from './pages/Dashboard';
-import Settings from './pages/Settings';
-import Leads from './pages/Leads';
-import FollowUp from './pages/FollowUp';
-import ClientDelivery from './pages/Client-Delivery';
-import { useSidebar } from './context/SidebarContext';
-import ProjectDetails from './pages/ProjectDetails';
 import MainDashboard from './pages/ClientDashboard';
-import CampaignDetails from './pages/CampaignDetails';
 import AddProject from './pages/AddProjects';
 import Billing from './pages/Billing';
-import LeadPerformance from './pages/LeadPerformance';
+import ClientDelivery from './pages/Client-Delivery';
 import WhatIsPerforming from './pages/WhatisPerforming';
+import Settings from './pages/Settings';
+import Notifications from './pages/Alert';
+import ProjectDetails from './pages/ProjectDetails';
+import CampaignDetails from './pages/CampaignDetails';
 import Login from './pages/login/LoginForm';
 import ProtectedRoute from './routes/ProtectedRoute';
-import Notifications from './pages/Alert';
+
+//  Layout is a named component — SolidJS reuses the SAME instance across all
+//    child route navigations, so Header and Sidebar mount exactly ONCE
 function Layout(props) {
   const { isCollapsed } = useSidebar();
 
   return (
     <div class="min-h-screen bg-gray-50 dark:bg-gray-900">
       <Sidebar />
-      <div
-        class={`transition-all duration-300 ${isCollapsed() ? 'lg:ml-20' : 'lg:ml-64'
-          }`}
-      >
+      <div class={`transition-all duration-300 ${isCollapsed() ? 'lg:ml-20' : 'lg:ml-64'}`}>
         <Header />
         <main class="min-h-[calc(100vh-4rem)]">
           {props.children}
@@ -38,26 +36,59 @@ function Layout(props) {
   );
 }
 
+//  Root is a proper component — onMount is valid here
+//    It catches softLogout() events from api.js without a hard page reload
+function Root(props) {
+  const navigate = useNavigate();
+
+  onMount(() => {
+    const handleLogout = (e) => {
+      console.warn("[App] Auth logout event:", e.detail?.reason);
+      navigate("/login", { replace: true });
+    };
+
+    window.addEventListener("auth-logout", handleLogout);
+    onCleanup(() => window.removeEventListener("auth-logout", handleLogout));
+  });
+
+  return <>{props.children}</>;
+}
+
+//  ProtectedLayout combines auth guard + layout in one reusable component
+//    so routes stay clean and Layout is never re-instantiated
+function ProtectedLayout(props) {
+  return (
+    <ProtectedRoute>
+      <Layout>
+        {props.children}
+      </Layout>
+    </ProtectedRoute>
+  );
+}
+
 function App() {
   return (
     <ThemeProvider>
       <SidebarProvider>
-        <Router>
-          {/* <Route path="/" component={() => <Layout><Dashboard /></Layout>} /> */}
-          
-          <Route path="/" component={() => <ProtectedRoute><Layout><MainDashboard /></Layout></ProtectedRoute>} />
-          <Route path="/add-project" component={() =>  <ProtectedRoute><Layout><AddProject /></Layout></ProtectedRoute>} />
-          <Route path="/billing" component={() =><ProtectedRoute><Layout><Billing /></Layout></ProtectedRoute>} />
-          <Route path="/client-delivery" component={() => <ProtectedRoute><Layout><ClientDelivery/></Layout></ProtectedRoute>} />
-          {/* <Route path="/leads-performance" component={() => <ProtectedRoute><Layout><LeadPerformance /></Layout></ProtectedRoute>} /> */}
-          <Route path="/what-is-performing" component={() => <ProtectedRoute><Layout><WhatIsPerforming /></Layout></ProtectedRoute>} />
-          {/* <Route path="/leads" component={() => <ProtectedRoute><Layout><Leads /></Layout></ProtectedRoute>} /> */}
-          {/* <Route path="/follow-up" component={() => <ProtectedRoute><Layout><FollowUp /></Layout></ProtectedRoute>} /> */}
-          <Route path="/settings" component={() =><ProtectedRoute><Layout><Settings /></Layout></ProtectedRoute>} />
-          <Route path="/notifications" component={() => <ProtectedRoute><Layout><Notifications /></Layout></ProtectedRoute>} />
-          <Route path="/project/:id" component={() => <ProtectedRoute><Layout><ProjectDetails /></Layout></ProtectedRoute>} />
-          <Route path="/campaign/:id" component={() => <ProtectedRoute><Layout> <CampaignDetails /> </Layout></ProtectedRoute>} />
-          <Route path="/login" component={() => <Login />} />
+        <Router root={Root}>
+
+          {/* Public route — no layout, no auth guard */}
+          <Route path="/login" component={Login} />
+
+          {/*  All protected routes share ONE Layout instance via nesting.
+               Header and Sidebar mount once and never remount on navigation. */}
+          <Route path="/" component={ProtectedLayout}>
+            <Route path="/" component={MainDashboard} />
+            <Route path="/add-project" component={AddProject} />
+            <Route path="/billing" component={Billing} />
+            <Route path="/client-delivery" component={ClientDelivery} />
+            <Route path="/what-is-performing" component={WhatIsPerforming} />
+            <Route path="/settings" component={Settings} />
+            <Route path="/notifications" component={Notifications} />
+            <Route path="/project/:id" component={ProjectDetails} />
+            <Route path="/campaign/:id" component={CampaignDetails} />
+          </Route>
+
         </Router>
       </SidebarProvider>
     </ThemeProvider>

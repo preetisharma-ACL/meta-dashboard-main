@@ -1,5 +1,7 @@
-import { createSignal, createMemo, createResource, For, Show } from "solid-js";
+import { createSignal, createMemo, createResource, For, Show , onMount } from "solid-js";
 import { fetchBillingOverview, fetchAllProjectsBilling } from "../services/billing-service";
+import { billingCache, setBillingCache, isCacheStale } from "../cacheStore/appStore";
+
 
 
 // --- Helpers ------------------------------------------------------------------
@@ -539,32 +541,44 @@ export default function Billing() {
   const [showModal, setShowModal] = createSignal(false);
 
   // ✅ Single combined resource — fires overview + projects in parallel
-  const [billingResource] = createResource(async () => {
-    const [overviewRes, projectsRes] = await Promise.all([
-      fetchBillingOverview(),
-      fetchAllProjectsBilling(),
-    ]);
-    return {
-      overview: overviewRes?.data || {},
-      projects: projectsRes.map(({ projectMeta, billing }) =>
-        transformProject(billing, projectMeta)
-      ),
-    };
+  // ✅ Replace createResource with a manual effect that respects cache
+  onMount(async () => {
+    if (!isCacheStale(billingCache.lastFetched)) return; // already fresh
+
+    setBillingCache("loading", true);
+    try {
+      const [overviewRes, projectsRes] = await Promise.all([
+        fetchBillingOverview(),
+        fetchAllProjectsBilling(),
+      ]);
+      setBillingCache({
+        overview: overviewRes?.data || {},
+        projects: projectsRes.map(({ projectMeta, billing }) =>
+          transformProject(billing, projectMeta)
+        ),
+        lastFetched: Date.now(),
+        loading: false,
+      });
+    } catch (err) {
+      console.error(err);
+      setBillingCache("loading", false);
+    }
   });
 
   // ✅ Derived accessors from single resource
-  const overview        = () => billingResource()?.overview || {};
-  const projects        = () => billingResource()?.projects || [];
+  const overview = () => billingCache.overview;
+  const projects = () => billingCache.projects;
+  const isLoading = () => billingCache.loading;
 
-  const totalLeads      = createMemo(() => projects().reduce((s, p) => s + p.totalLeads, 0));
-  const totalSpend      = createMemo(() => projects().reduce((s, p) => s + p.totalSpend, 0));
-  const overallCPL      = createMemo(() => totalLeads() > 0 ? Math.round(totalSpend() / totalLeads()) : 0);
+  const totalLeads = createMemo(() => projects().reduce((s, p) => s + p.totalLeads, 0));
+  const totalSpend = createMemo(() => projects().reduce((s, p) => s + p.totalSpend, 0));
+  const overallCPL = createMemo(() => totalLeads() > 0 ? Math.round(totalSpend() / totalLeads()) : 0);
 
-  const budgetCommitted = () => parseFloat(overview().total_budget)          || 0;
-  const budgetUtilized  = () => parseFloat(overview().utilized)              || 0;
-  const budgetRemaining = () => parseFloat(overview().remaining)             || 0;
-  const pendingPayment  = () => parseFloat(overview().pending_payment)       || 0;
-  const utilizationPct  = () => parseFloat(overview().utilization_percentage) || 0;
+  const budgetCommitted = () => parseFloat(overview().total_budget) || 0;
+  const budgetUtilized = () => parseFloat(overview().utilized) || 0;
+  const budgetRemaining = () => parseFloat(overview().remaining) || 0;
+  const pendingPayment = () => parseFloat(overview().pending_payment) || 0;
+  const utilizationPct = () => parseFloat(overview().utilization_percentage) || 0;
 
   const tabs = [
     { id: "overview", label: "Overview" },
@@ -614,7 +628,7 @@ export default function Billing() {
           </div>
 
           {/* ✅ Single loading gate for everything */}
-          <Show when={!billingResource.loading} fallback={<Skeleton />}>
+          <Show when={!isLoading()} fallback={<Skeleton />}>
             <section>
               <SectionLabel>Budget Overview</SectionLabel>
               <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">

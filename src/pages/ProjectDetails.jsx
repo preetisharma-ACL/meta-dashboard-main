@@ -14,6 +14,11 @@ import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { fetchCampaigns, fetchCampaignInsights, fetchProjectById } from "../services/campaigns";
 import useColumnSort from "../components/Columnsorting";
+import {
+    projectDetailsCache,
+    setProjectDetailsCache,
+    isProjectCacheStale,
+} from "../cacheStore/appStore";
 
 
 export default function ProjectDetails() {
@@ -21,7 +26,6 @@ export default function ProjectDetails() {
     const project = location.state?.project;
     const params = useParams();
     const projectId = params.id;
-    console.log('project id ', projectId);
 
     const [showNotifications, setShowNotifications] = createSignal(false);
 
@@ -31,40 +35,49 @@ export default function ProjectDetails() {
     const [toDate, setToDate] = createSignal("");
     const [search, setSearch] = createSignal("");
     const [statusFilter, setStatusFilter] = createSignal("All");
-    const [page, setPage] = createSignal(1);
-    const [campaigns, setCampaigns] = createSignal([]);
-    const [pageSize, setPageSize] = createSignal(20);
-    const [total, setTotal] = createSignal(0);
-    const [totalPages, setTotalPages] = createSignal(1);
-    const [hasNext, setHasNext] = createSignal(false);
-    const [hasPrev, setHasPrev] = createSignal(false);
+    // const [page, setPage] = createSignal(1);
+    // const [campaigns, setCampaigns] = createSignal([]);
+    // const [pageSize, setPageSize] = createSignal(20);
+    // const [total, setTotal] = createSignal(0);
+    // const [totalPages, setTotalPages] = createSignal(1);
+    // const [hasNext, setHasNext] = createSignal(false);
+    // const [hasPrev, setHasPrev] = createSignal(false);
     // Add near your other signals
     const [userRole, setUserRole] = createSignal("client");
     const { handleSort, getSortIcon, sortData } = useColumnSort();
 
+
+    // ── Read from global cache ───────────────────────────────────────────────────
+    const cachedProject = () => projectDetailsCache[projectId] ?? {};
+    const campaigns = () => cachedProject().campaigns ?? [];
+    const loading = () => cachedProject().loading ?? false;
+    const page = () => cachedProject().meta?.page ?? 1;
+    const pageSize = () => cachedProject().meta?.page_size ?? 20;
+    const total = () => cachedProject().meta?.total ?? 0;
+    const totalPages = () => cachedProject().meta?.total_pages ?? 1;
+    const hasNext = () => cachedProject().meta?.has_next ?? false;
+    const hasPrev = () => cachedProject().meta?.has_prev ?? false;
+
+    // ── Write helper — merges into this project's cache slot ────────────────────
+    const setProjectCache = (patch) =>
+        setProjectDetailsCache(projectId, (prev) => ({ ...prev, ...patch }));
+
     onMount(() => {
-        // ✅ 1. Read role
         const auth = JSON.parse(localStorage.getItem("auth"));
         setUserRole(auth?.role ?? "client");
 
-        // ✅ 2. Load data
-        if (projectId) {
-            loadProject();
+        if (projectId && isProjectCacheStale(projectId)) {
+            // ✅ Only fetch if cache is missing or expired
             loadCampaigns(1);
         }
 
-        // ✅ 3. Click outside handler
         const handleClickOutside = (e) => {
             if (!e.target.closest(".notification-wrapper")) {
                 setShowNotifications(false);
             }
         };
         document.addEventListener("click", handleClickOutside);
-        onCleanup(() => {
-            document.removeEventListener("click", handleClickOutside);
-        });
-
-
+        onCleanup(() => document.removeEventListener("click", handleClickOutside));
     });
 
     const loadProject = async () => {
@@ -79,26 +92,22 @@ export default function ProjectDetails() {
 
     const loadCampaigns = async (pageNo = 1, searchValue = "") => {
         try {
+            setProjectCache({ loading: true });
+
             const res = await fetchCampaigns(pageNo, projectId, searchValue);
             const apiData = res.data.results || res.data || [];
 
             if (!Array.isArray(apiData)) {
-                setCampaigns([]);
+                setProjectCache({ campaigns: [], loading: false });
                 return;
             }
 
-            // ✅ insightsResults is INSIDE loadCampaigns
+            // Fetch insights in parallel
             const insightsResults = await Promise.all(
-                apiData.map(item =>
+                apiData.map((item) =>
                     fetchCampaignInsights(item.id)
-                        .then(r => {
-                            console.log(`✅ insights for ${item.id}:`, r);
-                            return { id: item.id, insights: r.data || [] };
-                        })
-                        .catch((err) => {
-                            console.error(`❌ insights FAILED for ${item.id}:`, err);
-                            return { id: item.id, insights: [] };
-                        })
+                        .then((r) => ({ id: item.id, insights: r.data || [] }))
+                        .catch(() => ({ id: item.id, insights: [] }))
                 )
             );
 
@@ -111,7 +120,7 @@ export default function ProjectDetails() {
                 number: index + 1,
                 id: item.id,
                 campaign_name: item.name
-                    ? `${item.name.split("|").slice(1, 2).map(s => s.trim()).join(" | ")} | ${item.start_date || "No Date"}`
+                    ? `${item.name.split("|").slice(1, 2).map((s) => s.trim()).join(" | ")} | ${item.start_date || "No Date"}`
                     : "No Name",
                 start_date: item.start_date || "No Date",
                 location: item.project_name || "-",
@@ -122,28 +131,21 @@ export default function ProjectDetails() {
                 insights: insightsMap[item.id] || [],
             }));
 
-            setCampaigns(formatted);
-            console.log("formatted campaigns with insights:", formatted.map(c => ({
-                id: c.id,
-                insightsCount: c.insights?.length,
-                firstInsight: c.insights?.[0]
-            })));
-
             const meta = res?.meta?.pagination;
-            if (meta) {
-                setPage(meta.page);
-                setPageSize(meta.page_size);
-                setTotal(meta.total);
-                setTotalPages(meta.total_pages);
-                setHasNext(meta.has_next);
-                setHasPrev(meta.has_prev);
-            }
+
+            // ✅ Write everything into the global cache slot for this projectId
+            setProjectCache({
+                campaigns: formatted,
+                meta: meta ?? cachedProject().meta,
+                lastFetched: Date.now(),
+                loading: false,
+            });
+
         } catch (err) {
             console.error("API error:", err);
-            setCampaigns([]);
+            setProjectCache({ campaigns: [], loading: false });
         }
     };
-
 
 
     // Add this inside ProjectDetails component
@@ -182,6 +184,14 @@ export default function ProjectDetails() {
         console.log("result:", { totalLeads, totalClicks, totalReach, totalSpent, avgCPL });
 
         return { leads: totalLeads, clicks: totalClicks, reach: totalReach, spent: totalSpent, cpl: avgCPL };
+    };
+
+    const goToPrev = () => {
+        if (hasPrev()) loadCampaigns(page() - 1, search());
+    };
+
+    const goToNext = () => {
+        if (hasNext()) loadCampaigns(page() + 1, search());
     };
 
     /* ================= BASE FILTER (SEARCH + STATUS) ================= */
@@ -230,7 +240,7 @@ export default function ProjectDetails() {
             }
         }
 
-        let data= Array.from(map.values()).sort((a, b) => b.totalLeads - a.totalLeads);
+        let data = Array.from(map.values()).sort((a, b) => b.totalLeads - a.totalLeads);
         return sortData(data);
     });
 
@@ -383,7 +393,7 @@ export default function ProjectDetails() {
         const avgCPL = totalLeads > 0
             ? (totalSpent / totalLeads).toFixed(2)
             : 0;
-            
+
         return {
             totalLeads,
             totalClicks,

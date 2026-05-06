@@ -9,6 +9,9 @@ import { DateRangeFilter } from "../components/DateRangeFilter";
 import { fetchProjects } from "../services/dashboard";
 import { fetchCampaigns } from "../services/campaigns";
 import { fetchCampaignInsights } from "../services/campaigns";
+import {
+    projectsCache, setProjectsCache, isCacheStale
+} from "../cacheStore/appStore";
 
 // fetchCampaigns is already imported, just ADD fetchCampaignInsights
 
@@ -17,21 +20,21 @@ export default function MainDashboard() {
     const [statusFilter, setStatusFilter] = createSignal("all");
     const [searchText, setSearchText] = createSignal("");
     const [selectedColumns, setSelectedColumns] = createSignal([]);
-    const [projects, setProjects] = createSignal([]);
+    // const [projects, setProjects] = createSignal([]);
     const [sortType, setSortType] = createSignal("");
     const [fromDate, setFromDate] = createSignal("");
     const [toDate, setToDate] = createSignal("");
     const [viewType, setViewType] = createSignal("table");
-    const [page, setPage] = createSignal(1);
-    const [hasNext, setHasNext] = createSignal(false);
-    const [hasPrev, setHasPrev] = createSignal(false);
-    const [pageSize, setPageSize] = createSignal(20);
-    const [total, setTotal] = createSignal(0);
-    const [totalPages, setTotalPages] = createSignal(1);
-    const [projectInsightsMap, setProjectInsightsMap] = createSignal({});
+    // const [page, setPage] = createSignal(1);
+    // const [hasNext, setHasNext] = createSignal(false);
+    // const [hasPrev, setHasPrev] = createSignal(false);
+    // const [pageSize, setPageSize] = createSignal(20);
+    // const [total, setTotal] = createSignal(0);
+    // const [totalPages, setTotalPages] = createSignal(1);
+    // const [projectInsightsMap, setProjectInsightsMap] = createSignal({});
     // { projectId: [ ...all flattened insight records ] }
-    const [insightsLoading, setInsightsLoading] = createSignal(false);
-    const [loading, setLoading] = createSignal(true);
+    // const [insightsLoading, setInsightsLoading] = createSignal(false);
+    // const [loading, setLoading] = createSignal(true);
     // Add near your other signals
     const [userRole, setUserRole] = createSignal("client");
     const [cardRange, setCardRange] = createSignal(null);
@@ -40,6 +43,17 @@ export default function MainDashboard() {
         key: "",
         direction: "desc",
     });
+    // ── Read from global store via accessors ─────────────────────────────────────
+    const projects = () => projectsCache.data;
+    const projectInsightsMap = () => projectsCache.insightsMap;
+    const loading = () => projectsCache.loading;
+    const page = () => projectsCache.meta?.page ?? 1;
+    const pageSize = () => projectsCache.meta?.page_size ?? 20;
+    const total = () => projectsCache.meta?.total ?? 0;
+    const totalPages = () => projectsCache.meta?.total_pages ?? 1;
+    const hasNext = () => projectsCache.meta?.has_next ?? false;
+    const hasPrev = () => projectsCache.meta?.has_prev ?? false;
+    const insightsLoading = () => false; // handled inside loadAllProjectInsights
 
     const textColumns = new Set(["name", "location", "type", "status"]);
 
@@ -61,13 +75,68 @@ export default function MainDashboard() {
     onMount(() => {
         const auth = JSON.parse(localStorage.getItem("auth"));
         setUserRole(auth?.role ?? "client");
-        loadData(1);
+
+        // ✅ Only fetch if cache is missing or stale
+        if (isCacheStale(projectsCache.lastFetched)) {
+            loadData(1);
+        }
     });
 
+    // const loadData = async (pageNo = 1, search = "") => {
+    //     try {
+    //         setLoading(true);
+    //         const res = await fetchProjects(pageNo, search);
+    //         const apiData = res?.data || [];
+    //         const meta = res?.meta?.pagination;
+
+    //         const mappedProjects = (apiData || []).map(item => ({
+    //             id: item.id,
+    //             name: item.name,
+    //             logo: item.logo || "/default-logo.png",
+    //             location: item.city,
+    //             budget: parseFloat(item.budget) || 0,
+    //             leadsgenerated: item.leads_count ?? 0,
+    //             type: item.property_type ?? "N/A",
+    //             uploaddocument: item.upload_document ?? null,
+    //             activeCampaigns: item.campaign_count ?? 0,
+    //             pausedCampaigns: item.paused_campaigns ?? 0,
+    //             status: item.status,
+    //             clientRequest: item.client_request ?? null,
+    //             priority: item.priority_label ?? "Standard",
+    //             projectControl: item.project_control ?? "Live",
+    //             url: item.url ?? "/all-campaigns",
+    //             cpl: parseFloat(item.cpl) || 0,
+
+    //             modifiedCpl: item.modified_cpl ?? null,
+    //             spent: parseFloat(item.total_spend) || 0,
+    //             leadsByDate: item.leads_by_date ?? {},
+    //         }));
+
+    //         setProjects(mappedProjects);
+
+    //         deriveProjectStatuses(mappedProjects),
+    //             loadAllProjectInsights(mappedProjects)
+
+
+    //         if (meta) {
+    //             setPage(meta.page);
+    //             setPageSize(meta.page_size);
+    //             setTotal(meta.total);
+    //             setTotalPages(meta.total_pages);
+    //             setHasNext(meta.has_next);
+    //             setHasPrev(meta.has_prev);
+    //         }
+    //     } catch (err) {
+    //         console.error(err);
+    //     }
+    //     finally {
+    //         setLoading(false);   
+    //     }
+    // };
 
     const loadData = async (pageNo = 1, search = "") => {
         try {
-            setLoading(true);   //  START LOADING
+            setProjectsCache("loading", true);
             const res = await fetchProjects(pageNo, search);
             const apiData = res?.data || [];
             const meta = res?.meta?.pagination;
@@ -77,7 +146,7 @@ export default function MainDashboard() {
                 name: item.name,
                 logo: item.logo || "/default-logo.png",
                 location: item.city,
-                budget: parseFloat(item.budget) || 0,        //  was: item.budget ?? 0
+                budget: parseFloat(item.budget) || 0,
                 leadsgenerated: item.leads_count ?? 0,
                 type: item.property_type ?? "N/A",
                 uploaddocument: item.upload_document ?? null,
@@ -89,31 +158,26 @@ export default function MainDashboard() {
                 projectControl: item.project_control ?? "Live",
                 url: item.url ?? "/all-campaigns",
                 cpl: parseFloat(item.cpl) || 0,
-                //  was: item.cpl ?? 0
-                modifiedCpl: item.modified_cpl ?? null,  //  was: item.modified_cpl ?? null
-                spent: parseFloat(item.total_spend) || 0,    //  was: item.total_spend ?? 0
+
+                modifiedCpl: item.modified_cpl ?? null,
+                spent: parseFloat(item.total_spend) || 0,
                 leadsByDate: item.leads_by_date ?? {},
             }));
 
-            setProjects(mappedProjects);
+            setProjectsCache({
+                data: mappedProjects,
+                meta: meta ?? projectsCache.meta,
+                lastFetched: Date.now(),   // ✅ stamp the cache
+            });
 
-            deriveProjectStatuses(mappedProjects), //  async status patch
-                loadAllProjectInsights(mappedProjects)
+            // kick off async enrichment (status + insights)
+            deriveProjectStatuses(mappedProjects);
+            loadAllProjectInsights(mappedProjects);
 
-
-            if (meta) {
-                setPage(meta.page);
-                setPageSize(meta.page_size);
-                setTotal(meta.total);
-                setTotalPages(meta.total_pages);
-                setHasNext(meta.has_next);
-                setHasPrev(meta.has_prev);
-            }
         } catch (err) {
             console.error(err);
-        }
-        finally {
-            setLoading(false);   //  STOP LOADING
+        } finally {
+            setProjectsCache("loading", false);
         }
     };
 
@@ -191,82 +255,136 @@ export default function MainDashboard() {
     });
 
     // After setProjects(...) inside loadData, add:
+    // const deriveProjectStatuses = async (projectList) => {
+    //     const statusUpdates = await Promise.all(
+    //         projectList.map(async (project) => {
+    //             try {
+
+    //                 const res = await fetchCampaigns(1, project.id, "", 1000);
+    //                 const campaigns = res.data.results || res.data || [];
+
+    //                 if (!Array.isArray(campaigns) || campaigns.length === 0) {
+    //                     return {
+    //                         id: project.id,
+    //                         status: "paused",
+    //                         activeCampaigns: 0,
+    //                         pausedCampaigns: 0,
+    //                     };
+    //                 }
+
+    //                 const activeCampaigns = campaigns.filter(c => c.status === "active").length;
+    //                 const pausedCampaigns = campaigns.filter(c => c.status === "paused").length;
+    //                 const hasActive = activeCampaigns > 0;
+
+    //                 return {
+    //                     id: project.id,
+    //                     status: hasActive ? "active" : "paused",
+    //                     activeCampaigns,
+    //                     pausedCampaigns,
+    //                 };
+
+    //             } catch (err) {
+    //                 return {
+    //                     id: project.id,
+    //                     status: project.status,
+    //                     activeCampaigns: project.activeCampaigns,
+    //                     pausedCampaigns: project.pausedCampaigns,
+    //                 };
+    //             }
+    //         })
+    //     );
+
+    //     setProjects(prev =>
+    //         prev.map(p => {
+    //             const update = statusUpdates.find(u => u.id === p.id);
+    //             return update ? {
+    //                 ...p,
+    //                 status: update.status,
+    //                 activeCampaigns: update.activeCampaigns,
+    //                 pausedCampaigns: update.pausedCampaigns,
+    //             } : p;
+    //         })
+    //     );
+    // };
     const deriveProjectStatuses = async (projectList) => {
         const statusUpdates = await Promise.all(
             projectList.map(async (project) => {
                 try {
-                    // 👇 fetch all campaigns in one shot with large page_size
                     const res = await fetchCampaigns(1, project.id, "", 1000);
                     const campaigns = res.data.results || res.data || [];
-
-                    if (!Array.isArray(campaigns) || campaigns.length === 0) {
-                        return {
-                            id: project.id,
-                            status: "paused",
-                            activeCampaigns: 0,
-                            pausedCampaigns: 0,
-                        };
-                    }
-
                     const activeCampaigns = campaigns.filter(c => c.status === "active").length;
                     const pausedCampaigns = campaigns.filter(c => c.status === "paused").length;
-                    const hasActive = activeCampaigns > 0;
-
-                    return {
-                        id: project.id,
-                        status: hasActive ? "active" : "paused",
-                        activeCampaigns,
-                        pausedCampaigns,
-                    };
-
-                } catch (err) {
-                    return {
-                        id: project.id,
-                        status: project.status,
-                        activeCampaigns: project.activeCampaigns,
-                        pausedCampaigns: project.pausedCampaigns,
-                    };
+                    return { id: project.id, status: activeCampaigns > 0 ? "active" : "paused", activeCampaigns, pausedCampaigns };
+                } catch {
+                    return { id: project.id, status: project.status, activeCampaigns: project.activeCampaigns, pausedCampaigns: project.pausedCampaigns };
                 }
             })
         );
 
-        setProjects(prev =>
+        // ✅ write into the global store
+        setProjectsCache("data", prev =>
             prev.map(p => {
                 const update = statusUpdates.find(u => u.id === p.id);
-                return update ? {
-                    ...p,
-                    status: update.status,
-                    activeCampaigns: update.activeCampaigns,
-                    pausedCampaigns: update.pausedCampaigns,
-                } : p;
+                return update ? { ...p, ...update } : p;
             })
         );
     };
 
+    // const loadAllProjectInsights = async (projectList) => {
+    //     setInsightsLoading(true);
+    //     const result = {};
+
+    //     await Promise.all(
+    //         projectList.map(async (project) => {
+    //             try {
+    //                 const res = await fetchCampaigns(1, project.id, "", 1000);
+    //                 const campaigns = res.data?.results || res.data || [];
+
+    //                 if (!Array.isArray(campaigns) || campaigns.length === 0) {
+    //                     result[project.id] = [];
+    //                     return;
+    //                 }
+
+    //                 const insightArrays = await Promise.all(
+    //                     campaigns.map(c =>
+    //                         fetchCampaignInsights(c.id)
+    //                             .then(r => r.data || [])
+    //                             .catch(() => [])
+    //                     )
+    //                 );
+
+    //                 result[project.id] = insightArrays.flat();
+    //             } catch {
+    //                 result[project.id] = [];
+    //             }
+    //         })
+    //     );
+
+    //     setProjectInsightsMap(result);
+    //     setInsightsLoading(false);
+    // };
+
+
     const loadAllProjectInsights = async (projectList) => {
-        setInsightsLoading(true);
-        const result = {};
+        const result = { ...projectsCache.insightsMap }; // preserve existing entries
 
         await Promise.all(
             projectList.map(async (project) => {
+                // ✅ Skip if we already have insights for this project
+                if (result[project.id]?.length > 0) return;
+
                 try {
                     const res = await fetchCampaigns(1, project.id, "", 1000);
                     const campaigns = res.data?.results || res.data || [];
-
                     if (!Array.isArray(campaigns) || campaigns.length === 0) {
                         result[project.id] = [];
                         return;
                     }
-
-                    // fetch insights for every campaign in parallel
                     const insightArrays = await Promise.all(
                         campaigns.map(c =>
-                            fetchCampaignInsights(c.id)
-                                .then(r => r.data || [])
-                                .catch(() => [])
+                            fetchCampaignInsights(c.id).then(r => r.data || []).catch(() => [])
                         )
                     );
-
                     result[project.id] = insightArrays.flat();
                 } catch {
                     result[project.id] = [];
@@ -274,10 +392,8 @@ export default function MainDashboard() {
             })
         );
 
-        setProjectInsightsMap(result);
-        setInsightsLoading(false);
+        setProjectsCache("insightsMap", result); // ✅ single write to global store
     };
-
 
     const normalizeLocalDate = (d) => {
         const date = new Date(d);

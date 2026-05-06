@@ -1,8 +1,6 @@
 const BASE_URL = "https://metadashboard.aajneeticonnectltd.com/api";
 
-// ── Deployment stamp: bump this string on every production deploy ──
-// It clears stale localStorage tokens automatically.
-const DEPLOY_STAMP = "v1.0.1"; // ← change this on each deploy
+const DEPLOY_STAMP = "v1.0.1";
 
 const getTokenExpiry = (token) => {
     try {
@@ -18,21 +16,28 @@ const isTokenExpiredOrExpiringSoon = (auth) => {
     return Date.now() > auth.tokenExpiresAt - 30_000;
 };
 
-// ── Stale-token guard: runs once on module load ──
+// ── Stale-token guard ──
 (() => {
     const savedStamp = localStorage.getItem("deploy_stamp");
     if (savedStamp !== DEPLOY_STAMP) {
         localStorage.removeItem("auth");
         localStorage.setItem("deploy_stamp", DEPLOY_STAMP);
-        console.info("[api] New deployment detected — cleared stale auth tokens.");
+        console.info("[api] New deployment — cleared stale auth.");
     }
 })();
 
-// ── Refresh lock: one Promise shared across ALL concurrent callers ──
-let refreshPromise = null; // null means "not refreshing"
+// ── Soft logout: dispatch event instead of hard reload ──────────────────────
+// This lets the SolidJS router navigate WITHOUT destroying in-memory state
+const softLogout = (reason = "session_expired") => {
+    console.warn("[api] Logging out:", reason);
+    localStorage.removeItem("auth");
+    // Dispatch event — App.jsx will catch this and call navigate("/login")
+    window.dispatchEvent(new CustomEvent("auth-logout", { detail: { reason } }));
+};
+
+let refreshPromise = null;
 
 const doRefresh = () => {
-    // If a refresh is already in flight, reuse it — never start a second one
     if (refreshPromise) return refreshPromise;
 
     refreshPromise = (async () => {
@@ -68,7 +73,6 @@ const doRefresh = () => {
             };
             localStorage.setItem("auth", JSON.stringify(updatedAuth));
 
-            // Notify other tabs
             try {
                 const ch = new BroadcastChannel("token_refresh");
                 ch.postMessage({ type: "TOKEN_REFRESHED", token: newToken });
@@ -76,14 +80,12 @@ const doRefresh = () => {
             } catch {}
 
         } catch (err) {
-            // Refresh failed for real → log out
             console.error("[api] Refresh failed:", err.message);
-            localStorage.removeItem("auth");
-            window.location.href = "/login";
-            throw err; // re-throw so callers know it failed
-
+            // ✅ FIXED: soft logout instead of window.location.href
+            softLogout("refresh_failed");
+            throw err;
         } finally {
-            refreshPromise = null; // ← unlock AFTER all awaiters have resumed
+            refreshPromise = null;
         }
     })();
 
@@ -104,13 +106,11 @@ const buildHeaders = (token, options) => {
 export async function api(endpoint, options = {}) {
     let auth = JSON.parse(localStorage.getItem("auth") || "null");
 
-    // Proactively refresh before the request if token is about to expire
     if (isTokenExpiredOrExpiringSoon(auth) && auth?.refreshToken) {
         try {
             await doRefresh();
             auth = JSON.parse(localStorage.getItem("auth") || "null");
         } catch {
-            // doRefresh already redirects to /login; just stop here
             return;
         }
     }
@@ -124,22 +124,20 @@ export async function api(endpoint, options = {}) {
     try {
         let res = await makeRequest(auth?.token);
 
-        // Server rejected token → attempt one refresh then retry
         if (res.status === 401 && auth?.refreshToken) {
             try {
                 await doRefresh();
             } catch {
-                return; // already redirected
+                return;
             }
 
             auth = JSON.parse(localStorage.getItem("auth") || "null");
             res = await makeRequest(auth?.token);
 
             if (res.status === 401) {
-                // Still failing after a fresh token — force logout
-                console.error("[api] Still 401 after token refresh — logging out");
-                localStorage.removeItem("auth");
-                window.location.href = "/login";
+                console.error("[api] Still 401 after refresh — logging out");
+                // ✅ FIXED: soft logout instead of window.location.href
+                softLogout("401_after_refresh");
                 return;
             }
         }
@@ -153,7 +151,7 @@ export async function api(endpoint, options = {}) {
 
     } catch (error) {
         if (error.message === "Failed to fetch") {
-            console.warn("[api] Network error — not logging out");
+            console.warn("[api] Network error");
             throw error;
         }
         console.error("[api] Error:", error.message);
