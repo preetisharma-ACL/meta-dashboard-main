@@ -5,34 +5,39 @@ import { Eye, Users, IndianRupee, TrendingDown, TrendingUp } from "lucide-solid"
 import { User, MapPin, Crosshair } from "lucide-solid";
 import { createSignal, onMount } from "solid-js";
 import { fetchCampaignDetails } from "../services/campaignDetails-service";
+import {
+    campaignDetailsCache,
+    setCampaignDetailsCache,
+    isCampaignCacheStale,
+} from "../cacheStore/appStore";
 
 export default function CampaignDetails() {
     const params = useParams();
-    const [campaign, setCampaign] = createSignal(null);
-    // const campaign = {
-    //     name: "Summer Sale Campaign",
-    //     objective: "Conversions",
-    //     startDate: "2026-02-01",
-    //     stopDate: "2026-02-28",
-    //     status: "Active",
-
-    //     impressions: "120,450",
-    //     reach: "95,300",
-    //     spend: "₹45,200",
-    //     costPerResult: "₹120",
-    //     roas: "3.8x",
-
-    //     age: "18 - 35",
-    //     gender: "Male & Female",
-    //     region: "Delhi, Mumbai, Bangalore",
-    //     targeting: "Shopping & Fashion Interests"
-    // };
+    const campaignId = params.id;
+    // ── Read from global cache ───────────────────────────────────────────────────
+    const campaign = () => campaignDetailsCache[campaignId]?.data ?? null;
+    const loading = () => campaignDetailsCache[campaignId]?.loading ?? false;
+    // ── Write helper ─────────────────────────────────────────────────────────────
+    const setCampaignCache = (patch) =>
+        setCampaignDetailsCache(campaignId, (prev) => ({ ...prev, ...patch }));
+    
     onMount(async () => {
+        // ✅ Skip fetch if we already have fresh data for this campaign
+        if (!isCampaignCacheStale(campaignId)) return;
+
         try {
-            const res = await fetchCampaignDetails(params.id);
-            setCampaign(res.data); //  IMPORTANT
+            setCampaignCache({ loading: true });
+            const res = await fetchCampaignDetails(campaignId);
+
+            // ✅ Store in global cache keyed by campaignId
+            setCampaignCache({
+                data: res.data,
+                lastFetched: Date.now(),
+                loading: false,
+            });
         } catch (err) {
-            console.log(err);
+            console.error(err);
+            setCampaignCache({ loading: false });
         }
     });
 
@@ -52,7 +57,7 @@ export default function CampaignDetails() {
                 </div>
 
                 <span class="px-4 py-1 text-sm rounded-full w-20 bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
-                   {campaign()?.status_label}
+                    {campaign()?.status_label}
                 </span>
             </div>
             <nav>
@@ -114,7 +119,7 @@ export default function CampaignDetails() {
                         <div>
                             <p class="text-lg text-red-800 dark:text-gray-400">Reach</p>
                             <h3 class="text-xl font-semibold mt-2 dark:text-white">
-                               {campaign()?.reach}
+                                {campaign()?.reach}
                             </h3>
                         </div>
                         <div class="flex bg-red-100 dark:bg-purple-500 p-3 rounded items-center gap-1 mt-2 text-sm text-gray-500 dark:text-gray-400">
@@ -127,7 +132,7 @@ export default function CampaignDetails() {
                         <div>
                             <p class="text-lg text-green-800 dark:text-gray-400">Spend</p>
                             <h3 class="text-xl font-semibold mt-2 dark:text-white">
-                               ₹{campaign()?.spend}
+                                ₹{campaign()?.spend}
                             </h3>
                         </div>
                         <div class="flex bg-green-100 dark:bg-green-500 p-3 rounded items-center gap-1 mt-2 text-sm text-gray-500 dark:text-gray-400">
@@ -140,7 +145,7 @@ export default function CampaignDetails() {
                         <div>
                             <p class="text-lg text-purple-800 dark:text-gray-400">ROAS</p>
                             <h3 class="text-xl font-semibold mt-2 dark:text-white">
-                               {campaign()?.roas || "N/A"}
+                                {campaign()?.roas || "N/A"}
                             </h3>
                         </div>
                         <div class="flex bg-purple-100 dark:bg-purple-500 p-3 rounded items-center gap-1 mt-2 text-sm text-gray-500 dark:text-gray-400">
@@ -176,7 +181,7 @@ export default function CampaignDetails() {
                                     Objective
                                 </td>
                                 <td class="p-4 font-medium dark:text-white">{campaign()?.objective_label}</td>
-                            </tr> 
+                            </tr>
 
                             <tr class="border-b dark:border-gray-700">
                                 <td class="p-4 text-gray-500 dark:text-gray-400 flex items-center gap-2">
