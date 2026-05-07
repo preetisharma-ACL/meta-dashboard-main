@@ -50,7 +50,7 @@ function transformProject(apiData, projectMeta = {}) {
     status: projectMeta.status ?? "active",
     logo: projectMeta.logo ?? null,
     budgetAllocated: parseFloat(apiData.budget_allocated) || 0,
-    totalSpend: parseFloat(apiData.total_spent) || 0,
+    totalSpend: parseFloat(apiData.cpl?.total_spend) || 0,
     remaining: parseFloat(apiData.remaining) || 0,
     qualificationPct: apiData.cpl?.qualification_percent || 30,
     qualifiedLeads: apiData.cpl?.qualified_leads || 0,

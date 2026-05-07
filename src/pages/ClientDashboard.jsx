@@ -168,6 +168,7 @@ export default function MainDashboard() {
                 data: mappedProjects,
                 meta: meta ?? projectsCache.meta,
                 lastFetched: Date.now(),   // ✅ stamp the cache
+                insightsMap: {}, // ✅ ADD THIS — wipe stale insights on fresh load
             });
 
             // kick off async enrichment (status + insights)
@@ -310,7 +311,7 @@ export default function MainDashboard() {
         const statusUpdates = await Promise.all(
             projectList.map(async (project) => {
                 try {
-                    const res = await fetchCampaigns(1, project.id, "", 50);
+                    const res = await fetchCampaigns(1, project.id, "", 1000);
                     const campaigns = res.data.results || res.data || [];
                     const activeCampaigns = campaigns.filter(c => c.status === "active").length;
                     const pausedCampaigns = campaigns.filter(c => c.status === "paused").length;
@@ -366,25 +367,41 @@ export default function MainDashboard() {
 
 
     const loadAllProjectInsights = async (projectList) => {
-        const result = { ...projectsCache.insightsMap }; // preserve existing entries
+        const result = {};
 
         await Promise.all(
             projectList.map(async (project) => {
-                // ✅ Skip if we already have insights for this project
-                if (result[project.id]?.length > 0) return;
-
                 try {
-                    const res = await fetchCampaigns(1, project.id, "", 50);
-                    const campaigns = res.data?.results || res.data || [];
-                    if (!Array.isArray(campaigns) || campaigns.length === 0) {
+                    let currentPage = 1;
+                    let allCampaigns = [];
+                    let hasMore = true;
+
+                    // Paginate through ALL campaign pages (backend caps page_size at 20)
+                    while (hasMore) {
+                        const res = await fetchCampaigns(currentPage, project.id, "", 20);
+                        const campaigns = res.data?.results || res.data || [];
+
+                        if (!Array.isArray(campaigns) || campaigns.length === 0) break;
+
+                        allCampaigns = [...allCampaigns, ...campaigns];
+
+                        hasMore = res.meta?.pagination?.has_next ?? false;
+                        currentPage++;
+                    }
+
+                    if (allCampaigns.length === 0) {
                         result[project.id] = [];
                         return;
                     }
+
                     const insightArrays = await Promise.all(
-                        campaigns.map(c =>
-                            fetchCampaignInsights(c.id).then(r => r.data || []).catch(() => [])
+                        allCampaigns.map(c =>
+                            fetchCampaignInsights(c.id)
+                                .then(r => r.data || [])
+                                .catch(() => [])
                         )
                     );
+
                     result[project.id] = insightArrays.flat();
                 } catch {
                     result[project.id] = [];
@@ -392,7 +409,7 @@ export default function MainDashboard() {
             })
         );
 
-        setProjectsCache("insightsMap", result); // ✅ single write to global store
+        setProjectsCache("insightsMap", result);
     };
 
     const normalizeLocalDate = (d) => {

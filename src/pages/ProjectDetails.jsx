@@ -147,6 +147,10 @@ export default function ProjectDetails() {
     // Add near your other signals
     const [userRole, setUserRole] = createSignal("client");
     const { handleSort, getSortIcon, sortData } = useColumnSort();
+    // Add near your other signals
+    const [allCampaigns, setAllCampaigns] = createSignal([]);
+    const [allCampaignsLoaded, setAllCampaignsLoaded] = createSignal(false);
+    const [loadingAllCampaigns, setLoadingAllCampaigns] = createSignal(false);
 
 
     // ── Read from global cache ───────────────────────────────────────────────────
@@ -173,6 +177,8 @@ export default function ProjectDetails() {
             // ✅ Only fetch if cache is missing or expired
             loadCampaigns(1);
         }
+        // Load all campaigns for accurate footer totals
+        loadAllCampaignsForTotals();
 
         const handleClickOutside = (e) => {
             if (!e.target.closest(".notification-wrapper")) {
@@ -250,6 +256,64 @@ export default function ProjectDetails() {
         }
     };
 
+    // Add this new function to load ALL campaigns for totals
+    const loadAllCampaignsForTotals = async () => {
+        if (allCampaignsLoaded() || loadingAllCampaigns()) return;
+
+        setLoadingAllCampaigns(true);
+        try {
+            let currentPage = 1;
+            let accumulated = [];
+            let hasMorePages = true;
+
+            while (hasMorePages) {
+                const res = await fetchCampaigns(currentPage, projectId, "");
+                const apiData = res.data.results || res.data || [];
+
+                if (!Array.isArray(apiData) || apiData.length === 0) break;
+
+                // Fetch insights in parallel for this batch
+                const insightsResults = await Promise.all(
+                    apiData.map((item) =>
+                        fetchCampaignInsights(item.id)
+                            .then((r) => ({ id: item.id, insights: r.data || [] }))
+                            .catch(() => ({ id: item.id, insights: [] }))
+                    )
+                );
+
+                const insightsMap = {};
+                insightsResults.forEach(({ id, insights }) => {
+                    insightsMap[id] = insights;
+                });
+
+                const formatted = apiData.map((item) => ({
+                    id: item.id,
+                    campaign_name: item.name
+                        ? `${item.name.split("|").slice(1, 2).map((s) => s.trim()).join(" | ")} | ${item.start_date || "No Date"}`
+                        : "No Name",
+                    start_date: item.start_date || "No Date",
+                    status: item.status === "paused" ? "paused" : "Live",
+                    cpl: item.cpl || 0,
+                    premium_metrics: item.premium_metrics,
+                    insights: insightsMap[item.id] || [],
+                }));
+
+                accumulated = [...accumulated, ...formatted];
+
+                const meta = res?.meta?.pagination;
+                hasMorePages = meta?.has_next ?? false;
+                currentPage++;
+            }
+
+            setAllCampaigns(accumulated);
+            setAllCampaignsLoaded(true);
+        } catch (err) {
+            console.error("Failed to load all campaigns for totals:", err);
+        } finally {
+            setLoadingAllCampaigns(false);
+        }
+    };
+
 
     // Add this inside ProjectDetails component
     const getInsightsInRange = (insights, from, to) => {
@@ -283,8 +347,8 @@ export default function ProjectDetails() {
         const totalReach = filtered.reduce((s, d) => s + (d.impressions || 0), 0);
         const totalSpent = filtered.reduce((s, d) => s + parseFloat(d.spend || 0), 0);
         const avgCPL = totalLeads > 0
-        ? Number((totalSpent / totalLeads).toFixed(2))
-        : 0;
+            ? Number((totalSpent / totalLeads).toFixed(2))
+            : 0;
 
         console.log("result:", { totalLeads, totalClicks, totalReach, totalSpent, avgCPL });
 
@@ -487,25 +551,37 @@ export default function ProjectDetails() {
             : leadSummary.totalLeads - leadSummary.deliveredLeads;
 
 
+    // Replace your existing footerTotals createMemo with this
     const footerTotals = createMemo(() => {
-        const data = sortedCampaigns(); // ✅ IMPORTANT (filtered + date applied)
+        // Use allCampaigns for cross-page totals, fall back to current page if not loaded yet
+        const source = allCampaignsLoaded() ? allCampaigns() : sortedCampaigns();
 
-        const totalLeads = data.reduce((s, r) => s + (r.totalLeads || 0), 0);
-        const totalClicks = data.reduce((s, r) => s + (r.totalClicks || 0), 0);
-        const totalReach = data.reduce((s, r) => s + (r.totalReach || 0), 0);
-        const totalSpent = data.reduce((s, r) => s + (r.totalSpent || 0), 0);
+        // Apply the same filters as the table: status filter
+        const filtered = source.filter((item) => {
+            const matchesStatus =
+                statusFilter() === "All" || item.status === statusFilter();
+            return matchesStatus;
+        });
+
+        // Apply date range + aggregate using the same getInsightsInRange logic
+        let totalLeads = 0;
+        let totalClicks = 0;
+        let totalReach = 0;
+        let totalSpent = 0;
+
+        for (const row of filtered) {
+            const stats = getInsightsInRange(row.insights, fromDate(), toDate());
+            totalLeads += stats.leads;
+            totalClicks += stats.clicks;
+            totalReach += stats.reach;
+            totalSpent += stats.spent;
+        }
 
         const avgCPL = totalLeads > 0
             ? (totalSpent / totalLeads).toFixed(2)
             : 0;
 
-        return {
-            totalLeads,
-            totalClicks,
-            totalReach,
-            totalSpent,
-            avgCPL
-        };
+        return { totalLeads, totalClicks, totalReach, totalSpent, avgCPL };
     });
     return (
         <div class="space-y-6 m-4">
