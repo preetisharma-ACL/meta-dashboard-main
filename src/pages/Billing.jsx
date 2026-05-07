@@ -890,7 +890,7 @@ export default function Billing() {
               }}
             />
           </Show>
-          <DeliveryBreakdown deliveries={MOCK_DELIVERIES} totalPaid={budgetCommitted()} />
+          {/* <DeliveryBreakdown deliveries={MOCK_DELIVERIES} totalPaid={budgetCommitted()} /> */}
         </div>
       </Show>
 

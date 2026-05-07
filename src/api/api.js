@@ -26,12 +26,25 @@ const isTokenExpiredOrExpiringSoon = (auth) => {
     }
 })();
 
-// ── Soft logout: dispatch event instead of hard reload ──────────────────────
-// This lets the SolidJS router navigate WITHOUT destroying in-memory state
+// ── Soft logout ──────────────────────────────────────────────────────────────
+// FIX: clearAllCache equivalent — wipe sessionStorage so stale API data
+// doesn't survive into the next login session. Previously softLogout only
+// removed the auth key from localStorage, leaving the cache intact. When the
+// user logged back in, dashboard components saw the cached (now-stale) data
+// and never fired new API calls.
 const softLogout = (reason = "session_expired") => {
     console.warn("[api] Logging out:", reason);
     localStorage.removeItem("auth");
-    // Dispatch event — App.jsx will catch this and call navigate("/login")
+
+    // Clear all sessionStorage cache so the next login starts fresh.
+    // This mirrors what handleLogout (hard logout) does via clearAllCache().
+    try {
+        sessionStorage.clear();
+    } catch (e) {
+        console.warn("[api] Could not clear sessionStorage:", e);
+    }
+
+    // Dispatch event — App.jsx catches this and calls navigate("/login")
     window.dispatchEvent(new CustomEvent("auth-logout", { detail: { reason } }));
 };
 
@@ -81,7 +94,6 @@ const doRefresh = () => {
 
         } catch (err) {
             console.error("[api] Refresh failed:", err.message);
-            // ✅ FIXED: soft logout instead of window.location.href
             softLogout("refresh_failed");
             throw err;
         } finally {
@@ -136,7 +148,6 @@ export async function api(endpoint, options = {}) {
 
             if (res.status === 401) {
                 console.error("[api] Still 401 after refresh — logging out");
-                // ✅ FIXED: soft logout instead of window.location.href
                 softLogout("401_after_refresh");
                 return;
             }

@@ -14,7 +14,7 @@ const getTokenExpiry = (token) => {
 };
 
 export const handleLogout = () => {
-    clearAllCache();          // ✅ wipe sessionStorage cache so next login starts fresh
+    clearAllCache();          // wipe sessionStorage cache so next login starts fresh
     localStorage.removeItem("auth");
     window.location.href = "/login";
 };
@@ -32,16 +32,16 @@ export default function Login() {
         const auth = JSON.parse(localStorage.getItem("auth") || "null");
 
         if (auth?.token && auth?.refreshToken) {
-            // ✅ Both tokens present — safe to continue session
+            // Both tokens present — safe to continue session
             setIsLoggedIn(true);
             navigate("/", { replace: true });
         } else if (auth?.token && !auth?.refreshToken) {
-            // ⚠️ Access token only, no refresh token — clear and re-login
+            // Access token only, no refresh token — clear and re-login
             console.warn("No refresh token found — clearing session");
             localStorage.removeItem("auth");
         }
 
-        // ✅ Listen for token updates from other tabs
+        // Listen for token updates from other tabs
         try {
             const channel = new BroadcastChannel("token_refresh");
             channel.onmessage = (e) => {
@@ -62,6 +62,13 @@ export default function Login() {
         setLoading(true);
         setError("");
 
+        // FIX: Clear stale sessionStorage cache from the expired session BEFORE
+        // logging in. Previously, the cache was only cleared on manual logout
+        // (handleLogout). After a softLogout (auto session expiry), the cache
+        // survived into the new session. Dashboard components then read it on
+        // mount and never fired fresh API calls, causing blank/stale data.
+        clearAllCache();
+
         try {
             const res = await loginUser(email(), password());
             const accessToken = res?.data?.access_token;
@@ -73,7 +80,7 @@ export default function Login() {
                 console.warn("⚠️ No refresh token received — user may be logged out when access token expires");
             }
 
-            // ✅ Fetch user role — don't block login if it fails
+            // Fetch user role — don't block login if it fails
             let role = "client";
             try {
                 const meRes = await fetch(
@@ -86,7 +93,7 @@ export default function Login() {
                 console.warn("Could not fetch user role, defaulting to client:", err);
             }
 
-            // ✅ Fetch client type — don't block login if it fails
+            // Fetch client type — don't block login if it fails
             let client_type = null;
             if (role === "client") {
                 try {
@@ -104,7 +111,7 @@ export default function Login() {
             const authData = {
                 token: accessToken,
                 refreshToken: refreshToken ?? null,
-                tokenExpiresAt: getTokenExpiry(accessToken), // ✅ store expiry
+                tokenExpiresAt: getTokenExpiry(accessToken),
                 user: res?.data?.user || null,
                 isAuthenticated: true,
                 role,
@@ -113,17 +120,25 @@ export default function Login() {
 
             localStorage.setItem("auth", JSON.stringify(authData));
 
-            // ✅ Use CustomEvent instead of "storage" (storage doesn't fire in same tab)
-            window.dispatchEvent(new CustomEvent("auth-changed", { detail: authData }));
-
+            // FIX: Use window.location.href instead of navigate().
+            //
+            // navigate("/", { replace: true }) is an in-memory SolidJS route
+            // change — it does NOT remount components that are already in the
+            // tree. After a softLogout the router navigated to /login without
+            // a page reload, so dashboard components were already mounted.
+            // When the user logged back in and navigate("/") was called, those
+            // components never re-ran their onMount data-fetching logic.
+            //
+            // window.location.href forces a full browser reload, guaranteeing
+            // every component initialises from scratch with the new auth token
+            // and an empty cache — exactly what handleLogout already does.
             setIsLoggedIn(true);
-            navigate("/", { replace: true });
+            window.location.href = "/";
 
         } catch (err) {
             console.error(err);
             setError(err.message || "Login failed. Please try again.");
-        } finally {
-            setLoading(false);
+            setLoading(false); // Only reset loading on error; success navigates away
         }
     };
 
