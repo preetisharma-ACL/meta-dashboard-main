@@ -9,14 +9,14 @@ export const fetchBillingOverview = async () => {
 
 // ✅ Fetch all active projects (same API used in ClientDashboard)
 export const fetchAllProjects = async () => {
-  return await api("/projects/?page=1&page_size=1000", {
+  return await api("/projects/?page=1&page_size=50", {
     method: "GET",
   });
 };
 
 // ✅ Fetch project-level billing details (campaigns, CPL, leads, etc.)
 export const fetchBillingProject = async (projectId) => {
-  return await api(`/billing/project/${projectId}`, {
+  return await api(`/billing/project/${projectId}/`, {
     method: "GET",
   });
 };
@@ -24,16 +24,35 @@ export const fetchBillingProject = async (projectId) => {
 // ✅ Fetch all projects then load billing details for each in parallel
 // billing-service.js — add this overload so caller can pass project list in
 export const fetchAllProjectsBilling = async () => {
-  const [projectsRes] = await Promise.all([fetchAllProjects()]);
+  const projectsRes = await fetchAllProjects();
   const projectList = projectsRes?.data || [];
 
-  const billingResults = await Promise.all(
-    projectList.map((p) =>
-      fetchBillingProject(p.id)
-        .then((r) => ({ projectMeta: p, billing: r?.data || null }))
-        .catch(() => ({ projectMeta: p, billing: null }))
-    )
-  );
+  const results = [];
+  const batchSize = 5;
 
-  return billingResults.filter((r) => r.billing !== null);
+  for (let i = 0; i < projectList.length; i += batchSize) {
+    const batch = projectList.slice(i, i + batchSize);
+
+    const batchResults = await Promise.all(
+      batch.map(async (p) => {
+        try {
+          const r = await fetchBillingProject(p.id);
+
+          return {
+            projectMeta: p,
+            billing: r?.data || null,
+          };
+        } catch {
+          return {
+            projectMeta: p,
+            billing: null,
+          };
+        }
+      })
+    );
+
+    results.push(...batchResults);
+  }
+
+  return results.filter((r) => r.billing !== null);
 };

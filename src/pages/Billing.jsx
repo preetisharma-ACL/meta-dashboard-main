@@ -640,17 +640,17 @@ function InvoiceModal(props) {
 }
 
 // --- Skeleton Loader ----------------------------------------------------------
-function Skeleton() {
-  return (
-    <div class="space-y-4 animate-pulse">
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {[1, 2, 3, 4].map(() => <div class="h-28 rounded-xl bg-gray-100 dark:bg-gray-800" />)}
-      </div>
-      <div class="h-40 rounded-xl bg-gray-100 dark:bg-gray-800" />
-      <div class="h-64 rounded-xl bg-gray-100 dark:bg-gray-800" />
-    </div>
-  );
-}
+// function Skeleton() {
+//   return (
+//     <div class="space-y-4 animate-pulse">
+//       <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+//         {[1, 2, 3, 4].map(() => <div class="h-28 rounded-xl bg-gray-100 dark:bg-gray-800" />)}
+//       </div>
+//       <div class="h-40 rounded-xl bg-gray-100 dark:bg-gray-800" />
+//       <div class="h-64 rounded-xl bg-gray-100 dark:bg-gray-800" />
+//     </div>
+//   );
+// }
 
 // --- Root Component -----------------------------------------------------------
 export default function Billing() {
@@ -785,7 +785,7 @@ export default function Billing() {
           </div>
 
           {/* ✅ Single loading gate for everything */}
-          <Show when={!isLoading()} fallback={<Skeleton />}>
+          <Show when={!isLoading()} >
             <section>
               <SectionLabel>Budget Overview</SectionLabel>
               <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">

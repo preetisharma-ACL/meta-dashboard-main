@@ -282,7 +282,9 @@ export default function ProjectDetails() {
         const totalClicks = filtered.reduce((s, d) => s + (d.clicks || 0), 0);
         const totalReach = filtered.reduce((s, d) => s + (d.impressions || 0), 0);
         const totalSpent = filtered.reduce((s, d) => s + parseFloat(d.spend || 0), 0);
-        const avgCPL = filtered.reduce((s, d) => s + parseFloat(d.cpl || 0), 0);
+        const avgCPL = totalLeads > 0
+        ? Number((totalSpent / totalLeads).toFixed(2))
+        : 0;
 
         console.log("result:", { totalLeads, totalClicks, totalReach, totalSpent, avgCPL });
 
@@ -790,7 +792,7 @@ export default function ProjectDetails() {
                                 {rangeLabel()} Spent {getSortIcon("totalSpent")}
                             </th>
                             <th class="p-3" onClick={() => handleSort("cpl")}>
-                                {rangeLabel()} CPL {getSortIcon("cpl")}
+                                {rangeLabel()} Avg CPL {getSortIcon("cpl")}
                             </th>
                             {userRole() === "admin" && (
                                 <th class="p-3" onClick={() => handleSort("premium_cpl")}>
