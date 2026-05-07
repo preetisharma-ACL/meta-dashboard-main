@@ -49,14 +49,14 @@ function transformProject(apiData, projectMeta = {}) {
     name: apiData.project_name ?? projectMeta.name,
     status: projectMeta.status ?? "active",
     logo: projectMeta.logo ?? null,
-    budgetAllocated: parseFloat(apiData.budget_allocated) || 0,
-    totalSpend: parseFloat(apiData.cpl?.total_spend) || 0,
-    remaining: parseFloat(apiData.remaining) || 0,
+    budgetAllocated: parseFloat(apiData.budget_allocated),
+    totalSpend: parseFloat(apiData.cpl?.total_spend),
+    remaining: parseFloat(apiData.remaining),
     qualificationPct: apiData.cpl?.qualification_percent || 30,
-    qualifiedLeads: apiData.cpl?.qualified_leads || 0,
-    expectedQualifiedLeads: apiData.cpl?.expected_qualified_leads || 0,
-    totalLeads: apiData.cpl?.total_leads || 0,
-    avgCPL: parseFloat(apiData.cpl?.avg_cpl) || 0,
+    qualifiedLeads: apiData.cpl?.qualified_leads,
+    expectedQualifiedLeads: apiData.cpl?.expected_qualified_leads,
+    totalLeads: apiData.cpl?.total_leads,
+    avgCPL: parseFloat(apiData.cpl?.avg_cpl),
     campaigns,
   };
 }
@@ -785,58 +785,134 @@ export default function Billing() {
           </div>
 
           {/* ✅ Single loading gate for everything */}
+          <div
+            class={`transition-all duration-500 rounded-2xl
+  ${isLoading()
+                ? "animate-pulse shadow-inner"
+                : ""
+              }`}
+          >
+            <section>
+              <SectionLabel>Budget Overview</SectionLabel>
 
-          <section>
-            <SectionLabel>Budget Overview</SectionLabel>
-            <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <BudgetCard
-                label="Budget Committed"
-                value={budgetCommitted()}
-                icon={<div class="p-3 rounded-lg bg-blue-100 dark:bg-blue-300"><svg class="w-5 h-5 text-blue-600 dark:text-blue-800" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg></div>}
-                sub="Total contracted"
-                pctValue={budgetCommitted()}
-                pctMax={budgetCommitted()}
-              />
-              <BudgetCard
-                label="Budget Utilized"
-                value={budgetUtilized()}
-                icon={<div class="p-3 rounded-lg bg-purple-100 dark:bg-purple-300"><svg class="w-5 h-5 text-purple-600 dark:text-purple-800" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 3v18h18" /><path d="M18 17l-5-5-4 4-3-3" /></svg></div>}
-                sub={`${utilizationPct()}% of committed`}
-                pctValue={budgetUtilized()}
-                pctMax={budgetCommitted()}
-              />
-              <BudgetCard
-                label="Remaining Balance"
-                value={budgetRemaining()}
-                icon={<div class="p-3 rounded-lg bg-blue-100 dark:bg-blue-300"><svg class="w-5 h-5 text-blue-600 dark:text-blue-800" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 3" /></svg></div>}
-                sub="Available to spend"
-                pctValue={budgetRemaining()}
-                pctMax={budgetCommitted()}
-              />
-              <BudgetCard
-                label="Pending Payment"
-                value={pendingPayment()}
-                icon={<div class="p-3 rounded-lg bg-red-100 dark:bg-red-300"><svg class="w-5 h-5 text-red-600 dark:text-red-800" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" /></svg></div>}
-                sub={pendingPayment() > 0 ? "Due immediately" : "No dues outstanding"}
-                pctValue={pendingPayment()}
-                pctMax={budgetCommitted()}
-              />
+              <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <BudgetCard
+                  label="Budget Committed"
+                  value={budgetCommitted()}
+                  icon={
+                    <div class="p-3 rounded-lg bg-blue-100 dark:bg-blue-300">
+                      <svg
+                        class="w-5 h-5 text-blue-600 dark:text-blue-800"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"
+                        />
+                      </svg>
+                    </div>
+                  }
+                  sub="Total contracted"
+                  pctValue={budgetCommitted()}
+                  pctMax={budgetCommitted()}
+                />
+
+                <BudgetCard
+                  label="Budget Utilized"
+                  value={budgetUtilized()}
+                  icon={
+                    <div class="p-3 rounded-lg bg-purple-100 dark:bg-purple-300">
+                      <svg
+                        class="w-5 h-5 text-purple-600 dark:text-purple-800"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        viewBox="0 0 24 24"
+                      >
+                        <path d="M3 3v18h18" />
+                        <path d="M18 17l-5-5-4 4-3-3" />
+                      </svg>
+                    </div>
+                  }
+                  sub={`${utilizationPct()}% of committed`}
+                  pctValue={budgetUtilized()}
+                  pctMax={budgetCommitted()}
+                />
+
+                <BudgetCard
+                  label="Remaining Balance"
+                  value={budgetRemaining()}
+                  icon={
+                    <div class="p-3 rounded-lg bg-blue-100 dark:bg-blue-300">
+                      <svg
+                        class="w-5 h-5 text-blue-600 dark:text-blue-800"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle cx="12" cy="12" r="9" />
+                        <path d="M12 7v5l3 3" />
+                      </svg>
+                    </div>
+                  }
+                  sub="Available to spend"
+                  pctValue={budgetRemaining()}
+                  pctMax={budgetCommitted()}
+                />
+
+                <BudgetCard
+                  label="Pending Payment"
+                  value={pendingPayment()}
+                  icon={
+                    <div class="p-3 rounded-lg bg-red-100 dark:bg-red-300">
+                      <svg
+                        class="w-5 h-5 text-red-600 dark:text-red-800"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        viewBox="0 0 24 24"
+                      >
+                        <path d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                  }
+                  sub={
+                    pendingPayment() > 0
+                      ? "Due immediately"
+                      : "No dues outstanding"
+                  }
+                  pctValue={pendingPayment()}
+                  pctMax={budgetCommitted()}
+                />
+              </div>
+            </section>
+          </div>
+          <div
+            class={`transition-all duration-500 rounded-2xl
+  ${isLoading()
+                ? "animate-pulse shadow-inner"
+                : ""
+              }`}
+          >
+            <div class="grid grid-cols-3 gap-3">
+              <Card class="p-4 text-center">
+                <p class="text-md text-gray-700 dark:text-gray-400 font-medium">Total Leads</p>
+                <p class="text-xl font-bold mt-1 text-gray-700 dark:text-gray-400">{totalLeads()}</p>
+              </Card>
+              <Card class="p-4 text-center">
+                <p class="text-md text-gray-700 dark:text-gray-400 font-medium">Total Spend (ex-GST)</p>
+                <p class="text-xl font-bold mt-1 text-gray-700 dark:text-gray-400">{fmt(totalSpend())}</p>
+              </Card>
+              <Card class="p-4 text-center">
+                <p class="text-md text-gray-700 dark:text-gray-400 font-medium">Overall Avg CPL</p>
+                <p class="text-xl font-bold mt-1 text-gray-900 dark:text-gray-100">{fmt(overallCPL())}</p>
+              </Card>
             </div>
-          </section>
-
-          <div class="grid grid-cols-3 gap-3">
-            <Card class="p-4 text-center">
-              <p class="text-md text-gray-700 dark:text-gray-400 font-medium">Total Leads</p>
-              <p class="text-xl font-bold mt-1 text-gray-700 dark:text-gray-400">{totalLeads()}</p>
-            </Card>
-            <Card class="p-4 text-center">
-              <p class="text-md text-gray-700 dark:text-gray-400 font-medium">Total Spend (ex-GST)</p>
-              <p class="text-xl font-bold mt-1 text-gray-700 dark:text-gray-400">{fmt(totalSpend())}</p>
-            </Card>
-            <Card class="p-4 text-center">
-              <p class="text-md text-gray-700 dark:text-gray-400 font-medium">Overall Avg CPL</p>
-              <p class="text-xl font-bold mt-1 text-gray-900 dark:text-gray-100">{fmt(overallCPL())}</p>
-            </Card>
           </div>
           <section>
             <SectionLabel>Project-wise Budget Breakdown</SectionLabel>
