@@ -162,8 +162,8 @@ export default function Sidebar() {
                             <img src='/aajneeti-favicon.png' alt='aajneeti' />
                         </div>
                         <Show when={!isCollapsed()}>
-                            <div class="flex flex-col">
-                                <span class="text-lg font-bold text-gray-900 dark:text-white">Aajneeti Reporting Dashboard</span>
+                            <div class="flex flex-col p-4">
+                                <span class="text-sm font-bold text-gray-900 dark:text-white">Aajneeti Reporting Dashboard</span>
                                 <span class="text-xs text-red-800 font-semibold dark:text-gray-400">Aajneeti Connect ltd.</span>
                             </div>
                         </Show>
