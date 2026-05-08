@@ -23,7 +23,7 @@ export default function PerformanceChart(props) {
     month: ["Jan", "Feb", "Mar"]
   };
 
-  const totalLeads = () => props.campaign?.leads || 0;
+  const totalLeads = () => props.campaign?.leads_count || 0;
   const totalSpend = () => props.campaign?.spend || 0;
   const costPerResult = () => props.campaign?.cpl || 0;
 

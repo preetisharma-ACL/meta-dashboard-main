@@ -105,7 +105,20 @@ export default function CampaignDetails() {
             </nav>
 
             {/* Campaign Overview */}
-            <div class="grid md:grid-cols-4 gap-6 mb-10">
+            <div class="grid md:grid-cols-5 gap-6 mb-10">
+                 <div class="bg-red-50 dark:bg-gray-800 px-5 py-9 rounded-xl shadow hover:shadow-lg rounded  border border-red-200 dark:border-gray-600">
+                    <div class="flex items-center justify-between gap-2">
+                        <div>
+                            <p class="text-lg text-red-800 dark:text-gray-400">Leads</p>
+                            <h3 class="text-xl font-semibold mt-2 dark:text-white">
+                                {campaign()?.leads_count || "N/A"}
+                            </h3>
+                        </div>
+                        <div class="flex bg-red-100 dark:bg-purple-500 p-3 rounded items-center gap-1 mt-2 text-sm text-gray-500 dark:text-gray-400">
+                            <Users size={20} class="font-bold text-red-500 dark:text-purple-100" />
+                        </div>
+                    </div>
+                </div>
                 <div class="bg-blue-50 dark:bg-gray-800 px-5 py-9 rounded-xl shadow hover:shadow-lg  border border-blue-200 dark:border-gray-600">
                     <div class="flex items-center justify-between gap-2">
                         <div>
