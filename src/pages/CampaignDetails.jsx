@@ -20,7 +20,7 @@ export default function CampaignDetails() {
     // ── Write helper ─────────────────────────────────────────────────────────────
     const setCampaignCache = (patch) =>
         setCampaignDetailsCache(campaignId, (prev) => ({ ...prev, ...patch }));
-    
+
     onMount(async () => {
         // ✅ Skip fetch if we already have fresh data for this campaign
         if (!isCampaignCacheStale(campaignId)) return;
@@ -49,7 +49,12 @@ export default function CampaignDetails() {
             <div class=" flex flex-col  gap-4">
                 <div>
                     <h1 class="md:text-2xl text-xl font-semibold text-gray-800 dark:text-white">
-                        Campaign Details : {campaign()?.name}
+                        Campaign Details : {
+                            campaign()?.name
+                                ?.split("|")
+                                ?.filter((item, index) => index < 2)
+                                ?.join(" | ")
+                        }
                     </h1>
                     {/* <p class="text-sm text-gray-500 dark:text-gray-400">
                         Campaign ID: {params.id}
@@ -172,7 +177,12 @@ export default function CampaignDetails() {
                                     <Folder size={16} />
                                     Campaign Name
                                 </td>
-                                <td class="p-4 md:font-medium text-sm dark:text-white">{campaign()?.name}</td>
+                                <td class="p-4 md:font-medium text-sm dark:text-white"> {
+                            campaign()?.name
+                                ?.split("|")
+                                ?.filter((item, index) => index < 2)
+                                ?.join(" | ")
+                        }</td>
                             </tr>
 
                             <tr class="border-b dark:border-gray-700">
