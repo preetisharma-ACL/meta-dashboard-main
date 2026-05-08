@@ -849,9 +849,11 @@ export default function ProjectDetails() {
                             <th class="p-3" onClick={() => handleSort("start_date")}>
                                 Start Date {getSortIcon("start_date")}
                             </th>
+                             {userRole() === "admin" && (
                             <th class="p-3" onClick={() => handleSort("ad_account")}>
                                 Ad Account {getSortIcon("ad_account")}
                             </th>
+                            )}
                             <th class="p-3" onClick={() => handleSort("status")}>
                                 Status {getSortIcon("status")}
                             </th>
@@ -894,7 +896,9 @@ export default function ProjectDetails() {
                                         </Show>
                                     </td>
                                     <td class="p-3 ">{row.start_date || "No Date"}</td>
+                                     {userRole() === "admin" && (
                                     <td class="p-3 ">{row.ad_account}</td>
+                                    )}
                                     <td class="px-4 py-3">
                                         <span class="px-2 py-1 text-sm rounded-full capitalize"
                                             classList={{
