@@ -934,10 +934,10 @@ export default function MainDashboard() {
                                             </td>
 
                                             {/* Location */}
-                                            <td class="p-2">{project.location ?? "—"}</td>
+                                            <td class="p-2">Mumbai</td>
 
                                             {/* Type */}
-                                            <td class="p-2">{project.type ?? "—"}</td>
+                                            <td class="p-2">Residential</td>
 
                                             {/* Status Badge */}
                                             <td class="px-4 py-3">
