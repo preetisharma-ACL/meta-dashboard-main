@@ -282,7 +282,7 @@ export default function CampaignDetails() {
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-1  mb-8">
-                <LeadsChart />
+               <LeadsChart campaign={campaign()} />
             </div>
 
 

@@ -1,7 +1,9 @@
 import { createSignal, createEffect, onMount } from "solid-js";
 import ApexCharts from "apexcharts";
 
-export default function PerformanceChart() {
+export default function PerformanceChart(props) {
+
+
   let chartRef;
   let chart;
 
@@ -21,6 +23,16 @@ export default function PerformanceChart() {
     month: ["Jan", "Feb", "Mar"]
   };
 
+  const totalLeads = () => props.campaign?.leads || 0;
+  const totalSpend = () => props.campaign?.spend || 0;
+  const costPerResult = () => props.campaign?.cpl || 0;
+
+  // ---------------- DATA ----------------
+  // const dataMap = {
+  //   leads: props.campaign?.leads_chart || [],
+  //   perLead: props.campaign?.cpl_chart || [],
+  //   spent: props.campaign?.spend_chart || []
+  // };
 
   const getFilteredData = () => {
     const baseData = dataMap[tab()];
@@ -65,7 +77,7 @@ export default function PerformanceChart() {
           return `
           <div class="p-2 text-sm">
             <div>${date}</div>
-            <div>Per Lead (Form)</div>
+            <div>Cost Per Result</div>
             <div>₹ ${value}</div>
           </div>
         `;
@@ -82,7 +94,7 @@ export default function PerformanceChart() {
           return `
           <div class="p-2 text-sm">
             <div>${date}</div>
-            <div>Amount Spent</div>
+           <div>Spend</div>
             <div>₹ ${value}</div>
           </div>
         `;
@@ -207,12 +219,12 @@ export default function PerformanceChart() {
             }`}
         >
           <p class="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1">
-            Leads (Form)
+            Total Leads
             <span class="text-xs">ℹ️</span>
           </p>
 
           <h3 class="text-2xl font-semibold text-gray-800 dark:text-white mt-1">
-            47
+            {totalLeads()}
           </h3>
         </div>
 
@@ -226,12 +238,12 @@ export default function PerformanceChart() {
             }`}
         >
           <p class="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1">
-            Per Lead (Form)
+            Cost Per Result
             <span class="text-xs">ℹ️</span>
           </p>
 
           <h3 class="text-2xl font-semibold text-gray-800 dark:text-white mt-1">
-            ₹214.51
+            ₹{costPerResult()}
           </h3>
         </div>
 
@@ -245,12 +257,12 @@ export default function PerformanceChart() {
             }`}
         >
           <p class="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1">
-            Amount Spent
+            Spend
             <span class="text-xs">ℹ️</span>
           </p>
 
           <h3 class="text-2xl font-semibold text-gray-800 dark:text-white mt-1">
-            ₹10,082.10
+            ₹{totalSpend()}
           </h3>
         </div>
 
