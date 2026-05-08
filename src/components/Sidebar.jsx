@@ -163,7 +163,7 @@ export default function Sidebar() {
                         </div>
                         <Show when={!isCollapsed()}>
                             <div class="flex flex-col">
-                                <span class="text-lg font-bold text-gray-900 dark:text-white">Meta Dashboard</span>
+                                <span class="text-lg font-bold text-gray-900 dark:text-white">Aajneeti Reporting Dashboard</span>
                                 <span class="text-xs text-red-800 font-semibold dark:text-gray-400">Aajneeti Connect ltd.</span>
                             </div>
                         </Show>

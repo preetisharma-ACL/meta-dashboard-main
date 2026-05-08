@@ -178,7 +178,7 @@ export default function Login() {
                                     <path d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
                                 </svg>
                             </div>
-                            <span class="form-logo-text">MetaDashboard</span>
+                            <span class="form-logo-text">Aajneeti Reporting Dashboard</span>
                         </div>
 
                         <h1 class="form-heading">
@@ -244,7 +244,7 @@ export default function Login() {
 
                         <p class="form-footer">
                             Protected by enterprise-grade security.<br />
-                            &copy; {new Date().getFullYear()} MetaDashboard. All rights reserved.
+                            &copy; {new Date().getFullYear()} Aajneeti Reporting Dashboard. All rights reserved.
                         </p>
                     </div>
                 </div>
