@@ -766,7 +766,7 @@ export default function ProjectDetails() {
                     </button>
                 </div>
                 <div class="relative notification-wrapper">
-                    <div class="flex justify-end items-center gap-4  relative">
+                    {/* <div class="flex justify-end items-center gap-4  relative">
 
                         <h3 class="text-lg font-semibold text-gray-800 dark:text-white">
                             Notifications & Recommendations
@@ -776,20 +776,18 @@ export default function ProjectDetails() {
                             onClick={() => setShowNotifications(!showNotifications())}
                             class="relative p-2 m-2 rounded-full bg-blue-100 dark:bg-blue-800 hover:scale-105 transition"
                         >
-                            {/* Bell SVG */}
                             <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-blue-900 dark:text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                     d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14V11a6 6 0 10-12 0v3c0 .386-.149.735-.405 1.001L4 17h5m6 0a3 3 0 11-6 0h6z" />
                             </svg>
 
-                            {/* Badge */}
                             <Show when={suggestions().length > 0}>
                                 <span class="absolute -top-1 -right-1 bg-red-500 text-white text-xs px-1.5 rounded-full">
                                     {suggestions().length}
                                 </span>
                             </Show>
                         </button>
-                    </div>
+                    </div> */}
 
                     <Show when={showNotifications()}>
                         <div class="absolute right-0 mt-3 w-90 bg-white dark:bg-gray-900 
@@ -849,10 +847,10 @@ export default function ProjectDetails() {
                             <th class="p-3" onClick={() => handleSort("start_date")}>
                                 Start Date {getSortIcon("start_date")}
                             </th>
-                             {userRole() === "admin" && (
-                            <th class="p-3" onClick={() => handleSort("ad_account")}>
-                                Ad Account {getSortIcon("ad_account")}
-                            </th>
+                            {userRole() === "admin" && (
+                                <th class="p-3" onClick={() => handleSort("ad_account")}>
+                                    Ad Account {getSortIcon("ad_account")}
+                                </th>
                             )}
                             <th class="p-3" onClick={() => handleSort("status")}>
                                 Status {getSortIcon("status")}
@@ -896,8 +894,8 @@ export default function ProjectDetails() {
                                         </Show>
                                     </td>
                                     <td class="p-3 ">{row.start_date || "No Date"}</td>
-                                     {userRole() === "admin" && (
-                                    <td class="p-3 ">{row.ad_account}</td>
+                                    {userRole() === "admin" && (
+                                        <td class="p-3 ">{row.ad_account}</td>
                                     )}
                                     <td class="px-4 py-3">
                                         <span class="px-2 py-1 text-sm rounded-full capitalize"
