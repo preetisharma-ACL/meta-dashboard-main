@@ -132,7 +132,7 @@ export default function Login() {
             // window.location.href forces a full browser reload, guaranteeing
             // every component initialises from scratch with the new auth token
             // and an empty cache — exactly what handleLogout already does.
-            setIsLoggedIn(true);
+            
             window.location.href = "/";
 
         } catch (err) {
@@ -181,15 +181,8 @@ export default function Login() {
                             <span class="form-logo-text">Aajneeti Reporting Dashboard</span>
                         </div>
 
-                        <h1 class="form-heading">
-                            {isLoggedIn() ? "You're in." : "Welcome back"}
-                        </h1>
-                        <p class="form-subheading">
-                            {isLoggedIn()
-                                ? "You are already logged in to your account."
-                                : "Sign in to your account to continue"}
-                        </p>
-
+                       <h1 class="form-heading">Welcome back</h1>
+                       <p class="form-subheading">Sign in to your account to continue</p>
                         {/* Error */}
                         {error() && (
                             <div class="error-box">

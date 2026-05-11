@@ -728,14 +728,14 @@ export default function Billing() {
   const isLoading = () => billingCache.loading;
 
   const totalLeads = createMemo(() => projects().reduce((s, p) => s + p.totalLeads, 0));
-  const totalSpend = createMemo(() => projects().reduce((s, p) => s + p.totalSpend, 0));
+  const totalSpend = createMemo(() => projects().reduce((s, p) => s + p.totalSpend, 0).toFixed(2));
   const overallCPL = createMemo(() => totalLeads() > 0 ? parseFloat((totalSpend() / totalLeads()).toFixed(2)) : 0);
 
-  const budgetCommitted = () => parseFloat(overview().total_budget) || 0;
-  const budgetUtilized = () => parseFloat(overview().utilized) || 0;
-  const budgetRemaining = () => parseFloat(overview().remaining) || 0;
-  const pendingPayment = () => parseFloat(overview().pending_payment) || 0;
-  const utilizationPct = () => parseFloat(overview().utilization_percentage) || 0;
+  const budgetCommitted = () => parseFloat(overview().total_budget).toFixed(2) || 0;
+  const budgetUtilized = () => parseFloat(overview().utilized).toFixed(2) || 0;
+  const budgetRemaining = () => parseFloat(overview().remaining).toFixed(2) || 0;
+  const pendingPayment = () => parseFloat(overview().pending_payment).toFixed(2) || 0;
+  const utilizationPct = () => parseFloat(overview().utilization_percentage).toFixed(2) || 0;
 
   const tabs = [
     { id: "overview", label: "Overview" },
