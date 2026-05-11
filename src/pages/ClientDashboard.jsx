@@ -649,14 +649,14 @@ export default function MainDashboard() {
                     <h1 class="text-2xl font-semibold mb-1">Active Projects</h1>
                     <p class="text-md text-gray-700 dark:text-gray-400">All projects with live marketing campaigns.</p>
                 </div>
-                <div class="flex items-center gap-2">
+                {/* <div class="flex items-center gap-2">
                     <A
                         href="/add-project"
                         class="bg-blue-900 hover:bg-blue-800 transition-all text-white px-4 py-2 rounded-lg text-sm font-medium shadow"
                     >
                         + Add New Project
                     </A>
-                </div>
+                </div> */}
             </div>
 
             <div class="flex flex-wrap gap-2 mb-5">
