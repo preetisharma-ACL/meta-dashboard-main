@@ -10,7 +10,7 @@ import MainDashboard from './pages/ClientDashboard';
 import AddProject from './pages/AddProjects';
 import Billing from './pages/Billing';
 import ClientDelivery from './pages/Client-Delivery';
-import WhatIsPerforming from './pages/WhatisPerforming';
+import PerformingProjects from './pages/PerformingProjects';
 import Settings from './pages/Settings';
 import Notifications from './pages/Alert';
 import ProjectDetails from './pages/ProjectDetails';
@@ -82,7 +82,7 @@ function App() {
             <Route path="/add-project" component={AddProject} />
             <Route path="/billing" component={Billing} />
             <Route path="/client-delivery" component={ClientDelivery} />
-            <Route path="/what-is-performing" component={WhatIsPerforming} />
+            <Route path="/performing-projects" component={PerformingProjects} />
             <Route path="/settings" component={Settings} />
             <Route path="/notifications" component={Notifications} />
             <Route path="/project/:id" component={ProjectDetails} />

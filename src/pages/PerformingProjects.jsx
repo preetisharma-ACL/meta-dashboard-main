@@ -1,7 +1,7 @@
 import { createSignal, createMemo, For } from "solid-js";
 import { onMount, onCleanup } from "solid-js";
 
-const WhatIsPerforming = () => {
+  const PerformingProjects = () => {
 
   const [city, setCity] = createSignal("");
   const [rera, setRera] = createSignal("");
@@ -790,4 +790,4 @@ const WhatIsPerforming = () => {
   );
 };
 
-export default WhatIsPerforming;
+export default PerformingProjects;
