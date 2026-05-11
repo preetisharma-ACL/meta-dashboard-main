@@ -382,7 +382,7 @@ export default function Notifications() {
               Refresh
             </button>
             {/* ── TEMP TEST BUTTON — remove after testing ── */}
-            <button
+            {/* <button
               onClick={() => {
                 setNotifications(prev => [
                   {
@@ -404,7 +404,7 @@ export default function Notifications() {
               class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium bg-green-600 text-white hover:bg-green-700"
             >
               + Test Sound
-            </button>
+            </button> */}
           </div>
         </div>
 
