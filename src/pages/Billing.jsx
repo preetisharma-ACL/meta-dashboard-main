@@ -135,12 +135,34 @@ function BudgetCard(props) {
     <Card class="p-5 space-y-3 shadow-lg">
       <div class="flex items-start justify-between">
         <div class="space-y-0.5">
-          <p class="text-md text-gray-700 dark:text-gray-400 font-semibold">{props.label}</p>
-          <p class="text-lg font-bold text-gray-800 dark:text-gray-100">{fmt(props.value)}</p>
+          <p class="text-md font-semibold text-gray-700 dark:text-gray-400">
+            {props.label}
+          </p>
+
+          <p class="text-lg font-bold text-gray-800 dark:text-gray-100">
+            {fmt(props.value)}
+          </p>
         </div>
+
         <span class="text-2xl">{props.icon}</span>
       </div>
-      <p class="text-sm text-gray-600 dark:text-gray-400">{props.sub}</p>
+
+      {props.allocation && (
+        <span class="inline-block text-[12px] px-2 text-gray-800 dark:text-gray-300 bg-blue-100 dark:bg-blue-800 px-2 py-1 rounded-full">
+          {props.allocation}
+        </span>
+      )}
+      <p
+        class={`text-sm text-gray-600 dark:text-gray-400 ${props.allocation ? "pt-0" : "pt-10"
+          }`}
+      >
+        {props.sub}
+      </p>
+
+      {/* <p class="text-sm text-gray-600 dark:text-gray-400">
+        {props.sub}
+      </p> */}
+
       <ProgressBar value={props.pctValue} max={props.pctMax} />
     </Card>
   );
@@ -816,6 +838,7 @@ export default function Billing() {
                       </svg>
                     </div>
                   }
+                  allocation="Monthly Allocation"
                   sub="Total contracted"
                   pctValue={budgetCommitted()}
                   pctMax={budgetCommitted()}
