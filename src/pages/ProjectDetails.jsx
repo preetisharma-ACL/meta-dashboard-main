@@ -45,14 +45,51 @@ export default function ProjectDetails() {
     // Build chart once on mount; createEffect above will re-feed data reactively
     let chartInstance = null;
 
-    const buildChart = (campaigns, label) => {
+    const buildChart = (campaigns) => {
         const canvas = document.getElementById("campaignChartCanvas");
         if (!canvas) return;
 
-        const labels = campaigns.map(c => (c.campaign_name?.split("|")[0] ?? "").trim().slice(0, 18));
-        const leads = campaigns.map(c => c.totalLeads ?? 0);
-        const spent = campaigns.map(c => c.totalSpent ?? 0);
+        // ── Dark-mode detection ────────────────────────────────────────────────
+        const dark = document.documentElement.classList.contains("dark");
 
+        // ── Theme tokens ───────────────────────────────────────────────────────
+        const theme = {
+            // Leads bar
+            barBg: dark ? "rgba(167,139,250,0.75)" : "rgba(124,58,237,0.82)",   // violet-400 / violet-700
+            barBorder: dark ? "#A78BFA" : "#6D28D9",
+
+            // Spend line
+            lineBorder: dark ? "#FB923C" : "#EA580C",                 // orange-400 / orange-600
+            lineFill: dark ? "rgba(251,146,60,0.10)" : "rgba(234,88,12,0.08)",
+
+            // Grid
+            grid: dark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.06)",
+
+            // Axis ticks
+            tick: dark ? "#9CA3AF" : "#6B7280",                 // gray-400 / gray-500
+
+            // Axis titles
+            leadsTitle: dark ? "#C4B5FD" : "#5B21B6",                 // violet-300 / violet-800
+            spentTitle: dark ? "#FCA5A5" : "#C2410C",                 // orange-300 / orange-700
+
+            // Tooltip
+            tipBg: dark ? "#1F2937" : "#ffffff",
+            tipBorder: dark ? "#374151" : "#E5E7EB",
+            tipTitle: dark ? "#F9FAFB" : "#111827",
+            tipBody: dark ? "#D1D5DB" : "#374151",
+
+            // Point dot border (makes dots pop on their bg)
+            dotBorder: dark ? "#1F2937" : "#ffffff",
+        };
+
+        // ── Data ───────────────────────────────────────────────────────────────
+        const labels = campaigns.map(
+            (c) => (c.campaign_name?.split("|")[0] ?? "").trim().slice(0, 18)
+        );
+        const leads = campaigns.map((c) => c.totalLeads ?? 0);
+        const spent = campaigns.map((c) => c.totalSpent ?? 0);
+
+        // ── Destroy old instance ───────────────────────────────────────────────
         if (chartInstance) chartInstance.destroy();
 
         chartInstance = new Chart(canvas, {
@@ -63,10 +100,10 @@ export default function ProjectDetails() {
                         type: "bar",
                         label: "Leads",
                         data: leads,
-                        backgroundColor: "rgba(83,74,183,0.82)",
-                        borderColor: "#3C3489",
+                        backgroundColor: theme.barBg,
+                        borderColor: theme.barBorder,
                         borderWidth: 1.5,
-                        borderRadius: 5,
+                        borderRadius: 6,
                         yAxisID: "yLeads",
                         order: 2,
                     },
@@ -74,9 +111,11 @@ export default function ProjectDetails() {
                         type: "line",
                         label: "Spent (₹)",
                         data: spent,
-                        borderColor: "#D85A30",
-                        backgroundColor: "rgba(216,90,48,0.08)",
-                        pointBackgroundColor: "#D85A30",
+                        borderColor: theme.lineBorder,
+                        backgroundColor: theme.lineFill,
+                        pointBackgroundColor: theme.lineBorder,
+                        pointBorderColor: theme.dotBorder,
+                        pointBorderWidth: 2,
                         pointRadius: 5,
                         pointHoverRadius: 7,
                         fill: true,
@@ -95,8 +134,17 @@ export default function ProjectDetails() {
                 plugins: {
                     legend: { display: false },
                     tooltip: {
+                        backgroundColor: theme.tipBg,
+                        titleColor: theme.tipTitle,
+                        bodyColor: theme.tipBody,
+                        borderColor: theme.tipBorder,
+                        borderWidth: 1,
+                        padding: 10,
+                        cornerRadius: 8,
                         callbacks: {
-                            title: (items) => campaigns[items[0].dataIndex]?.campaign_name ?? items[0].label,
+                            title: (items) =>
+                                campaigns[items[0].dataIndex]?.campaign_name
+                                ?? items[0].label,
                             label: (item) =>
                                 item.dataset.label === "Leads"
                                     ? `  Leads: ${item.raw}`
@@ -105,18 +153,40 @@ export default function ProjectDetails() {
                     },
                 },
                 scales: {
-                    x: { ticks: { autoSkip: false, maxRotation: 35 } },
+                    x: {
+                        ticks: {
+                            autoSkip: false,
+                            maxRotation: 35,
+                            color: theme.tick,
+                            font: { size: 11 },
+                        },
+                        grid: { color: theme.grid },
+                    },
                     yLeads: {
-                        type: "linear", position: "left",
-                        title: { display: true, text: "Leads", color: "#534AB7", font: { size: 11 } },
-                        ticks: { color: "#534AB7" },
+                        type: "linear",
+                        position: "left",
+                        title: {
+                            display: true,
+                            text: "Leads",
+                            color: theme.leadsTitle,
+                            font: { size: 11, weight: "600" },
+                        },
+                        ticks: { color: theme.leadsTitle, font: { size: 11 } },
+                        grid: { color: theme.grid },
                     },
                     ySpent: {
-                        type: "linear", position: "right",
+                        type: "linear",
+                        position: "right",
                         grid: { drawOnChartArea: false },
-                        title: { display: true, text: "Spent (₹)", color: "#D85A30", font: { size: 11 } },
+                        title: {
+                            display: true,
+                            text: "Spent (₹)",
+                            color: theme.spentTitle,
+                            font: { size: 11, weight: "600" },
+                        },
                         ticks: {
-                            color: "#D85A30",
+                            color: theme.spentTitle,
+                            font: { size: 11 },
                             callback: (v) => "₹" + Number(v).toLocaleString("en-IN"),
                         },
                     },
@@ -124,7 +194,6 @@ export default function ProjectDetails() {
             },
         });
     };
-
     // Wire into the reactive effect
     window.__updateCampaignChart = (campaigns) => buildChart(campaigns, rangeLabel());
 
@@ -187,6 +256,16 @@ export default function ProjectDetails() {
         };
         document.addEventListener("click", handleClickOutside);
         onCleanup(() => document.removeEventListener("click", handleClickOutside));
+
+        // Re-build chart whenever the <html> dark class toggles (live theme switch)
+        const darkObserver = new MutationObserver(() => {
+            const data = sortedCampaigns();
+            if (data.length) buildChart(data);
+        });
+        darkObserver.observe(document.documentElement, {
+            attributes: true,
+            attributeFilter: ["class"],
+        });
     });
 
     const loadProject = async () => {
@@ -1013,67 +1092,93 @@ export default function ProjectDetails() {
             </div>
 
             {/* ================= ANALYTICS CHART ================= */}
-            <div class="mt-8 p-5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl">
+            <div class="mt-8 p-5
+                bg-white       dark:bg-gray-800/70
+                border border-gray-200 dark:border-gray-700/60
+                rounded-xl shadow-sm dark:shadow-black/30">
 
                 {/* Header row */}
                 <div class="flex items-center justify-between flex-wrap gap-3 mb-4">
                     <div>
-                        <h3 class="text-[15px] font-medium text-gray-800 dark:text-white">
+                        <h3 class="text-[15px] font-semibold text-gray-800 dark:text-gray-100">
                             Campaign performance
                         </h3>
-                        <p class="text-sm text-gray-400 mt-0.5">
+                        <p class="text-sm text-gray-400 dark:text-gray-500 mt-0.5">
                             {rangeLabel()} · leads vs spend
                         </p>
                     </div>
 
                     {/* Legend */}
-                    <div class="flex items-center gap-4 text-xs text-gray-500">
+                    <div class="flex items-center gap-5 text-xs text-gray-500 dark:text-gray-400">
                         <span class="flex items-center gap-1.5">
-                            <span class="w-3 h-3 rounded-sm bg-purple-600 inline-block" />
+                            <span class="w-3 h-3 rounded-sm bg-violet-500 dark:bg-violet-400 inline-block" />
                             Leads (bar)
                         </span>
-                        <span class="flex items-center gap-1.5">
-                            <span class="w-4 h-0.5 bg-orange-500 inline-block relative">
-                                <span class="w-2 h-2 rounded-full bg-orange-500 absolute -top-[3px] left-1/2 -translate-x-1/2" />
+                        <span class="flex items-center gap-2">
+                            <span class="relative w-5 h-0.5 bg-orange-500 dark:bg-orange-400 inline-block">
+                                <span class="w-2 h-2 rounded-full bg-orange-500 dark:bg-orange-400
+                                 absolute -top-[3px] left-1/2 -translate-x-1/2" />
                             </span>
-                            <span class="ml-1">Spent ₹ (line)</span>
+                            Spent ₹ (line)
                         </span>
                     </div>
                 </div>
 
                 {/* Summary cards */}
                 <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
-                    <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
-                        <p class="text-xs text-gray-400 mb-1">Campaigns</p>
-                        <p class="text-xl font-medium text-gray-800 dark:text-white">
+
+                    {/* Campaigns */}
+                    <div class="rounded-lg p-3
+                        bg-gray-50       dark:bg-gray-900/60
+                        border border-transparent dark:border-gray-700/40">
+                        <p class="text-xs text-gray-400 dark:text-gray-500 mb-1">Campaigns</p>
+                        <p class="text-xl font-semibold text-gray-800 dark:text-gray-100">
                             {sortedCampaigns().length}
                         </p>
                     </div>
-                    <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
-                        <p class="text-xs text-gray-400 mb-1">Total leads</p>
-                        <p class="text-xl font-medium text-purple-600">
+
+                    {/* Total leads */}
+                    <div class="rounded-lg p-3
+                        bg-violet-50     dark:bg-violet-900/20
+                        border border-violet-100 dark:border-violet-700/30">
+                        <p class="text-xs text-violet-500 dark:text-violet-400 mb-1">Total leads</p>
+                        <p class="text-xl font-semibold text-violet-600 dark:text-violet-300">
                             {footerTotals().totalLeads}
                         </p>
                     </div>
-                    <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
-                        <p class="text-xs text-gray-400 mb-1">Total spent</p>
-                        <p class="text-xl font-medium text-orange-500">
+
+                    {/* Total spent */}
+                    <div class="rounded-lg p-3
+            bg-orange-50     dark:bg-orange-900/20
+            border border-orange-100 dark:border-orange-700/30">
+                        <p class="text-xs text-orange-500 dark:text-orange-400 mb-1">Total spent</p>
+                        <p class="text-xl font-semibold text-orange-500 dark:text-orange-300">
                             ₹{footerTotals().totalSpent.toLocaleString("en-IN")}
                         </p>
                     </div>
-                    <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
-                        <p class="text-xs text-gray-400 mb-1">Top campaign</p>
-                        <p class="text-sm font-medium text-gray-800 dark:text-white truncate">
+
+                    {/* Top campaign */}
+                    <div class="rounded-lg p-3
+            bg-gray-50       dark:bg-gray-900/60
+            border border-transparent dark:border-gray-700/40">
+                        <p class="text-xs text-gray-400 dark:text-gray-500 mb-1">Top campaign</p>
+                        <p class="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
                             {sortedCampaigns()[0]?.campaign_name?.split("|")[0]?.trim() ?? "—"}
                         </p>
                     </div>
+
                 </div>
 
-                {/* Chart canvas */}
-                <div class="relative w-full h-72 sm:h-80">
+                {/* Chart canvas — wrapped in a bg-matched container */}
+                <div class="relative w-full h-72 sm:h-80
+        rounded-lg overflow-hidden
+        bg-white dark:bg-gray-900/50
+        border border-gray-100 dark:border-gray-700/40
+        p-1">
                     <canvas id="campaignChartCanvas" role="img"
                         aria-label="Combined bar and line chart: purple bars for leads, orange line for spend per campaign" />
                 </div>
+
             </div>
 
 
