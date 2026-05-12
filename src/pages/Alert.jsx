@@ -528,10 +528,7 @@ export default function Notifications() {
                         <div class={`absolute left-0 top-3 bottom-3 w-0.5 rounded-r-full ${cfg.bar}`} />
                       </Show>
 
-                      {/* Icon */}
-                      {/* <div class={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center ${cfg.icon}`}>
-                        {ICONS[item.type] || ICONS.danger}
-                      </div> */}
+                      
 
                       {/* Body */}
                       <div class="flex-1 min-w-0 space-y-1">

@@ -552,8 +552,8 @@ function AddFundsModal(props) {
 }
 
 function InvoiceModal(props) {
-  const gst = () => (props.invoice ? props.invoice.amount * 0.18 : 0);
-  const total = () => (props.invoice ? props.invoice.amount + gst() : 0);
+  const gst = () => props.invoice?.gstAmount || 0;
+  const total = () => props.invoice?.amount || 0;
 
   const handleBackdrop = (e) => {
     if (e.target === e.currentTarget) props.onClose();
@@ -608,8 +608,8 @@ function InvoiceModal(props) {
           {/* ── Amount Breakdown ── */}
           <div class="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
             {[
-              { label: "Payment Received", value: props.invoice?.amount ?? 0 },
-              { label: "GST (18%)", value: gst() },
+              { label: "Base Amount", value: props.invoice?.baseAmount ?? 0 },
+              { label: `GST (${props.invoice?.gstLabel || "18%"})`, value: gst() },
             ].map(({ label, value }) => (
               <div class="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700 last:border-0">
                 <span class="text-sm text-gray-600 dark:text-gray-400">{label}</span>
@@ -690,17 +690,31 @@ export default function Billing() {
     return apiData.map((item) => ({
       id: `PAY-${item.id}`,
 
-      date: new Date(item.date).toLocaleDateString("en-IN", {
+      date: new Date(item.paid_at).toLocaleDateString("en-IN", {
         day: "2-digit",
         month: "short",
         year: "numeric",
       }),
 
-      amount: parseFloat(item.amount),
+      // updated field
+      amount: parseFloat(item.final_amount || 0),
+
+      // optional extra fields from latest API
+      baseAmount: parseFloat(item.base_amount || 0),
+
+      gstPct: item.gst_pct,
+
+      gstLabel: item.gst_pct_label,
+
+      gstAmount: parseFloat(item.gst_amount || 0),
+
+      includingGst: parseFloat(item.including_gst || 0),
 
       method: "Online",
 
       status: item.status,
+
+      statusLabel: item.status_label,
 
       gstFiled: false,
 
@@ -713,6 +727,7 @@ export default function Billing() {
       creditDate: null,
     }));
   });
+
   const totalReceived = createMemo(() => {
     return payments().reduce((sum, payment) => {
       return sum + (payment.amount || 0);
