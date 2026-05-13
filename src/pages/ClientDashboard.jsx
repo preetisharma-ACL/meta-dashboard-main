@@ -148,7 +148,9 @@ export default function MainDashboard() {
                 location: item.city,
                 budget: parseFloat(item.budget) || 0,
                 leadsgenerated: item.leads_count ?? 0,
-                type: item.property_type ?? "N/A",
+                type: item.property_type
+                    ? item.property_type.charAt(0).toUpperCase() + item.property_type.slice(1).toLowerCase()
+                    : "N/A",
                 uploaddocument: item.upload_document ?? null,
                 activeCampaigns: item.campaign_count ?? 0,
                 pausedCampaigns: item.paused_campaigns ?? 0,
@@ -835,28 +837,28 @@ export default function MainDashboard() {
                         onChange={(e) => setSortType(e.target.value)}
                     >
                         <option value="">Sort by</option>
-                    <option value="budget">Budget: High to Low</option>
-                    <option value="leads">Leads: High to Low</option>
-                    <option value="activeCampaigns">Active Campaigns</option>
-                    <option value="cplHigh">CPL: High to Low</option>
-                    <option value="cplLow">CPL: Low to High</option>
-                </select>
+                        <option value="budget">Budget: High to Low</option>
+                        <option value="leads">Leads: High to Low</option>
+                        <option value="activeCampaigns">Active Campaigns</option>
+                        <option value="cplHigh">CPL: High to Low</option>
+                        <option value="cplLow">CPL: Low to High</option>
+                    </select>
 
-                <div class="pointer-events-none absolute inset-y-0 right-3 flex items-center">
-                    <svg
-                        class="w-4 h-4 text-gray-500"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                    >
-                        <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            stroke-width="2"
-                            d="M19 9l-7 7-7-7"
-                        />
-                    </svg>
-                </div>
+                    <div class="pointer-events-none absolute inset-y-0 right-3 flex items-center">
+                        <svg
+                            class="w-4 h-4 text-gray-500"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                        >
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M19 9l-7 7-7-7"
+                            />
+                        </svg>
+                    </div>
                 </div>
 
                 <DateRangeFilter
@@ -970,10 +972,10 @@ export default function MainDashboard() {
                                             </td>
 
                                             {/* Location */}
-                                            <td class="p-2">Mumbai</td>
+                                            <td class="p-2">{project.location}</td>
 
                                             {/* Type */}
-                                            <td class="p-2">Residential</td>
+                                            <td class="p-2">{project.type}</td>
 
                                             {/* Status Badge */}
                                             <td class="px-4 py-3">

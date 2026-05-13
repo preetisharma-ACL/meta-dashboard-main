@@ -173,11 +173,7 @@ export default function Login() {
 
                         {/* Logo */}
                         <div class="form-logo">
-                            <div class="form-logo-icon">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                                    <path d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-                                </svg>
-                            </div>
+                            <image src="/aajneeti-favicon.png" alt="aajneeti reporting dashboard"  />
                             <span class="form-logo-text">Aajneeti Reporting Dashboard</span>
                         </div>
 
