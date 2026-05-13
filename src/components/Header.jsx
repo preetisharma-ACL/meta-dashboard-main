@@ -40,18 +40,23 @@ export default function Header() {
     }
 
     onMount(async () => {
-        // ✅ Skip entirely if cache is still fresh
         if (!isHeaderCacheStale()) return;
-
-        // ✅ Prevent duplicate in-flight fetches
         if (headerCache.loading) return;
 
         try {
             setHeaderCache("loading", true);
 
+            // ✅ Load user first
             const userRes = await fetchUser();
 
-            // ✅ fetch all alerts from all pages
+            // ✅ Immediately update user UI
+            setHeaderCache({
+                ...headerCache,
+                user: userRes.data,
+                loading: false,
+            });
+
+            // ✅ Notifications load separately in background
             let pageNo = 1;
             let allAlerts = [];
 
@@ -67,7 +72,9 @@ export default function Header() {
                 pageNo++;
             }
 
-            const readIds = JSON.parse(localStorage.getItem("readAlerts") || "[]");
+            const readIds = JSON.parse(
+                localStorage.getItem("readAlerts") || "[]"
+            );
 
             const allNotifications = allAlerts.map((item) => ({
                 id: item.id,
@@ -77,21 +84,15 @@ export default function Header() {
                 unread: !readIds.includes(item.id) && !item.is_acknowledged,
             }));
 
-            const mapped = allNotifications.slice(0, 5);
-
-            const unreadTotalCount = allNotifications.filter(n => n.unread).length;
-
-            // ✅ Single write stamps lastFetched — won't refetch for 5 minutes
             setHeaderCache({
-                user: userRes.data,
-                notifications: mapped,
-                unreadTotal: unreadTotalCount,
+                ...headerCache,
+                notifications: allNotifications.slice(0, 5),
+                unreadTotal: allNotifications.filter(n => n.unread).length,
                 lastFetched: Date.now(),
-                loading: false,
             });
 
         } catch (err) {
-            console.error("[Header] Failed to load user/alerts:", err);
+            console.error("[Header] Failed:", err);
             setHeaderCache("loading", false);
         }
     });
@@ -203,7 +204,7 @@ export default function Header() {
                                 <div class="max-h-96 overflow-y-auto">
                                     <Show
                                         when={notifications().length > 0}
-                                        fallback={<p class="p-4 text-sm text-gray-500 text-center">No notifications</p>}
+                                        fallback={<p class="p-4 text-sm text-gray-500 text-center">No new notifications</p>}
                                     >
                                         <For each={notifications()}>
                                             {(notif) => (

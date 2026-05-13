@@ -17,6 +17,9 @@ import ProjectDetails from './pages/ProjectDetails';
 import CampaignDetails from './pages/CampaignDetails';
 import Login from './pages/login/LoginForm';
 import ProtectedRoute from './routes/ProtectedRoute';
+import LeadsPage from './pages/LeadPerformance';
+import Leads from './pages/Leads';
+import FollowUp from './pages/FollowUp';
 
 //  Layout is a named component — SolidJS reuses the SAME instance across all
 //    child route navigations, so Header and Sidebar mount exactly ONCE
@@ -49,6 +52,8 @@ function Root(props) {
 
     window.addEventListener("auth-logout", handleLogout);
     onCleanup(() => window.removeEventListener("auth-logout", handleLogout));
+
+   
   });
 
   return <>{props.children}</>;
@@ -87,8 +92,10 @@ function App() {
             <Route path="/notifications" component={Notifications} />
             <Route path="/project/:id" component={ProjectDetails} />
             <Route path="/campaign/:id" component={CampaignDetails} />
+            <Route path="/leads-performance" component={LeadsPage} />
+            <Route path="/leads" component={Leads} />
+            <Route path="/follow-up" component={FollowUp} />
           </Route>
-
         </Router>
       </SidebarProvider>
     </ThemeProvider>

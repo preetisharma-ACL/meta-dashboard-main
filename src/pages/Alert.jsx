@@ -122,21 +122,21 @@ export default function Notifications() {
   const [hasPrev, setHasPrev] = createSignal(false);
   const [allNotifications, setAllNotifications] = createSignal([]);
 
-  // ✅ FIX 1: signal, not plain variable
+  //  FIX 1: signal, not plain variable
   const [prevIds, setPrevIds] = createSignal([]);
 
   const notificationSound = new Audio("/notification.mp3");
   let isUnlocked = false;
   fetch("/notification.mp3").then(r => console.log("File status:", r.status, r.ok))
 
-  // ✅ Request notification permission
+  //  Request notification permission
   onMount(() => {
     if (Notification.permission !== "granted") {
       Notification.requestPermission();
     }
   });
 
-  // ✅ Unlock audio on first user click (browser requirement)
+  //  Unlock audio on first user click (browser requirement)
   onMount(() => {
     const unlock = () => {
       if (!isUnlocked) {
@@ -151,11 +151,11 @@ export default function Notifications() {
     return () => window.removeEventListener("click", unlock);
   });
 
-  // ✅ FIX 2: Properly detect new notifications using signal
+  //  FIX 2: Properly detect new notifications using signal
   createEffect(() => {
-    const current = notifications().map(n => n.id); // ✅ tracked — re-runs when notifications change
+    const current = notifications().map(n => n.id); //  tracked — re-runs when notifications change
 
-    // ✅ untrack prevIds so reading it doesn't re-trigger this effect
+    //  untrack prevIds so reading it doesn't re-trigger this effect
     const prev = untrack(() => prevIds());
 
     if (prev.length > 0) {
@@ -164,7 +164,7 @@ export default function Notifications() {
         console.log("🔊 Playing sound for", newOnes.length, "new alerts");
         notificationSound.currentTime = 0;
         notificationSound.play()
-          .then(() => console.log("✅ Sound played!"))
+          .then(() => console.log(" Sound played!"))
           .catch(e => console.error("❌ Sound error:", e));
 
         if (Notification.permission === "granted") {
@@ -175,7 +175,7 @@ export default function Notifications() {
       }
     }
 
-    // ✅ update prevIds — safe because we used untrack() above
+    //  update prevIds — safe because we used untrack() above
     setPrevIds(current);
   });
 
@@ -185,7 +185,7 @@ export default function Notifications() {
     try {
       const res = await fetchAlerts(pageNo);
 
-      // ✅ FIX 3: Handle undefined response (401 redirect case)
+      //  FIX 3: Handle undefined response (401 redirect case)
       if (!res) return;
 
       const data = res?.data || [];
@@ -227,7 +227,7 @@ export default function Notifications() {
 
   const loadAllAlerts = async () => {
     if (hasLoadedAll) return;
-    // ✅ FIX 4: wrap in try/catch + reset flag on failure
+    //  FIX 4: wrap in try/catch + reset flag on failure
     try {
       hasLoadedAll = true;
       let pageNo = 1;
@@ -235,7 +235,7 @@ export default function Notifications() {
 
       while (true) {
         const res = await fetchAlerts(pageNo);
-        if (!res) return; // ✅ stop if redirected to login
+        if (!res) return; //  stop if redirected to login
         const data = res?.data || [];
         allData = [...allData, ...data];
         if (!res?.meta?.pagination?.has_next) break;
@@ -249,7 +249,7 @@ export default function Notifications() {
       }));
       setAllNotifications(mapped);
     } catch (err) {
-      hasLoadedAll = false; // ✅ allow retry on next visit
+      hasLoadedAll = false; //  allow retry on next visit
       console.error("loadAllAlerts failed:", err);
     }
   };
@@ -258,7 +258,7 @@ export default function Notifications() {
     loadAlerts(1);
     loadAllAlerts();
 
-    // ✅ FIX 5: Poll every 30s, only when tab is visible
+    //  FIX 5: Poll every 30s, only when tab is visible
     const interval = setInterval(() => {
       if (!document.hidden) {
         loadAlerts(page());
