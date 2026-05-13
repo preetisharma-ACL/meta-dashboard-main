@@ -102,7 +102,7 @@
   @apply w-full px-3 py-2.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-md hover:shadow-lg duration-200 text-gray-800 dark:text-gray-200 focus:ring-1 focus:ring-green-500 focus:border-green-500 focus:outline-none;
 }
 
-@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&family=DM+Serif+Display:ital@0;1&display=swap');
 
 .login-root {
   min-height: 100vh;
@@ -117,7 +117,15 @@
   flex: 1;
   display: none;
   overflow: hidden;
-  background: linear-gradient(135deg, #dde8f0 0%, #e8dff5 40%, #f5e8dc 100%);
+
+  /* Image at its real/natural size, centred, no scaling */
+  background-image: url('/login-imgs.webp');
+  background-size: cover;
+  background-position: center center;
+  background-repeat: no-repeat;
+
+  /* Fallback colour that matches the image palette */
+  background-color: #dde8f0;
 }
 
 @media (min-width: 900px) {
@@ -128,84 +136,39 @@
   }
 }
 
-/* soft blobs */
-.blob {
+/* Very light colour wash so the glass card stays readable */
+.login-left::before {
+  content: '';
   position: absolute;
-  border-radius: 50%;
-  filter: blur(72px);
-  opacity: 0.65;
-  animation: floatBlob 8s ease-in-out infinite;
+  inset: 0;
+  background: linear-gradient(
+    135deg,
+    rgba(221, 232, 240, 0.28) 0%,
+    rgba(232, 223, 245, 0.18) 50%,
+    rgba(245, 232, 220, 0.24) 100%
+  );
+  pointer-events: none;
+  z-index: 0;
 }
 
-.blob-1 {
-  width: 420px;
-  height: 420px;
-  background: radial-gradient(circle, #e8beb8 0%, #f0c5c4 100%);
-  top: -80px;
-  right: -60px;
-  animation-delay: 0s;
-}
+/* Blobs hidden — the image provides all the colour and texture */
+.blob { display: none; }
 
-.blob-2 {
-  width: 300px;
-  height: 300px;
-  background: radial-gradient(circle, #f5c9a0 0%, #f0a8b8 100%);
-  bottom: 40px;
-  left: 20px;
-  animation-delay: -3s;
-}
-
-.blob-3 {
-  width: 220px;
-  height: 220px;
-  background: radial-gradient(circle, #a8d8c8 0%, #c4e0f5 100%);
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  animation-delay: -5s;
-}
-
-@keyframes floatBlob {
-
-  0%,
-  100% {
-    transform: translateY(0px) scale(1);
-  }
-
-  50% {
-    transform: translateY(-24px) scale(1.04);
-  }
-}
-
-.blob-3 {
-  animation-name: floatBlobCenter;
-}
-
-@keyframes floatBlobCenter {
-
-  0%,
-  100% {
-    transform: translate(-50%, -50%) scale(1);
-  }
-
-  50% {
-    transform: translate(-50%, calc(-50% - 20px)) scale(1.06);
-  }
-}
-
-/* glassmorphism card on left */
+/* Glassmorphism card on left — sits on top of the image */
 .left-glass-card {
   position: relative;
   z-index: 2;
-  background: rgba(255, 255, 255, 0.38);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.22);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.60);
+  border-radius: 28px;
   padding: 48px 44px;
   max-width: 400px;
   width: 85%;
-  box-shadow: 0 8px 48px rgba(100, 120, 160, 0.12);
+  box-shadow:
+    0 8px 48px rgba(80, 110, 160, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.65);
 }
 
 .left-tagline {
@@ -223,40 +186,9 @@
 
 .left-desc {
   font-size: 0.92rem;
-  color: #4a5568;
+  color: #3a4a62;
   line-height: 1.7;
   margin: 0 0 32px;
-}
-
-.left-email-row {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-
-.left-email-input {
-  flex: 1;
-  padding: 10px 16px;
-  border-radius: 50px;
-  border: 1px solid rgba(255, 255, 255, 0.8);
-  background: rgba(255, 255, 255, 0.55);
-  font-size: 0.82rem;
-  color: #888;
-  outline: none;
-  font-family: 'DM Sans', sans-serif;
-}
-
-.left-signup-btn {
-  padding: 10px 22px;
-  border-radius: 50px;
-  background: #1a2340;
-  color: #fff;
-  font-size: 0.84rem;
-  font-weight: 500;
-  border: none;
-  cursor: default;
-  font-family: 'DM Sans', sans-serif;
-  white-space: nowrap;
 }
 
 /* floating orb decoration */
@@ -285,7 +217,7 @@
   border-radius: 50%;
 }
 
-/* ── RIGHT PANEL ── */
+/* ── RIGHT PANEL — exactly as original ── */
 .login-right {
   width: 100%;
   max-width: 100%;
@@ -448,24 +380,6 @@
   text-align: center;
 }
 
-/* divider */
-.divider {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 24px 0 20px;
-  color: #cbd5e0;
-  font-size: 0.8rem;
-}
-
-.divider::before,
-.divider::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: #e2e8f0;
-}
-
 /* bottom note */
 .form-footer {
   margin-top: 28px;
@@ -489,7 +403,5 @@
 }
 
 @keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+  to { transform: rotate(360deg); }
 }
