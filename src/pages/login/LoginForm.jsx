@@ -132,7 +132,7 @@ export default function Login() {
             // window.location.href forces a full browser reload, guaranteeing
             // every component initialises from scratch with the new auth token
             // and an empty cache — exactly what handleLogout already does.
-            
+
             window.location.href = "/";
 
         } catch (err) {
@@ -169,16 +169,25 @@ export default function Login() {
 
                 {/* ── RIGHT LOGIN PANEL ── */}
                 <div class="login-right">
+
+                    {/* ── Company logo — top-left ── */}
+                    <div class="rp-logo">
+                        <img src="/logo.webp" alt="Company Logo" class="rp-logo-img" />
+                    </div>
                     <div class="form-wrapper">
 
                         {/* Logo */}
-                        <div class="form-logo">
-                            <image src="/aajneeti-favicon.png" alt="aajneeti reporting dashboard"  />
+                        {/* <div class="form-logo">
+                            <div class="form-logo-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                                </svg>
+                            </div>
                             <span class="form-logo-text">Aajneeti Reporting Dashboard</span>
-                        </div>
+                        </div> */}
 
-                       <h1 class="form-heading">Welcome back</h1>
-                       <p class="form-subheading">Sign in to your account to continue</p>
+                        <h1 class="form-heading">Aajneeti Reporting Dashboard</h1>
+                        <p class="form-subheading mt-2">Sign in to your account to continue</p>
                         {/* Error */}
                         {error() && (
                             <div class="error-box">
@@ -186,7 +195,7 @@ export default function Login() {
                             </div>
                         )}
 
-                        {/* Login Form */} 
+                        {/* Login Form */}
                         {!isLoggedIn() && (
                             <form onSubmit={handleSubmit}>
                                 <div class="input-group">
@@ -233,8 +242,15 @@ export default function Login() {
 
                         <p class="form-footer">
                             Protected by enterprise-grade security.<br />
-                            &copy; {new Date().getFullYear()} Aajneeti Reporting Dashboard. All rights reserved.
+                            &copy; {new Date().getFullYear()} Aajneeti Connect Limited. All rights reserved.
                         </p>
+                    </div>
+
+                    {/* ── Powered by — bottom-right ── */}
+                    <div class="rp-powered justify-content-cente">
+                        <span class="rp-powered-label">Powered by</span>
+                        
+                        <img src="/logo.webp" alt="Company Logo" class="logo-imgs" />
                     </div>
                 </div>
             </div>

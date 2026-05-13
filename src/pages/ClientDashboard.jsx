@@ -220,43 +220,56 @@ export default function MainDashboard() {
         return { from, to };
     };
 
-    const cardStats = createMemo(() => {
-        const map = projectInsightsMap();
-        const { from, to } = getCardDateRange();
+    // Safely read insights/campaigns from the new { campaigns, insights } shape
+    // Falls back gracefully if the cache still holds the old flat-array shape.
+    const getProjectInsightData = (projectId) => {
+        const entry = projectInsightsMap()[projectId];
+        if (!entry) return { campaigns: [], insights: [] };
+        // Old flat-array shape (cache not yet refreshed)
+        if (Array.isArray(entry)) return { campaigns: [], insights: entry };
+        return entry;
+    };
 
+    const cardStats = createMemo(() => {
+        const { from, to } = getCardDateRange();
         const result = {};
 
         for (const project of projects()) {
-            const insights = map[project.id] || [];
+            const { campaigns, insights } = getProjectInsightData(project.id);
 
             const filtered = insights.filter(d => {
                 if (!from || !to) return true;
-
-                if (!d.date) return false; // ❗ important safeguard
-
+                if (!d.date) return false;
                 const date = new Date(d.date + "T00:00:00");
-
-                const start = new Date(from);
-                const end = new Date(to);
-
-                start.setHours(0, 0, 0, 0);
-                end.setHours(23, 59, 59, 999);
-
+                const start = new Date(from); start.setHours(0, 0, 0, 0);
+                const end = new Date(to); end.setHours(23, 59, 59, 999);
                 return date >= start && date <= end;
             });
 
             const totalLeads = filtered.reduce((s, d) => s + (d.leads || 0), 0);
             const totalSpent = filtered.reduce((s, d) => s + parseFloat(d.spend || 0), 0);
-            const avgCPL = totalLeads > 0
-                ? parseFloat(totalSpent / totalLeads).toFixed(2)
-                : 0;
+            const avgCPL = totalLeads > 0 ? parseFloat(totalSpent / totalLeads).toFixed(2) : 0;
 
-            result[project.id] = { totalLeads, totalSpent, avgCPL };
+            // ✅ Date-range aware campaign counts
+            let activeCampaigns, pausedCampaigns;
+            if (!from || !to) {
+                activeCampaigns = project.activeCampaigns ?? 0;
+                pausedCampaigns = project.pausedCampaigns ?? 0;
+            } else {
+                const activeCampaignIds = new Set(
+                    filtered
+                        .filter(d => (d.spend > 0 || d.leads > 0))
+                        .map(d => d.campaignId)
+                );
+                activeCampaigns = activeCampaignIds.size;
+                pausedCampaigns = campaigns.filter(c => !activeCampaignIds.has(c.id)).length;
+            }
+
+            result[project.id] = { totalLeads, totalSpent, avgCPL, activeCampaigns, pausedCampaigns };
         }
 
         return result;
     });
-
     // After setProjects(...) inside loadData, add:
     // const deriveProjectStatuses = async (projectList) => {
     //     const statusUpdates = await Promise.all(
@@ -378,35 +391,37 @@ export default function MainDashboard() {
                     let allCampaigns = [];
                     let hasMore = true;
 
-                    // Paginate through ALL campaign pages (backend caps page_size at 20)
                     while (hasMore) {
                         const res = await fetchCampaigns(currentPage, project.id, "", 20);
                         const campaigns = res.data?.results || res.data || [];
-
                         if (!Array.isArray(campaigns) || campaigns.length === 0) break;
-
                         allCampaigns = [...allCampaigns, ...campaigns];
-
                         hasMore = res.meta?.pagination?.has_next ?? false;
                         currentPage++;
                     }
 
                     if (allCampaigns.length === 0) {
-                        result[project.id] = [];
+                        result[project.id] = { campaigns: [], insights: [] }; // ✅ NEW shape
                         return;
                     }
 
                     const insightArrays = await Promise.all(
                         allCampaigns.map(c =>
                             fetchCampaignInsights(c.id)
-                                .then(r => r.data || [])
+                                .then(r => (r.data || []).map(insight => ({
+                                    ...insight,
+                                    campaignId: c.id,        // ✅ tag each record
+                                })))
                                 .catch(() => [])
                         )
                     );
 
-                    result[project.id] = insightArrays.flat();
+                    result[project.id] = {
+                        campaigns: allCampaigns.map(c => ({ id: c.id, status: c.status })), // ✅ full campaign list
+                        insights: insightArrays.flat(),
+                    };
                 } catch {
-                    result[project.id] = [];
+                    result[project.id] = { campaigns: [], insights: [] };
                 }
             })
         );
@@ -430,23 +445,23 @@ export default function MainDashboard() {
         }, 0);
     };
 
+    
+
     const allProjectStats = createMemo(() => {
-        const map = projectInsightsMap(); // reactive dependency
         const from = fromDate();
         const to = toDate();
         const result = {};
 
         for (const project of projects()) {
-            const insights = map[project.id] || [];
+            const { campaigns, insights } = getProjectInsightData(project.id);
 
             const filtered = (!from || !to)
                 ? insights
                 : insights.filter(d => {
+                    if (!d.date) return false;
                     const date = new Date(d.date + "T00:00:00");
-                    const start = new Date(from);
-                    const end = new Date(to);
-                    start.setHours(0, 0, 0, 0);
-                    end.setHours(23, 59, 59, 999);
+                    const start = new Date(from); start.setHours(0, 0, 0, 0);
+                    const end = new Date(to); end.setHours(23, 59, 59, 999);
                     return date >= start && date <= end;
                 });
 
@@ -454,7 +469,24 @@ export default function MainDashboard() {
             const totalSpent = filtered.reduce((s, d) => s + parseFloat(d.spend || 0), 0);
             const avgCPL = totalLeads > 0 ? parseFloat(totalSpent / totalLeads).toFixed(2) : 0;
 
-            result[project.id] = { totalLeads, totalSpent, avgCPL };
+            // ✅ Campaigns that had any activity in the date window = active; rest = paused
+            let activeCampaigns, pausedCampaigns;
+            if (!from || !to) {
+                // No date range selected → use live counts from project data
+                activeCampaigns = project.activeCampaigns ?? 0;
+                pausedCampaigns = project.pausedCampaigns ?? 0;
+            } else {
+                const activeCampaignIds = new Set(
+                    filtered
+                        .filter(d => (d.spend > 0 || d.leads > 0))
+                        .map(d => d.campaignId)
+                );
+                activeCampaigns = activeCampaignIds.size;
+                // Paused = campaigns that exist but had NO activity in the window
+                pausedCampaigns = campaigns.filter(c => !activeCampaignIds.has(c.id)).length;
+            }
+
+            result[project.id] = { totalLeads, totalSpent, avgCPL, activeCampaigns, pausedCampaigns };
         }
 
         return result;
@@ -539,12 +571,13 @@ export default function MainDashboard() {
         const statsMap = allProjectStats();
 
         const totalBudget = all.reduce((s, p) => s + (p.budget ?? 0), 0);
-        const activeCampaigns = all.reduce((s, p) => s + (p.activeCampaigns ?? 0), 0);
-        const pausedCampaigns = all.reduce((s, p) => s + (p.pausedCampaigns ?? 0), 0);
         const activeProjects = all.filter(p => p.status === "active").length;
         const totalLeads = all.reduce((s, p) => s + (statsMap[p.id]?.totalLeads ?? 0), 0);
         const totalSpent = all.reduce((s, p) => s + (statsMap[p.id]?.totalSpent ?? 0), 0);
         const avgCPL = totalLeads > 0 ? parseFloat(totalSpent / totalLeads).toFixed(2) : 0;
+        // ✅ derive from statsMap (date-range aware)
+        const activeCampaigns = all.reduce((s, p) => s + (statsMap[p.id]?.activeCampaigns ?? 0), 0);
+        const pausedCampaigns = all.reduce((s, p) => s + (statsMap[p.id]?.pausedCampaigns ?? 0), 0);
 
         return { totalBudget, totalSpent, totalLeads, avgCPL, activeCampaigns, pausedCampaigns, activeProjects };
     });
@@ -552,16 +585,18 @@ export default function MainDashboard() {
     const overviewStatsCards = createMemo(() => {
         const all = filteredProjects();
         const statsMap = cardStats();
+
         const totalBudget = all.reduce((s, p) => s + (p.budget ?? 0), 0);
-        const activeCampaigns = all.reduce((s, p) => s + (p.activeCampaigns ?? 0), 0);
-        const pausedCampaigns = all.reduce((s, p) => s + (p.pausedCampaigns ?? 0), 0);
         const activeProjects = all.filter(p => p.status === "active").length;
         const totalLeads = all.reduce((s, p) => s + (statsMap[p.id]?.totalLeads ?? 0), 0);
         const totalSpent = all.reduce((s, p) => s + (statsMap[p.id]?.totalSpent ?? 0), 0);
         const avgCPL = totalLeads > 0 ? (totalSpent / totalLeads).toFixed(2) : 0;
+        // ✅ derive from statsMap (date-range aware)
+        const activeCampaigns = all.reduce((s, p) => s + (statsMap[p.id]?.activeCampaigns ?? 0), 0);
+        const pausedCampaigns = all.reduce((s, p) => s + (statsMap[p.id]?.pausedCampaigns ?? 0), 0);
+
         return { totalLeads, totalSpent, avgCPL, activeCampaigns, pausedCampaigns, activeProjects, totalBudget };
     });
-
 
     const handlePriorityChange = (id, value) => {
         setProjects(prev =>
@@ -1065,10 +1100,10 @@ export default function MainDashboard() {
                                             )}
 
                                             {/* Active Campaigns */}
-                                            <td class="p-2 text-center">{project.activeCampaigns ?? 0}</td>
+                                            <td class="p-2 text-center">{stats().activeCampaigns ?? 0}</td>
 
                                             {/* Paused Campaigns */}
-                                            <td class="p-2 text-center">{project.pausedCampaigns ?? 0}</td>
+                                            <td class="p-2 text-center">{stats().pausedCampaigns ?? 0}</td>
                                         </tr>
                                     );
                                 }}
