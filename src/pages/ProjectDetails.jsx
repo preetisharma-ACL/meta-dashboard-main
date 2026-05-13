@@ -544,6 +544,7 @@ export default function ProjectDetails() {
         setFromDate("");
         setToDate("");
         setPage(1);
+
     };
 
     /* ================= RANGE LABEL ================= */
@@ -820,15 +821,34 @@ export default function ProjectDetails() {
                         class="px-3 py-2 border rounded-lg dark:bg-gray-800"
                     />
 
-                    <select
-                        value={statusFilter()}
-                        onChange={(e) => setStatusFilter(e.target.value)}
-                        class="px-3 py-2 border rounded-lg dark:bg-gray-800"
-                    >
-                        <option value="All">All</option>
-                        <option value="Live">Live</option>
-                        <option value="paused">Paused</option>
-                    </select>
+                    <div class="relative inline-block">
+                        <select
+                            value={statusFilter()}
+                            onChange={(e) => setStatusFilter(e.target.value)}
+                            class="px-3 py-2 border rounded-lg dark:bg-gray-800 appearance-none
+                            "
+                        >
+                            <option value="All">All</option>
+                            <option value="Live">Live</option>
+                            <option value="paused">Paused</option>
+                        </select>
+
+                        <div class="pointer-events-none absolute inset-y-0 right-3 flex items-center">
+                            <svg
+                                class="w-4 h-4 text-gray-500"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    stroke-width="2"
+                                    d="M19 9l-7 7-7-7"
+                                />
+                            </svg>
+                        </div>
+                    </div>
 
                     <DateRangeFilter
                         fromDate={fromDate}
@@ -966,7 +986,9 @@ export default function ProjectDetails() {
                                         <A href={`/campaign/${row.id}`} class="text-purple-800  dark:text-purple-300">
                                             {row.campaign_name}
                                         </A>
-                                        <Show when={i() === 0}>
+                                        <Show when={
+                                            row.totalLeads === Math.max(...sortedCampaigns().map(c => c.totalLeads))
+                                        }>
                                             <span class="ml-2 px-2 py-0.5 text-xs rounded bg-green-100 text-green-700">
                                                 Top Leads
                                             </span>

@@ -787,15 +787,33 @@ export default function MainDashboard() {
 
             {/* Filters */}
             <div class="flex flex-wrap items-center gap-3 mb-4">
-                <select
-                    class="border px-3 py-2 rounded-lg bg-white dark:bg-gray-800"
-                    value={statusFilter()}
-                    onChange={(e) => setStatusFilter(e.target.value)}
-                >
-                    <option value="all">All</option>
-                    <option value="active">Active Project</option>
-                    <option value="paused">Paused Project</option>
-                </select>
+                <div class="relative inline-block">
+                    <select
+                        class="border px-3 py-2 pr-10 rounded-lg bg-white dark:bg-gray-800 appearance-none"
+                        value={statusFilter()}
+                        onChange={(e) => setStatusFilter(e.target.value)}
+                    >
+                        <option value="all">All</option>
+                        <option value="active">Active Project</option>
+                        <option value="paused">Paused Project</option>
+                    </select>
+
+                    <div class="pointer-events-none absolute inset-y-0 right-3 flex items-center">
+                        <svg
+                            class="w-4 h-4 text-gray-500"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                        >
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M19 9l-7 7-7-7"
+                            />
+                        </svg>
+                    </div>
+                </div>
 
                 <input
                     type="text"
@@ -810,18 +828,36 @@ export default function MainDashboard() {
                 />
 
                 {/* No arrow characters — use plain text */}
-                <select
-                    class="border px-3 py-2 rounded-lg dark:bg-gray-800"
-                    value={sortType()}
-                    onChange={(e) => setSortType(e.target.value)}
-                >
-                    <option value="">Sort By</option>
+                <div class="relative inline-block">
+                    <select
+                        class="border px-3 py-2 pr-10 rounded-lg dark:bg-gray-800 appearance-none"
+                        value={sortType()}
+                        onChange={(e) => setSortType(e.target.value)}
+                    >
+                        <option value="">Sort by</option>
                     <option value="budget">Budget: High to Low</option>
                     <option value="leads">Leads: High to Low</option>
                     <option value="activeCampaigns">Active Campaigns</option>
                     <option value="cplHigh">CPL: High to Low</option>
                     <option value="cplLow">CPL: Low to High</option>
                 </select>
+
+                <div class="pointer-events-none absolute inset-y-0 right-3 flex items-center">
+                    <svg
+                        class="w-4 h-4 text-gray-500"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                    >
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M19 9l-7 7-7-7"
+                        />
+                    </svg>
+                </div>
+                </div>
 
                 <DateRangeFilter
                     fromDate={fromDate}

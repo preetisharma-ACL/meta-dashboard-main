@@ -1,5 +1,7 @@
 import { createSignal, createMemo, For, Show, onMount, createEffect, untrack } from "solid-js";
 import { fetchAlerts } from "../services/alert-service";
+import { setHeaderCache, headerCache } from "../cacheStore/appStore";
+
 
 const ICONS = {
   danger: (
@@ -151,31 +153,31 @@ export default function Notifications() {
 
   // ✅ FIX 2: Properly detect new notifications using signal
   createEffect(() => {
-  const current = notifications().map(n => n.id); // ✅ tracked — re-runs when notifications change
-  
-  // ✅ untrack prevIds so reading it doesn't re-trigger this effect
-  const prev = untrack(() => prevIds());
+    const current = notifications().map(n => n.id); // ✅ tracked — re-runs when notifications change
 
-  if (prev.length > 0) {
-    const newOnes = current.filter(id => !prev.includes(id));
-    if (newOnes.length > 0) {
-      console.log("🔊 Playing sound for", newOnes.length, "new alerts");
-      notificationSound.currentTime = 0;
-      notificationSound.play()
-        .then(() => console.log("✅ Sound played!"))
-        .catch(e => console.error("❌ Sound error:", e));
+    // ✅ untrack prevIds so reading it doesn't re-trigger this effect
+    const prev = untrack(() => prevIds());
 
-      if (Notification.permission === "granted") {
-        new Notification("New Alert", {
-          body: `You have ${newOnes.length} new alert${newOnes.length > 1 ? "s" : ""}`,
-        });
+    if (prev.length > 0) {
+      const newOnes = current.filter(id => !prev.includes(id));
+      if (newOnes.length > 0) {
+        console.log("🔊 Playing sound for", newOnes.length, "new alerts");
+        notificationSound.currentTime = 0;
+        notificationSound.play()
+          .then(() => console.log("✅ Sound played!"))
+          .catch(e => console.error("❌ Sound error:", e));
+
+        if (Notification.permission === "granted") {
+          new Notification("New Alert", {
+            body: `You have ${newOnes.length} new alert${newOnes.length > 1 ? "s" : ""}`,
+          });
+        }
       }
     }
-  }
 
-  // ✅ update prevIds — safe because we used untrack() above
-  setPrevIds(current);
-});
+    // ✅ update prevIds — safe because we used untrack() above
+    setPrevIds(current);
+  });
 
   const loadAlerts = async (pageNo = 1) => {
     setLoading(true);
@@ -289,53 +291,60 @@ export default function Notifications() {
   );
 
   const markAsRead = (id) => {
-    // ✅ 1. Update current page
+
+    // current page
     setNotifications((prev) =>
       prev.map((n) => (n.id === id ? { ...n, read: true } : n))
     );
 
-    // ✅ 2. Update ALL notifications (THIS WAS MISSING)
+    // all pages
     setAllNotifications((prev) =>
       prev.map((n) => (n.id === id ? { ...n, read: true } : n))
     );
 
-    // ✅ 3. Save in localStorage
+    // header dropdown notifications
+    setHeaderCache("notifications",
+      headerCache.notifications.map((n) =>
+        n.id === id ? { ...n, unread: false } : n
+      )
+    );
+    setHeaderCache("unreadTotal",
+      Math.max(0, (headerCache.unreadTotal || 0) - 1)
+    );
+
+    // localStorage
     const readIds = JSON.parse(localStorage.getItem("readAlerts") || "[]");
 
     if (!readIds.includes(id)) {
       localStorage.setItem("readAlerts", JSON.stringify([...readIds, id]));
     }
-    // try {
-    //   // 2. API call
-    //   await fetch(`/api/alerts/${id}/acknowledge`, {
-    //     method: "POST",
-    //   });
-    // } catch (err) {
-    //   console.error("Failed to mark as read", err);
-
-    //   // 3. rollback if failed
-    //   setNotifications((prev) =>
-    //     prev.map((n) => (n.id === id ? { ...n, read: false } : n))
-    //   );
-    // }
   };
 
   const markAllRead = () => {
+
     // current page
     setNotifications((prev) =>
       prev.map((n) => ({ ...n, read: true }))
     );
 
-    // ALL pages (IMPORTANT)
+    // all pages
     setAllNotifications((prev) =>
       prev.map((n) => ({ ...n, read: true }))
     );
 
-    // localStorage update
+    // header notifications
+    setHeaderCache("notifications",
+      headerCache.notifications.map((n) => ({
+        ...n,
+        unread: false,
+      }))
+    );
+    setHeaderCache("unreadTotal", 0);
+
+    // localStorage
     const allIds = allNotifications().map((n) => n.id);
     localStorage.setItem("readAlerts", JSON.stringify(allIds));
   };
-
 
   const deleteNotification = (id) =>
     setNotifications((prev) => prev.filter((n) => n.id !== id));
@@ -362,9 +371,9 @@ export default function Notifications() {
           <div class="flex items-center gap-2">
             {/* Total badge */}
             <Show when={!loading() && total() > 0}>
-              <div class="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20">
-                <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                <span class="text-sm font-semibold text-red-700 dark:text-red-300">
+              <div class="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-500/20">
+                <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                <span class="text-sm font-semibold text-green-700 dark:text-green-300">
                   {total()} total
                 </span>
               </div>
@@ -528,7 +537,7 @@ export default function Notifications() {
                         <div class={`absolute left-0 top-3 bottom-3 w-0.5 rounded-r-full ${cfg.bar}`} />
                       </Show>
 
-                      
+
 
                       {/* Body */}
                       <div class="flex-1 min-w-0 space-y-1">

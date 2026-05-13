@@ -21,9 +21,10 @@ export default function Header() {
     const [showNotifications, setShowNotifications] = createSignal(false);
 
     // ── Read from global cache ────────────────────────────────────────────────
-    const user          = () => headerCache.user;
+    const user = () => headerCache.user;
     const notifications = () => headerCache.notifications;
-    const loading       = () => headerCache.loading;
+    const unreadTotal = () => headerCache.unreadTotal || 0;
+    const loading = () => headerCache.loading;
 
     function formatTime(dateStr) {
         const date = new Date(dateStr);
@@ -48,25 +49,43 @@ export default function Header() {
         try {
             setHeaderCache("loading", true);
 
-            const [userRes, alertRes] = await Promise.all([
-                fetchUser(),
-                fetchAlerts(1),
-            ]);
+            const userRes = await fetchUser();
 
-            const mapped = (alertRes?.data || [])
-                .map((item) => ({
-                    id: item.id,
-                    title: item.project_name || "Project",
-                    message: item.message,
-                    time: formatTime(item.created_at),
-                    unread: !item.is_acknowledged,
-                }))
-                .slice(0, 5);
+            // ✅ fetch all alerts from all pages
+            let pageNo = 1;
+            let allAlerts = [];
+
+            while (true) {
+                const res = await fetchAlerts(pageNo);
+
+                if (!res) break;
+
+                allAlerts = [...allAlerts, ...(res.data || [])];
+
+                if (!res?.meta?.pagination?.has_next) break;
+
+                pageNo++;
+            }
+
+            const readIds = JSON.parse(localStorage.getItem("readAlerts") || "[]");
+
+            const allNotifications = allAlerts.map((item) => ({
+                id: item.id,
+                title: item.project_name || "Project",
+                message: item.message,
+                time: formatTime(item.created_at),
+                unread: !readIds.includes(item.id) && !item.is_acknowledged,
+            }));
+
+            const mapped = allNotifications.slice(0, 5);
+
+            const unreadTotalCount = allNotifications.filter(n => n.unread).length;
 
             // ✅ Single write stamps lastFetched — won't refetch for 5 minutes
             setHeaderCache({
                 user: userRes.data,
                 notifications: mapped,
+                unreadTotal: unreadTotalCount,
                 lastFetched: Date.now(),
                 loading: false,
             });
@@ -95,7 +114,7 @@ export default function Header() {
         return (words[0].charAt(0) + words[1].charAt(0)).toUpperCase();
     };
 
-    const unreadCount = () => notifications().filter((n) => n.unread).length;
+    const unreadCount = () => unreadTotal();
 
     return (
         <header class="h-16 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-30">

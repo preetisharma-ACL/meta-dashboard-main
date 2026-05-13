@@ -710,7 +710,7 @@ export default function Billing() {
 
       includingGst: parseFloat(item.including_gst || 0),
 
-      method: "Online",
+      method: item.method_label || item.method,
 
       status: item.status,
 
@@ -723,7 +723,7 @@ export default function Billing() {
       credit: false,
 
       creditedBy: null,
-
+ 
       creditDate: null,
     }));
   });
