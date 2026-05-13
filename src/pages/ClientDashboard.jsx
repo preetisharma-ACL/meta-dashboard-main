@@ -879,8 +879,8 @@ export default function MainDashboard() {
                 <table class="w-full text-sm table-auto">
                     <thead class="bg-gray-100 dark:bg-gray-800">
                         <tr class="[&_th]:text-center [&_th]:cursor-pointer [&_th]:whitespace-nowrap [&_th:first-child]:text-left text-gray-800 dark:text-gray-200">
-                            <th class="p-3 w-12 sticky left-0 z-20 bg-gray-100 dark:bg-gray-800">S.No</th>
-                            <th class="p-3 sticky left-[57px] z-20 bg-gray-100 dark:bg-gray-800 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.10)]" onClick={() => handleColumnSort("name")}>
+                            <th class="p-3 w-12 md:sticky md:left-0 md:z-20 bg-gray-100 dark:bg-gray-800">S.No</th>
+                            <th class="p-3 md:sticky md:left-[57px] md:z-20 bg-gray-100 dark:bg-gray-800 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.10)]" onClick={() => handleColumnSort("name")}>
                                 Project Name {getSortIcon("name")}
                             </th>
                             <th class="p-3" onClick={() => handleColumnSort("location")}>
@@ -941,7 +941,7 @@ export default function MainDashboard() {
                                         >
 
                                             <td class={
-                                                "px-1 py-2 w-12 text-center sticky left-0 z-10 " +
+                                                "px-1 py-2 w-12 text-center md:sticky md:left-0 md:z-10 " +
                                                 " " +
                                                 (index() % 2 === 0 ? "bg-white dark:bg-gray-900" : "bg-purple-50 dark:bg-gray-900")
                                             }>
@@ -951,7 +951,7 @@ export default function MainDashboard() {
                                             </td>
                                             {/* Project Name */}
                                             <td class={
-                                                "px-2 py-2 sticky left-[57px] z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.08)] " +
+                                                "px-2 py-2 md:sticky md:left-[57px] md:z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.08)] " +
                                                 " " +
                                                 (index() % 2 === 0 ? "bg-white dark:bg-gray-900" : "bg-purple-50 dark:bg-gray-900")
                                             }>

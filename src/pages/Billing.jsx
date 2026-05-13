@@ -294,7 +294,7 @@ function ProjectTable(props) {
     cpl: (() => {
       const tl = props.projects.reduce((s, p) => s + p.totalLeads, 0);
       const ts = props.projects.reduce((s, p) => s + p.totalSpend, 0);
-      return tl > 0 ? Math.round(ts / tl) : 0;
+      return tl > 0 ? parseFloat(ts / tl).toFixed(2) : 0;
     })(),
   }));
 
@@ -937,7 +937,7 @@ export default function Billing() {
                 : ""
               }`}
           >
-            <div class="grid grid-cols-3 gap-3">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
               <Card class="p-4 text-center">
                 <p class="text-md text-gray-700 dark:text-gray-400 font-medium">Total Leads</p>
                 <p class="text-xl font-bold mt-1 text-gray-700 dark:text-gray-400">{totalLeads()}</p>
