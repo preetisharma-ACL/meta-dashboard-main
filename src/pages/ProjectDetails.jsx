@@ -311,6 +311,7 @@ export default function ProjectDetails() {
                     ? `${item.name.split("|").slice(1, 2).map((s) => s.trim()).join(" | ")} | ${item.start_date || "No Date"}`
                     : "No Name",
                 start_date: item.start_date || "No Date",
+                stop_date: item.stop_date || "No date",
                 location: item.project_name || "-",
                 ad_account: item.ad_account_name || "-",
                 status: item.status === "paused" ? "paused" : "Live",
@@ -371,6 +372,7 @@ export default function ProjectDetails() {
                         ? `${item.name.split("|").slice(1, 2).map((s) => s.trim()).join(" | ")} | ${item.start_date || "No Date"}`
                         : "No Name",
                     start_date: item.start_date || "No Date",
+                    stop_date: item.stop_date || "No date",
                     status: item.status === "paused" ? "paused" : "Live",
                     cpl: item.cpl || 0,
                     premium_metrics: item.premium_metrics,
