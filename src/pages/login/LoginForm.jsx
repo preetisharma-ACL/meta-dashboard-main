@@ -247,7 +247,7 @@ export default function Login() {
                     </div>
 
                     {/* ── Powered by — bottom-right ── */}
-                    <div class="rp-powered justify-content-cente">
+                    <div class="rp-powered ">
                         <span class="rp-powered-label">Powered by</span>
                         
                         <img src="/logo.webp" alt="Company Logo" class="logo-imgs" />

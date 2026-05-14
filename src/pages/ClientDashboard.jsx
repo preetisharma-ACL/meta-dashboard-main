@@ -13,32 +13,17 @@ import {
     projectsCache, setProjectsCache, isCacheStale
 } from "../cacheStore/appStore";
 
-// fetchCampaigns is already imported, just ADD fetchCampaignInsights
-
 export default function MainDashboard() {
 
     const [statusFilter, setStatusFilter] = createSignal("all");
     const [searchText, setSearchText] = createSignal("");
     const [selectedColumns, setSelectedColumns] = createSignal([]);
-    // const [projects, setProjects] = createSignal([]);
     const [sortType, setSortType] = createSignal("");
     const [fromDate, setFromDate] = createSignal("");
     const [toDate, setToDate] = createSignal("");
     const [viewType, setViewType] = createSignal("table");
-    // const [page, setPage] = createSignal(1);
-    // const [hasNext, setHasNext] = createSignal(false);
-    // const [hasPrev, setHasPrev] = createSignal(false);
-    // const [pageSize, setPageSize] = createSignal(20);
-    // const [total, setTotal] = createSignal(0);
-    // const [totalPages, setTotalPages] = createSignal(1);
-    // const [projectInsightsMap, setProjectInsightsMap] = createSignal({});
-    // { projectId: [ ...all flattened insight records ] }
-    // const [insightsLoading, setInsightsLoading] = createSignal(false);
-    // const [loading, setLoading] = createSignal(true);
-    // Add near your other signals
     const [userRole, setUserRole] = createSignal("client");
     const [cardRange, setCardRange] = createSignal(null);
-    // values: today, yesterday, last7, lastMonth, thisMonth, custom
     const [columnSort, setColumnSort] = createSignal({
         key: "",
         direction: "desc",
@@ -56,7 +41,6 @@ export default function MainDashboard() {
     const insightsLoading = () => false; // handled inside loadAllProjectInsights
 
     const textColumns = new Set(["name", "location", "type", "status"]);
-
     const handleColumnSort = (key) => {
         setColumnSort((prev) => {
             if (prev.key === key) {
@@ -65,7 +49,7 @@ export default function MainDashboard() {
                     direction: prev.direction === "asc" ? "desc" : "asc",
                 };
             }
-            // ✅ text columns default to asc (A→Z), numeric columns default to desc (high→low)
+            // text columns default to asc (A→Z), numeric columns default to desc (high→low)
             const defaultDirection = textColumns.has(key) ? "asc" : "desc";
             return { key, direction: defaultDirection };
         });
@@ -76,64 +60,11 @@ export default function MainDashboard() {
         const auth = JSON.parse(localStorage.getItem("auth"));
         setUserRole(auth?.role ?? "client");
 
-        // ✅ Only fetch if cache is missing or stale
+        // Only fetch if cache is missing or stale
         if (isCacheStale(projectsCache.lastFetched)) {
             loadData(1);
         }
     });
-
-    // const loadData = async (pageNo = 1, search = "") => {
-    //     try {
-    //         setLoading(true);
-    //         const res = await fetchProjects(pageNo, search);
-    //         const apiData = res?.data || [];
-    //         const meta = res?.meta?.pagination;
-
-    //         const mappedProjects = (apiData || []).map(item => ({
-    //             id: item.id,
-    //             name: item.name,
-    //             logo: item.logo || "/default-logo.png",
-    //             location: item.city,
-    //             budget: parseFloat(item.budget) || 0,
-    //             leadsgenerated: item.leads_count ?? 0,
-    //             type: item.property_type ?? "N/A",
-    //             uploaddocument: item.upload_document ?? null,
-    //             activeCampaigns: item.campaign_count ?? 0,
-    //             pausedCampaigns: item.paused_campaigns ?? 0,
-    //             status: item.status,
-    //             clientRequest: item.client_request ?? null,
-    //             priority: item.priority_label ?? "Standard",
-    //             projectControl: item.project_control ?? "Live",
-    //             url: item.url ?? "/all-campaigns",
-    //             cpl: parseFloat(item.cpl) || 0,
-
-    //             modifiedCpl: item.modified_cpl ?? null,
-    //             spent: parseFloat(item.total_spend) || 0,
-    //             leadsByDate: item.leads_by_date ?? {},
-    //         }));
-
-    //         setProjects(mappedProjects);
-
-    //         deriveProjectStatuses(mappedProjects),
-    //             loadAllProjectInsights(mappedProjects)
-
-
-    //         if (meta) {
-    //             setPage(meta.page);
-    //             setPageSize(meta.page_size);
-    //             setTotal(meta.total);
-    //             setTotalPages(meta.total_pages);
-    //             setHasNext(meta.has_next);
-    //             setHasPrev(meta.has_prev);
-    //         }
-    //     } catch (err) {
-    //         console.error(err);
-    //     }
-    //     finally {
-    //         setLoading(false);   
-    //     }
-    // };
-
     const loadData = async (pageNo = 1, search = "") => {
         try {
             setProjectsCache("loading", true);
@@ -169,8 +100,8 @@ export default function MainDashboard() {
             setProjectsCache({
                 data: mappedProjects,
                 meta: meta ?? projectsCache.meta,
-                lastFetched: Date.now(),   // ✅ stamp the cache
-                insightsMap: {}, // ✅ ADD THIS — wipe stale insights on fresh load
+                lastFetched: Date.now(),   // stamp the cache
+                insightsMap: {}, 
             });
 
             // kick off async enrichment (status + insights)
@@ -183,41 +114,52 @@ export default function MainDashboard() {
             setProjectsCache("loading", false);
         }
     };
-
-    const getCardDateRange = () => {
+    // Pure helper — returns { from, to } as Date objects for a given value
+    const getDateRangeForValue = (value) => {
         const today = new Date();
         let from, to = new Date();
 
-        switch (cardRange()) {
+        switch (value) {
             case "today":
                 from = new Date();
                 break;
-
             case "yesterday":
                 from = new Date();
                 from.setDate(today.getDate() - 1);
                 to = new Date(from);
                 break;
-
             case "last7":
+                // Exclude today: to = yesterday, from = 7 days before yesterday
+                to = new Date();
+                to.setDate(today.getDate() - 1);   // yesterday (13 May)
                 from = new Date();
-                from.setDate(today.getDate() - 6);
+                from.setDate(today.getDate() - 7); // 7 May
                 break;
-
             case "thisMonth":
                 from = new Date(today.getFullYear(), today.getMonth(), 1);
                 break;
-
             case "lastMonth":
                 from = new Date(today.getFullYear(), today.getMonth() - 1, 1);
                 to = new Date(today.getFullYear(), today.getMonth(), 0);
                 break;
-
             default:
-                return { from: fromDate(), to: toDate() }; // fallback to calendar
+                from = new Date();
         }
 
         return { from, to };
+    };
+
+    // Format Date → "YYYY-MM-DD" string for fromDate/toDate signals
+    const formatDate = (date) => {
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, "0");
+        const d = String(date.getDate()).padStart(2, "0");
+        return `${y}-${m}-${d}`;
+    };
+
+    const getCardDateRange = () => {
+        if (cardRange()) return getDateRangeForValue(cardRange());
+        return { from: fromDate(), to: toDate() }; // fallback to calendar picker
     };
 
     // Safely read insights/campaigns from the new { campaigns, insights } shape
@@ -270,58 +212,6 @@ export default function MainDashboard() {
 
         return result;
     });
-    // After setProjects(...) inside loadData, add:
-    // const deriveProjectStatuses = async (projectList) => {
-    //     const statusUpdates = await Promise.all(
-    //         projectList.map(async (project) => {
-    //             try {
-
-    //                 const res = await fetchCampaigns(1, project.id, "", 1000);
-    //                 const campaigns = res.data.results || res.data || [];
-
-    //                 if (!Array.isArray(campaigns) || campaigns.length === 0) {
-    //                     return {
-    //                         id: project.id,
-    //                         status: "paused",
-    //                         activeCampaigns: 0,
-    //                         pausedCampaigns: 0,
-    //                     };
-    //                 }
-
-    //                 const activeCampaigns = campaigns.filter(c => c.status === "active").length;
-    //                 const pausedCampaigns = campaigns.filter(c => c.status === "paused").length;
-    //                 const hasActive = activeCampaigns > 0;
-
-    //                 return {
-    //                     id: project.id,
-    //                     status: hasActive ? "active" : "paused",
-    //                     activeCampaigns,
-    //                     pausedCampaigns,
-    //                 };
-
-    //             } catch (err) {
-    //                 return {
-    //                     id: project.id,
-    //                     status: project.status,
-    //                     activeCampaigns: project.activeCampaigns,
-    //                     pausedCampaigns: project.pausedCampaigns,
-    //                 };
-    //             }
-    //         })
-    //     );
-
-    //     setProjects(prev =>
-    //         prev.map(p => {
-    //             const update = statusUpdates.find(u => u.id === p.id);
-    //             return update ? {
-    //                 ...p,
-    //                 status: update.status,
-    //                 activeCampaigns: update.activeCampaigns,
-    //                 pausedCampaigns: update.pausedCampaigns,
-    //             } : p;
-    //         })
-    //     );
-    // };
     const deriveProjectStatuses = async (projectList) => {
         const statusUpdates = await Promise.all(
             projectList.map(async (project) => {
@@ -337,7 +227,7 @@ export default function MainDashboard() {
             })
         );
 
-        // ✅ write into the global store
+        // write into the global store
         setProjectsCache("data", prev =>
             prev.map(p => {
                 const update = statusUpdates.find(u => u.id === p.id);
@@ -345,45 +235,8 @@ export default function MainDashboard() {
             })
         );
     };
-
-    // const loadAllProjectInsights = async (projectList) => {
-    //     setInsightsLoading(true);
-    //     const result = {};
-
-    //     await Promise.all(
-    //         projectList.map(async (project) => {
-    //             try {
-    //                 const res = await fetchCampaigns(1, project.id, "", 1000);
-    //                 const campaigns = res.data?.results || res.data || [];
-
-    //                 if (!Array.isArray(campaigns) || campaigns.length === 0) {
-    //                     result[project.id] = [];
-    //                     return;
-    //                 }
-
-    //                 const insightArrays = await Promise.all(
-    //                     campaigns.map(c =>
-    //                         fetchCampaignInsights(c.id)
-    //                             .then(r => r.data || [])
-    //                             .catch(() => [])
-    //                     )
-    //                 );
-
-    //                 result[project.id] = insightArrays.flat();
-    //             } catch {
-    //                 result[project.id] = [];
-    //             }
-    //         })
-    //     );
-
-    //     setProjectInsightsMap(result);
-    //     setInsightsLoading(false);
-    // };
-
-
     const loadAllProjectInsights = async (projectList) => {
         const result = {};
-
         await Promise.all(
             projectList.map(async (project) => {
                 try {
@@ -401,23 +254,21 @@ export default function MainDashboard() {
                     }
 
                     if (allCampaigns.length === 0) {
-                        result[project.id] = { campaigns: [], insights: [] }; // ✅ NEW shape
+                        result[project.id] = { campaigns: [], insights: [] }; 
                         return;
                     }
-
                     const insightArrays = await Promise.all(
                         allCampaigns.map(c =>
                             fetchCampaignInsights(c.id)
                                 .then(r => (r.data || []).map(insight => ({
                                     ...insight,
-                                    campaignId: c.id,        // ✅ tag each record
+                                    campaignId: c.id,       
                                 })))
                                 .catch(() => [])
                         )
                     );
-
                     result[project.id] = {
-                        campaigns: allCampaigns.map(c => ({ id: c.id, status: c.status })), // ✅ full campaign list
+                        campaigns: allCampaigns.map(c => ({ id: c.id, status: c.status })), 
                         insights: insightArrays.flat(),
                     };
                 } catch {
@@ -425,7 +276,6 @@ export default function MainDashboard() {
                 }
             })
         );
-
         setProjectsCache("insightsMap", result);
     };
 
@@ -444,9 +294,6 @@ export default function MainDashboard() {
             return current >= start && current <= end ? total + leads : total;
         }, 0);
     };
-
-    
-
     const allProjectStats = createMemo(() => {
         const from = fromDate();
         const to = toDate();
@@ -469,7 +316,7 @@ export default function MainDashboard() {
             const totalSpent = filtered.reduce((s, d) => s + parseFloat(d.spend || 0), 0);
             const avgCPL = totalLeads > 0 ? parseFloat(totalSpent / totalLeads).toFixed(2) : 0;
 
-            // ✅ Campaigns that had any activity in the date window = active; rest = paused
+            //  Campaigns that had any activity in the date window = active; rest = paused
             let activeCampaigns, pausedCampaigns;
             if (!from || !to) {
                 // No date range selected → use live counts from project data
@@ -498,13 +345,6 @@ export default function MainDashboard() {
         if (statusFilter() !== "all") {
             data = data.filter(p => p.status === statusFilter());
         }
-
-        // if (searchText()) {
-        //     data = data.filter(p =>
-        //         (p.name ?? "").toLowerCase().includes(searchText().toLowerCase())
-        //     );
-        // }
-
         switch (sortType()) {
             case "budget":
                 data.sort((a, b) => b.budget - a.budget);
@@ -523,10 +363,10 @@ export default function MainDashboard() {
                 break;
         }
 
-        // 🔥 NEW COLUMN SORTING (ADD THIS)
+        // NEW COLUMN SORTING (ADD THIS)
         const { key, direction } = columnSort();
 
-        if (key) {   // ✅ ADD THIS GUARD
+        if (key) {   // ADD THIS GUARD
             data.sort((a, b) => {
                 let valA = a[key];
                 let valB = b[key];
@@ -556,7 +396,7 @@ export default function MainDashboard() {
                     ? String(valA || "").localeCompare(String(valB || ""), undefined, { sensitivity: "base" })
                     : String(valB || "").localeCompare(String(valA || ""), undefined, { sensitivity: "base" });
             });
-        }   // ✅ close the guard
+        }   // close the guard
         return data;
     });
 
@@ -575,7 +415,7 @@ export default function MainDashboard() {
         const totalLeads = all.reduce((s, p) => s + (statsMap[p.id]?.totalLeads ?? 0), 0);
         const totalSpent = all.reduce((s, p) => s + (statsMap[p.id]?.totalSpent ?? 0), 0);
         const avgCPL = totalLeads > 0 ? parseFloat(totalSpent / totalLeads).toFixed(2) : 0;
-        // ✅ derive from statsMap (date-range aware)
+        // derive from statsMap (date-range aware)
         const activeCampaigns = all.reduce((s, p) => s + (statsMap[p.id]?.activeCampaigns ?? 0), 0);
         const pausedCampaigns = all.reduce((s, p) => s + (statsMap[p.id]?.pausedCampaigns ?? 0), 0);
 
@@ -591,7 +431,7 @@ export default function MainDashboard() {
         const totalLeads = all.reduce((s, p) => s + (statsMap[p.id]?.totalLeads ?? 0), 0);
         const totalSpent = all.reduce((s, p) => s + (statsMap[p.id]?.totalSpent ?? 0), 0);
         const avgCPL = totalLeads > 0 ? (totalSpent / totalLeads).toFixed(2) : 0;
-        // ✅ derive from statsMap (date-range aware)
+        // derive from statsMap (date-range aware)
         const activeCampaigns = all.reduce((s, p) => s + (statsMap[p.id]?.activeCampaigns ?? 0), 0);
         const pausedCampaigns = all.reduce((s, p) => s + (statsMap[p.id]?.pausedCampaigns ?? 0), 0);
 
@@ -706,14 +546,18 @@ export default function MainDashboard() {
                     { label: "Last Month", value: "lastMonth" }
                 ].map((item) => (
                     <button
-                        onClick={() => setCardRange(item.value)}
+                        onClick={() => {
+                            setCardRange(item.value);
+                            // Sync fromDate/toDate so the table matches the cards
+                            const { from, to } = getDateRangeForValue(item.value);
+                            setFromDate(formatDate(from));
+                            setToDate(formatDate(to));
+                        }}
                         class={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 border
-
             ${cardRange() === item.value
                                 ? "bg-blue-600 text-white border-blue-600 shadow-md"
                                 : "bg-white text-gray-700 border-gray-300 hover:bg-blue-50 hover:text-blue-700 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700 dark:hover:text-white"
-                            }
-            `}
+                            }`}
                     >
                         {item.label}
                     </button>
@@ -721,12 +565,15 @@ export default function MainDashboard() {
 
                 {/* Clear Button */}
                 <button
-                    onClick={() => setCardRange(null)}
+                    onClick={() => {
+                        setCardRange(null);
+                        setFromDate("");  // ✅ also clear the table filter
+                        setToDate("");
+                    }}
                     class="px-4 py-2 rounded-lg text-sm font-medium border border-red-300 text-red-600 bg-red-50 hover:bg-red-100 transition dark:bg-red-900/30 dark:text-red-300 dark:border-red-700 dark:hover:bg-red-900/50"
                 >
                     Clear
                 </button>
-
             </div>
 
             {/* Overview Cards Row 1 */}
@@ -1156,7 +1003,6 @@ export default function MainDashboard() {
                         </tfoot>
                     </Show>
                 </table>
-
             </div>
             <div class="flex items-center justify-between mt-5 flex-wrap gap-3">
                 <span class="text-sm text-gray-500">
