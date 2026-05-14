@@ -363,54 +363,103 @@ function PaymentHistory(props) {
   return (
     <Card class="p-5 space-y-4">
       <SectionLabel>Payment History</SectionLabel>
-      <div class="space-y-3">
-        <For each={props.payments}>
-          {(pay) => (
-            <div class={`rounded-xl border p-4 space-y-2 ${pay.credit ? "border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30" : "border-gray-200 dark:border-gray-800 bg-white/60 dark:bg-gray-800/20"}`}>
-              <div class="flex items-start justify-between gap-3 flex-wrap">
-                <div class="flex items-center gap-3">
-                  <div class={`w-9 h-9 rounded-full flex items-center justify-center text-sm flex-shrink-0 ${pay.credit ? "bg-gray-100 dark:bg-gray-800 text-gray-500" : "bg-gray-800 dark:bg-gray-100 text-white dark:text-gray-900"}`}>
-                    {pay.credit ? "📋" : "✓"}
-                  </div>
-                  <div>
-                    <div class="flex items-center gap-2 flex-wrap">
-                      <span class="font-semibold text-gray-900 dark:text-gray-100">{fmt(pay.amount)}</span>
-                      <Show when={pay.credit} fallback={<Tag
-                        variant={
-                          pay.status === "succeeded"
-                            ? "green"
-                            : pay.status === "pending"
-                              ? "amber"
-                              : "red"
-                        }
-                      >
-                        {pay.status_label || pay.status?.toUpperCase()}
-                      </Tag>}>
-                        <Tag variant="gray">CREDITED by {pay.creditedBy}</Tag>
-                      </Show>
-                      <Show when={pay.gstFiled}>
-                        <Tag variant="blue">GST Filed</Tag>
-                      </Show>
+
+      <Show
+        when={props.payments && props.payments.length > 0}
+        fallback={
+          <div class="flex items-center justify-center py-10 text-sm text-gray-500 dark:text-gray-400 border border-dashed border-gray-300 dark:border-gray-700 rounded-xl">
+               No payment history available yet
+          </div>
+        }
+      >
+        <div class="space-y-3">
+          <For each={props.payments}>
+            {(pay) => (
+              <div
+                class={`rounded-xl border p-4 space-y-2 ${pay.credit
+                    ? "border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30"
+                    : "border-gray-200 dark:border-gray-800 bg-white/60 dark:bg-gray-800/20"
+                  }`}
+              >
+                <div class="flex items-start justify-between gap-3 flex-wrap">
+                  <div class="flex items-center gap-3">
+                    <div
+                      class={`w-9 h-9 rounded-full flex items-center justify-center text-sm flex-shrink-0 ${pay.credit
+                          ? "bg-gray-100 dark:bg-gray-800 text-gray-500"
+                          : "bg-gray-800 dark:bg-gray-100 text-white dark:text-gray-900"
+                        }`}
+                    >
+                      {pay.credit ? "📋" : "✓"}
                     </div>
-                    <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-                      {pay.credit ? `Credited on ${pay.creditDate} by ${pay.creditedBy}` : `${pay.date} · via ${pay.method} · ${pay.id}`}
-                    </p>
+
+                    <div>
+                      <div class="flex items-center gap-2 flex-wrap">
+                        <span class="font-semibold text-gray-900 dark:text-gray-100">
+                          {fmt(pay.amount)}
+                        </span>
+
+                        <Show
+                          when={pay.credit}
+                          fallback={
+                            <Tag
+                              variant={
+                                pay.status === "succeeded"
+                                  ? "green"
+                                  : pay.status === "pending"
+                                    ? "amber"
+                                    : "red"
+                              }
+                            >
+                              {pay.status_label ||
+                                pay.status?.toUpperCase()}
+                            </Tag>
+                          }
+                        >
+                          <Tag variant="gray">
+                            CREDITED by {pay.creditedBy}
+                          </Tag>
+                        </Show>
+
+                        <Show when={pay.gstFiled}>
+                          <Tag variant="blue">GST Filed</Tag>
+                        </Show>
+                      </div>
+
+                      <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                        {pay.credit
+                          ? `Credited on ${pay.creditDate} by ${pay.creditedBy}`
+                          : `${pay.date} · via ${pay.method} · ${pay.id}`}
+                      </p>
+                    </div>
                   </div>
+
+                  <Show when={!pay.credit}>
+                    <button
+                      onClick={() => props.onViewInvoice(pay)}
+                      class="flex items-center gap-1.5 text-sm font-semibold text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5 transition-colors"
+                    >
+                      <svg
+                        class="w-3.5 h-3.5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                        />
+                      </svg>
+                      Invoice
+                    </button>
+                  </Show>
                 </div>
-                <Show when={!pay.credit}>
-                  <button
-                    onClick={() => props.onViewInvoice(pay)} class="flex items-center gap-1.5 text-sm font-semibold text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5 transition-colors">
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    Invoice
-                  </button>
-                </Show>
               </div>
-            </div>
-          )}
-        </For>
-      </div>
+            )}
+          </For>
+        </div>
+      </Show>
     </Card>
   );
 }
@@ -723,7 +772,7 @@ export default function Billing() {
       credit: false,
 
       creditedBy: null,
- 
+
       creditDate: null,
     }));
   });

@@ -1047,7 +1047,7 @@ export default function MainDashboard() {
                     </p>
                 </div>
             </Show>
-        </section>
+        </section> 
 
     );
 }
