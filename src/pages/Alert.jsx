@@ -355,9 +355,18 @@ export default function Notifications() {
 
     const parts = text.split("|").map((p) => p.trim());
 
-    // agar 3+ parts hain
+    const lastPart = parts[parts.length - 1] || "";
+
+    // sirf sentence wale dot ke baad ka content
+    const dotIndex = lastPart.indexOf(". ");
+
+    const afterDot =
+      dotIndex !== -1
+        ? lastPart.substring(dotIndex + 2).trim()
+        : lastPart;
+
     if (parts.length >= 3) {
-      return `${parts[0]} | ${parts[1]} | ${parts[parts.length - 1]}`;
+      return `${parts[0]} | ${parts[1]} | ${afterDot}`;
     }
 
     return text;
@@ -573,9 +582,9 @@ export default function Notifications() {
                             </span>
                           </Show>
 
-                          <span class="text-[10px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 uppercase tracking-wide">
+                          {/* <span class="text-[10px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 uppercase tracking-wide">
                             {item.category}
-                          </span>
+                          </span> */}
 
                           <Show when={!item.read}>
                             <span class={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${cfg.dot}`} />
