@@ -349,6 +349,20 @@ export default function Notifications() {
   const deleteNotification = (id) =>
     setNotifications((prev) => prev.filter((n) => n.id !== id));
 
+  {/* Description formatter */ }
+  const formatDescription = (text) => {
+    if (!text) return "";
+
+    const parts = text.split("|").map((p) => p.trim());
+
+    // agar 3+ parts hain
+    if (parts.length >= 3) {
+      return `${parts[0]} | ${parts[1]} | ${parts[parts.length - 1]}`;
+    }
+
+    return text;
+  };
+
   return (
     <div class="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 md:p-8">
       <div class="mx-auto space-y-6">
@@ -543,6 +557,7 @@ export default function Notifications() {
                       <div class="flex-1 min-w-0 space-y-1">
 
                         {/* Title row */}
+                        {/* Title row */}
                         <div class="flex items-center gap-2 flex-wrap">
                           <p class={`text-sm font-semibold leading-snug ${item.read
                             ? "text-gray-600 dark:text-gray-300"
@@ -550,12 +565,18 @@ export default function Notifications() {
                             }`}>
                             {item.project}
                           </p>
-                          <span class={`text-[10px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-wide ${cfg.badge}`}>
-                            {cfg.label}
-                          </span>
+
+                          {/* sirf info label show hoga */}
+                          <Show when={cfg.label?.toLowerCase() === "info"}>
+                            <span class={`text-[10px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-wide ${cfg.badge}`}>
+                              {cfg.label}
+                            </span>
+                          </Show>
+
                           <span class="text-[10px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 uppercase tracking-wide">
                             {item.category}
                           </span>
+
                           <Show when={!item.read}>
                             <span class={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${cfg.dot}`} />
                           </Show>
@@ -563,7 +584,7 @@ export default function Notifications() {
 
                         {/* Message */}
                         <p class="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
-                          {item.description}
+                          {formatDescription(item.description)}
                         </p>
 
                         {/* Time */}
