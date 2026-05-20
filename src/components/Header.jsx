@@ -46,17 +46,17 @@ export default function Header() {
         try {
             setHeaderCache("loading", true);
 
-            // ✅ Load user first
+            //  Load user first
             const userRes = await fetchUser();
 
-            // ✅ Immediately update user UI
+            //  Immediately update user UI
             setHeaderCache({
                 ...headerCache,
                 user: userRes.data,
                 loading: false,
             });
 
-            // ✅ Notifications load separately in background
+            //  Notifications load separately in background
             let pageNo = 1;
             let allAlerts = [];
 
@@ -76,13 +76,15 @@ export default function Header() {
                 localStorage.getItem("readAlerts") || "[]"
             );
 
-            const allNotifications = allAlerts.map((item) => ({
-                id: item.id,
-                title: item.project_name || "Project",
-                message: item.message,
-                time: formatTime(item.created_at),
-                unread: !readIds.includes(item.id) && !item.is_acknowledged,
-            }));
+            const allNotifications = allAlerts
+                .filter((item) => item.type?.toLowerCase() === "info")
+                .map((item) => ({
+                    id: item.id,
+                    title: item.project_name || "Project",
+                    message: item.message,
+                    time: formatTime(item.created_at),
+                    unread: !readIds.includes(item.id) && !item.is_acknowledged,
+                }));
 
             setHeaderCache({
                 ...headerCache,

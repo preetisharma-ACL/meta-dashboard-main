@@ -281,13 +281,34 @@ export default function Notifications() {
 
   const filteredNotifications = createMemo(() => {
     let list = notifications();
-    if (activeTab() === "unread") list = list.filter((n) => !n.read);
-    if (categoryFilter() !== "all") list = list.filter((n) => n.categoryKey === categoryFilter());
+
+    // sirf info notifications show hongi
+    list = list.filter(
+      (n) => TYPE_CONFIG[n.type]?.label?.toLowerCase() === "info"
+    );
+
+    if (activeTab() === "unread") {
+      list = list.filter((n) => !n.read);
+    }
+
+    if (categoryFilter() !== "all") {
+      list = list.filter((n) => n.categoryKey === categoryFilter());
+    }
+
     return list;
   });
+  const infoTotal = createMemo(() =>
+    notifications().filter(
+      (n) => TYPE_CONFIG[n.type]?.label?.toLowerCase() === "info"
+    ).length
+  );
 
   const unreadCount = createMemo(() =>
-    allNotifications().filter((n) => !n.read).length
+    notifications().filter(
+      (n) =>
+        !n.read &&
+        TYPE_CONFIG[n.type]?.label?.toLowerCase() === "info"
+    ).length
   );
 
   const markAsRead = (id) => {
@@ -393,11 +414,11 @@ export default function Notifications() {
 
           <div class="flex items-center gap-2">
             {/* Total badge */}
-            <Show when={!loading() && total() > 0}>
+            <Show when={!loading() && infoTotal() > 0}>
               <div class="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-500/20">
                 <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
                 <span class="text-sm font-semibold text-green-700 dark:text-green-300">
-                  {total()} total
+                  {infoTotal()} total
                 </span>
               </div>
             </Show>
@@ -582,9 +603,9 @@ export default function Notifications() {
                             </span>
                           </Show>
 
-                          {/* <span class="text-[10px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 uppercase tracking-wide">
+                          <span class="text-[10px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 uppercase tracking-wide">
                             {item.category}
-                          </span> */}
+                          </span>
 
                           <Show when={!item.read}>
                             <span class={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${cfg.dot}`} />
@@ -650,7 +671,7 @@ export default function Notifications() {
             <div class="px-5 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between flex-wrap gap-3">
 
               <p class="text-xs text-gray-400 dark:text-gray-500">
-                Showing {filteredNotifications().length} of {total()} alerts
+                Showing {filteredNotifications().length} of {infoTotal()} alerts
               </p>
 
               {/* Pagination */}
@@ -665,9 +686,9 @@ export default function Notifications() {
                 </button>
 
                 <span class="text-xs text-gray-500 dark:text-gray-400 px-1">
-                  Page {page()} of {totalPages()}
+                  Page 1 of 1
                 </span>
-
+                <Show when={infoTotal() > 0}>
                 <button
                   onClick={() => { if (hasNext()) loadAlerts(page() + 1); }}
                   disabled={!hasNext() || loading()}
@@ -676,6 +697,7 @@ export default function Notifications() {
                   Next
                   {ICONS.chevronRight}
                 </button>
+                </Show>
               </div>
             </div>
           </Show>
