@@ -1,4 +1,4 @@
-import { createSignal, createMemo, For, Show } from 'solid-js';
+import { createSignal, onMount, onCleanup, createMemo, For, Show } from 'solid-js';
 import { Portal } from 'solid-js/web';
 
 export function DateRangeFilter(props) {
@@ -263,7 +263,24 @@ export function DateRangeFilter(props) {
         return from > today || to > today;
     };
 
+    let calendarRef;
+
+    onMount(() => {
+        const handleClickOutside = (event) => {
+            if (calendarRef && !calendarRef.contains(event.target)) {
+                setIsOpen(false); // calendar close
+            }
+        };
+
+        document.addEventListener("mousedown", handleClickOutside);
+
+        onCleanup(() => {
+            document.removeEventListener("mousedown", handleClickOutside);
+        });
+    });
+
     return (
+
         <div class="relative">
             {/* Trigger Button */}
             <button
@@ -293,7 +310,9 @@ export function DateRangeFilter(props) {
                         />
 
                         {/* Modal Content */}
-                        <div class="relative bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-[420px] max-h-[550px] overflow-hidden">
+                        <div
+                            ref={calendarRef}
+                            class="relative bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-[420px] max-h-[550px] overflow-hidden">
                             <div class="flex">
                                 {/* Left Sidebar - Presets */}
                                 <div class="w-40 bg-gray-50 dark:bg-gray-700 border-r border-gray-200 dark:border-gray-700 p-2">
@@ -438,5 +457,6 @@ export function DateRangeFilter(props) {
                 </Portal>
             </Show>
         </div>
+       
     );
 }

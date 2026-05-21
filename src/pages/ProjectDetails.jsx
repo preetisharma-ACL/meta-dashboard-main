@@ -1209,7 +1209,7 @@ export default function ProjectDetails() {
             </div>
 
 
-            <div class="hidden">
+           
                 {/* ================= Lead Quality Insights ================= */}
                 <h3 class="mt-8 mb-4 text-lg font-semibold text-gray-800 dark:text-white">
                     Lead Quality Insights
@@ -1883,7 +1883,7 @@ export default function ProjectDetails() {
                 </div>
                 {/* pdf payment report end */}
             </div>
-        </div>
+         
     );
 }
 
