@@ -490,7 +490,10 @@ export default function ProjectDetails() {
             }
         }
 
-        let data = Array.from(map.values()).sort((a, b) => b.totalLeads - a.totalLeads);
+        // let data = Array.from(map.values()).sort((a, b) => b.totalLeads - a.totalLeads);
+        let data = Array.from(map.values()).sort(
+            (a, b) => new Date(b.start_date) - new Date(a.start_date)
+        );
         return sortData(data);
     });
 
