@@ -20,6 +20,7 @@ import ProtectedRoute from './routes/ProtectedRoute';
 import LeadsPage from './pages/LeadPerformance';
 import Leads from './pages/Leads';
 import FollowUp from './pages/FollowUp';
+import DailyReports from './pages/DailyReports';
 
 //  Layout is a named component — SolidJS reuses the SAME instance across all
 //    child route navigations, so Header and Sidebar mount exactly ONCE
@@ -86,6 +87,7 @@ function App() {
             <Route path="/" component={MainDashboard} />
             <Route path="/add-project" component={AddProject} />
             <Route path="/billing" component={Billing} />
+            <Route path="/daily-reports" component={DailyReports} />
             <Route path="/client-delivery" component={ClientDelivery} />
             <Route path="/performing-projects" component={PerformingProjects} />
             <Route path="/settings" component={Settings} />

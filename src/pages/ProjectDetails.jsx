@@ -711,8 +711,8 @@ export default function ProjectDetails() {
                     </h2>
                     <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
                         <Info label="Project name" value={project?.name} />
-                        <Info label="Location" value="Mumbai" />
-                        <Info label="Property type" value="Residential" />
+                        <Info label="Location" value={project?.location} />
+                        <Info label="Property type" value={project?.type} />
                         <Info label="Priority" value={project?.priority} badge />
                         <Info label="Project control" value={project?.projectControl} />
                         <Info label="Pricing & typology" value={project?.summary} />
