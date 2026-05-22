@@ -141,4 +141,4 @@ export const invalidateCampaignDetails = (campaignId) => {
 export const clearAllCache = () => {
     ["cache_projects", "cache_billing", "cache_project_details", "cache_campaign_details", "cache_header"]
         .forEach(k => sessionStorage.removeItem(k));
-};
+}; 

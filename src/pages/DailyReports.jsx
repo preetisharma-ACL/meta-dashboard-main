@@ -4,8 +4,8 @@ import { fetchProjects } from "../services/dashboard";
 import { fetchCampaigns, fetchCampaignInsights } from "../services/campaigns";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
-
 const GST_RATE = 0.18;
+const logoUrl = "/logo.webp";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -214,16 +214,57 @@ export default function DailyReports() {
     /* ── range label ── */
     const rangeLabel = createMemo(() => {
         if (!fromDate() || !toDate()) return "All Dates";
+
         const from = normaliseDate(new Date(fromDate()));
         const to = normaliseDate(new Date(toDate()));
-        const diffDays = Math.floor((to - from) / 86400000) + 1;
-        if (diffDays === 1) {
-            const today = new Date(); today.setHours(0, 0, 0, 0);
-            return from.getTime() === today.getTime() ? "Today" : "Yesterday";
+
+        // current date based ranges
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+
+        // Last 3 Days = yesterday + previous 2 days
+        const last3Start = new Date(today);
+        last3Start.setDate(last3Start.getDate() - 3);
+
+        // Last 7 Days
+        const last7Start = new Date(today);
+        last7Start.setDate(last7Start.getDate() - 7);
+
+        // Today
+        if (
+            from.getTime() === today.getTime() &&
+            to.getTime() === today.getTime()
+        ) {
+            return "Today";
         }
-        if (diffDays === 3) return "Last 3 Days";
-        if (diffDays === 7) return "Last 7 Days";
-        if (diffDays >= 28 && diffDays <= 31) return "Last Month";
+
+        // Yesterday
+        if (
+            from.getTime() === yesterday.getTime() &&
+            to.getTime() === yesterday.getTime()
+        ) {
+            return "Yesterday";
+        }
+
+        // Last 3 Days
+        if (
+            from.getTime() === last3Start.getTime() &&
+            to.getTime() === yesterday.getTime()
+        ) {
+            return "Last 3 Days";
+        }
+
+        // Last 7 Days
+        if (
+            from.getTime() === last7Start.getTime() &&
+            to.getTime() === yesterday.getTime()
+        ) {
+            return "Last 7 Days";
+        }
+
         return `${fmtDate(fromDate())} – ${fmtDate(toDate())}`;
     });
 
@@ -399,15 +440,20 @@ export default function DailyReports() {
                                                 {/* Date column */}
                                                 <td class="p-3 pl-4 text-left">
                                                     <span class="font-medium text-gray-700 dark:text-gray-300">
-                                                        {fromDate()
-                                                            ? new Date(fromDate()).toLocaleDateString("en-IN", {
-                                                                day: "numeric",
-                                                                month: "short",
-                                                            })
-                                                            : new Date().toLocaleDateString("en-IN", {
-                                                                day: "numeric",
-                                                                month: "short",
-                                                            })}
+                                                        {
+                                                            fromDate() && toDate()
+                                                                ? `${new Date(fromDate()).toLocaleDateString("en-IN", {
+                                                                    day: "numeric",
+                                                                    month: "short",
+                                                                })} - ${new Date(toDate()).toLocaleDateString("en-IN", {
+                                                                    day: "numeric",
+                                                                    month: "short",
+                                                                })}`
+                                                                : new Date().toLocaleDateString("en-IN", {
+                                                                    day: "numeric",
+                                                                    month: "short",
+                                                                })
+                                                        }
                                                     </span>
                                                 </td>
 
@@ -429,12 +475,12 @@ export default function DailyReports() {
                                                 </td>
 
                                                 {/* Spent */}
-                                                <td class="p-3 text-red-600 dark:text-red-400">
+                                                <td class="p-3 text-green-700 dark:text-green-400">
                                                     {fmt(row.spent)}
                                                 </td>
 
                                                 {/* Spent + GST */}
-                                                <td class="p-3 font-semibold text-orange-600 dark:text-orange-400">
+                                                <td class="p-3 font-semibold text-green-900 dark:text-green-400">
                                                     {fmt(row.spentWithGST)}
                                                 </td>
                                             </tr>
@@ -457,10 +503,10 @@ export default function DailyReports() {
                                         <td class="p-3 text-purple-700 dark:text-purple-300 font-bold">
                                             {fmt(totals().avgCPL)}
                                         </td>
-                                        <td class="p-3 text-red-700 dark:text-red-300 font-bold">
+                                        <td class="p-3 text-green-700 dark:text-green-300 font-bold">
                                             {fmt(totals().totalSpent)}
                                         </td>
-                                        <td class="p-3 text-orange-700 dark:text-orange-300 font-bold">
+                                        <td class="p-3 text-green-900 dark:text-green-400 font-bold">
                                             {fmt(totals().totalSpentGST)}
                                         </td>
                                     </tr>
@@ -529,49 +575,68 @@ export default function DailyReports() {
             {/* ════════════════════════════════════════════════════════
                 PREVIEW PANEL  (in-page premium gold report)
             ════════════════════════════════════════════════════════ */}
+            {/* ════════════════════════════════════════════════════════
+        PREVIEW PANEL  (in-page white + minimal maroon report)
+    ════════════════════════════════════════════════════════ */}
             <Show when={showPreview()}>
-                <div class="mt-8 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-xl">
-                    {/* header band */}
-                    <div class="relative bg-[#0A1628] px-8 py-6 text-center overflow-hidden">
-                        <div class="absolute top-0 left-0 right-0 h-[5px] bg-[#C9A84C]" />
-                        <div
-                            class="absolute inset-0 opacity-[0.03]"
-                            style="background-image: repeating-linear-gradient(135deg, transparent, transparent 18px, white 18px, white 19px);"
-                        />
-                        <p class="relative text-[#E8D5A3] text-xs tracking-[0.2em] uppercase mb-1">
-                            Aajneeti Connect Ltd.
-                        </p>
-                        <h2 class="relative text-white text-2xl font-bold tracking-[0.15em] uppercase">
-                            Daily Report
-                        </h2>
-                        <p class="relative text-[#E8D5A3] text-xs mt-1.5 tracking-wide">
-                            {rangeLabel()} &nbsp;·&nbsp; Generated on{" "}
-                            {new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}
-                        </p>
-                        <div class="absolute bottom-0 left-0 right-0 h-[4px] bg-[#C9A84C]" />
+                <div class="mt-8 rounded-2xl border border-[rgba(123,28,28,0.15)] overflow-hidden shadow-lg bg-white">
+
+                    {/* ── HEADER: white background so maroon logo shows clearly ── */}
+                    <div class="relative bg-white px-8 py-6 border-b-[3px] border-[#7B1C1C]">
+                        {/* top maroon bar */}
+                        <div class="absolute top-0 left-0 right-0 h-[4px] bg-[#7B1C1C]" />
+
+                        <div class="flex items-center gap-5 relative">
+                            {/* Logo mark — replace inner content with your actual <img> tag */}
+                            <div class="w-[120px]  flex items-center justify-center flex-shrink-0">
+                                <img src={logoUrl} alt="Aajneeti Connect" class="w-full h-full object-contain p-1" />
+                            </div>
+
+                            {/* Title block */}
+                            <div class="flex-1">
+                                <p class="text-[#7B1C1C] text-[11px] tracking-[0.18em] uppercase font-semibold mb-1">
+                                    Aajneeti Connect Ltd.
+                                </p>
+                                <h2 class="text-[#1a1a1a] text-2xl font-bold tracking-[0.05em] uppercase font-serif">
+                                    Daily Report
+                                </h2>
+                                <p class="text-[#888] text-xs mt-0.5 tracking-wide">
+                                    {rangeLabel()} &nbsp;·&nbsp; Generated on{" "}
+                                    {new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}
+                                </p>
+                            </div>
+
+                            {/* Period badge */}
+                            <div class="bg-[#f9f0f0] border border-[rgba(123,28,28,0.15)] rounded-lg px-4 py-2 text-center">
+                                <p class="text-[10px] text-[#999] tracking-[0.1em] uppercase">Period</p>
+                                <p class="text-[13px] font-semibold text-[#7B1C1C] mt-0.5">
+                                    {new Date().toLocaleDateString("en-GB", { month: "short", year: "numeric" })}
+                                </p>
+                            </div>
+                        </div>
                     </div>
 
-                    {/* table */}
-                    <div class="overflow-x-auto bg-[#FDF8EE]">
+                    {/* ── TABLE ── */}
+                    <div class="overflow-x-auto bg-white">
                         <table class="w-full text-sm border-collapse">
                             <thead>
-                                <tr class="bg-[#0A1628]">
-                                    <th class="px-5 py-4 text-left text-[#C9A84C] font-bold text-xs tracking-widest uppercase whitespace-nowrap border-r border-[rgba(201,168,76,0.2)]">
+                                <tr class="bg-[#7B1C1C]">
+                                    <th class="px-4 py-3 text-left text-white text-[10.5px] tracking-[0.12em] uppercase font-semibold border-r border-white/10">
                                         Date
                                     </th>
-                                    <th class="px-5 py-4 text-center text-[#C9A84C] font-bold text-xs tracking-widest uppercase whitespace-nowrap border-r border-[rgba(201,168,76,0.2)]">
+                                    <th class="px-4 py-3 text-center text-white text-[10.5px] tracking-[0.12em] uppercase font-semibold border-r border-white/10">
                                         Project
                                     </th>
-                                    <th class="px-5 py-4 text-center text-[#C9A84C] font-bold text-xs tracking-widest uppercase whitespace-nowrap border-r border-[rgba(201,168,76,0.2)]">
+                                    <th class="px-4 py-3 text-center text-white text-[10.5px] tracking-[0.12em] uppercase font-semibold border-r border-white/10">
                                         Leads
                                     </th>
-                                    <th class="px-5 py-4 text-center text-[#C9A84C] font-bold text-xs tracking-widest uppercase whitespace-nowrap border-r border-[rgba(201,168,76,0.2)]">
+                                    <th class="px-4 py-3 text-center text-white text-[10.5px] tracking-[0.12em] uppercase font-semibold border-r border-white/10">
                                         CPL
                                     </th>
-                                    <th class="px-5 py-4 text-center text-[#C9A84C] font-bold text-xs tracking-widest uppercase whitespace-nowrap border-r border-[rgba(201,168,76,0.2)]">
+                                    <th class="px-4 py-3 text-center text-white text-[10.5px] tracking-[0.12em] uppercase font-semibold border-r border-white/10">
                                         Amount Spent
                                     </th>
-                                    <th class="px-5 py-4 text-center text-[#E8D5A3] font-bold text-xs tracking-widest uppercase whitespace-nowrap">
+                                    <th class="px-4 py-3 text-center text-[#f5d9a0] text-[10.5px] tracking-[0.12em] uppercase font-semibold">
                                         Amount Spent (GST)
                                     </th>
                                 </tr>
@@ -580,38 +645,37 @@ export default function DailyReports() {
                                 <For each={reportRows()}>
                                     {(row, i) => (
                                         <tr
-                                            class="border-b border-[rgba(201,168,76,0.15)]"
-                                            style={{ background: i() % 2 === 0 ? "#F5EDD8" : "#FDF8EE" }}
+                                            class="border-b border-[rgba(123,28,28,0.1)]"
+                                            style={{ background: i() % 2 === 0 ? "#ffffff" : "#fafafa" }}
                                         >
-                                            {/* S.No with gold left accent */}
-                                            <td class="px-5 py-3 text-left relative whitespace-nowrap border-r border-[rgba(201,168,76,0.2)]">
-                                                <span class="absolute left-0 top-0 bottom-0 w-[3px] bg-[#C9A84C]" />
-                                                <span class="font-bold text-[#0A1628] text-xs">
-                                                    {fromDate()
-                                                        ? new Date(fromDate()).toLocaleDateString("en-IN", {
-                                                            day: "numeric",
-                                                            month: "short",
-                                                        })
-                                                        : new Date().toLocaleDateString("en-IN", {
-                                                            day: "numeric",
-                                                            month: "short",
-                                                        })}
+                                            {/* Date — maroon left accent */}
+                                            <td class="px-4 py-3 text-left relative whitespace-nowrap border-r border-[rgba(123,28,28,0.1)]">
+                                                <span class="absolute left-0 top-0 bottom-0 w-[3px] bg-[#7B1C1C]" />
+                                                <span class="font-semibold text-[#1a1a1a] text-xs">
+                                                    {
+                                                        fromDate() && toDate()
+                                                            ? `${new Date(fromDate()).toLocaleDateString("en-IN", { day: "numeric", month: "short" })} - ${new Date(toDate()).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}`
+                                                            : new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short" })
+                                                    }
                                                 </span>
                                             </td>
-                                            {/* Project name — no badge */}
-                                            <td class="px-5 py-3 text-center text-[#1E3A5F] font-medium text-xs whitespace-nowrap border-r border-[rgba(201,168,76,0.2)]">
+                                            {/* Project */}
+                                            <td class="px-4 py-3 text-center text-[#333] font-medium text-xs whitespace-nowrap border-r border-[rgba(123,28,28,0.1)]">
                                                 {row.projectName}
                                             </td>
-                                            <td class="px-5 py-3 text-center font-bold text-[#1E3A5F] text-xs border-r border-[rgba(201,168,76,0.2)]">
+                                            {/* Leads — maroon accent */}
+                                            <td class="px-4 py-3 text-center font-bold text-[#7B1C1C] text-xs border-r border-[rgba(123,28,28,0.1)]">
                                                 {row.leads}
                                             </td>
-                                            <td class="px-5 py-3 text-center text-[#1E3A5F] font-medium text-xs border-r border-[rgba(201,168,76,0.2)]">
+                                            <td class="px-4 py-3 text-center text-[#333] font-medium text-xs border-r border-[rgba(123,28,28,0.1)]">
                                                 {fmt(row.cpl)}
                                             </td>
-                                            <td class="px-5 py-3 text-center text-[#1E3A5F] font-medium text-xs border-r border-[rgba(201,168,76,0.2)]">
+                                            <td class="px-4 py-3 text-center text-[#333] font-medium text-xs border-r border-[rgba(123,28,28,0.1)]">
                                                 {fmt(row.spent)}
                                             </td>
-                                            <td class="px-5 py-3 text-center font-bold text-[#7A5C1E] text-xs" style="background: rgba(201,168,76,0.10);">
+                                            {/* GST — warm gold tint */}
+                                            <td class="px-4 py-3 text-center font-semibold text-[#6b4c10] text-xs"
+                                                style="background: rgba(201,168,76,0.10);">
                                                 {fmt(row.spentWithGST)}
                                             </td>
                                         </tr>
@@ -620,21 +684,21 @@ export default function DailyReports() {
                             </tbody>
                             {/* totals row */}
                             <tfoot>
-                                <tr class="bg-[#0A1628]">
-                                    <td class="px-5 py-4 text-left text-[#C9A84C] font-bold text-xs tracking-widest uppercase border-r border-[rgba(201,168,76,0.2)]">
-                                        TOTAL
+                                <tr class="bg-[#7B1C1C]">
+                                    <td class="px-4 py-3 text-left text-white font-bold text-[10.5px] tracking-widest uppercase border-r border-white/10">
+                                        Total
                                     </td>
-                                    <td class="px-5 py-4 border-r border-[rgba(201,168,76,0.2)]" />
-                                    <td class="px-5 py-4 text-center text-[#C9A84C] font-bold text-sm border-r border-[rgba(201,168,76,0.2)]">
+                                    <td class="px-4 py-3 border-r border-white/10" />
+                                    <td class="px-4 py-3 text-center text-white font-bold text-sm border-r border-white/10">
                                         {totals().totalLeads}
                                     </td>
-                                    <td class="px-5 py-4 text-center text-[#C9A84C] font-bold text-xs border-r border-[rgba(201,168,76,0.2)]">
+                                    <td class="px-4 py-3 text-center text-white font-bold text-xs border-r border-white/10">
                                         {fmt(totals().avgCPL)}
                                     </td>
-                                    <td class="px-5 py-4 text-center text-[#C9A84C] font-bold text-xs border-r border-[rgba(201,168,76,0.2)]">
+                                    <td class="px-4 py-3 text-center text-white font-bold text-xs border-r border-white/10">
                                         {fmt(totals().totalSpent)}
                                     </td>
-                                    <td class="px-5 py-4 text-center text-[#E8D5A3] font-bold text-xs">
+                                    <td class="px-4 py-3 text-center text-[#f5d9a0] font-bold text-xs">
                                         {fmt(totals().totalSpentGST)}
                                     </td>
                                 </tr>
@@ -642,153 +706,134 @@ export default function DailyReports() {
                         </table>
                     </div>
 
-                    {/* footer band */}
-                    <div class="bg-[#FDF8EE] border-t border-[rgba(201,168,76,0.3)] px-8 py-3 flex items-center justify-between">
-                        <div class="w-2 h-2 bg-[#C9A84C] rotate-45" />
-                        <p class="text-[#645132] text-[11px] tracking-[0.2em] uppercase font-medium">
+                    {/* ── FOOTER ── */}
+                    <div class="bg-white border-t border-[rgba(123,28,28,0.15)] px-8 py-3 flex items-center justify-between">
+                        <div class="w-[6px] h-[6px] bg-[#7B1C1C] rotate-45" />
+                        <p class="text-[#aaa] text-[10.5px] tracking-[0.18em] uppercase font-medium">
                             © {new Date().getFullYear()} Project Analytics · Aajneeti Connect Ltd.
                         </p>
-                        <div class="w-2 h-2 bg-[#C9A84C] rotate-45" />
+                        <div class="w-[6px] h-[6px] bg-[#7B1C1C] rotate-45" />
                     </div>
                 </div>
             </Show>
 
             {/* ════════════════════════════════════════════════════════
-                HIDDEN PDF TEMPLATE  (off-screen, captured by html2canvas)
-            ════════════════════════════════════════════════════════ */}
+        HIDDEN PDF TEMPLATE  (off-screen, captured by html2canvas)
+    ════════════════════════════════════════════════════════ */}
             <div id="pdf-daily-report" style="position:absolute;left:-9999px;top:0;width:900px;">
-                <div style="width:900px;background:#fbfbfb;padding:32px;font-family:'Georgia',serif;position:relative;box-sizing:border-box;">
+                <div style="width:900px;background:#ffffff;font-family:Arial,sans-serif;position:relative;box-sizing:border-box;border:1px solid rgba(123,28,28,0.15);border-radius:12px;overflow:hidden;">
 
-                    {/* texture overlay */}
-                    <div style="position:absolute;inset:0;background-image:repeating-linear-gradient(135deg,transparent,transparent 18px,rgba(255,255,255,0.015) 18px,rgba(255,255,255,0.015) 19px);pointer-events:none;" />
+                    {/* ── PDF HEADER: white so maroon logo is visible ── */}
+                    <div style="background:#ffffff;border-bottom:3px solid #7B1C1C;padding:28px 40px 24px;position:relative;display:flex;align-items:center;gap:20px;">
+                        {/* top maroon bar */}
+                        <div style="position:absolute;top:0;left:0;right:0;height:4px;background:#7B1C1C;" />
 
-                    {/* outer gold border */}
-                    <div style="position:absolute;inset:20px;border:2.5px solid #C9A84C;border-radius:10px;pointer-events:none;" />
-                    <div style="position:absolute;inset:30px;border:0.8px solid #C9A84C;border-radius:7px;pointer-events:none;" />
+                        {/* Logo box — swap the inner span for your <img> */}
+                        <div style="width:120px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                            <img src={logoUrl} alt="Aajneeti Connect" style="width:100%;height:100%;object-fit:contain;padding:4px;" />
+                        </div>
 
-                    {/* corners TL */}
-                    <div style="position:absolute;top:20px;left:20px;pointer-events:none;">
-                        <div style="position:absolute;top:-1px;left:-1px;width:22px;height:3px;background:#C9A84C;" />
-                        <div style="position:absolute;top:-1px;left:-1px;width:3px;height:22px;background:#C9A84C;" />
-                        <div style="position:absolute;top:6px;left:6px;width:8px;height:8px;background:#C9A84C;transform:rotate(45deg);" />
-                    </div>
-                    {/* TR */}
-                    <div style="position:absolute;top:20px;right:20px;pointer-events:none;">
-                        <div style="position:absolute;top:-1px;right:-1px;width:22px;height:3px;background:#C9A84C;" />
-                        <div style="position:absolute;top:-1px;right:-1px;width:3px;height:22px;background:#C9A84C;" />
-                        <div style="position:absolute;top:6px;right:6px;width:8px;height:8px;background:#C9A84C;transform:rotate(45deg);" />
-                    </div>
-                    {/* BL */}
-                    <div style="position:absolute;bottom:20px;left:20px;pointer-events:none;">
-                        <div style="position:absolute;bottom:-1px;left:-1px;width:22px;height:3px;background:#C9A84C;" />
-                        <div style="position:absolute;bottom:-1px;left:-1px;width:3px;height:22px;background:#C9A84C;" />
-                        <div style="position:absolute;bottom:6px;left:6px;width:8px;height:8px;background:#C9A84C;transform:rotate(45deg);" />
-                    </div>
-                    {/* BR */}
-                    <div style="position:absolute;bottom:20px;right:20px;pointer-events:none;">
-                        <div style="position:absolute;bottom:-1px;right:-1px;width:22px;height:3px;background:#C9A84C;" />
-                        <div style="position:absolute;bottom:-1px;right:-1px;width:3px;height:22px;background:#C9A84C;" />
-                        <div style="position:absolute;bottom:6px;right:6px;width:8px;height:8px;background:#C9A84C;transform:rotate(45deg);" />
-                    </div>
-
-                    {/* cream inner area */}
-                    <div style="position:relative;margin:14px;background:#FDF8EE;border-radius:6px;padding:0 0 36px 0;overflow:hidden;z-index:1;">
-
-                        {/* header */}
-                        <div style="background:#0A1628;padding:28px 40px 22px;position:relative;overflow:hidden;">
-                            <div style="position:absolute;inset:0;background-image:repeating-linear-gradient(135deg,transparent,transparent 18px,rgba(255,255,255,0.02) 18px,rgba(255,255,255,0.02) 19px);" />
-                            <div style="position:absolute;top:0;left:0;right:0;height:5px;background:#C9A84C;" />
-                            <div style="position:absolute;bottom:0;left:0;right:0;height:4px;background:#C9A84C;" />
-                            <p style="text-align:center;color:#E8D5A3;font-size:14px;font-family:Arial,sans-serif;margin:0 0 6px;letter-spacing:2px;">
-                                [Aajneeti Connect Ltd.]
+                        {/* Title */}
+                        <div style="flex:1;">
+                            <p style="color:#7B1C1C;font-size:11px;letter-spacing:2.5px;text-transform:uppercase;font-weight:600;margin:0 0 4px;">
+                                Aajneeti Connect Ltd.
                             </p>
-                            <h1 style="text-align:center;color:white;font-size:28px;font-family:'Georgia',serif;letter-spacing:3px;margin:0 0 8px;font-weight:bold;text-transform:uppercase;">
+                            <h1 style="color:#1a1a1a;font-size:26px;font-family:Georgia,serif;letter-spacing:2px;margin:0 0 4px;font-weight:700;text-transform:uppercase;">
                                 Daily Report
                             </h1>
-                            <p style="text-align:center;color:#E8D5A3;font-size:13px;font-family:Arial,sans-serif;margin:0;letter-spacing:1px;">
+                            <p style="color:#888;font-size:12px;margin:0;letter-spacing:1px;">
                                 {rangeLabel()} &nbsp;·&nbsp; Generated on: {new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}
                             </p>
                         </div>
 
-                        {/* table */}
-                        <div style="padding:24px 36px 0;">
-
-                            {/* section divider */}
-                            <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
-                                <div style="width:8px;height:8px;background:#C9A84C;transform:rotate(45deg);flex-shrink:0;" />
-                                <div style="flex:1;height:1px;background:#C9A84C;opacity:0.4;" />
-                                <div style="display:flex;align-items:center;justify-content:center;background:#0A1628;padding:6px 16px;border-radius:20px;height:28px;">
-                                    <span style="color:#C9A84C;font-size:11px;font-family:Arial;font-weight:bold;line-height:1;margin-bottom:12px;">
-                                        DETAILED BREAKDOWN
-                                    </span>
-                                </div>
-                                <div style="flex:1;height:1px;background:#C9A84C;opacity:0.4;" />
-                                <div style="width:8px;height:8px;background:#C9A84C;transform:rotate(45deg);flex-shrink:0;" />
-                            </div>
-
-                            <div style="border-radius:8px;overflow:hidden;box-shadow:4px 4px 0 #C8B89A;border:1px solid #C9A84C;">
-                                <table style="width:100%;border-collapse:collapse;font-family:Arial;">
-                                    <thead>
-                                        <tr style="background:#0A1628;">
-                                            <th style="padding:12px 14px 20px;text-align:left;color:#C9A84C;font-size:12px;border-right:1px solid rgba(201,168,76,0.2);">S.No</th>
-                                            <th style="padding:12px 14px 20px;text-align:center;color:#C9A84C;font-size:12px;border-right:1px solid rgba(201,168,76,0.2);">Project</th>
-                                            <th style="padding:12px 14px 20px;text-align:center;color:#C9A84C;font-size:12px;border-right:1px solid rgba(201,168,76,0.2);">Leads</th>
-                                            <th style="padding:12px 14px 20px;text-align:center;color:#C9A84C;font-size:12px;border-right:1px solid rgba(201,168,76,0.2);">CPL</th>
-                                            <th style="padding:12px 14px 20px;text-align:center;color:#C9A84C;font-size:12px;border-right:1px solid rgba(201,168,76,0.2);">Amt Spent</th>
-                                            <th style="padding:12px 14px 20px;text-align:center;color:#E8D5A3;font-size:12px;">Amt Spent (GST)</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {reportRows().map((row, i) => (
-                                            <tr style={{ background: i % 2 === 0 ? "#F5EDD8" : "#FDF8EE" }}>
-                                                <td style="padding:10px 14px 18px;font-size:12px;font-weight:bold;color:#0A1628;border-right:1px solid rgba(201,168,76,0.2);position:relative;">
-                                                    <span style="position:absolute;left:0;top:0;bottom:0;width:3px;background:#C9A84C;" />
-                                                    {i + 1}
-                                                </td>
-                                                <td style="padding:10px 14px 18px;text-align:center;font-size:12px;color:#1E3A5F;font-weight:bold;border-right:1px solid rgba(201,168,76,0.2);">
-                                                    {row.projectName}
-                                                </td>
-                                                <td style="padding:10px 14px 18px;text-align:center;font-size:13px;font-weight:bold;color:#1E3A5F;border-right:1px solid rgba(201,168,76,0.2);">
-                                                    {row.leads}
-                                                </td>
-                                                <td style="padding:10px 14px 18px;text-align:center;font-size:12px;color:#1E3A5F;border-right:1px solid rgba(201,168,76,0.2);">
-                                                    {fmt(row.cpl)}
-                                                </td>
-                                                <td style="padding:10px 14px 18px;text-align:center;font-size:12px;color:#1E3A5F;border-right:1px solid rgba(201,168,76,0.2);">
-                                                    {fmt(row.spent)}
-                                                </td>
-                                                <td style="padding:10px 14px 18px;text-align:center;font-size:12px;font-weight:bold;color:#7A5C1E;background:rgba(201,168,76,0.10);">
-                                                    {fmt(row.spentWithGST)}
-                                                </td>
-                                            </tr>
-                                        ))}
-                                        {/* totals */}
-                                        <tr style="background:#0A1628;">
-                                            <td style="padding:12px 14px 20px;text-align:left;color:#C9A84C;font-size:12px;font-weight:bold;border-right:1px solid rgba(201,168,76,0.2);">TOTAL</td>
-                                            <td style="padding:12px 14px 20px;border-right:1px solid rgba(201,168,76,0.2);" />
-                                            <td style="padding:12px 14px 20px;text-align:center;color:#C9A84C;font-size:14px;font-weight:bold;border-right:1px solid rgba(201,168,76,0.2);">{totals().totalLeads}</td>
-                                            <td style="padding:12px 14px 20px;text-align:center;color:#C9A84C;font-size:12px;font-weight:bold;border-right:1px solid rgba(201,168,76,0.2);">{fmt(totals().avgCPL)}</td>
-                                            <td style="padding:12px 14px 20px;text-align:center;color:#C9A84C;font-size:12px;font-weight:bold;border-right:1px solid rgba(201,168,76,0.2);">{fmt(totals().totalSpent)}</td>
-                                            <td style="padding:12px 14px 20px;text-align:center;color:#E8D5A3;font-size:12px;font-weight:bold;">{fmt(totals().totalSpentGST)}</td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-
-                        {/* footer */}
-                        <div style="margin:24px 36px 0;padding-top:14px;border-top:1px solid rgba(201,168,76,0.4);display:flex;align-items:center;justify-content:space-between;">
-                            <div style="width:8px;height:8px;background:#C9A84C;transform:rotate(45deg);" />
-                            <p style="color:#645132;font-size:11px;font-family:Arial;letter-spacing:2px;text-align:center;margin:0;text-transform:uppercase;">
-                                © {new Date().getFullYear()} Project Analytics · Aajneeti Connect Ltd.
+                        {/* Period badge */}
+                        <div style="background:#f9f0f0;border:1px solid rgba(123,28,28,0.15);border-radius:8px;padding:8px 16px;text-align:center;">
+                            <p style="font-size:10px;color:#999;letter-spacing:1.5px;text-transform:uppercase;margin:0 0 2px;">Period</p>
+                            <p style="font-size:13px;font-weight:600;color:#7B1C1C;margin:0;">
+                                {new Date().toLocaleDateString("en-GB", { month: "short", year: "numeric" })}
                             </p>
-                            <div style="width:8px;height:8px;background:#C9A84C;transform:rotate(45deg);" />
+                        </div>
+                    </div>
+
+                    {/* ── PDF TABLE ── */}
+                    <div style="padding:28px 36px 0;">
+
+                        {/* section label */}
+                        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+                            <div style="width:6px;height:6px;background:#7B1C1C;transform:rotate(45deg);flex-shrink:0;" />
+                            <div style="flex:1;height:1px;background:rgba(123,28,28,0.2);" />
+                            <div style="background:#7B1C1C;padding:5px 14px;padding-bottom:20px;border-radius:20px;">
+                                <span style="color:#fff;font-size:10px;font-family:Arial;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;">
+                                    DETAILED BREAKDOWN
+                                </span>
+                            </div>
+                            <div style="flex:1;height:1px;background:rgba(123,28,28,0.2);" />
+                            <div style="width:6px;height:6px;background:#7B1C1C;transform:rotate(45deg);flex-shrink:0;" />
                         </div>
 
+                        <div style="border-radius:8px;overflow:hidden;border:1px solid rgba(123,28,28,0.2);box-shadow:3px 3px 0 rgba(123,28,28,0.08);">
+                            <table style="width:100%;border-collapse:collapse;font-family:Arial;">
+                                <thead>
+                                    <tr style="background:#7B1C1C;">
+                                        <th style="padding:11px 14px;text-align:left;color:#fff;font-size:10.5px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">Date</th>
+                                        <th style="padding:11px 14px;text-align:center;color:#fff;font-size:10.5px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">Project</th>
+                                        <th style="padding:11px 14px;text-align:center;color:#fff;font-size:10.5px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">Leads</th>
+                                        <th style="padding:11px 14px;text-align:center;color:#fff;font-size:10.5px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">CPL</th>
+                                        <th style="padding:11px 14px;text-align:center;color:#fff;font-size:10.5px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">Amt Spent</th>
+                                        <th style="padding:11px 14px;text-align:center;color:#f5d9a0;font-size:10.5px;letter-spacing:1.5px;text-transform:uppercase;">Amt Spent (GST)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {reportRows().map((row, i) => (
+                                        <tr style={{ background: i % 2 === 0 ? "#ffffff" : "#fafafa", borderBottom: "1px solid rgba(123,28,28,0.08)" }}>
+                                            <td style="padding:10px 14px;font-size:12px;font-weight:600;color:#1a1a1a;border-right:1px solid rgba(123,28,28,0.1);border-left:3px solid #7B1C1C;">
+                                                {
+                                                    fromDate() && toDate()
+                                                        ? `${new Date(fromDate()).toLocaleDateString("en-IN", { day: "numeric", month: "short" })} - ${new Date(toDate()).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}`
+                                                        : new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short" })
+                                                }
+                                            </td>
+                                            <td style="padding:10px 14px;text-align:center;font-size:12px;color:#333;font-weight:500;border-right:1px solid rgba(123,28,28,0.1);">
+                                                {row.projectName}
+                                            </td>
+                                            <td style="padding:10px 14px;text-align:center;font-size:13px;font-weight:700;color:#7B1C1C;border-right:1px solid rgba(123,28,28,0.1);">
+                                                {row.leads}
+                                            </td>
+                                            <td style="padding:10px 14px;text-align:center;font-size:12px;color:#333;border-right:1px solid rgba(123,28,28,0.1);">
+                                                {fmt(row.cpl)}
+                                            </td>
+                                            <td style="padding:10px 14px;text-align:center;font-size:12px;color:#333;border-right:1px solid rgba(123,28,28,0.1);">
+                                                {fmt(row.spent)}
+                                            </td>
+                                            <td style="padding:10px 14px;text-align:center;font-size:12px;font-weight:600;color:#6b4c10;background:rgba(201,168,76,0.10);">
+                                                {fmt(row.spentWithGST)}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    {/* totals */}
+                                    <tr style="background:#7B1C1C;">
+                                        <td style="padding:11px 14px;text-align:left;color:#fff;font-size:10.5px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">Total</td>
+                                        <td style="padding:11px 14px;border-right:1px solid rgba(255,255,255,0.12);" />
+                                        <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">{totals().totalLeads}</td>
+                                        <td style="padding:11px 14px;text-align:center;color:#fff;font-size:12px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">{fmt(totals().avgCPL)}</td>
+                                        <td style="padding:11px 14px;text-align:center;color:#fff;font-size:12px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">{fmt(totals().totalSpent)}</td>
+                                        <td style="padding:11px 14px;text-align:center;color:#f5d9a0;font-size:12px;font-weight:700;">{fmt(totals().totalSpentGST)}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    {/* ── PDF FOOTER ── */}
+                    <div style="margin:20px 36px 28px;padding-top:12px;border-top:1px solid rgba(123,28,28,0.2);display:flex;align-items:center;justify-content:space-between;">
+                        <div style="width:6px;height:6px;background:#7B1C1C;transform:rotate(45deg);" />
+                        <p style="color:#aaa;font-size:10.5px;font-family:Arial;letter-spacing:2px;text-align:center;margin:0;text-transform:uppercase;">
+                            © {new Date().getFullYear()} Project Analytics · Aajneeti Connect Ltd.
+                        </p>
+                        <div style="width:6px;height:6px;background:#7B1C1C;transform:rotate(45deg);" />
                     </div>
                 </div>
             </div>
-
         </section>
     );
 }
@@ -803,19 +848,3 @@ const colorMap = {
     orange: { card: "bg-orange-50 dark:bg-gray-800 border-orange-200 dark:border-gray-600", text: "text-orange-800 dark:text-gray-300", icon: "bg-orange-100 dark:bg-orange-300", iconColor: "text-orange-600 dark:text-orange-800" },
 };
 
-function SummaryCard(props) {
-    const c = colorMap[props.color] ?? colorMap.blue;
-    return (
-        <div class={`${c.card} px-5 py-6 rounded-xl border shadow-sm hover:shadow-lg transition-all flex justify-between items-center gap-4`}>
-            <div>
-                <p class={`text-sm ${c.text}`}>{props.label}</p>
-                <h3 class="text-xl font-semibold mt-1.5 dark:text-white">{props.value}</h3>
-            </div>
-            <div class={`p-3 rounded-lg ${c.icon} flex-shrink-0`}>
-                <svg class={`w-5 h-5 ${c.iconColor}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    {props.icon}
-                </svg>
-            </div>
-        </div>
-    );
-}
