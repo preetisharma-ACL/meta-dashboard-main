@@ -528,8 +528,8 @@ export default function DailyReports() {
                         (reportRows().length === 0
                             ? "opacity-40 cursor-not-allowed border-blue-300 text-blue-500 bg-blue-50 dark:bg-blue-900/10"
                             : showPreview()
-                                ? "bg-blue-600 text-white border-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600"
-                                : "border-blue-600 text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40")
+                                ? "bg-white text-purple-900 dark:text-gray-200 border-purple-900 dark:border-gray-600  dark:bg-gray-800 "
+                                : "border-purple-600 text-purple-700 dark:text-gray-100 bg-purple-50 dark:border-gray-600  dark:bg-gray-800  ")
                     }
                 >
                     <Show
@@ -554,7 +554,7 @@ export default function DailyReports() {
                         "flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 shadow-sm " +
                         (reportRows().length === 0
                             ? "opacity-40 cursor-not-allowed bg-blue-900 text-white"
-                            : "bg-blue-900 hover:bg-blue-800 text-white hover:shadow-md")
+                            : "bg-purple-900 hover:bg-purple-700 border dark:border-gray-600  dark:bg-gray-800  dark:text-gray-200 text-white hover:shadow-md")
                     }
                 >
                     <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
