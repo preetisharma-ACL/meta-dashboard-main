@@ -673,7 +673,7 @@ export default function ProjectDetails() {
 
             {/* ================= PROJECT OVERVIEW ================= */}
             <div>
-                <h1 class="text-2xl font-semibold">All active campaigns</h1>
+                <h1 class="text-2xl font-semibold">All  campaigns</h1>
                 <nav>
                     <ul class="flex items-center gap-1.5 mb-1.5 mt-2 list-none p-0">
                         <li class="flex items-center gap-1 group cursor-pointer">

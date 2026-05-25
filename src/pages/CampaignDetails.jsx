@@ -120,7 +120,7 @@ export default function CampaignDetails() {
                         <div>
                             <p class="text-lg text-red-800 dark:text-gray-400">Leads</p>
                             <h3 class="text-xl font-semibold mt-2 dark:text-white">
-                                {campaign()?.leads_count || "N/A"}
+                                {campaign()?.leads_count || "0"}
                             </h3>
                         </div>
                         <div class="flex bg-red-100 dark:bg-purple-500 p-3 rounded items-center gap-1 mt-2 text-sm text-gray-500 dark:text-gray-400">
@@ -172,7 +172,7 @@ export default function CampaignDetails() {
                         <div>
                             <p class="text-lg text-purple-800 dark:text-gray-400">ROAS</p>
                             <h3 class="text-xl font-semibold mt-2 dark:text-white">
-                                {campaign()?.roas || "N/A"}
+                                {campaign()?.roas || "0"}
                             </h3>
                         </div>
                         <div class="flex bg-purple-100 dark:bg-purple-500 p-3 rounded items-center gap-1 mt-2 text-sm text-gray-500 dark:text-gray-400">
@@ -260,13 +260,13 @@ export default function CampaignDetails() {
                                 <td class="p-4 text-gray-500 dark:text-gray-400 flex items-center gap-2">
                                     <TrendingDown size={16} class="text-yellow-500" /> Cost Per Result
                                 </td>
-                                <td class="p-4 font-medium dark:text-white">{campaign()?.cpl || "N/A"}</td>
+                                <td class="p-4 font-medium dark:text-white">{campaign()?.cpl || "0"}</td>
                             </tr>
                             <tr>
                                 <td class="p-4 text-gray-500 dark:text-gray-400 flex items-center gap-2">
                                     <TrendingUp size={16} class="text-green-500" /> ROAS
                                 </td>
-                                <td class="p-4 font-medium dark:text-white">{campaign()?.roas || "N/A"}</td>
+                                <td class="p-4 font-medium dark:text-white">{campaign()?.roas || "0"}</td>
                             </tr>
                         </tbody>
                     </table>
