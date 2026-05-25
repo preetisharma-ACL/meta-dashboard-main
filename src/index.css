@@ -524,3 +524,30 @@
     right: 16px;
   }
 }
+.input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.input-wrapper .input-field {
+    width: 100%;
+    padding-right: 2.8rem; /* make room for the eye button */
+}
+
+.eye-btn {
+    position: absolute;
+    right: 0.75rem;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #8594aa;       /* muted color — adjust to match your theme */
+    padding: 0;
+    display: flex;
+    align-items: center;
+    transition: color 0.2s;
+}
+
+.eye-btn:hover {
+    color: #9dabbc;       /* slightly brighter on hover */
+}

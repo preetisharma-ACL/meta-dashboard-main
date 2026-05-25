@@ -3,18 +3,18 @@ import { For, createMemo, createSignal } from "solid-js";
 export default function ClientDelivery() {
 
 
-  // ✅ Read client_type from stored auth
+  //  Read client_type from stored auth
   const auth = JSON.parse(localStorage.getItem("auth") || "{}");
   const clientType = auth?.client_type; // "retainer" | "cpl" | "hybrid" | null (admin sees all)
 
-  // ✅ Map client_type → tab id
+  //  Map client_type → tab id
   const clientTypeToTab = {
     retainer: "retainer",
     cpl: "cpl",
     hybrid: "hybrid",
   };
 
-  // ✅ If client_type exists, lock to that tab; else default to "retainer"
+  //  If client_type exists, lock to that tab; else default to "retainer"
   const defaultTab = clientType ? clientTypeToTab[clientType] ?? "retainer" : "retainer";
   const [activeTab, setActiveTab] = createSignal(defaultTab);
 
