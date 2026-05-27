@@ -21,6 +21,10 @@ import LeadsPage from './pages/LeadPerformance';
 import Leads from './pages/Leads';
 import FollowUp from './pages/FollowUp';
 import DailyReports from './pages/DailyReports';
+import Clients from './pages/admin/client/Clients';
+import ImpersonationBanner from './pages/admin/component/ImpersonationBanner';
+import ProjectDisplayConfig from './pages/admin/client/ProjectDisplayConfig';
+import ClientNomen from './pages/admin/client/ClientNomen';
 
 //  Layout is a named component — SolidJS reuses the SAME instance across all
 //    child route navigations, so Header and Sidebar mount exactly ONCE
@@ -29,6 +33,7 @@ function Layout(props) {
 
   return (
     <div class="min-h-screen bg-gray-50 dark:bg-gray-900">
+      <ImpersonationBanner />
       <Sidebar />
       <div class={`transition-all duration-300 ${isCollapsed() ? 'lg:ml-20' : 'lg:ml-64'}`}>
         <Header />
@@ -85,6 +90,7 @@ function App() {
                Header and Sidebar mount once and never remount on navigation. */}
           <Route path="/" component={ProtectedLayout}>
             <Route path="/" component={MainDashboard} />
+            <Route path="/:client-nomen-name" component={MainDashboard} />
             <Route path="/add-project" component={AddProject} />
             <Route path="/billing" component={Billing} />
             <Route path="/daily-reports" component={DailyReports} />
@@ -97,6 +103,10 @@ function App() {
             <Route path="/leads-performance" component={LeadsPage} />
             <Route path="/leads" component={Leads} />
             <Route path="/follow-up" component={FollowUp} />
+            {/* admin pages */}
+            <Route path="/clients" component={Clients} />
+            <Route path="/project-display-config" component={ProjectDisplayConfig} />
+            <Route path="/client-nomen" component={ClientNomen} />
           </Route>
         </Router>
       </SidebarProvider>

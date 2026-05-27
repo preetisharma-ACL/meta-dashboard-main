@@ -34,21 +34,19 @@ export function DateRangeFilter(props) {
     const from = props.fromDate();
     const to = props.toDate();
 
-    if (!from || !to) {
-      return "Select Date Range";
-    }
+    if (!from || !to) return "Select Date Range";
 
-    const fromDate = new Date(from);
-    const toDate = new Date(to);
+    const fromDate = new Date(from + "T00:00:00");
+    const toDate = new Date(to + "T00:00:00");
 
-    const formatDate = (date) => {
-      const month = date.toLocaleDateString("en-US", { month: "short" });
-      const day = date.getDate().toString().padStart(2, "0");
-      const year = date.getFullYear();
-      const hours = date.getHours().toString().padStart(2, "0");
-      const minutes = date.getMinutes().toString().padStart(2, "0");
-      return `${month} ${day}, ${year} ${hours}:${minutes}`;
-    };
+    const formatDate = (date) =>
+      date.toLocaleDateString("en-IN", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      }); // "26 May 2026"
+
+    if (from === to) return formatDate(fromDate); // Today/Yesterday — single date
 
     return `${formatDate(fromDate)} → ${formatDate(toDate)}`;
   };
@@ -115,32 +113,33 @@ export function DateRangeFilter(props) {
     const month = currentMonth().getMonth();
 
     const clickedDate = new Date(year, month, day);
-    clickedDate.setHours(0, 0, 0, 0);
 
-    const dateStr = clickedDate.toISOString();
+    const toLocalDateStr = (date) => {
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, "0");
+      const d = String(date.getDate()).padStart(2, "0");
+      return `${y}-${m}-${d}`;
+    };
 
-    // First click
+    const dateStr = toLocalDateStr(clickedDate); // ✅ .toISOString() nahi
+
     if (!tempFromDate()) {
       setTempFromDate(dateStr);
       setTempToDate("");
       return;
     }
 
-    // Second click -> create range
     if (!tempToDate()) {
-      const from = new Date(tempFromDate());
-
-      if (clickedDate < from) {
+      const from = tempFromDate(); // already "YYYY-MM-DD" string
+      if (dateStr < from) {
         setTempFromDate(dateStr);
-        setTempToDate(from.toISOString());
+        setTempToDate(from);
       } else {
         setTempToDate(dateStr);
       }
-
       return;
     }
 
-    // Third click -> restart selection
     setTempFromDate(dateStr);
     setTempToDate("");
   };
@@ -150,12 +149,19 @@ export function DateRangeFilter(props) {
 
     const now = new Date();
 
-    // helpers (LOCAL TIME ONLY)
     const startOfDay = (d) =>
       new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
 
     const endOfDay = (d) =>
       new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+
+    // ✅ Helper PEHLE define karo, batch ke upar
+    const toLocalDateStr = (date) => {
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, "0");
+      const d = String(date.getDate()).padStart(2, "0");
+      return `${y}-${m}-${d}`;
+    };
 
     let from, to;
 
@@ -165,58 +171,45 @@ export function DateRangeFilter(props) {
         to = endOfDay(now);
         break;
       }
-
       case "yesterday": {
         const yesterday = new Date(now);
         yesterday.setDate(yesterday.getDate() - 1);
-
         from = startOfDay(yesterday);
         to = endOfDay(yesterday);
         break;
       }
-
       case "last3days": {
         const end = new Date(now);
-        end.setDate(end.getDate() - 1); // yesterday
-
+        end.setDate(end.getDate() - 1);
         const start = new Date(end);
-        start.setDate(start.getDate() - 2); // 3 days total
-
+        start.setDate(start.getDate() - 2);
         from = startOfDay(start);
         to = endOfDay(end);
         break;
       }
-
       case "last7days": {
         const end = new Date(now);
-        end.setDate(end.getDate() - 1); // yesterday
-
+        end.setDate(end.getDate() - 1);
         const start = new Date(end);
-        start.setDate(start.getDate() - 6); // 7 days total
-
+        start.setDate(start.getDate() - 6);
         from = startOfDay(start);
         to = endOfDay(end);
         break;
       }
-
       case "lastMonth": {
         const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
         const end = new Date(now.getFullYear(), now.getMonth(), 0);
-
         from = startOfDay(start);
         to = endOfDay(end);
         break;
       }
-
       default:
         return;
     }
 
-    // ✅ FIX 1: store ISO strings, never raw Date objects
-    // ✅ FIX 2: batch all three signal writes into one reactive flush
     batch(() => {
-      setTempFromDate(from.toISOString());
-      setTempToDate(to.toISOString());
+      setTempFromDate(toLocalDateStr(from)); // ✅ "2026-05-26" — UTC issue nahi
+      setTempToDate(toLocalDateStr(to)); // ✅ "2026-05-26" — UTC issue nahi
       setCurrentMonth(new Date(from));
     });
   };
