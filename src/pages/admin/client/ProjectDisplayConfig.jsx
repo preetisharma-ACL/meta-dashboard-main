@@ -13,7 +13,7 @@ import {
 
 // ─── Type badge colors ────────────────────────────────────────────────────────
 const TYPE_COLORS = {
-  hybrid: "bg-purple-100 text-purple-700 ring-1 ring-purple-300",
+  hybrid: "bg-blue-100 text-blue-800 ring-1 ring-blue-300",
   cpl: "bg-amber-100 text-amber-700 ring-1 ring-amber-300",
   retainer: "bg-sky-100 text-sky-700 ring-1 ring-sky-300",
 };
@@ -47,6 +47,8 @@ export default function ProjectDisplayConfig() {
     rule_value: "",
     notes: "",
   });
+  const [clientSearch, setClientSearch] = createSignal("");
+  const [showClientDropdown, setShowClientDropdown] = createSignal(false);
 
   // Pagination
   const PAGE_SIZE = 20;
@@ -147,6 +149,40 @@ export default function ProjectDisplayConfig() {
     Math.max(1, Math.ceil(filtered().length / PAGE_SIZE)),
   );
 
+  const uniqueClients = createMemo(() => {
+    const map = new Map();
+
+    configs().forEach((cfg) => {
+      if (!map.has(cfg.client_id)) {
+        map.set(cfg.client_id, {
+          client_id: cfg.client_id,
+          client_email: cfg.client_email,
+          client_type: cfg.client_type,
+        });
+      }
+    });
+
+    return Array.from(map.values());
+  });
+
+  const selectedClientProjects = createMemo(() => {
+    if (!formData().client_id) return [];
+
+    return configs().filter(
+      (cfg) => cfg.client_id === Number(formData().client_id),
+    );
+  });
+
+  const filteredClients = createMemo(() => {
+    const query = clientSearch().trim().toLowerCase();
+
+    if (!query) return uniqueClients();
+
+    return uniqueClients().filter((client) =>
+      client.client_email?.toLowerCase().includes(query),
+    );
+  });
+
   // Reset to page 1 whenever filters change
   const applyFilter = (setter, value) => {
     setter(value);
@@ -166,6 +202,9 @@ export default function ProjectDisplayConfig() {
   const closeSidebar = () => {
     setSidebarVisible(false);
 
+    setClientSearch("");
+    setShowClientDropdown(false);
+
     setTimeout(() => {
       setSidebarMounted(false);
 
@@ -180,6 +219,42 @@ export default function ProjectDisplayConfig() {
   };
 
   const handleInputChange = (field, value) => {
+    // ── Client Selected ─────────────────────
+    if (field === "client_id") {
+      const selectedClient = uniqueClients().find(
+        (c) => c.client_id === Number(value),
+      );
+
+      // Find first config of selected client
+      const firstClientConfig = configs().find(
+        (c) => c.client_id === Number(value),
+      );
+
+      setFormData((prev) => ({
+        ...prev,
+        client_id: value,
+        project_id: "",
+        rule_type: firstClientConfig?.rule_type || "cpl_markup_pct",
+      }));
+
+      return;
+    }
+
+    // ── Project Selected ────────────────────
+    if (field === "project_id") {
+      const selectedProject = configs().find(
+        (c) => c.project_id === Number(value),
+      );
+
+      setFormData((prev) => ({
+        ...prev,
+        project_id: value,
+        rule_type: selectedProject?.rule_type || prev.rule_type,
+      }));
+
+      return;
+    }
+
     setFormData((prev) => ({
       ...prev,
       [field]: value,
@@ -216,6 +291,7 @@ export default function ProjectDisplayConfig() {
   return (
     <div class="min-h-screen bg-gray-50 dark:bg-gray-900 p-6 lg:p-8">
       {/* Page Header */}
+      <div class="mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
       <div class="mb-6">
         <h1 class="text-2xl font-semibold text-gray-900 dark:text-white tracking-tight">
           Project Display Configs
@@ -223,6 +299,17 @@ export default function ProjectDisplayConfig() {
         <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
           {configs().length} total · billing rules per project
         </p>
+      </div>
+      
+        <button
+          onClick={openSidebar}
+          class=" mb-6 px-4 py-2 text-sm rounded-md
+         bg-blue-900 text-white
+         hover:bg-blue-800
+         transition-colors shadow-sm"
+        >
+          + Add Project Config
+        </button>
       </div>
 
       {/* Filters Bar */}
@@ -296,16 +383,6 @@ export default function ProjectDisplayConfig() {
           Clear All
         </button>
 
-        <button
-          onClick={openSidebar}
-          class="px-4 py-2 text-sm rounded-lg
-         bg-purple-600 text-white
-         hover:bg-purple-700
-         transition-colors shadow-sm"
-        >
-          + Add Project Config
-        </button>
-
         <span class="ml-auto text-sm text-gray-400 dark:text-gray-500 whitespace-nowrap">
           {filtered().length} result{filtered().length !== 1 ? "s" : ""}
         </span>
@@ -321,56 +398,62 @@ export default function ProjectDisplayConfig() {
                        text-gray-500 dark:text-gray-400 uppercase text-xs tracking-wider"
             >
               <th
-                class="p-3 text-left cursor-pointer hover:text-purple-600 whitespace-nowrap"
+                class="p-3 text-left cursor-pointer hover:text-blue-600 whitespace-nowrap"
                 onClick={() => toggleSort("id")}
               >
                 ID {sortIcon("id")}
               </th>
               <th
-                class="p-3 text-left cursor-pointer hover:text-purple-600 whitespace-nowrap"
+                class="hidden p-3 text-left cursor-pointer hover:text-blue-600 whitespace-nowrap"
                 onClick={() => toggleSort("client_id")}
               >
                 Client ID {sortIcon("client_id")}
               </th>
               <th
-                class="p-3 text-left cursor-pointer hover:text-purple-600 whitespace-nowrap"
+                class="hidden p-3 text-left cursor-pointer hover:text-blue-600 whitespace-nowrap"
                 onClick={() => toggleSort("project_id")}
               >
                 Project ID {sortIcon("project_id")}
               </th>
               <th
-                class="p-3 text-left cursor-pointer hover:text-purple-600 whitespace-nowrap"
+                class="p-3 text-left cursor-pointer hover:text-blue-600 whitespace-nowrap"
                 onClick={() => toggleSort("client_email")}
               >
                 Client {sortIcon("client_email")}
               </th>
               <th
-                class="p-3 text-center cursor-pointer hover:text-purple-600 whitespace-nowrap"
+                class="p-3 text-center cursor-pointer hover:text-blue-600 whitespace-nowrap"
                 onClick={() => toggleSort("client_type")}
               >
                 Type {sortIcon("client_type")}
               </th>
               <th
-                class="p-3 text-left cursor-pointer hover:text-purple-600 whitespace-nowrap"
+                class="hidden p-3 text-center cursor-pointer hover:text-blue-600 whitespace-nowrap"
+                onClick={() => toggleSort("rule_type")}
+              >
+                Rule Type {sortIcon("rule_type")}
+              </th>
+              <th
+                class="p-3 text-left cursor-pointer hover:text-blue-600 whitespace-nowrap"
                 onClick={() => toggleSort("project_name")}
               >
                 Project {sortIcon("project_name")}
               </th>
               <th
-                class="p-3 text-center cursor-pointer hover:text-purple-600 whitespace-nowrap"
+                class="p-3 text-center cursor-pointer hover:text-blue-600 whitespace-nowrap"
                 onClick={() => toggleSort("rule_value")}
               >
                 Markup {sortIcon("rule_value")}
               </th>
               <th class="p-3 text-center whitespace-nowrap">Status</th>
               <th
-                class="p-3 text-left cursor-pointer hover:text-purple-600 whitespace-nowrap"
+                class="p-3 text-left cursor-pointer hover:text-blue-600 whitespace-nowrap"
                 onClick={() => toggleSort("valid_from")}
               >
                 Effective From {sortIcon("valid_from")}
               </th>
               <th
-                class="p-3 text-left cursor-pointer hover:text-purple-600 whitespace-nowrap"
+                class="p-3 text-left cursor-pointer hover:text-blue-600 whitespace-nowrap"
                 onClick={() => toggleSort("created_by_email")}
               >
                 Created By {sortIcon("created_by_email")}
@@ -429,10 +512,10 @@ export default function ProjectDisplayConfig() {
                     <td class="p-3 text-purple-700 dark:text-gray-300 font-medium">
                       {cfg.id}
                     </td>
-                     <td class="p-3 text-purple-700 dark:text-gray-300 font-medium">
+                    <td class="hidden p-3 text-purple-700 dark:text-gray-300 font-medium">
                       {cfg.client_id}
                     </td>
-                     <td class="p-3 text-purple-700 dark:text-gray-300 font-medium">
+                    <td class="hidden p-3 text-purple-700 dark:text-gray-300 font-medium">
                       {cfg.project_id}
                     </td>
                     {/* Client — maps to client_email */}
@@ -448,6 +531,11 @@ export default function ProjectDisplayConfig() {
                       >
                         {String(cfg.client_type ?? "").toUpperCase()}
                       </span>
+                    </td>
+
+                    {/* Project — maps to project_name */}
+                    <td class="hidden p-3 text-gray-700 dark:text-gray-300 font-medium">
+                      {cfg.rule_type}
                     </td>
 
                     {/* Project — maps to project_name */}
@@ -575,9 +663,9 @@ export default function ProjectDisplayConfig() {
               setPage((p) => p + 1);
             }}
             disabled={page() >= totalPages() || loading()}
-            class="flex items-center gap-1.5 px-4 h-9 text-sm rounded-lg
-                   bg-purple-600 border border-purple-600 text-white
-                   hover:bg-purple-700 disabled:opacity-35 disabled:cursor-default transition-colors"
+            class="flex items-center gap-1.5 px-4 h-9 text-sm rounded-md
+                   bg-blue-900 border border-blue-900 text-white
+                   hover:bg-blue-800 disabled:opacity-35 disabled:cursor-default transition-colors"
           >
             Next
             <svg
@@ -648,43 +736,101 @@ export default function ProjectDisplayConfig() {
               {/* Client ID */}
               <div>
                 <label class="block text-sm font-medium mb-1.5">
-                  Client ID
+                  Client Name
                 </label>
 
-                <input
-                  type="number"
-                  value={formData().client_id}
-                  onInput={(e) =>
-                    handleInputChange("client_id", e.target.value)
-                  }
-                  placeholder="Enter client id"
-                  class="w-full px-3 py-2 rounded-lg border
-                   border-gray-300 dark:border-gray-600
-                   bg-white dark:bg-gray-800
-                   focus:ring-2 focus:ring-purple-500
-                   outline-none"
-                />
+                <div class="relative">
+                  <input
+                    type="text"
+                    value={clientSearch()}
+                    placeholder="Search client Name..."
+                    onFocus={() => setShowClientDropdown(true)}
+                    onInput={(e) => {
+                      setClientSearch(e.target.value);
+                      setShowClientDropdown(true);
+                    }}
+                    class="w-full px-3 py-2 rounded-lg border
+           border-gray-300 dark:border-gray-600
+           bg-white dark:bg-gray-800
+           focus:ring-2 focus:ring-purple-500
+           outline-none"
+                  />
+
+                  {/* Dropdown */}
+                  <Show when={showClientDropdown()}>
+                    <div
+                      class="absolute z-50 mt-1 w-full max-h-60 overflow-y-auto
+             rounded-lg border border-gray-200 dark:border-gray-700
+             bg-white dark:bg-gray-900 shadow-xl"
+                    >
+                      <Show
+                        when={filteredClients().length > 0}
+                        fallback={
+                          <div class="px-3 py-2 text-sm text-gray-500">
+                            No client found
+                          </div>
+                        }
+                      >
+                        <For each={filteredClients()}>
+                          {(client) => (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleInputChange(
+                                  "client_id",
+                                  client.client_id,
+                                );
+
+                                setClientSearch(client.client_email);
+
+                                setShowClientDropdown(false);
+                              }}
+                              class="w-full text-left px-3 py-2 text-sm
+                     hover:bg-purple-50 dark:hover:bg-gray-800
+                     transition-colors"
+                            >
+                              {client.client_email}
+                            </button>
+                          )}
+                        </For>
+                      </Show>
+                    </div>
+                  </Show>
+                </div>
               </div>
 
               {/* Project ID */}
               <div>
                 <label class="block text-sm font-medium mb-1.5">
-                  Project ID
+                  Project Name
                 </label>
 
-                <input
-                  type="number"
+                <select
                   value={formData().project_id}
-                  onInput={(e) =>
+                  onChange={(e) =>
                     handleInputChange("project_id", e.target.value)
                   }
-                  placeholder="Enter project id"
+                  disabled={!formData().client_id}
                   class="w-full px-3 py-2 rounded-lg border
-                   border-gray-300 dark:border-gray-600
-                   bg-white dark:bg-gray-800
-                   focus:ring-2 focus:ring-purple-500
-                   outline-none"
-                />
+         border-gray-300 dark:border-gray-600
+         bg-white dark:bg-gray-800
+         focus:ring-2 focus:ring-purple-500
+         outline-none disabled:opacity-50"
+                >
+                  <option value="">
+                    {formData().client_id
+                      ? "Select Project"
+                      : "Select client first"}
+                  </option>
+
+                  <For each={selectedClientProjects()}>
+                    {(project) => (
+                      <option value={project.project_id}>
+                        {project.project_name}
+                      </option>
+                    )}
+                  </For>
+                </select>
               </div>
 
               {/* Rule Type */}
@@ -693,19 +839,16 @@ export default function ProjectDisplayConfig() {
                   Rule Type
                 </label>
 
-                <select
+                <input
+                  type="text"
                   value={formData().rule_type}
-                  onChange={(e) =>
-                    handleInputChange("rule_type", e.target.value)
-                  }
+                  readonly
                   class="w-full px-3 py-2 rounded-lg border
-                   border-gray-300 dark:border-gray-600
-                   bg-white dark:bg-gray-800
-                   focus:ring-2 focus:ring-purple-500
-                   outline-none"
-                >
-                  <option value="cpl_markup_pct">CPL Markup %</option>
-                </select>
+         border-gray-300 dark:border-gray-600
+         bg-gray-100 dark:bg-gray-800
+         text-gray-700 dark:text-gray-300
+         cursor-not-allowed outline-none"
+                />
               </div>
 
               {/* Rule Value */}
