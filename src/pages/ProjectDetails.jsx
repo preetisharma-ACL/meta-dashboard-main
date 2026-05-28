@@ -305,13 +305,14 @@ export default function ProjectDetails() {
       const formatted = apiData.map((item, index) => ({
         number: index + 1,
         id: item.id,
-        campaign_name: item.name
-          ? `${item.name
-              .split("|")
-              .slice(1, 2)
-              .map((s) => s.trim())
-              .join(" | ")} | ${item.start_date || "No Date"}`
-          : "No Name",
+        campaign_name:
+          userRole() === "admin"
+            ? item.name || "No Name"
+            : item.name
+                ?.split("|")
+                .slice(1, 2)
+                .map((s) => s.trim())
+                .join(" | ") || "No Name",
         start_date: item.start_date || "No Date",
         stop_date: item.stop_date || "No date",
         location: item.project_name || "-",
