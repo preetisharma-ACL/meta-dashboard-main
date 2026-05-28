@@ -1,5 +1,6 @@
 import { createSignal, createMemo, onMount, For, Show } from "solid-js";
 import { fetchClientNomen } from "../services/clientNomen";
+import Avatar from "../../../components/common/Avatar";
 
 // ─── Format date ──────────────────────────────────────────────────────────────
 const formatDate = (iso) => {
@@ -135,7 +136,7 @@ export default function ClientNomen() {
       {/* Filters Bar */}
       <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-4 mb-4 flex flex-wrap items-center gap-3">
         {/* Search */}
-        <div class="relative flex-1 min-w-[220px]">
+        <div class="relative flex w-[500px]">
           <svg
             class="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2"
             fill="none"
@@ -153,7 +154,7 @@ export default function ClientNomen() {
             onInput={(e) => setSearch(e.target.value)}
             class="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-gray-200
                    dark:border-gray-700 dark:bg-gray-800 dark:text-white
-                   focus:outline-none focus:ring-2 focus:ring-purple-400"
+                   focus:outline-none focus:ring-1 focus:ring-purple-400 dark:focus:ring-gray-600"
           />
         </div>
 
@@ -163,12 +164,28 @@ export default function ClientNomen() {
           onChange={(e) => setHasClientFilter(e.target.value)}
           class="px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700
                  bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300
-                 focus:outline-none focus:ring-2 focus:ring-purple-400 cursor-pointer"
+                 focus:outline-none focus:ring-1 focus:ring-purple-400 dark:focus:ring-gray-600 cursor-pointer"
         >
           <option value="All">All Login Status</option>
           <option value="Yes">Has Login</option>
           <option value="No">No Login</option>
         </select>
+
+        <button
+          onClick={() => {
+            setSearch("");
+            setHasClientFilter("All");
+            setSortKey("created_at");
+            setSortDir("desc");
+          }}
+          class="px-3 py-2 text-sm  rounded-lg
+                bg-red-50 text-red-600 border border-red-200
+                hover:bg-red-100 hover:border-red-300
+                dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700
+                transition-colors"
+        >
+          Clear All
+        </button>
 
         <span class="ml-auto text-sm text-gray-400 dark:text-gray-500 whitespace-nowrap">
           {filtered().length} on this page
@@ -250,13 +267,19 @@ export default function ClientNomen() {
                                }`}
                   >
                     {/* ID — maps to id */}
-                    <td class="p-3 text-gray-400 dark:text-gray-500 font-mono text-xs">
+                    <td class="p-3 text-purple-700 dark:text-gray-300 font-medium">
                       {nomen.id}
                     </td>
 
                     {/* Name — maps to name */}
-                    <td class="p-3 text-gray-800 dark:text-gray-200 font-medium">
-                      {nomen.name}
+                    <td class="p-3">
+                      <div class="flex items-center gap-2">
+                        <Avatar name={nomen.name} />
+
+                        <span class="text-purple-700 dark:text-gray-300 font-medium">
+                          {nomen.name}
+                        </span>
+                      </div>
                     </td>
 
                     {/* Has Login — maps to has_client */}

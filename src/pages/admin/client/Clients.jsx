@@ -2,6 +2,7 @@ import { createSignal, createMemo, onMount, For, Show } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { fetchClients } from "../services/fetchClients";
 import { setProjectsCache } from "../../../cacheStore/appStore";
+import Avatar from "../../../components/common/Avatar";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -25,31 +26,6 @@ const fmt = (iso) => {
     hour: "2-digit",
     minute: "2-digit",
   });
-};
-
-// Avatar initials from client_nomen_name e.g. "AkashSrivastavGarg…" → "AS"
-const avatar = (name) => {
-  const s = String(name ?? "").trim();
-  if (!s) return "?";
-  const words = s.match(/[A-Z][a-z]*/g);
-  if (words && words.length >= 2)
-    return (words[0][0] + words[words.length - 1][0]).toUpperCase();
-  return s.slice(0, 2).toUpperCase();
-};
-
-const AVATAR_PALETTE = [
-  "bg-purple-600",
-  "bg-blue-600",
-  "bg-emerald-600",
-  "bg-amber-500",
-  "bg-rose-500",
-  "bg-indigo-600",
-];
-const avatarColor = (str) => {
-  const s = String(str ?? "");
-  return s
-    ? AVATAR_PALETTE[s.charCodeAt(0) % AVATAR_PALETTE.length]
-    : AVATAR_PALETTE[0];
 };
 
 // ─── component ───────────────────────────────────────────────────────────────
@@ -106,7 +82,6 @@ export default function Clients() {
 
       while (hasMore) {
         const res = await fetchClients(currentPage, 1000);
-
         const clientsData = res.data || [];
 
         allData = [...allData, ...clientsData];
@@ -148,7 +123,7 @@ export default function Clients() {
 
   // ── client-side filter + sort (applied to the current page's data) ────────
   const filtered = createMemo(() => {
-   let data = [...allClients()];
+    let data = [...allClients()];
 
     const q = search().trim().toLowerCase();
     if (q) {
@@ -268,7 +243,7 @@ export default function Clients() {
                         dark:border-gray-700 p-4 mb-4 flex flex-wrap items-center gap-3"
       >
         {/* Search */}
-        <div class="relative flex-1 min-w-[220px]">
+        <div class="relative flex w-[500px]">
           <svg
             class="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2"
             fill="none"
@@ -286,52 +261,55 @@ export default function Clients() {
             onInput={(e) => setSearch(e.target.value)}
             class="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-gray-200
                                dark:border-gray-700 dark:bg-gray-800 dark:text-white
-                               focus:outline-none focus:ring-2 focus:ring-purple-400"
+                               focus:outline-none focus:ring-1 focus:ring-purple-400 dark:focus:ring-gray-600"
           />
         </div>
 
         {/* Type filter */}
-        <div class="flex items-center gap-1 text-sm">
-          <span class="text-gray-500 dark:text-gray-400 hidden sm:block mr-1">
-            Type:
-          </span>
-          {[
-            { label: "All", value: "all" },
-            { label: "Hybrid", value: "hybrid" },
-            { label: "CPL", value: "cpl" },
-            { label: "Retainer", value: "retainer" },
-          ].map(({ label, value }) => (
-            <button
-              onClick={() => setTypeFilter(value)}
-              class={`px-3 py-1.5 rounded-lg transition-colors font-medium ${
-                typeFilter() === value
-                  ? "bg-purple-600 text-white"
-                  : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        {/* Type Filter Dropdown */}
+        <select
+          value={typeFilter()}
+          onChange={(e) => setTypeFilter(e.target.value)}
+          class="px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700
+         bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300
+         focus:outline-none focus:ring-1 focus:ring-purple-400 dark:focus:ring-gray-600 cursor-pointer"
+        >
+          <option value="all">All Types</option>
+          <option value="hybrid">Hybrid</option>
+          <option value="cpl">CPL</option>
+          <option value="retainer">Retainer</option>
+        </select>
 
         {/* Active filter */}
-        <div class="flex items-center gap-1 text-sm">
-          <span class="text-gray-500 dark:text-gray-400 hidden sm:block mr-1">
-            Active:
-          </span>
-          {["All", "Yes", "No"].map((a) => (
-            <button
-              onClick={() => setActiveFilter(a)}
-              class={`px-3 py-1.5 rounded-lg transition-colors font-medium ${
-                activeFilter() === a
-                  ? "bg-purple-600 text-white"
-                  : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
-              }`}
-            >
-              {a}
-            </button>
-          ))}
-        </div>
+        {/* Active Status Dropdown */}
+        <select
+          value={activeFilter()}
+          onChange={(e) => setActiveFilter(e.target.value)}
+          class="px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700
+         bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300
+         focus:outline-none focus:ring-1 focus:ring-purple-400 dark:focus:ring-gray-600 cursor-pointer"
+        >
+          <option value="All">All Status</option>
+          <option value="Yes">Active</option>
+          <option value="No">Inactive</option>
+        </select>
+        {/* Clear All Filters Button */}
+        <button
+          onClick={() => {
+            setSearch("");
+            setTypeFilter("all");
+            setActiveFilter("All");
+            setSortKey("created_at");
+            setSortDir("desc");
+          }}
+          class="px-3 py-2 text-sm  rounded-lg
+                bg-red-50 text-red-600 border border-red-200
+                hover:bg-red-100 hover:border-red-300
+                dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700
+                transition-colors"
+        >
+          Clear All
+        </button>
 
         <span class="ml-auto text-sm text-gray-400 dark:text-gray-500 whitespace-nowrap">
           {filtered().length} on this page
@@ -356,37 +334,36 @@ export default function Clients() {
                 />
               </th>
               <th
-                class="p-3 text-left cursor-pointer hover:text-purple-600 whitespace-nowrap"
+                class="p-3 text-left cursor-pointer hover:text-blue-900 whitespace-nowrap"
                 onClick={() => toggleSort("email")}
               >
                 User {sortIcon("email")}
               </th>
               <th
-                class="p-3 text-left cursor-pointer hover:text-purple-600 whitespace-nowrap"
+                class="p-3 text-left cursor-pointer hover:text-blue-900 whitespace-nowrap"
                 onClick={() => toggleSort("client_nomen_name")}
               >
                 Client Nomen {sortIcon("client_nomen_name")}
               </th>
               <th
-                class="p-3 text-left cursor-pointer hover:text-purple-600 whitespace-nowrap"
+                class="p-3 text-left cursor-pointer hover:text-blue-900 whitespace-nowrap"
                 onClick={() => toggleSort("organization_name")}
               >
                 Organisation {sortIcon("organization_name")}
               </th>
               <th
-                class="p-3 text-center cursor-pointer hover:text-purple-600 whitespace-nowrap"
+                class="p-3 text-center cursor-pointer hover:text-blue-900 whitespace-nowrap"
                 onClick={() => toggleSort("client_type")}
               >
                 Client Type {sortIcon("client_type")}
               </th>
               <th class="p-3 text-center whitespace-nowrap">Is Active</th>
               <th
-                class="p-3 text-left cursor-pointer hover:text-purple-600 whitespace-nowrap"
+                class="p-3 text-left cursor-pointer hover:text-blue-900 whitespace-nowrap"
                 onClick={() => toggleSort("created_at")}
               >
                 Created At {sortIcon("created_at")}
               </th>
-              <th class="p-3 text-center whitespace-nowrap">Action</th>
             </tr>
           </thead>
 
@@ -459,13 +436,7 @@ export default function Clients() {
                     {/* Email + avatar */}
                     <td class="p-3">
                       <div class="flex items-center gap-2.5">
-                        <span
-                          class={`w-8 h-8 rounded-full flex-shrink-0 flex items-center
-                                                              justify-center text-white text-xs font-bold
-                                                              ${avatarColor(client.client_nomen_name)}`}
-                        >
-                          {avatar(client.client_nomen_name)}
-                        </span>
+                        <Avatar name={client.email} />
                         <span class="text-purple-700 dark:text-gray-300 group-hover:underline font-medium">
                           {client.email}
                         </span>
@@ -530,67 +501,7 @@ export default function Clients() {
                       {fmt(client.created_at)}
                     </td>
 
-                    {/* View button */}
-                    <td
-                      class="p-3 text-center"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <button
-                        onClick={() => handleImpersonate(client)}
-                        disabled={impersonating() === client.id}
-                        class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg
-                                                       bg-purple-600 hover:bg-purple-700 disabled:opacity-60
-                                                       text-white text-xs font-semibold shadow-sm transition-all"
-                      >
-                        <Show
-                          when={impersonating() === client.id}
-                          fallback={
-                            <>
-                              <svg
-                                class="w-3.5 h-3.5"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                                stroke-width="2.2"
-                              >
-                                <path
-                                  stroke-linecap="round"
-                                  stroke-linejoin="round"
-                                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                                />
-                                <path
-                                  stroke-linecap="round"
-                                  stroke-linejoin="round"
-                                  d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                                />
-                              </svg>
-                              View
-                            </>
-                          }
-                        >
-                          <svg
-                            class="w-3.5 h-3.5 animate-spin"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                          >
-                            <circle
-                              class="opacity-25"
-                              cx="12"
-                              cy="12"
-                              r="10"
-                              stroke="currentColor"
-                              stroke-width="4"
-                            />
-                            <path
-                              class="opacity-75"
-                              fill="currentColor"
-                              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                            />
-                          </svg>
-                          Opening…
-                        </Show>
-                      </button>
-                    </td>
+                    
                   </tr>
                 )}
               </For>

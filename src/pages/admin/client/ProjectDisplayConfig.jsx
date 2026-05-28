@@ -9,7 +9,9 @@ import {
 import {
   fetchProjectDisplayConfig,
   createProjectDisplayConfig,
+  updateProjectDisplayConfig,
 } from "../services/projectDisplayConfig";
+import Avatar from "../../../components/common/Avatar";
 
 // ─── Type badge colors ────────────────────────────────────────────────────────
 const TYPE_COLORS = {
@@ -49,6 +51,9 @@ export default function ProjectDisplayConfig() {
   });
   const [clientSearch, setClientSearch] = createSignal("");
   const [showClientDropdown, setShowClientDropdown] = createSignal(false);
+  const [editingConfig, setEditingConfig] = createSignal(null);
+
+  const isEditMode = createMemo(() => editingConfig() !== null);
 
   // Pagination
   const PAGE_SIZE = 20;
@@ -199,11 +204,34 @@ export default function ProjectDisplayConfig() {
     });
   };
 
+  const handleEdit = (cfg) => {
+    setEditingConfig(cfg);
+
+    setFormData({
+      client_id: cfg.client_id,
+      project_id: cfg.project_id,
+      rule_type: cfg.rule_type,
+      rule_value: cfg.rule_value,
+      notes: cfg.notes ?? "",
+    });
+
+    setClientSearch(cfg.client_email);
+
+    setSidebarMounted(true);
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setSidebarVisible(true);
+      });
+    });
+  };
+
   const closeSidebar = () => {
     setSidebarVisible(false);
 
     setClientSearch("");
     setShowClientDropdown(false);
+    setEditingConfig(null);
 
     setTimeout(() => {
       setSidebarMounted(false);
@@ -261,7 +289,7 @@ export default function ProjectDisplayConfig() {
     }));
   };
 
-  const handleAddConfig = async () => {
+  const handleSubmitConfig = async () => {
     try {
       setSubmitting(true);
 
@@ -273,34 +301,42 @@ export default function ProjectDisplayConfig() {
         notes: formData().notes,
       };
 
-      await createProjectDisplayConfig(payload);
+      // ── EDIT ─────────────────────
+      if (isEditMode()) {
+        await updateProjectDisplayConfig(editingConfig().id, payload);
+      }
 
-      // Refresh table data
+      // ── CREATE ───────────────────
+      else {
+        await createProjectDisplayConfig(payload);
+      }
+
+      // Refresh table
       const res = await fetchProjectDisplayConfig();
+
       setConfigs(res.data ?? []);
 
       closeSidebar();
     } catch (err) {
-      console.error("Failed to create config:", err);
+      console.error("Failed to save config:", err);
     } finally {
       setSubmitting(false);
     }
   };
-
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
     <div class="min-h-screen bg-gray-50 dark:bg-gray-900 p-6 lg:p-8">
       {/* Page Header */}
       <div class="mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-      <div class="mb-6">
-        <h1 class="text-2xl font-semibold text-gray-900 dark:text-white tracking-tight">
-          Project Display Configs
-        </h1>
-        <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-          {configs().length} total · billing rules per project
-        </p>
-      </div>
-      
+        <div class="mb-6">
+          <h1 class="text-2xl font-semibold text-gray-900 dark:text-white tracking-tight">
+            Project Display Configs
+          </h1>
+          <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+            {configs().length} total · billing rules per project
+          </p>
+        </div>
+
         <button
           onClick={openSidebar}
           class=" mb-6 px-4 py-2 text-sm rounded-md
@@ -357,7 +393,7 @@ export default function ProjectDisplayConfig() {
           onChange={(e) => applyFilter(setActiveFilter, e.target.value)}
           class="px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700
                  bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300
-                 focus:outline-none focus:ring-2 focus:ring-purple-400 cursor-pointer"
+                 focus:outline-none focus:ring-1 focus:ring-purple-400 dark:focus:ring-gray-600 cursor-pointer"
         >
           <option value="All">All Status</option>
           <option value="Yes">Active</option>
@@ -458,6 +494,7 @@ export default function ProjectDisplayConfig() {
               >
                 Created By {sortIcon("created_by_email")}
               </th>
+              <th class="p-3 text-center whitespace-nowrap">Action</th>
             </tr>
           </thead>
 
@@ -519,8 +556,13 @@ export default function ProjectDisplayConfig() {
                       {cfg.project_id}
                     </td>
                     {/* Client — maps to client_email */}
-                    <td class="p-3 text-purple-700 dark:text-gray-300 font-medium">
-                      {cfg.client_email}
+                    <td class="p-3">
+                      <div class="flex items-center gap-2">
+                        <Avatar name={cfg.client_email} />
+                        <span class="text-purple-700 dark:text-gray-300 font-medium">
+                          {cfg.client_email}
+                        </span>
+                      </div>
                     </td>
 
                     {/* Type — maps to client_type */}
@@ -577,6 +619,27 @@ export default function ProjectDisplayConfig() {
                     {/* Created By — maps to created_by_email */}
                     <td class="p-3 text-gray-500 dark:text-gray-400 text-sm">
                       {cfg.created_by_email}
+                    </td>
+                    <td class="p-3 text-center">
+                      {/* Edit */}
+                      <button
+                        onClick={() => handleEdit(cfg)}
+                        class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-amber-500 text-white hover:bg-amber-100 border border-amber-400 hover:border-amber-300 hover:text-amber-600 transition-all duration-150 shadow-sm hover:shadow"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          class="w-4 h-4"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                        >
+                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                        </svg>
+                      </button>
                     </td>
                   </tr>
                 )}
@@ -714,11 +777,13 @@ export default function ProjectDisplayConfig() {
             >
               <div>
                 <h2 class="text-lg font-bold text-gray-800 dark:text-white">
-                  Add Project Config
+                  {isEditMode() ? "Edit Project Config" : "Add Project Config"}
                 </h2>
 
                 <p class="text-sm text-gray-500 dark:text-gray-400">
-                  Create new billing rule
+                  {isEditMode()
+                    ? "Update existing billing rule"
+                    : "Create new billing rule"}
                 </p>
               </div>
 
@@ -906,7 +971,7 @@ export default function ProjectDisplayConfig() {
               </button>
 
               <button
-                onClick={handleAddConfig}
+                onClick={handleSubmitConfig}
                 disabled={submitting()}
                 class="flex-1 px-4 py-2.5 rounded-lg
                  bg-purple-600 text-white
@@ -914,7 +979,13 @@ export default function ProjectDisplayConfig() {
                  disabled:opacity-50
                  transition"
               >
-                {submitting() ? "Adding..." : "Add Config"}
+                {submitting()
+                  ? isEditMode()
+                    ? "Saving..."
+                    : "Adding..."
+                  : isEditMode()
+                    ? "Save Changes"
+                    : "Add Config"}
               </button>
             </div>
           </div>

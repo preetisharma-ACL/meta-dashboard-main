@@ -11,3 +11,15 @@ export const createProjectDisplayConfig = async (payload) => {
     body: JSON.stringify(payload),
   });
 };
+export const updateProjectDisplayConfig = async (
+  id,
+  payload,
+) => {
+  return await api(
+    `/clients/admin/configs/${id}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    },
+  );
+};
