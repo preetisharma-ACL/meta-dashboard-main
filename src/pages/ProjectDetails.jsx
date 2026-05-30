@@ -497,6 +497,12 @@ export default function ProjectDetails() {
         const modifiedCpl = parseFloat(
           ((stats.cpl || 0) + ((stats.cpl || 0) * percent) / 100).toFixed(2),
         );
+
+        const modifiedSpent = parseFloat(
+          ((stats.spent || 0) + ((stats.spent || 0) * percent) / 100).toFixed(
+            2,
+          ),
+        );
         map.set(key, {
           ...row,
           totalLeads: stats.leads,
@@ -505,6 +511,7 @@ export default function ProjectDetails() {
           totalSpent: stats.spent,
           totalCPL: stats.cpl,
           modifiedCpl: modifiedCpl,
+          modifiedSpent: modifiedSpent,
         });
       }
     }
@@ -653,34 +660,54 @@ export default function ProjectDetails() {
 
   // Replace your existing footerTotals createMemo with this
   const footerTotals = createMemo(() => {
-    // Use allCampaigns for cross-page totals, fall back to current page if not loaded yet
     const source = allCampaignsLoaded() ? allCampaigns() : sortedCampaigns();
 
-    // Apply the same filters as the table: status filter
     const filtered = source.filter((item) => {
       const matchesStatus =
         statusFilter() === "All" || item.status === statusFilter();
+
       return matchesStatus;
     });
 
-    // Apply date range + aggregate using the same getInsightsInRange logic
     let totalLeads = 0;
     let totalClicks = 0;
     let totalReach = 0;
     let totalSpent = 0;
+    let totalModifiedSpent = 0;
 
     for (const row of filtered) {
       const stats = getInsightsInRange(row.insights, fromDate(), toDate());
+
       totalLeads += stats.leads;
       totalClicks += stats.clicks;
       totalReach += stats.reach;
       totalSpent += stats.spent;
+
+      // Premium percentage calculation
+      const label = row?.premium_metrics?.markup_rule?.label || "0%";
+
+      const percent = parseFloat(label.replace(/[^0-9.]/g, "")) || 0;
+
+      const modifiedSpent = stats.spent + (stats.spent * percent) / 100;
+
+      totalModifiedSpent += modifiedSpent;
     }
 
     const avgCPL = totalLeads > 0 ? (totalSpent / totalLeads).toFixed(2) : 0;
 
-    return { totalLeads, totalClicks, totalReach, totalSpent, avgCPL };
+    const avgModifiedCPL =
+      totalLeads > 0 ? (totalModifiedSpent / totalLeads).toFixed(2) : 0;
+
+    return {
+      totalLeads,
+      totalClicks,
+      totalReach,
+      totalSpent,
+      avgCPL,
+      avgModifiedCPL,
+    };
   });
+
   return (
     <div class="space-y-6 m-4">
       {/* ================= PROJECT OVERVIEW ================= */}
@@ -1156,7 +1183,11 @@ export default function ProjectDetails() {
                 ₹{footerTotals().avgCPL}
               </td>
 
-              {userRole() === "admin" && <td></td>}
+              {userRole() === "admin" && (
+                <td class="text-purple-700 dark:text-purple-300 font-bold">
+                  ₹{footerTotals().avgModifiedCPL}
+                </td>
+              )}
             </tr>
           </tfoot>
         </table>

@@ -15,6 +15,7 @@ import {
   setProjectsCache,
   isCacheStale,
 } from "../cacheStore/appStore";
+import useRole, { clientRole } from "./../hooks/useRole";
 
 export default function MainDashboard() {
   const [statusFilter, setStatusFilter] = createSignal("all");
@@ -43,6 +44,8 @@ export default function MainDashboard() {
   const insightsLoading = () => false; // handled inside loadAllProjectInsights
 
   const selectedClientName = localStorage.getItem("selectedClientName");
+
+  const { isRetainer } = clientRole();
 
   const textColumns = new Set(["name", "location", "type", "status"]);
   const handleColumnSort = (key) => {
@@ -757,32 +760,34 @@ export default function MainDashboard() {
 
       {/* Overview Cards Row 1 */}
       <div class="grid md:grid-cols-4 gap-6 mb-10">
-        <div class="bg-blue-50 dark:bg-gray-800 px-5 py-9 gap-4 shadow-sm hover:shadow-lg transition-all rounded-xl border border-blue-200 dark:border-gray-600 flex justify-between items-center">
-          <div>
-            <p class="text-md text-blue-800 dark:text-gray-400">
-              Total Budget Allocated
-            </p>
-            <h3 class="text-xl font-semibold mt-2 dark:text-white">
-              {"₹"}
-              {overviewStatsCards().totalBudget.toLocaleString("en-IN")}
-            </h3>
+        <Show when={!isRetainer()}>
+          <div class="bg-blue-50 dark:bg-gray-800 px-5 py-9 gap-4 shadow-sm hover:shadow-lg transition-all rounded-xl border border-blue-200 dark:border-gray-600 flex justify-between items-center">
+            <div>
+              <p class="text-md text-blue-800 dark:text-gray-400">
+                Total Budget Allocated
+              </p>
+              <h3 class="text-xl font-semibold mt-2 dark:text-white">
+                {"₹"}
+                {overviewStatsCards().totalBudget.toLocaleString("en-IN")}
+              </h3>
+            </div>
+            <div class="p-3 rounded-lg bg-blue-100 dark:bg-blue-300">
+              <svg
+                class="w-5 h-5 text-blue-600 dark:text-blue-800"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"
+                />
+              </svg>
+            </div>
           </div>
-          <div class="p-3 rounded-lg bg-blue-100 dark:bg-blue-300">
-            <svg
-              class="w-5 h-5 text-blue-600 dark:text-blue-800"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"
-              />
-            </svg>
-          </div>
-        </div>
+        </Show>
 
         <div class="bg-red-50 dark:bg-gray-800 px-5 py-9 gap-4 shadow-sm hover:shadow-lg transition-all rounded-xl border border-red-200 dark:border-gray-600 flex justify-between items-center">
           <div>
