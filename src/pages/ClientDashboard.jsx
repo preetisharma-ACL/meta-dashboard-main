@@ -45,7 +45,7 @@ export default function MainDashboard() {
 
   const selectedClientName = localStorage.getItem("selectedClientName");
 
-  const { isRetainer } = clientRole();
+  const { isRetainer, iscpl } = clientRole();
 
   const textColumns = new Set(["name", "location", "type", "status"]);
   const handleColumnSort = (key) => {
@@ -517,7 +517,17 @@ export default function MainDashboard() {
     const all = filteredProjects();
     const statsMap = allProjectStats();
 
-    const totalBudget = all.reduce((s, p) => s + (p.budget ?? 0), 0);
+    // const totalBudget = all.reduce((s, p) => s + (p.budget ?? 0), 0);
+    const totalBudget = all.reduce((s, p) => {
+      const projectAvgCpl = Number(statsMap[p.id]?.avgCPL || 0);
+
+      // CPL client → budget = CPL * 5
+      if (iscpl()) {
+        return s + projectAvgCpl * 5;
+      }
+
+      return s + (p.budget ?? 0);
+    }, 0);
     const activeProjects = all.filter((p) => p.status === "active").length;
     const totalLeads = all.reduce(
       (s, p) => s + (statsMap[p.id]?.totalLeads ?? 0),
@@ -554,7 +564,17 @@ export default function MainDashboard() {
     const all = filteredProjects();
     const statsMap = cardStats();
 
-    const totalBudget = all.reduce((s, p) => s + (p.budget ?? 0), 0);
+    // const totalBudget = all.reduce((s, p) => s + (p.budget ?? 0), 0);
+    const totalBudget = all.reduce((s, p) => {
+      const projectAvgCpl = Number(statsMap[p.id]?.avgCPL || 0);
+
+      // CPL client → budget = CPL * 5
+      if (iscpl()) {
+        return s + projectAvgCpl * 5;
+      }
+
+      return s + (p.budget ?? 0);
+    }, 0);
     const activeProjects = all.filter((p) => p.status === "active").length;
     const totalLeads = all.reduce(
       (s, p) => s + (statsMap[p.id]?.totalLeads ?? 0),
@@ -1027,9 +1047,11 @@ export default function MainDashboard() {
               {/* <th class="p-3">Uploaded Document</th> */}
               {/* <th class="p-3">Customer Priority</th> */}
               {/* <th class="p-3">Project Control</th> */}
-              <th class="p-3" onClick={() => handleColumnSort("budget")}>
-                Budget {getSortIcon("budget")}
-              </th>
+              <Show when={!isRetainer()}>
+                <th class="p-3" onClick={() => handleColumnSort("budget")}>
+                  Budget {getSortIcon("budget")}
+                </th>
+              </Show>
               <th class="p-3" onClick={() => handleColumnSort("totalLeads")}>
                 {rangeLabel()} Total Leads {getSortIcon("totalLeads")}
               </th>
@@ -1191,10 +1213,15 @@ export default function MainDashboard() {
                                         </td> */}
 
                       {/* Budget */}
-                      <td class="p-2">
-                        {"₹"}
-                        {(project.budget ?? 0).toLocaleString("en-IN")}
-                      </td>
+                      <Show when={!isRetainer()}>
+                        <td class="p-2">
+                          {"₹"}
+                          {(iscpl()
+                            ? Number(stats().avgCPL || 0) * 5
+                            : (project.budget ?? 0)
+                          ).toLocaleString("en-IN")}
+                        </td>
+                      </Show>
 
                       {/* Date-range Leads */}
                       <td class="p-2">{stats().totalLeads}</td>
@@ -1244,10 +1271,12 @@ export default function MainDashboard() {
                 <td></td>
 
                 {/* Budget Total */}
-                <td>
-                  {"₹"}
-                  {overviewStats().totalBudget.toLocaleString("en-IN")}
-                </td>
+                <Show when={!isRetainer()}>
+                  <td>
+                    {"₹"}
+                    {overviewStats().totalBudget.toLocaleString("en-IN")}
+                  </td>
+                </Show>
 
                 {/* Leads Total */}
                 <td>{overviewStats().totalLeads}</td>
