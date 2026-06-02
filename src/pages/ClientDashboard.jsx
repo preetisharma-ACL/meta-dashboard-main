@@ -28,6 +28,7 @@ export default function MainDashboard() {
   const [userRole, setUserRole] = createSignal("client");
   const [cardRange, setCardRange] = createSignal(null);
   const [manualBatches, setManualBatches] = createSignal([]);
+  const [currentPage, setCurrentPage] = createSignal(1);
   const allProjects = () => projectsCache.allProjects;
   const [columnSort, setColumnSort] = createSignal({
     key: "",
@@ -616,7 +617,7 @@ export default function MainDashboard() {
       });
     } // close the guard
     // Client-side pagination after filtering
-    const startIndex = (page() - 1) * pageSize();
+    const startIndex = (currentPage() - 1) * pageSize();
     const endIndex = startIndex + pageSize();
 
     return data.slice(startIndex, endIndex);
@@ -1122,7 +1123,6 @@ export default function MainDashboard() {
           onInput={(e) => {
             const value = e.target.value;
             setSearchText(value);
-           
           }}
           class="border px-3 py-2 rounded-lg w-60 dark:bg-gray-800"
         />
@@ -1267,7 +1267,7 @@ export default function MainDashboard() {
                         }
                       >
                         <span class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 text-xs font-semibold">
-                          {(page() - 1) * pageSize() + index() + 1}
+                          {(currentPage() - 1) * pageSize() + index() + 1}
                         </span>
                       </td>
                       {/* Project Name */}
@@ -1476,13 +1476,15 @@ export default function MainDashboard() {
         <span class="text-sm text-gray-500">
           {total() === 0
             ? "No results"
-            : `Showing ${(page() - 1) * pageSize() + 1}–${Math.min(page() * pageSize(), total())} of ${total()} results`}
+            : `Showing ${(currentPage() - 1) * pageSize() + 1}–${Math.min(page() * pageSize(), total())} of ${total()} results`}
         </span>
 
         <div class="flex items-center gap-2">
           <button
-            onClick={() => hasPrev() && loadData(page() - 1)}
-            disabled={!hasPrev()}
+            onClick={() =>
+              currentPage() > 1 && setCurrentPage(currentPage() - 1)
+            }
+            disabled={currentPage() === 1}
             class="flex items-center gap-1.5 px-4 h-9 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:bg-gray-50 disabled:opacity-35 disabled:cursor-default transition-colors"
           >
             <svg
@@ -1498,12 +1500,18 @@ export default function MainDashboard() {
           </button>
 
           <span class="text-sm text-gray-500 px-1">
-            Page {page()} of {totalPages()}
+            Page {currentPage()} of {Math.ceil(allProjects().length / pageSize())}
           </span>
 
           <button
-            onClick={() => hasNext() && loadData(page() + 1)}
-            disabled={!hasNext()}
+            onClick={() =>
+              currentPage() < Math.ceil(allProjects().length / pageSize()) &&
+              setCurrentPage(currentPage() + 1)
+            }
+            disabled={
+  currentPage() >=
+  Math.ceil(allProjects().length / pageSize())
+}
             class="flex items-center gap-1.5 px-4 h-9 text-sm rounded-lg bg-blue-600 border border-blue-600 text-white hover:bg-blue-700 disabled:opacity-35 disabled:cursor-default transition-colors"
           >
             Next
