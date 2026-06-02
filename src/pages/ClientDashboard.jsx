@@ -149,8 +149,6 @@ export default function MainDashboard() {
       });
 
       // kick off async enrichment (status + insights)
-      deriveProjectStatuses(mappedProjects);
-      loadAllProjectInsights(mappedProjects);
     } catch (err) {
       console.error(err);
     } finally {
@@ -201,7 +199,8 @@ export default function MainDashboard() {
       }
 
       setProjectsCache("allProjects", allData);
-      loadAllProjectInsights(allData);
+      await deriveProjectStatuses(allData);
+      await loadAllProjectInsights(allData);
     } catch (err) {
       console.error("Failed to load all projects", err);
     }
@@ -1500,7 +1499,8 @@ export default function MainDashboard() {
           </button>
 
           <span class="text-sm text-gray-500 px-1">
-            Page {currentPage()} of {Math.ceil(allProjects().length / pageSize())}
+            Page {currentPage()} of{" "}
+            {Math.ceil(allProjects().length / pageSize())}
           </span>
 
           <button
@@ -1509,9 +1509,8 @@ export default function MainDashboard() {
               setCurrentPage(currentPage() + 1)
             }
             disabled={
-  currentPage() >=
-  Math.ceil(allProjects().length / pageSize())
-}
+              currentPage() >= Math.ceil(allProjects().length / pageSize())
+            }
             class="flex items-center gap-1.5 px-4 h-9 text-sm rounded-lg bg-blue-600 border border-blue-600 text-white hover:bg-blue-700 disabled:opacity-35 disabled:cursor-default transition-colors"
           >
             Next
