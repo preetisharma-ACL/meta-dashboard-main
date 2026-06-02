@@ -555,70 +555,44 @@ export default function MainDashboard() {
   const filteredProjects = createMemo(() => {
     let data = [...allProjects()];
 
+    // Status filter
     if (statusFilter() !== "all") {
       data = data.filter((p) => p.status === statusFilter());
     }
+
+    if (searchText().trim()) {
+      const query = searchText().toLowerCase().trim();
+
+      data = data.filter((p) =>
+        [p.name, p.location, p.type, p.status]
+          .filter(Boolean)
+          .some((field) => String(field).toLowerCase().includes(query)),
+      );
+    }
+
     switch (sortType()) {
       case "budget":
         data.sort((a, b) => b.budget - a.budget);
         break;
+
       case "leads":
         data.sort((a, b) => b.leadsgenerated - a.leadsgenerated);
         break;
+
       case "activeCampaigns":
         data.sort((a, b) => b.activeCampaigns - a.activeCampaigns);
         break;
+
       case "cplHigh":
         data.sort((a, b) => b.cpl - a.cpl);
         break;
+
       case "cplLow":
         data.sort((a, b) => a.cpl - b.cpl);
         break;
     }
-
-    // NEW COLUMN SORTING (ADD THIS)
-    const { key, direction } = columnSort();
-
-    if (key) {
-      // ADD THIS GUARD
-      data.sort((a, b) => {
-        let valA = a[key];
-        let valB = b[key];
-
-        if (key === "totalLeads") {
-          valA = allProjectStats()[a.id]?.totalLeads || 0;
-          valB = allProjectStats()[b.id]?.totalLeads || 0;
-        }
-
-        if (key === "totalSpent") {
-          valA = allProjectStats()[a.id]?.totalSpent || 0;
-          valB = allProjectStats()[b.id]?.totalSpent || 0;
-        }
-
-        if (key === "avgCPL") {
-          valA = parseFloat(allProjectStats()[a.id]?.avgCPL || 0);
-          valB = parseFloat(allProjectStats()[b.id]?.avgCPL || 0);
-        }
-
-        const isNumber = typeof valA === "number" && typeof valB === "number";
-
-        if (isNumber) {
-          return direction === "asc" ? valA - valB : valB - valA;
-        }
-
-        return direction === "asc"
-          ? String(valA || "").localeCompare(String(valB || ""), undefined, {
-              sensitivity: "base",
-            })
-          : String(valB || "").localeCompare(String(valA || ""), undefined, {
-              sensitivity: "base",
-            });
-      });
-    } // close the guard
-    // Client-side pagination after filtering
     const startIndex = (currentPage() - 1) * pageSize();
     const endIndex = startIndex + pageSize();
-
     return data.slice(startIndex, endIndex);
   });
 
