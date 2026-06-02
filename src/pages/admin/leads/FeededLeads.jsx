@@ -1,5 +1,7 @@
 import { createSignal, createMemo, onMount, For, Show } from "solid-js";
-import { fetchManualBatches } from "../services/feededLeads";
+import { fetchManualBatches, createManualBatch } from "../services/feededLeads";
+import { fetchClients } from "../services/fetchClients";
+import { fetchProjectDisplayConfig } from "../services/projectDisplayConfig";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -22,20 +24,40 @@ const formatCost = (val) => {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function ManualBatches() {
-  const [batches, setBatches]   = createSignal([]);
-  const [loading, setLoading]   = createSignal(true);
-  const [error, setError]       = createSignal(null);
-  const [search, setSearch]     = createSignal("");
+  const [batches, setBatches] = createSignal([]);
+  const [loading, setLoading] = createSignal(true);
+  const [error, setError] = createSignal(null);
+  const [search, setSearch] = createSignal("");
   const [revokedFilter, setRevokedFilter] = createSignal("all");
-  const [sortKey, setSortKey]   = createSignal("id");
-  const [sortDir, setSortDir]   = createSignal("desc");
+  const [sortKey, setSortKey] = createSignal("id");
+  const [sortDir, setSortDir] = createSignal("desc");
+  const [clients, setClients] = createSignal([]);
+  const [configs, setConfigs] = createSignal([]);
+
+  const [sidebarMounted, setSidebarMounted] = createSignal(false);
+  const [sidebarVisible, setSidebarVisible] = createSignal(false);
+
+  const [submitting, setSubmitting] = createSignal(false);
+
+  const [clientSearch, setClientSearch] = createSignal("");
+  const [projectSearch, setProjectSearch] = createSignal("");
+
+  const [showClientDropdown, setShowClientDropdown] = createSignal(false);
+  const [showProjectDropdown, setShowProjectDropdown] = createSignal(false);
 
   // Pagination
-  const [page, setPage]             = createSignal(1);
+  const [page, setPage] = createSignal(1);
   const [totalPages, setTotalPages] = createSignal(1);
-  const [total, setTotal]           = createSignal(0);
-  const [hasNext, setHasNext]       = createSignal(false);
-  const [hasPrev, setHasPrev]       = createSignal(false);
+  const [total, setTotal] = createSignal(0);
+  const [hasNext, setHasNext] = createSignal(false);
+  const [hasPrev, setHasPrev] = createSignal(false);
+  const [formData, setFormData] = createSignal({
+    target_client_id: "",
+    project_id: "",
+    synthetic_lead_count: "",
+    total_cost: "",
+    notes: "",
+  });
 
   // ── Fetch ─────────────────────────────────────────────────────────────────
 
@@ -66,13 +88,29 @@ export default function ManualBatches() {
     }
   };
 
-  onMount(() => loadBatches(1));
+  onMount(async () => {
+    await loadBatches(1);
+
+    try {
+      const clientRes = await fetchClients(1, 500);
+      console.log("Fetched clients:", clientRes.data);
+      setClients(clientRes.data ?? []);
+
+      const configRes = await fetchProjectDisplayConfig();
+      setConfigs(configRes.data ?? []);
+    } catch (err) {
+      console.error(err);
+    }
+  });
 
   // ── Sort toggle ───────────────────────────────────────────────────────────
 
   const toggleSort = (key) => {
     if (sortKey() === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    else { setSortKey(key); setSortDir("desc"); }
+    else {
+      setSortKey(key);
+      setSortDir("desc");
+    }
   };
 
   const sortIcon = (key) => {
@@ -102,17 +140,19 @@ export default function ManualBatches() {
     }
 
     // Revoked filter
-    if (revokedFilter() === "active")
-      data = data.filter((b) => !b.is_revoked);
-    if (revokedFilter() === "revoked")
-      data = data.filter((b) => b.is_revoked);
+    if (revokedFilter() === "active") data = data.filter((b) => !b.is_revoked);
+    if (revokedFilter() === "revoked") data = data.filter((b) => b.is_revoked);
 
     // Sort
     data.sort((a, b) => {
       let va = a[sortKey()];
       let vb = b[sortKey()];
 
-      if (sortKey() === "id" || sortKey() === "synthetic_lead_count" || sortKey() === "lead_count") {
+      if (
+        sortKey() === "id" ||
+        sortKey() === "synthetic_lead_count" ||
+        sortKey() === "lead_count"
+      ) {
         va = Number(va);
         vb = Number(vb);
       } else if (sortKey() === "total_cost") {
@@ -143,15 +183,115 @@ export default function ManualBatches() {
     setSortDir("desc");
   };
 
-  const activeFilterCount = createMemo(() =>
-    [search(), revokedFilter()].filter((v) => v && v !== "all").length,
+  const openSidebar = () => {
+    setSidebarMounted(true);
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setSidebarVisible(true);
+      });
+    });
+  };
+
+  const closeSidebar = () => {
+    setSidebarVisible(false);
+
+    setTimeout(() => {
+      setSidebarMounted(false);
+
+      setFormData({
+        target_client_id: "",
+        project_id: "",
+        synthetic_lead_count: "",
+        total_cost: "",
+        notes: "",
+      });
+
+      setClientSearch("");
+      setProjectSearch("");
+    }, 300);
+  };
+
+  const handleInputChange = (field, value) => {
+    setFormData((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  };
+
+  const activeFilterCount = createMemo(
+    () => [search(), revokedFilter()].filter((v) => v && v !== "all").length,
   );
+
+  const filteredClients = createMemo(() => {
+    const q = clientSearch().trim().toLowerCase();
+
+    if (!q) return clients();
+
+    return clients().filter(
+      (c) =>
+        c.email?.toLowerCase().includes(q) ||
+        c.client_nomen_name?.toLowerCase().includes(q),
+    );
+  });
+
+  const selectedClientProjects = createMemo(() => {
+    if (!formData().target_client_id) return [];
+
+    const filtered = configs().filter(
+      (cfg) => cfg.client_id === Number(formData().target_client_id),
+    );
+
+    const map = new Map();
+
+    filtered.forEach((item) => {
+      if (!map.has(item.project_id)) {
+        map.set(item.project_id, item);
+      }
+    });
+
+    return Array.from(map.values());
+  });
+
+  const filteredProjects = createMemo(() => {
+    const q = projectSearch().trim().toLowerCase();
+
+    if (!q) return selectedClientProjects();
+
+    return selectedClientProjects().filter((p) =>
+      p.project_name?.toLowerCase().includes(q),
+    );
+  });
+
+  const handleSubmit = async () => {
+    try {
+      setSubmitting(true);
+
+      const payload = {
+        project_id: Number(formData().project_id),
+        target_client_id: Number(formData().target_client_id),
+        synthetic_lead_count: Number(formData().synthetic_lead_count),
+        total_cost: formData().total_cost,
+        notes: formData().notes,
+      };
+
+      await createManualBatch(payload);
+      alert("Leads feeded successfully");
+
+      await loadBatches(page());
+
+      closeSidebar();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
     <div class="min-h-screen bg-gray-50 dark:bg-gray-900 p-6 lg:p-8">
-
       {/* Page Header */}
       <div class="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div>
@@ -162,15 +302,33 @@ export default function ManualBatches() {
             {total()} total batches
           </p>
         </div>
+        <button
+          onClick={openSidebar}
+          class="px-4 py-2 text-sm rounded-md
+         bg-blue-900 text-white
+         hover:bg-blue-800
+         transition-colors shadow-sm"
+        >
+          + Feed Leads
+        </button>
         <Show when={activeFilterCount() > 0}>
           <button
             onClick={clearFilters}
             class="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg
                    border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
           >
-            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24"
-              stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+            <svg
+              class="w-3.5 h-3.5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
             Clear filters
             <span class="bg-red-100 text-red-600 text-xs font-bold px-1.5 rounded-full">
@@ -181,13 +339,19 @@ export default function ManualBatches() {
       </div>
 
       {/* Filters Bar */}
-      <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200
-                  dark:border-gray-700 p-4 mb-4 flex flex-wrap items-center gap-3">
-
+      <div
+        class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200
+                  dark:border-gray-700 p-4 mb-4 flex flex-wrap items-center gap-3"
+      >
         {/* Search */}
         <div class="relative flex w-[500px]">
-          <svg class="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2"
-            fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <svg
+            class="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            stroke-width="2"
+          >
             <circle cx="11" cy="11" r="8" />
             <path d="M21 21l-4.35-4.35" />
           </svg>
@@ -222,63 +386,97 @@ export default function ManualBatches() {
 
       {/* Error */}
       <Show when={error()}>
-        <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800
-                    rounded-xl p-4 mb-4 text-sm text-red-600 dark:text-red-400 flex items-center gap-2">
-          <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-              d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+        <div
+          class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800
+                    rounded-xl p-4 mb-4 text-sm text-red-600 dark:text-red-400 flex items-center gap-2"
+        >
+          <svg
+            class="w-4 h-4 flex-shrink-0"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"
+            />
           </svg>
           {error()}
         </div>
       </Show>
 
       {/* Table */}
-      <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200
-                  dark:border-gray-700 overflow-x-auto">
+      <div
+        class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200
+                  dark:border-gray-700 overflow-x-auto"
+      >
         <table class="min-w-full text-sm">
-
           <thead>
-            <tr class="border-b border-gray-200 dark:border-gray-700 bg-gray-50
+            <tr
+              class="border-b border-gray-200 dark:border-gray-700 bg-gray-50
                        dark:bg-gray-800/60 text-gray-500 dark:text-gray-400
-                       uppercase text-xs tracking-wider">
-              <th class="p-3 text-left cursor-pointer hover:text-purple-600 whitespace-nowrap"
-                onClick={() => toggleSort("id")}>
+                       uppercase text-xs tracking-wider"
+            >
+              <th
+                class="p-3 text-left cursor-pointer hover:text-purple-600 whitespace-nowrap"
+                onClick={() => toggleSort("id")}
+              >
                 ID {sortIcon("id")}
               </th>
-              <th class="p-3 text-left cursor-pointer hover:text-purple-600 whitespace-nowrap"
-                onClick={() => toggleSort("project_name")}>
+              <th
+                class="p-3 text-left cursor-pointer hover:text-purple-600 whitespace-nowrap"
+                onClick={() => toggleSort("project_name")}
+              >
                 Project {sortIcon("project_name")}
               </th>
-              <th class="p-3 text-left cursor-pointer hover:text-purple-600 whitespace-nowrap"
-                onClick={() => toggleSort("target_client_nomen")}>
+              <th
+                class="p-3 text-left cursor-pointer hover:text-purple-600 whitespace-nowrap"
+                onClick={() => toggleSort("target_client_nomen")}
+              >
                 Client Nomen {sortIcon("target_client_nomen")}
               </th>
-              <th class="p-3 text-left cursor-pointer hover:text-purple-600 whitespace-nowrap"
-                onClick={() => toggleSort("target_client_email")}>
+              <th
+                class="p-3 text-left cursor-pointer hover:text-purple-600 whitespace-nowrap"
+                onClick={() => toggleSort("target_client_email")}
+              >
                 Client Email {sortIcon("target_client_email")}
               </th>
-              <th class="p-3 text-right cursor-pointer hover:text-purple-600 whitespace-nowrap"
-                onClick={() => toggleSort("synthetic_lead_count")}>
+              <th
+                class="p-3 text-right cursor-pointer hover:text-purple-600 whitespace-nowrap"
+                onClick={() => toggleSort("synthetic_lead_count")}
+              >
                 Feeded leads {sortIcon("synthetic_lead_count")}
               </th>
-              <th class="p-3 text-right cursor-pointer hover:text-purple-600 whitespace-nowrap"
-                onClick={() => toggleSort("synthetic_lead_count")}>
+              <th
+                class="p-3 text-right cursor-pointer hover:text-purple-600 whitespace-nowrap"
+                onClick={() => toggleSort("synthetic_lead_count")}
+              >
                 Leads Count {sortIcon("lead_count")}
               </th>
-              <th class="p-3 text-right cursor-pointer hover:text-purple-600 whitespace-nowrap"
-                onClick={() => toggleSort("total_cost")}>
+              <th
+                class="p-3 text-right cursor-pointer hover:text-purple-600 whitespace-nowrap"
+                onClick={() => toggleSort("total_cost")}
+              >
                 Total Cost {sortIcon("total_cost")}
               </th>
-              <th class="p-3 text-center cursor-pointer hover:text-purple-600 whitespace-nowrap"
-                onClick={() => toggleSort("is_revoked")}>
+              <th
+                class="p-3 text-center cursor-pointer hover:text-purple-600 whitespace-nowrap"
+                onClick={() => toggleSort("is_revoked")}
+              >
                 Status {sortIcon("is_revoked")}
               </th>
-              <th class="p-3 text-left cursor-pointer hover:text-purple-600 whitespace-nowrap"
-                onClick={() => toggleSort("uploaded_at")}>
+              <th
+                class="p-3 text-left cursor-pointer hover:text-purple-600 whitespace-nowrap"
+                onClick={() => toggleSort("uploaded_at")}
+              >
                 Uploaded At {sortIcon("uploaded_at")}
               </th>
-              <th class="p-3 text-left cursor-pointer hover:text-purple-600 whitespace-nowrap"
-                onClick={() => toggleSort("uploaded_by_email")}>
+              <th
+                class="p-3 text-left cursor-pointer hover:text-purple-600 whitespace-nowrap"
+                onClick={() => toggleSort("uploaded_by_email")}
+              >
                 Uploaded By {sortIcon("uploaded_by_email")}
               </th>
             </tr>
@@ -292,12 +490,16 @@ export default function ManualBatches() {
                 <For each={Array(8).fill(0)}>
                   {() => (
                     <tr class="border-b border-gray-100 dark:border-gray-800 animate-pulse">
-                      {Array(9).fill(0).map((_, idx) => (
-                        <td class="p-3">
-                          <div class={`h-3 bg-gray-200 dark:bg-gray-700 rounded
-                            ${idx === 1 || idx === 3 ? "w-40" : idx === 7 ? "w-32" : "w-20"}`} />
-                        </td>
-                      ))}
+                      {Array(9)
+                        .fill(0)
+                        .map((_, idx) => (
+                          <td class="p-3">
+                            <div
+                              class={`h-3 bg-gray-200 dark:bg-gray-700 rounded
+                            ${idx === 1 || idx === 3 ? "w-40" : idx === 7 ? "w-32" : "w-20"}`}
+                            />
+                          </td>
+                        ))}
                     </tr>
                   )}
                 </For>
@@ -307,12 +509,15 @@ export default function ManualBatches() {
             <tbody>
               <For each={filtered()}>
                 {(b, i) => (
-                  <tr class={`border-b border-gray-100 dark:border-gray-800
+                  <tr
+                    class={`border-b border-gray-100 dark:border-gray-800
                                 transition-colors
-                              ${i() % 2 === 0
-                                ? "bg-white dark:bg-gray-900"
-                                : "bg-gray-50/60 dark:bg-gray-800/30"}`}>
-
+                              ${
+                                i() % 2 === 0
+                                  ? "bg-white dark:bg-gray-900"
+                                  : "bg-gray-50/60 dark:bg-gray-800/30"
+                              }`}
+                  >
                     {/* ID */}
                     <td class="p-3 text-gray-700 dark:text-gray-300 font-medium text-sm whitespace-nowrap">
                       {b.id}
@@ -351,14 +556,18 @@ export default function ManualBatches() {
                     {/* Is Revoked */}
                     <td class="p-3 text-center">
                       {b.is_revoked ? (
-                        <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full
-                                     bg-red-100 text-red-700 text-xs font-semibold ring-1 ring-red-200">
+                        <span
+                          class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full
+                                     bg-red-100 text-red-700 text-xs font-semibold ring-1 ring-red-200"
+                        >
                           <span class="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" />
                           Revoked
                         </span>
                       ) : (
-                        <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full
-                                     bg-green-100 text-green-700 text-xs font-semibold ring-1 ring-green-200">
+                        <span
+                          class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full
+                                     bg-green-100 text-green-700 text-xs font-semibold ring-1 ring-green-200"
+                        >
                           <span class="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
                           Active
                         </span>
@@ -381,11 +590,22 @@ export default function ManualBatches() {
               {/* Empty State */}
               <Show when={filtered().length === 0}>
                 <tr>
-                  <td colspan="9" class="py-16 text-center text-gray-400 dark:text-gray-500">
-                    <svg class="w-10 h-10 mx-auto mb-3 opacity-30"
-                      fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  <td
+                    colspan="10"
+                    class="py-16 text-center text-gray-400 dark:text-gray-500"
+                  >
+                    <svg
+                      class="w-10 h-10 mx-auto mb-3 opacity-30"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="1.5"
+                        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                      />
                     </svg>
                     No batches match your filters
                   </td>
@@ -396,8 +616,12 @@ export default function ManualBatches() {
 
           <tfoot>
             <tr class="border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60">
-              <td colspan="9" class="px-4 py-2.5 text-xs text-gray-500 dark:text-gray-400">
-                {filtered().length} batch{filtered().length !== 1 ? "es" : ""} on this page
+              <td
+                colspan="10"
+                class="px-4 py-2.5 text-xs text-gray-500 dark:text-gray-400"
+              >
+                {filtered().length} batch{filtered().length !== 1 ? "es" : ""}{" "}
+                on this page
               </td>
             </tr>
           </tfoot>
@@ -421,8 +645,13 @@ export default function ManualBatches() {
                    text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800
                    disabled:opacity-35 disabled:cursor-default transition-colors"
           >
-            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 16 16"
-              stroke="currentColor" stroke-width="1.8">
+            <svg
+              class="w-3.5 h-3.5"
+              fill="none"
+              viewBox="0 0 16 16"
+              stroke="currentColor"
+              stroke-width="1.8"
+            >
               <path d="M10 12L6 8l4-4" />
             </svg>
             Prev
@@ -440,13 +669,282 @@ export default function ManualBatches() {
                    hover:bg-purple-700 disabled:opacity-35 disabled:cursor-default transition-colors"
           >
             Next
-            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 16 16"
-              stroke="currentColor" stroke-width="1.8">
+            <svg
+              class="w-3.5 h-3.5"
+              fill="none"
+              viewBox="0 0 16 16"
+              stroke="currentColor"
+              stroke-width="1.8"
+            >
               <path d="M6 4l4 4-4 4" />
             </svg>
           </button>
         </div>
       </div>
+
+      <Show when={sidebarMounted()}>
+        <div class="fixed inset-0 z-50 flex">
+          {/* Backdrop */}
+          <div
+            onClick={closeSidebar}
+            class="fixed inset-0 bg-black/30 backdrop-blur-sm transition-opacity duration-300"
+            style={{
+              opacity: sidebarVisible() ? "1" : "0",
+            }}
+          />
+
+          {/* Sidebar */}
+          <div
+            class="fixed inset-y-0 right-0 z-50 w-full max-w-md
+             bg-white dark:bg-gray-900
+             border-l border-gray-200 dark:border-gray-700
+             shadow-2xl flex flex-col
+             transition-transform duration-300 ease-in-out"
+            style={{
+              transform: sidebarVisible()
+                ? "translateX(0)"
+                : "translateX(100%)",
+            }}
+          >
+            {/* Header */}
+            <div
+              class="flex items-center justify-between px-6 py-4
+               border-b border-gray-200 dark:border-gray-700
+               bg-gray-50 dark:bg-gray-800"
+            >
+              <div>
+                <h2 class="text-lg font-bold text-gray-800 dark:text-white">
+                  Feed Leads
+                </h2>
+
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  Create manual lead batch
+                </p>
+              </div>
+
+              <button
+                onClick={closeSidebar}
+                class="w-8 h-8 rounded-full flex items-center justify-center
+                 hover:bg-gray-200 dark:hover:bg-gray-700 transition"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Body */}
+            <div class="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+              {/* Client Dropdown */}
+              <div>
+                <label class="block text-sm font-medium mb-1.5">Client</label>
+
+                <div class="relative">
+                  <input
+                    type="text"
+                    value={clientSearch()}
+                    placeholder="Search email or nomen..."
+                    onFocus={() => setShowClientDropdown(true)}
+                    onInput={(e) => {
+                      setClientSearch(e.target.value);
+                      setShowClientDropdown(true);
+                    }}
+                    class="w-full px-3 py-2 rounded-lg border
+                     border-gray-300 dark:border-gray-600
+                     bg-white dark:bg-gray-800
+                     focus:ring-2 focus:ring-purple-500
+                     outline-none"
+                  />
+
+                  <Show when={showClientDropdown()}>
+                    <div
+                      class="absolute z-50 mt-1 w-full max-h-60 overflow-y-auto
+                       rounded-lg border border-gray-200 dark:border-gray-700
+                       bg-white dark:bg-gray-900 shadow-xl"
+                    >
+                      <For each={filteredClients()}>
+                        {(client) => (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleInputChange("target_client_id", client.id);
+
+                              setClientSearch(
+                                `${client.client_nomen_name} (${client.email})`,
+                              );
+
+                              setProjectSearch("");
+
+                              handleInputChange("project_id", "");
+
+                              setShowClientDropdown(false);
+                            }}
+                            class="w-full text-left px-3 py-2
+                             hover:bg-purple-50 dark:hover:bg-gray-800
+                             transition-colors"
+                          >
+                            <div class="font-medium">
+                              {client.client_nomen_name}
+                            </div>
+
+                            <div class="text-xs text-gray-500">
+                              {client.email}
+                            </div>
+                          </button>
+                        )}
+                      </For>
+                    </div>
+                  </Show>
+                </div>
+              </div>
+
+              {/* Project Dropdown */}
+              <div>
+                <label class="block text-sm font-medium mb-1.5">Project</label>
+
+                <div class="relative">
+                  <input
+                    type="text"
+                    value={projectSearch()}
+                    placeholder="Search project..."
+                    disabled={!formData().target_client_id}
+                    onFocus={() => setShowProjectDropdown(true)}
+                    onInput={(e) => {
+                      setProjectSearch(e.target.value);
+                      setShowProjectDropdown(true);
+                    }}
+                    class="w-full px-3 py-2 rounded-lg border
+                     border-gray-300 dark:border-gray-600
+                     bg-white dark:bg-gray-800
+                     focus:ring-2 focus:ring-purple-500
+                     outline-none disabled:opacity-50"
+                  />
+
+                  <Show when={showProjectDropdown()}>
+                    <div
+                      class="absolute z-50 mt-1 w-full max-h-60 overflow-y-auto
+                       rounded-lg border border-gray-200 dark:border-gray-700
+                       bg-white dark:bg-gray-900 shadow-xl"
+                    >
+                      <For each={filteredProjects()}>
+                        {(project) => (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleInputChange(
+                                "project_id",
+                                project.project_id,
+                              );
+
+                              setProjectSearch(project.project_name);
+
+                              setShowProjectDropdown(false);
+                            }}
+                            class="w-full text-left px-3 py-2
+                             hover:bg-purple-50 dark:hover:bg-gray-800
+                             transition-colors"
+                          >
+                            {project.project_name}
+                          </button>
+                        )}
+                      </For>
+                    </div>
+                  </Show>
+                </div>
+              </div>
+
+              {/* Leads Count */}
+              <div>
+                <label class="block text-sm font-medium mb-1.5">
+                  Feeded Leads Count
+                </label>
+
+                <input
+                  type="number"
+                  value={formData().synthetic_lead_count}
+                  onInput={(e) =>
+                    handleInputChange("synthetic_lead_count", e.target.value)
+                  }
+                  class="w-full px-3 py-2 rounded-lg border
+                   border-gray-300 dark:border-gray-600
+                   bg-white dark:bg-gray-800
+                   focus:ring-2 focus:ring-purple-500
+                   outline-none"
+                />
+              </div>
+
+              {/* Total Cost */}
+              <div>
+                <label class="block text-sm font-medium mb-1.5">
+                  Total Cost
+                </label>
+
+                <input
+                  type="number"
+                  step="0.01"
+                  value={formData().total_cost}
+                  onInput={(e) =>
+                    handleInputChange("total_cost", e.target.value)
+                  }
+                  class="w-full px-3 py-2 rounded-lg border
+                   border-gray-300 dark:border-gray-600
+                   bg-white dark:bg-gray-800
+                   focus:ring-2 focus:ring-purple-500
+                   outline-none"
+                />
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label class="block text-sm font-medium mb-1.5">Notes</label>
+
+                <textarea
+                  rows="4"
+                  value={formData().notes}
+                  onInput={(e) => handleInputChange("notes", e.target.value)}
+                  class="w-full px-3 py-2 rounded-lg border
+                   border-gray-300 dark:border-gray-600
+                   bg-white dark:bg-gray-800
+                   focus:ring-2 focus:ring-purple-500
+                   outline-none resize-none"
+                />
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div
+              class="px-6 py-4 border-t border-gray-200 dark:border-gray-700
+               bg-gray-50 dark:bg-gray-800 flex gap-3"
+            >
+              <button
+                onClick={closeSidebar}
+                class="flex-1 px-4 py-2.5 rounded-lg border
+                 border-gray-300 dark:border-gray-600
+                 hover:bg-gray-100 dark:hover:bg-gray-700
+                 transition"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={handleSubmit}
+                disabled={
+                  submitting() ||
+                  !formData().target_client_id ||
+                  !formData().project_id ||
+                  !formData().synthetic_lead_count ||
+                  !formData().total_cost
+                }
+                class="flex-1 px-4 py-2.5 rounded-lg
+                 bg-purple-600 text-white
+                 hover:bg-purple-700
+                 disabled:opacity-50
+                 transition"
+              >
+                {submitting() ? "Submitting..." : "Feed Leads"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </Show>
     </div>
   );
 }

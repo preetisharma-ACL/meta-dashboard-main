@@ -21,5 +21,6 @@ const [clientType] = createSignal(authData?.client_type ?? "retainer");
       isRetainer: () => clientType() === "retainer",
       ishybrid: () => clientType() === "hybrid",
       iscpl: () => clientType() === "cpl",
+      isAdmin: () => userRole() === "admin", 
     };
   }

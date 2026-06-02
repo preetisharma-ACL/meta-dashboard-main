@@ -71,3 +71,8 @@ export const fetchCampaignInsights = async (campaignId, pageSize = 1000) => {
 export const fetchProjectById = async (projectId) => {
   return await api(`/projects/${projectId}/`, { method: "GET" });
 };
+
+export const fetchCampaignById = async (campaignId) => {
+  return await api(`/campaigns/${campaignId}/`, { method: "GET" });
+};
+

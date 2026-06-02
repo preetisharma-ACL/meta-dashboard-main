@@ -7,7 +7,7 @@ import birlalogo from "../assets/project-logo/godrej.png";
 import prestigelogo from "../assets/project-logo/prestige.png";
 import { A } from "@solidjs/router";
 import { DateRangeFilter } from "../components/DateRangeFilter";
-import { fetchProjects } from "../services/dashboard";
+import { fetchProjects, fetchManualBatches } from "../services/dashboard";
 import { fetchCampaigns } from "../services/campaigns";
 import { fetchCampaignInsights } from "../services/campaigns";
 import {
@@ -27,6 +27,7 @@ export default function MainDashboard() {
   const [viewType, setViewType] = createSignal("table");
   const [userRole, setUserRole] = createSignal("client");
   const [cardRange, setCardRange] = createSignal(null);
+  const [manualBatches, setManualBatches] = createSignal([]);
   const [columnSort, setColumnSort] = createSignal({
     key: "",
     direction: "desc",
@@ -45,7 +46,7 @@ export default function MainDashboard() {
 
   const selectedClientName = localStorage.getItem("selectedClientName");
 
-  const { isRetainer, iscpl } = clientRole();
+  const { isRetainer, iscpl, ishybrid, isAdmin } = clientRole();
 
   const textColumns = new Set(["name", "location", "type", "status"]);
   const handleColumnSort = (key) => {
@@ -77,8 +78,25 @@ export default function MainDashboard() {
 
     if (isAdminViewingClient || isCacheStale(projectsCache.lastFetched)) {
       loadData(1);
+      loadManualBatches();
     }
   });
+
+  const loadManualBatches = async () => {
+    try {
+      const res = await fetchManualBatches();
+
+      const data = Array.isArray(res?.data?.results)
+        ? res.data.results
+        : Array.isArray(res?.data)
+          ? res.data
+          : [];
+
+      setManualBatches(data);
+    } catch (err) {
+      console.error("Failed to load manual batches", err);
+    }
+  };
   const loadData = async (pageNo = 1, search = "") => {
     try {
       setProjectsCache("loading", true);
@@ -191,6 +209,23 @@ export default function MainDashboard() {
     return entry;
   };
 
+  const getProjectExtraLeads = (projectId, batches, from, to) => {
+    return batches
+      .filter((b) => {
+        const date = b.uploaded_at?.split("T")[0];
+
+        const matchesProject = Number(b.project) === Number(projectId);
+
+        // no filter selected
+        if (!from || !to) {
+          return matchesProject;
+        }
+
+        return matchesProject && date >= from && date <= to;
+      })
+      .reduce((sum, b) => sum + Number(b.synthetic_lead_count || 0), 0);
+  };
+
   const cardStats = createMemo(() => {
     const { from, to } = getCardDateRange();
     const result = {};
@@ -210,6 +245,12 @@ export default function MainDashboard() {
       });
 
       const totalLeads = filtered.reduce((s, d) => s + (d.leads || 0), 0);
+      const extraLeads = getProjectExtraLeads(
+        project.id,
+        manualBatches(),
+        from,
+        to,
+      );
       const totalSpent = filtered.reduce(
         (s, d) => s + parseFloat(d.spend || 0),
         0,
@@ -236,6 +277,7 @@ export default function MainDashboard() {
 
       result[project.id] = {
         totalLeads,
+        extraLeads,
         totalSpent,
         avgCPL,
         activeCampaigns,
@@ -381,6 +423,7 @@ export default function MainDashboard() {
       return current >= start && current <= end ? total + leads : total;
     }, 0);
   };
+
   const allProjectStats = createMemo(() => {
     const from = fromDate();
     const to = toDate();
@@ -403,6 +446,12 @@ export default function MainDashboard() {
             });
 
       const totalLeads = filtered.reduce((s, d) => s + (d.leads || 0), 0);
+      const extraLeads = getProjectExtraLeads(
+        project.id,
+        manualBatches(),
+        from,
+        to,
+      );
       const totalSpent = filtered.reduce(
         (s, d) => s + parseFloat(d.spend || 0),
         0,
@@ -431,6 +480,7 @@ export default function MainDashboard() {
 
       result[project.id] = {
         totalLeads,
+        extraLeads,
         totalSpent,
         avgCPL,
         activeCampaigns,
@@ -780,7 +830,7 @@ export default function MainDashboard() {
 
       {/* Overview Cards Row 1 */}
       <div class="grid md:grid-cols-4 gap-6 mb-10">
-        <Show when={!isRetainer()}>
+        <Show when={isAdmin() || iscpl() || ishybrid()}>
           <div class="bg-blue-50 dark:bg-gray-800 px-5 py-9 gap-4 shadow-sm hover:shadow-lg transition-all rounded-xl border border-blue-200 dark:border-gray-600 flex justify-between items-center">
             <div>
               <p class="text-md text-blue-800 dark:text-gray-400">
@@ -1047,7 +1097,7 @@ export default function MainDashboard() {
               {/* <th class="p-3">Uploaded Document</th> */}
               {/* <th class="p-3">Customer Priority</th> */}
               {/* <th class="p-3">Project Control</th> */}
-              <Show when={!isRetainer()}>
+              <Show when={isAdmin() || iscpl() || ishybrid()}>
                 <th class="p-3" onClick={() => handleColumnSort("budget")}>
                   Budget {getSortIcon("budget")}
                 </th>
@@ -1055,6 +1105,9 @@ export default function MainDashboard() {
               <th class="p-3" onClick={() => handleColumnSort("totalLeads")}>
                 {rangeLabel()} Total Leads {getSortIcon("totalLeads")}
               </th>
+              {isAdmin() && (
+                <th class="p-3">{rangeLabel()} Extra Leads</th>
+              )}
               <th class="p-3" onClick={() => handleColumnSort("totalSpent")}>
                 {rangeLabel()} Total Spent {getSortIcon("totalSpent")}
               </th>
@@ -1213,7 +1266,7 @@ export default function MainDashboard() {
                                         </td> */}
 
                       {/* Budget */}
-                      <Show when={!isRetainer()}>
+                      <Show when={isAdmin() || iscpl() || ishybrid()}>
                         <td class="p-2">
                           {"₹"}
                           {(iscpl()
@@ -1225,7 +1278,10 @@ export default function MainDashboard() {
 
                       {/* Date-range Leads */}
                       <td class="p-2">{stats().totalLeads}</td>
-
+                      
+                      {isAdmin() && (
+                        <td class="p-2">+{stats().extraLeads || 0}</td>
+                      )}
                       {/* Date-range Spent */}
                       <td class="p-2">
                         {"₹"}
@@ -1271,7 +1327,7 @@ export default function MainDashboard() {
                 <td></td>
 
                 {/* Budget Total */}
-                <Show when={!isRetainer()}>
+                <Show when={isAdmin() || iscpl() || ishybrid()}>
                   <td>
                     {"₹"}
                     {overviewStats().totalBudget.toLocaleString("en-IN")}
@@ -1280,6 +1336,16 @@ export default function MainDashboard() {
 
                 {/* Leads Total */}
                 <td>{overviewStats().totalLeads}</td>
+
+                {isAdmin() && (
+                <td>
+                  {filteredProjects().reduce(
+                    (sum, project) =>
+                      sum + (allProjectStats()[project.id]?.extraLeads || 0),
+                    0,
+                  )}
+                </td>
+                )}
 
                 {/* Spent Total */}
                 <td>

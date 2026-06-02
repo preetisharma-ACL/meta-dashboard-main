@@ -112,7 +112,13 @@ export function DateRangeFilter(props) {
     const year = currentMonth().getFullYear();
     const month = currentMonth().getMonth();
 
+    // ✅ Future date block
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
     const clickedDate = new Date(year, month, day);
+    clickedDate.setHours(0, 0, 0, 0);
+
+    if (clickedDate > today) return;
 
     const toLocalDateStr = (date) => {
       const y = date.getFullYear();
@@ -260,6 +266,19 @@ export function DateRangeFilter(props) {
     to.setHours(0, 0, 0, 0);
 
     return from > today || to > today;
+  };
+
+  const isFutureDate = (day) => {
+    const year = currentMonth().getFullYear();
+    const month = currentMonth().getMonth();
+
+    const date = new Date(year, month, day);
+    date.setHours(0, 0, 0, 0);
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    return date > today;
   };
 
   let calendarRef;
@@ -451,12 +470,15 @@ export function DateRangeFilter(props) {
                             >
                               <button
                                 onClick={() => handleDayClick(day)}
+                                disabled={isFutureDate(day)}
                                 class={`aspect-rectangle flex items-center justify-center text-sm py-2 rounded-full transition-colors ${
-                                  isDateSelected(day)
-                                    ? "bg-blue-600 text-white font-semibold hover:bg-blue-700"
-                                    : isDateInRange(day)
-                                      ? "bg-blue-100 text-blue-900 hover:bg-blue-200"
-                                      : "text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-900"
+                                  isFutureDate(day)
+                                    ? "text-gray-400 cursor-not-allowed opacity-50"
+                                    : isDateSelected(day)
+                                      ? "bg-blue-600 text-white font-semibold hover:bg-blue-700"
+                                      : isDateInRange(day)
+                                        ? "bg-blue-100 text-blue-900 hover:bg-blue-200"
+                                        : "text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-900"
                                 }`}
                               >
                                 {day}
