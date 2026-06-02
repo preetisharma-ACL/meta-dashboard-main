@@ -29,7 +29,14 @@ const hydrate = (key, fallback) => {
 };
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
-const projectsDefault = { data: [], meta: null, insightsMap: {}, lastFetched: null, loading: false };
+const projectsDefault = {
+  data: [],
+  allProjects: [],
+  meta: null,
+  insightsMap: {},
+  lastFetched: null,
+  loading: false,
+};
 
 export const [projectsCache, setProjectsCacheRaw] = createStore(
     hydrate("cache_projects", projectsDefault)

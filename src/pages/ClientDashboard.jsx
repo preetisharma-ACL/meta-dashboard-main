@@ -28,6 +28,7 @@ export default function MainDashboard() {
   const [userRole, setUserRole] = createSignal("client");
   const [cardRange, setCardRange] = createSignal(null);
   const [manualBatches, setManualBatches] = createSignal([]);
+  const allProjects = () => projectsCache.allProjects;
   const [columnSort, setColumnSort] = createSignal({
     key: "",
     direction: "desc",
@@ -76,9 +77,14 @@ export default function MainDashboard() {
     const isAdminViewingClient =
       auth?.role === "admin" && localStorage.getItem("selectedClientNomenId");
 
-    if (isAdminViewingClient || isCacheStale(projectsCache.lastFetched)) {
+    if (
+      isAdminViewingClient ||
+      isCacheStale(projectsCache.lastFetched) ||
+      projectsCache.allProjects.length === 0
+    ) {
       loadData(1);
       loadManualBatches();
+      loadAllProjects();
     }
   });
 
@@ -137,8 +143,8 @@ export default function MainDashboard() {
       setProjectsCache({
         data: mappedProjects,
         meta: meta ?? projectsCache.meta,
-        lastFetched: Date.now(), // stamp the cache
-        insightsMap: {},
+        lastFetched: Date.now(),
+        insightsMap: projectsCache.insightsMap,
       });
 
       // kick off async enrichment (status + insights)
@@ -148,6 +154,55 @@ export default function MainDashboard() {
       console.error(err);
     } finally {
       setProjectsCache("loading", false);
+    }
+  };
+
+  const loadAllProjects = async (search = "") => {
+    try {
+      let currentPage = 1;
+      let hasMore = true;
+      let allData = [];
+
+      while (hasMore) {
+        const res = await fetchProjects(currentPage, search);
+
+        const apiData = Array.isArray(res?.data?.results)
+          ? res.data.results
+          : Array.isArray(res?.data)
+            ? res.data
+            : [];
+
+        const mappedProjects = apiData.map((item) => ({
+          id: item.id,
+          name: item.name,
+          logo: item.logo || "/default-logo.png",
+          location: item.city,
+          budget: parseFloat(item.budget) || 0,
+          leadsgenerated: item.leads_count ?? 0,
+          type: item.property_type
+            ? item.property_type.charAt(0).toUpperCase() +
+              item.property_type.slice(1).toLowerCase()
+            : "N/A",
+          activeCampaigns: item.campaign_count ?? 0,
+          pausedCampaigns: item.paused_campaigns ?? 0,
+          status: item.status,
+          cpl: parseFloat(item.cpl) || 0,
+          modifiedCpl: item.modified_cpl ?? null,
+          spent: parseFloat(item.total_spend) || 0,
+          leadsByDate: item.leads_by_date ?? {},
+        }));
+
+        allData = [...allData, ...mappedProjects];
+
+        hasMore = res?.meta?.pagination?.has_next ?? false;
+
+        currentPage++;
+      }
+
+      setProjectsCache("allProjects", allData);
+      loadAllProjectInsights(allData);
+    } catch (err) {
+      console.error("Failed to load all projects", err);
     }
   };
   // Pure helper — returns { from, to } as Date objects for a given value
@@ -230,7 +285,7 @@ export default function MainDashboard() {
     const { from, to } = getCardDateRange();
     const result = {};
 
-    for (const project of projects()) {
+    for (const project of allProjects()) {
       const { campaigns, insights } = getProjectInsightData(project.id);
 
       const filtered = insights.filter((d) => {
@@ -429,7 +484,7 @@ export default function MainDashboard() {
     const to = toDate();
     const result = {};
 
-    for (const project of projects()) {
+    for (const project of allProjects()) {
       const { campaigns, insights } = getProjectInsightData(project.id);
 
       const filtered =
@@ -564,7 +619,7 @@ export default function MainDashboard() {
   };
 
   const overviewStats = createMemo(() => {
-    const all = filteredProjects();
+    const all = allProjects();
     const statsMap = allProjectStats();
 
     // const totalBudget = all.reduce((s, p) => s + (p.budget ?? 0), 0);
@@ -611,7 +666,7 @@ export default function MainDashboard() {
   });
 
   const overviewStatsCards = createMemo(() => {
-    const all = filteredProjects();
+    const all = allProjects();
     const statsMap = cardStats();
 
     // const totalBudget = all.reduce((s, p) => s + (p.budget ?? 0), 0);
@@ -634,6 +689,9 @@ export default function MainDashboard() {
       (s, p) => s + (statsMap[p.id]?.totalSpent ?? 0),
       0,
     );
+
+    const serviceChargeSpent = totalSpent + totalSpent * 0.13;
+
     const avgCPL = totalLeads > 0 ? (totalSpent / totalLeads).toFixed(2) : 0;
     // derive from statsMap (date-range aware)
     const activeCampaigns = all.reduce(
@@ -648,6 +706,7 @@ export default function MainDashboard() {
     return {
       totalLeads,
       totalSpent,
+      serviceChargeSpent,
       avgCPL,
       activeCampaigns,
       pausedCampaigns,
@@ -980,6 +1039,37 @@ export default function MainDashboard() {
             </svg>
           </div>
         </div>
+        <Show when={ishybrid()}>
+          <div class="bg-orange-50 dark:bg-gray-800 px-5 py-9 gap-4 shadow-sm hover:shadow-lg transition-all rounded-xl border border-orange-200 dark:border-gray-600 flex justify-between items-center">
+            <div>
+              <p class="text-md text-orange-800 dark:text-gray-400">
+                Spend + 13% service  Charge
+              </p>
+
+              <h3 class="text-xl font-semibold mt-1 dark:text-white">
+                {"₹"}
+                {overviewStatsCards().serviceChargeSpent.toLocaleString(
+                  "en-IN",
+                )}
+              </h3>
+            </div>
+
+            <div class="p-3 rounded-lg bg-orange-100 dark:bg-orange-300">
+              <svg
+                class="w-5 h-5 text-orange-600 dark:text-orange-800"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                viewBox="0 0 24 24"
+              >
+                <path d="M12 8c-2.2 0-4 1.8-4 4" />
+                <path d="M12 8c2.2 0 4 1.8 4 4" />
+                <path d="M12 16v.01" />
+                <circle cx="12" cy="12" r="9" />
+              </svg>
+            </div>
+          </div>
+        </Show>
       </div>
 
       {/* Filters */}
@@ -1105,9 +1195,7 @@ export default function MainDashboard() {
               <th class="p-3" onClick={() => handleColumnSort("totalLeads")}>
                 {rangeLabel()} Total Leads {getSortIcon("totalLeads")}
               </th>
-              {isAdmin() && (
-                <th class="p-3">{rangeLabel()} Extra Leads</th>
-              )}
+              {isAdmin() && <th class="p-3">{rangeLabel()} Extra Leads</th>}
               <th class="p-3" onClick={() => handleColumnSort("totalSpent")}>
                 {rangeLabel()} Total Spent {getSortIcon("totalSpent")}
               </th>
@@ -1278,7 +1366,7 @@ export default function MainDashboard() {
 
                       {/* Date-range Leads */}
                       <td class="p-2">{stats().totalLeads}</td>
-                      
+
                       {isAdmin() && (
                         <td class="p-2">+{stats().extraLeads || 0}</td>
                       )}
@@ -1338,13 +1426,13 @@ export default function MainDashboard() {
                 <td>{overviewStats().totalLeads}</td>
 
                 {isAdmin() && (
-                <td>
-                  {filteredProjects().reduce(
-                    (sum, project) =>
-                      sum + (allProjectStats()[project.id]?.extraLeads || 0),
-                    0,
-                  )}
-                </td>
+                  <td>
+                    {filteredProjects().reduce(
+                      (sum, project) =>
+                        sum + (allProjectStats()[project.id]?.extraLeads || 0),
+                      0,
+                    )}
+                  </td>
                 )}
 
                 {/* Spent Total */}
