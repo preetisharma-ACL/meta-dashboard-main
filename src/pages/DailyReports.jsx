@@ -188,7 +188,8 @@ export default function DailyReports() {
         filtered.reduce((s, d) => s + parseFloat(d.spend || 0), 0).toFixed(2),
       );
       const cpl = leads > 0 ? parseFloat((spent / leads).toFixed(2)) : 0;
-      const spentWithGST = parseFloat((spent * (1 + GST_RATE)).toFixed(2));
+      const spentwithServiceCharge = parseFloat((spent * 1.13).toFixed(2));
+      const spentwithservice_gst = parseFloat((spent * 1.13 * 1.18).toFixed(2));
 
       // Always push — even when leads === 0 and spent === 0
       rows.push({
@@ -198,7 +199,8 @@ export default function DailyReports() {
         leads,
         cpl,
         spent,
-        spentWithGST,
+        spentwithServiceCharge,
+        spentwithservice_gst,
       });
     }
 
@@ -213,12 +215,15 @@ export default function DailyReports() {
     const totalSpent = parseFloat(
       rows.reduce((s, r) => s + r.spent, 0).toFixed(2),
     );
-    const totalSpentGST = parseFloat(
-      rows.reduce((s, r) => s + r.spentWithGST, 0).toFixed(2),
+   const totalspentwithServiceCharge = parseFloat(
+      rows.reduce((s, r) => s + r.spentwithServiceCharge, 0).toFixed(2),
+    );
+    const totalspentwithservice_gst = parseFloat(
+      rows.reduce((s, r) => s + r.spentwithservice_gst, 0).toFixed(2),
     );
     const avgCPL =
       totalLeads > 0 ? parseFloat((totalSpent / totalLeads).toFixed(2)) : 0;
-    return { totalLeads, totalSpent, totalSpentGST, avgCPL };
+    return { totalLeads, totalSpent,  avgCPL , totalspentwithServiceCharge, totalspentwithservice_gst };
   });
 
   /* ── range label ── */
@@ -442,7 +447,8 @@ export default function DailyReports() {
                 <th class="p-3">Leads</th>
                 <th class="p-3">CPL</th>
                 <th class="p-3">Amount Spent</th>
-                <th class="p-3">Amount Spent (with GST)</th>
+                <th class="p-3">Amt Spent + 13% S.C</th>
+                <th class="p-3">Amt Spent + 13% S.C + 18% GST</th>
               </tr>
             </thead>
 
@@ -537,9 +543,13 @@ export default function DailyReports() {
                           {fmt(row.spent)}
                         </td>
 
-                        {/* Spent + GST */}
-                        <td class="p-3 font-semibold text-green-900 dark:text-green-400">
-                          {fmt(row.spentWithGST)}
+                        {/* spent + service charge */}
+                        <td class="p-3 text-green-700 dark:text-green-400">
+                          {fmt(row.spentwithServiceCharge)}
+                        </td>
+                         {/* spent + service charge + GST  */}
+                        <td class="p-3 text-green-900 dark:text-green-400">
+                          {fmt(row.spentwithservice_gst)}
                         </td>
                       </tr>
                     )}
@@ -564,9 +574,13 @@ export default function DailyReports() {
                     <td class="p-3 text-green-700 dark:text-green-300 font-bold">
                       {fmt(totals().totalSpent)}
                     </td>
-                    <td class="p-3 text-green-900 dark:text-green-400 font-bold">
-                      {fmt(totals().totalSpentGST)}
+                    <td class="p-3 text-green-700 dark:text-green-300 font-bold">
+                      {fmt(totals().totalspentwithServiceCharge)}
                     </td>
+                    <td class="p-3 text-green-900 dark:text-green-400 font-bold">
+                        {fmt(totals().totalspentwithservice_gst)}
+                    </td>
+                   
                   </tr>
                 </tfoot>
               </Show>
@@ -729,10 +743,13 @@ export default function DailyReports() {
                     CPL
                   </th>
                   <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
-                    Amount Spent
+                    Amount Spent 
                   </th>
-                  <th class="px-4 py-3 text-center text-[#f5d9a0] text-md  uppercase font-semibold">
-                    Amount Spent (GST)
+                  <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
+                    Amt Spent + 13% S.C
+                  </th>
+                  <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
+                    Amt Spent + 13% S.C + 18% GST
                   </th>
                 </tr>
               </thead>
@@ -772,11 +789,11 @@ export default function DailyReports() {
                         {fmt(row.spent)}
                       </td>
                       {/* GST — warm gold tint */}
-                      <td
-                        class="px-4 py-3 text-center font-semibold text-[#6b4c10] text-md"
-                        style="background: rgba(201,168,76,0.10);"
-                      >
-                        {fmt(row.spentWithGST)}
+                      <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
+                        {fmt(row.spentwithServiceCharge)}
+                      </td>
+                      <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
+                        {fmt(row.spentwithservice_gst)}
                       </td>
                     </tr>
                   )}
@@ -798,8 +815,11 @@ export default function DailyReports() {
                   <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
                     {fmt(totals().totalSpent)}
                   </td>
-                  <td class="px-4 py-3 text-center text-[#f5d9a0] font-bold text-md">
-                    {fmt(totals().totalSpentGST)}
+                  <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
+                     {fmt(totals().totalspentwithServiceCharge)}
+                  </td>
+                  <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
+                    {fmt(totals().totalspentwithservice_gst)}
                   </td>
                 </tr>
               </tfoot>
@@ -907,7 +927,10 @@ export default function DailyReports() {
                       Amt Spent
                     </th>
                     <th style="padding:11px 14px;text-align:center;color:#f5d9a0;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;">
-                      Amt Spent (GST)
+                      Amt Spent + 13% S.C
+                    </th>
+                    <th style="padding:11px 14px;text-align:center;color:#f5d9a0;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;">
+                      Amt Spent + 13% S.C + 18% GST
                     </th>
                   </tr>
                 </thead>
@@ -940,7 +963,10 @@ export default function DailyReports() {
                         {fmt(row.spent)}
                       </td>
                       <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:600;color:#6b4c10;background:rgba(201,168,76,0.10);">
-                        {fmt(row.spentWithGST)}
+                        {fmt(row.spentwithServiceCharge)}
+                      </td>
+                      <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:600;color:#6b4c10;background:rgba(201,168,76,0.10);">
+                        {fmt(row.spentwithservice_gst)}
                       </td>
                     </tr>
                   ))}
@@ -959,8 +985,11 @@ export default function DailyReports() {
                     <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
                       {fmt(totals().totalSpent)}
                     </td>
-                    <td style="padding:11px 14px;text-align:center;color:#f5d9a0;font-size:14px;font-weight:700;">
-                      {fmt(totals().totalSpentGST)}
+                    <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;">
+                       {fmt(totals().totalspentwithServiceCharge)}
+                    </td>
+                    <td style="padding:11px 14px;text-align:center;color:#6b4c10;font-size:14px;font-weight:700;background:rgba(201,168,76,0.10);">
+                      {fmt(totals().totalspentwithservice_gst)}
                     </td>
                   </tr>
                 </tbody>

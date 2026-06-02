@@ -1266,9 +1266,9 @@ export default function Billing() {
             class={`transition-all duration-500 rounded-2xl
   ${isLoading() ? "animate-pulse shadow-inner" : ""}`}
           >
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
+            <div class="grid grid-cols-1 lg:grid-cols-4 gap-3">
               <Card class="p-4 text-center">
-                <p class="text-md text-gray-700 dark:text-gray-400 font-medium">
+                <p class="text-sm text-gray-700 dark:text-gray-400 font-medium">
                   Total Leads
                 </p>
                 <p class="text-xl font-bold mt-1 text-gray-700 dark:text-gray-400">
@@ -1276,7 +1276,7 @@ export default function Billing() {
                 </p>
               </Card>
               <Card class="p-4 text-center">
-                <p class="text-md text-gray-700 dark:text-gray-400 font-medium">
+                <p class="text-sm text-gray-700 dark:text-gray-400 font-medium">
                   Total Spend (ex-GST)
                 </p>
                 <p class="text-xl font-bold mt-1 text-gray-700 dark:text-gray-400">
@@ -1284,11 +1284,19 @@ export default function Billing() {
                 </p>
               </Card>
               <Card class="p-4 text-center">
-                <p class="text-md text-gray-700 dark:text-gray-400 font-medium">
-                  Overall Avg CPL
+                <p class="text-sm text-gray-700 dark:text-gray-400 font-medium">
+                  Total Spend + 13% Service Charge
                 </p>
                 <p class="text-xl font-bold mt-1 text-gray-900 dark:text-gray-100">
-                  {fmt(overallCPL())}
+                  {fmt((totalSpend() * 1.13).toFixed(2))}
+                </p>
+              </Card>
+               <Card class="p-4 text-center">
+                <p class="text-sm text-gray-700 dark:text-gray-400 font-medium">
+                  Total Spend + 13% Service Charge + 18% GST
+                </p>
+                <p class="text-xl font-bold mt-1 text-gray-900 dark:text-gray-100">
+                  {fmt((totalSpend() * 1.13 * 1.18).toFixed(2))}
                 </p>
               </Card>
             </div>
