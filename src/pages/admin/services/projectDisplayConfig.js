@@ -4,6 +4,10 @@ import { api } from "../../../api/api";
 export const fetchProjectDisplayConfig = async (projectId) => {
   return await api(`/clients/admin/configs/`, { method: "GET" });
 };
+
+
+
+
 // Create project display config
 export const createProjectDisplayConfig = async (payload) => {
   return await api(`/clients/admin/configs/`, {
@@ -11,6 +15,9 @@ export const createProjectDisplayConfig = async (payload) => {
     body: JSON.stringify(payload),
   });
 };
+
+
+// Update project display config
 export const updateProjectDisplayConfig = async (
   id,
   payload,
