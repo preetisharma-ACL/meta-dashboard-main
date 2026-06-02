@@ -413,6 +413,12 @@ export default function MainDashboard() {
         return update ? { ...p, ...update } : p;
       }),
     );
+    setProjectsCache("allProjects", (prev) =>
+      prev.map((p) => {
+        const update = statusUpdates.find((u) => u.id === p.id);
+        return update ? { ...p, ...update } : p;
+      }),
+    );
   };
   const loadAllProjectInsights = async (projectList) => {
     const result = {};
@@ -547,7 +553,7 @@ export default function MainDashboard() {
   });
 
   const filteredProjects = createMemo(() => {
-    let data = [...projects()];
+    let data = [...allProjects()];
 
     if (statusFilter() !== "all") {
       data = data.filter((p) => p.status === statusFilter());
@@ -609,7 +615,11 @@ export default function MainDashboard() {
             });
       });
     } // close the guard
-    return data;
+    // Client-side pagination after filtering
+    const startIndex = (page() - 1) * pageSize();
+    const endIndex = startIndex + pageSize();
+
+    return data.slice(startIndex, endIndex);
   });
 
   const getSortIcon = (key) => {
@@ -690,7 +700,7 @@ export default function MainDashboard() {
       0,
     );
 
-    const serviceChargeSpent = totalSpent + totalSpent * 0.13;
+    const serviceChargeSpent = totalSpent + totalSpent * (0.13).toFixed(2);
 
     const avgCPL = totalLeads > 0 ? (totalSpent / totalLeads).toFixed(2) : 0;
     // derive from statsMap (date-range aware)
@@ -1042,8 +1052,8 @@ export default function MainDashboard() {
         <Show when={ishybrid()}>
           <div class="bg-orange-50 dark:bg-gray-800 px-5 py-9 gap-4 shadow-sm hover:shadow-lg transition-all rounded-xl border border-orange-200 dark:border-gray-600 flex justify-between items-center">
             <div>
-              <p class="text-md text-orange-800 dark:text-gray-400">
-                Spend + 13% service  Charge
+              <p class="text-sm text-orange-800 dark:text-gray-400">
+                Spend + 13% Service Charge
               </p>
 
               <h3 class="text-xl font-semibold mt-1 dark:text-white">
@@ -1051,6 +1061,9 @@ export default function MainDashboard() {
                 {overviewStatsCards().serviceChargeSpent.toLocaleString(
                   "en-IN",
                 )}
+                <p class="text-xs text-gray-500 dark:text-gray-400">
+                  (excluding GST)
+                </p>
               </h3>
             </div>
 
@@ -1109,7 +1122,7 @@ export default function MainDashboard() {
           onInput={(e) => {
             const value = e.target.value;
             setSearchText(value);
-            loadData(1, value);
+           
           }}
           class="border px-3 py-2 rounded-lg w-60 dark:bg-gray-800"
         />
