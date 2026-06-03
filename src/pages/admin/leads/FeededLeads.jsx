@@ -1,7 +1,10 @@
 import { createSignal, createMemo, onMount, For, Show } from "solid-js";
 import { fetchManualBatches, createManualBatch } from "../services/feededLeads";
 import { fetchClients } from "../services/fetchClients";
-import { fetchProjectDisplayConfig } from "../services/projectDisplayConfig";
+import {
+  fetchProjectDisplayConfig,
+  fetchProjects,
+} from "../services/projectDisplayConfig";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -33,7 +36,7 @@ export default function ManualBatches() {
   const [sortDir, setSortDir] = createSignal("desc");
   const [clients, setClients] = createSignal([]);
   const [configs, setConfigs] = createSignal([]);
-
+  const [projects, setProjects] = createSignal([]);
   const [sidebarMounted, setSidebarMounted] = createSignal(false);
   const [sidebarVisible, setSidebarVisible] = createSignal(false);
 
@@ -96,8 +99,13 @@ export default function ManualBatches() {
       console.log("Fetched clients:", clientRes.data);
       setClients(clientRes.data ?? []);
 
-      const configRes = await fetchProjectDisplayConfig();
+      const [configRes, projectRes] = await Promise.all([
+        fetchProjectDisplayConfig(),
+        fetchProjects(),
+      ]);
+
       setConfigs(configRes.data ?? []);
+      setProjects(projectRes || []);
     } catch (err) {
       console.error(err);
     }
@@ -235,32 +243,12 @@ export default function ManualBatches() {
     );
   });
 
-  const selectedClientProjects = createMemo(() => {
-    if (!formData().target_client_id) return [];
-
-    const filtered = configs().filter(
-      (cfg) => cfg.client_id === Number(formData().target_client_id),
-    );
-
-    const map = new Map();
-
-    filtered.forEach((item) => {
-      if (!map.has(item.project_id)) {
-        map.set(item.project_id, item);
-      }
-    });
-
-    return Array.from(map.values());
-  });
-
   const filteredProjects = createMemo(() => {
     const q = projectSearch().trim().toLowerCase();
 
-    if (!q) return selectedClientProjects();
+    if (!q) return projects();
 
-    return selectedClientProjects().filter((p) =>
-      p.project_name?.toLowerCase().includes(q),
-    );
+    return projects().filter((p) => p.name?.toLowerCase().includes(q));
   });
 
   const handleSubmit = async () => {
@@ -805,7 +793,6 @@ export default function ManualBatches() {
                     type="text"
                     value={projectSearch()}
                     placeholder="Search project..."
-                    disabled={!formData().target_client_id}
                     onFocus={() => setShowProjectDropdown(true)}
                     onInput={(e) => {
                       setProjectSearch(e.target.value);
@@ -829,12 +816,9 @@ export default function ManualBatches() {
                           <button
                             type="button"
                             onClick={() => {
-                              handleInputChange(
-                                "project_id",
-                                project.project_id,
-                              );
+                              handleInputChange("project_id", project.id);
 
-                              setProjectSearch(project.project_name);
+                              setProjectSearch(project.name);
 
                               setShowProjectDropdown(false);
                             }}
@@ -842,7 +826,7 @@ export default function ManualBatches() {
                              hover:bg-purple-50 dark:hover:bg-gray-800
                              transition-colors"
                           >
-                            {project.project_name}
+                            {project.name}
                           </button>
                         )}
                       </For>

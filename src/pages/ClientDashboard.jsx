@@ -1188,11 +1188,11 @@ export default function MainDashboard() {
               <th class="p-3" onClick={() => handleColumnSort("avgCPL")}>
                 {rangeLabel()} AVG CPL {getSortIcon("avgCPL")}
               </th>
-              {userRole() === "admin" && (
+              {/* {userRole() === "admin" && (
                 <th class="p-3" onClick={() => handleColumnSort("premiumCPL")}>
                   Premium CPL {getSortIcon("premiumCPL")}
                 </th>
-              )}
+              )} */}
               <th
                 class="p-3"
                 onClick={() => handleColumnSort("activeCampaigns")}
@@ -1367,12 +1367,12 @@ export default function MainDashboard() {
                         {"₹"}
                         {stats().avgCPL}
                       </td>
-                      {userRole() === "admin" && (
+                      {/* {userRole() === "admin" && (
                         <td class="p-2">
                           {"₹"}
                           {project.modifiedCpl ?? "—"}
                         </td>
-                      )}
+                      )} */}
 
                       {/* Active Campaigns */}
                       <td class="p-2 text-center">

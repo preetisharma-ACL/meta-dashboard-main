@@ -10,6 +10,8 @@ import {
   fetchProjectDisplayConfig,
   createProjectDisplayConfig,
   updateProjectDisplayConfig,
+  fetchClients,
+  fetchProjects,
 } from "../services/projectDisplayConfig";
 import Avatar from "../../../components/common/Avatar";
 
@@ -42,6 +44,10 @@ export default function ProjectDisplayConfig() {
   const [sidebarMounted, setSidebarMounted] = createSignal(false);
   const [sidebarVisible, setSidebarVisible] = createSignal(false);
   const [submitting, setSubmitting] = createSignal(false);
+  const [clients, setClients] = createSignal([]);
+  const [projects, setProjects] = createSignal([]);
+  const [projectSearch, setProjectSearch] = createSignal("");
+  const [showProjectDropdown, setShowProjectDropdown] = createSignal(false);
   const [formData, setFormData] = createSignal({
     client_id: "",
     project_id: "",
@@ -62,8 +68,21 @@ export default function ProjectDisplayConfig() {
   // ── Fetch all configs on mount ────────────────────────────────────────────
   onMount(async () => {
     try {
-      const res = await fetchProjectDisplayConfig(null);
-      setConfigs(res.data ?? []);
+      const [configRes, clientRes, projectRes] = await Promise.all([
+        fetchProjectDisplayConfig(),
+        fetchClients(1, 500),
+        fetchProjects(),
+      ]);
+
+      setConfigs(configRes.data ?? []);
+
+      setClients(
+        Array.isArray(clientRes?.data?.results)
+          ? clientRes.data.results
+          : clientRes.data || [],
+      );
+
+      setProjects(projectRes || []);
     } catch (err) {
       console.error("Failed to load configs:", err);
     } finally {
@@ -154,37 +173,23 @@ export default function ProjectDisplayConfig() {
     Math.max(1, Math.ceil(filtered().length / PAGE_SIZE)),
   );
 
-  const uniqueClients = createMemo(() => {
-    const map = new Map();
-
-    configs().forEach((cfg) => {
-      if (!map.has(cfg.client_id)) {
-        map.set(cfg.client_id, {
-          client_id: cfg.client_id,
-          client_email: cfg.client_email,
-          client_type: cfg.client_type,
-        });
-      }
-    });
-
-    return Array.from(map.values());
-  });
-
-  const selectedClientProjects = createMemo(() => {
-    if (!formData().client_id) return [];
-
-    return configs().filter(
-      (cfg) => cfg.client_id === Number(formData().client_id),
-    );
-  });
-
   const filteredClients = createMemo(() => {
     const query = clientSearch().trim().toLowerCase();
 
-    if (!query) return uniqueClients();
+    if (!query) return clients();
 
-    return uniqueClients().filter((client) =>
-      client.client_email?.toLowerCase().includes(query),
+    return clients().filter((client) =>
+      client.email?.toLowerCase().includes(query),
+    );
+  });
+
+  const filteredProjects = createMemo(() => {
+    const query = projectSearch().trim().toLowerCase();
+
+    if (!query) return projects();
+
+    return projects().filter((project) =>
+      project.name?.toLowerCase().includes(query),
     );
   });
 
@@ -195,6 +200,8 @@ export default function ProjectDisplayConfig() {
   };
 
   const openSidebar = () => {
+    setShowClientDropdown(false);
+    setShowProjectDropdown(false);
     setSidebarMounted(true);
 
     requestAnimationFrame(() => {
@@ -230,6 +237,8 @@ export default function ProjectDisplayConfig() {
     setSidebarVisible(false);
 
     setClientSearch("");
+    setProjectSearch("");
+    setShowProjectDropdown(false);
     setShowClientDropdown(false);
     setEditingConfig(null);
 
@@ -247,37 +256,19 @@ export default function ProjectDisplayConfig() {
   };
 
   const handleInputChange = (field, value) => {
-    // ── Client Selected ─────────────────────
     if (field === "client_id") {
-      const selectedClient = uniqueClients().find(
-        (c) => c.client_id === Number(value),
-      );
-
-      // Find first config of selected client
-      const firstClientConfig = configs().find(
-        (c) => c.client_id === Number(value),
-      );
-
       setFormData((prev) => ({
         ...prev,
         client_id: value,
-        project_id: "",
-        rule_type: firstClientConfig?.rule_type || "cpl_markup_pct",
       }));
 
       return;
     }
 
-    // ── Project Selected ────────────────────
     if (field === "project_id") {
-      const selectedProject = configs().find(
-        (c) => c.project_id === Number(value),
-      );
-
       setFormData((prev) => ({
         ...prev,
         project_id: value,
-        rule_type: selectedProject?.rule_type || prev.rule_type,
       }));
 
       return;
@@ -841,12 +832,9 @@ export default function ProjectDisplayConfig() {
                             <button
                               type="button"
                               onClick={() => {
-                                handleInputChange(
-                                  "client_id",
-                                  client.client_id,
-                                );
+                                handleInputChange("client_id", client.id);
 
-                                setClientSearch(client.client_email);
+                                setClientSearch(client.email);
 
                                 setShowClientDropdown(false);
                               }}
@@ -854,7 +842,7 @@ export default function ProjectDisplayConfig() {
                      hover:bg-purple-50 dark:hover:bg-gray-800
                      transition-colors"
                             >
-                              {client.client_email}
+                              {client.email}
                             </button>
                           )}
                         </For>
@@ -870,32 +858,60 @@ export default function ProjectDisplayConfig() {
                   Project Name
                 </label>
 
-                <select
-                  value={formData().project_id}
-                  onChange={(e) =>
-                    handleInputChange("project_id", e.target.value)
-                  }
-                  disabled={!formData().client_id}
-                  class="w-full px-3 py-2 rounded-lg border
-         border-gray-300 dark:border-gray-600
-         bg-white dark:bg-gray-800
-         focus:ring-2 focus:ring-purple-500
-         outline-none disabled:opacity-50"
-                >
-                  <option value="">
-                    {formData().client_id
-                      ? "Select Project"
-                      : "Select client first"}
-                  </option>
+                <div class="relative">
+                  <input
+                    type="text"
+                    value={projectSearch()}
+                    placeholder="Search project..."
+                    onClick={() => setShowProjectDropdown(true)}
+                    onInput={(e) => {
+                      setProjectSearch(e.target.value);
+                      setShowProjectDropdown(true);
+                    }}
+                    class="w-full px-3 py-2 rounded-lg border
+      border-gray-300 dark:border-gray-600
+      bg-white dark:bg-gray-800
+      focus:ring-2 focus:ring-purple-500
+      outline-none"
+                  />
 
-                  <For each={selectedClientProjects()}>
-                    {(project) => (
-                      <option value={project.project_id}>
-                        {project.project_name}
-                      </option>
-                    )}
-                  </For>
-                </select>
+                  <Show when={showProjectDropdown()}>
+                    <div
+                      class="absolute z-50 mt-1 w-full max-h-60 overflow-y-auto
+        rounded-lg border border-gray-200 dark:border-gray-700
+        bg-white dark:bg-gray-900 shadow-xl"
+                    >
+                      <Show
+                        when={filteredProjects().length > 0}
+                        fallback={
+                          <div class="px-3 py-2 text-sm text-gray-500">
+                            No project found
+                          </div>
+                        }
+                      >
+                        <For each={filteredProjects()}>
+                          {(project) => (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleInputChange("project_id", project.id);
+
+                                setProjectSearch(project.name);
+
+                                setShowProjectDropdown(false);
+                              }}
+                              class="w-full text-left px-3 py-2 text-sm
+                hover:bg-purple-50 dark:hover:bg-gray-800
+                transition-colors"
+                            >
+                              {project.name}
+                            </button>
+                          )}
+                        </For>
+                      </Show>
+                    </div>
+                  </Show>
+                </div>
               </div>
 
               {/* Rule Type */}
