@@ -1037,6 +1037,12 @@ export default function Billing() {
     }, 0);
   });
 
+  const totalReceivedExGST = createMemo(() => {
+    return payments().reduce((sum, payment) => {
+      return sum + (payment.baseAmount || 0);
+    }, 0);
+  });
+
   // ✅ Single combined resource — fires overview + projects in parallel
   // ✅ Replace createResource with a manual effect that respects cache
   onMount(async () => {
@@ -1078,6 +1084,24 @@ export default function Billing() {
   const overallCPL = createMemo(() =>
     totalLeads() > 0 ? parseFloat((totalSpend() / totalLeads()).toFixed(2)) : 0,
   );
+
+  const totalSpendWithGST = createMemo(() => {
+    return parseFloat((Number(totalSpend()) * 1.18).toFixed(2));
+  });
+
+  // Remaining WITH GST
+  const remainingBalanceAmount = createMemo(() => {
+    return parseFloat(
+      (Number(totalReceived()) - totalSpendWithGST()).toFixed(2),
+    );
+  });
+
+  // Remaining WITHOUT GST
+  const pendingPaymentAmount = createMemo(() => {
+    return parseFloat(
+      (Number(totalReceivedExGST()) - Number(totalSpend())).toFixed(2),
+    );
+  });
 
   const budgetCommitted = () =>
     parseFloat(overview().total_budget).toFixed(2) || 0;
@@ -1214,8 +1238,8 @@ export default function Billing() {
                 </Show>
 
                 <BudgetCard
-                  label="Remaining Balance"
-                  value={budgetRemaining()}
+                  label="Remaining Balance (inc. GST)"
+                  value={remainingBalanceAmount()}
                   icon={
                     <div class="p-3 rounded-lg bg-blue-100 dark:bg-blue-300">
                       <svg
@@ -1236,8 +1260,8 @@ export default function Billing() {
                 />
 
                 <BudgetCard
-                  label="Pending Payment"
-                  value={pendingPayment()}
+                  label="Remaining Balance (ex. GST)"
+                  value={pendingPaymentAmount()}
                   icon={
                     <div class="p-3 rounded-lg bg-red-100 dark:bg-red-300">
                       <svg
@@ -1291,7 +1315,7 @@ export default function Billing() {
                   {fmt((totalSpend() * 1.13).toFixed(2))}
                 </p>
               </Card>
-               <Card class="p-4 text-center">
+              <Card class="p-4 text-center">
                 <p class="text-sm text-gray-700 dark:text-gray-400 font-medium">
                   Total Spend + 13% Service Charge + 18% GST
                 </p>
@@ -1315,13 +1339,21 @@ export default function Billing() {
             <SectionLabel>Payment & Invoice Tracking</SectionLabel>
             <span class="text-sm text-gray-400">Managed by Accounts Team</span>
           </div>
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
             <Card class="p-4">
               <p class="text-md text-gray-600 dark:text-gray-400">
-                Total Received
+                Total Received (with GST)
               </p>
               <p class="text-xl font-bold mt-2 text-gray-900 dark:text-white">
                 {fmt(totalReceived())}
+              </p>
+            </Card>
+            <Card class="p-4">
+              <p class="text-md text-gray-600 dark:text-gray-400">
+                Total Received (ex-GST)
+              </p>
+              <p class="text-xl font-bold mt-2 text-gray-900 dark:text-white">
+                {fmt(totalReceivedExGST())}
               </p>
             </Card>
             <Card class="p-4">
