@@ -7,6 +7,7 @@ import birlalogo from "../assets/project-logo/godrej.png";
 import prestigelogo from "../assets/project-logo/prestige.png";
 import { A } from "@solidjs/router";
 import { DateRangeFilter } from "../components/DateRangeFilter";
+import useColumnSort from "../components/Columnsorting";
 import { fetchProjects, fetchManualBatches } from "../services/dashboard";
 import { fetchCampaigns } from "../services/campaigns";
 import { fetchCampaignInsights } from "../services/campaigns";
@@ -30,10 +31,7 @@ export default function MainDashboard() {
   const [manualBatches, setManualBatches] = createSignal([]);
   const [currentPage, setCurrentPage] = createSignal(1);
   const allProjects = () => projectsCache.allProjects;
-  const [columnSort, setColumnSort] = createSignal({
-    key: "",
-    direction: "desc",
-  });
+
   // ── Read from global store via accessors ─────────────────────────────────────
   const projects = () => projectsCache.data;
   const projectInsightsMap = () => projectsCache.insightsMap;
@@ -49,21 +47,7 @@ export default function MainDashboard() {
   const selectedClientName = localStorage.getItem("selectedClientName");
 
   const { isRetainer, iscpl, ishybrid, isAdmin } = clientRole();
-
-  const textColumns = new Set(["name", "location", "type", "status"]);
-  const handleColumnSort = (key) => {
-    setColumnSort((prev) => {
-      if (prev.key === key) {
-        return {
-          key,
-          direction: prev.direction === "asc" ? "desc" : "asc",
-        };
-      }
-      // text columns default to asc (A→Z), numeric columns default to desc (high→low)
-      const defaultDirection = textColumns.has(key) ? "asc" : "desc";
-      return { key, direction: defaultDirection };
-    });
-  };
+  const { handleSort, getSortIcon, sortData, resetSort } = useColumnSort();
 
   const params = useParams();
 
@@ -88,6 +72,11 @@ export default function MainDashboard() {
       loadAllProjects();
     }
   });
+  const auth = JSON.parse(localStorage.getItem("auth") || "{}");
+
+  const serviceChargePercent = Number(auth?.serviceCharge ?? 13);
+
+  const serviceChargeRate = serviceChargePercent / 100;
 
   const loadManualBatches = async () => {
     try {
@@ -553,7 +542,18 @@ export default function MainDashboard() {
   });
 
   const filteredProjects = createMemo(() => {
-    let data = [...allProjects()];
+    let data = allProjects().map((project) => {
+      const stats = allProjectStats()[project.id] || {};
+
+      return {
+        ...project,
+        totalLeads: stats.totalLeads || 0,
+        totalSpent: stats.totalSpent || 0,
+        avgCPL: Number(stats.avgCPL || 0),
+        activeCampaigns: stats.activeCampaigns || 0,
+        pausedCampaigns: stats.pausedCampaigns || 0,
+      };
+    });
 
     // Status filter
     if (statusFilter() !== "all") {
@@ -570,37 +570,11 @@ export default function MainDashboard() {
       );
     }
 
-    switch (sortType()) {
-      case "budget":
-        data.sort((a, b) => b.budget - a.budget);
-        break;
-
-      case "leads":
-        data.sort((a, b) => b.leadsgenerated - a.leadsgenerated);
-        break;
-
-      case "activeCampaigns":
-        data.sort((a, b) => b.activeCampaigns - a.activeCampaigns);
-        break;
-
-      case "cplHigh":
-        data.sort((a, b) => b.cpl - a.cpl);
-        break;
-
-      case "cplLow":
-        data.sort((a, b) => a.cpl - b.cpl);
-        break;
-    }
+    data = sortData(data);
     const startIndex = (currentPage() - 1) * pageSize();
     const endIndex = startIndex + pageSize();
     return data.slice(startIndex, endIndex);
   });
-
-  const getSortIcon = (key) => {
-    const current = columnSort();
-    if (current.key !== key) return "⇅";
-    return current.direction === "asc" ? "↑" : "↓";
-  };
 
   const overviewStats = createMemo(() => {
     const all = allProjects();
@@ -674,7 +648,8 @@ export default function MainDashboard() {
       0,
     );
 
-    const serviceChargeSpent = totalSpent + totalSpent * (0.13).toFixed(2);
+    const serviceChargeSpent =
+      totalSpent + totalSpent * serviceChargeRate.toFixed(2);
 
     const avgCPL = totalLeads > 0 ? (totalSpent / totalLeads).toFixed(2) : 0;
     // derive from statsMap (date-range aware)
@@ -724,7 +699,7 @@ export default function MainDashboard() {
   const handleClearFilters = () => {
     setStatusFilter("all");
     setSearchText("");
-    setSortType("");
+    resetSort();
     setSelectedColumns([]);
     setFromDate("");
     setToDate("");
@@ -1027,7 +1002,7 @@ export default function MainDashboard() {
           <div class="bg-orange-50 dark:bg-gray-800 px-5 py-9 gap-4 shadow-sm hover:shadow-lg transition-all rounded-xl border border-orange-200 dark:border-gray-600 flex justify-between items-center">
             <div>
               <p class="text-sm text-orange-800 dark:text-gray-400">
-                Spend + 13% Service Charge
+                Spend + {serviceChargePercent}% Service Charge
               </p>
 
               <h3 class="text-xl font-semibold mt-1 dark:text-white">
@@ -1157,52 +1132,46 @@ export default function MainDashboard() {
               </th>
               <th
                 class="p-3 md:sticky md:left-[57px] md:z-20 bg-gray-100 dark:bg-gray-800 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.10)]"
-                onClick={() => handleColumnSort("name")}
+                onClick={() => handleSort("name")}
               >
                 Project Name {getSortIcon("name")}
               </th>
-              <th class="p-3" onClick={() => handleColumnSort("location")}>
+              <th class="p-3" onClick={() => handleSort("location")}>
                 Location {getSortIcon("location")}
               </th>
-              <th class="p-3" onClick={() => handleColumnSort("type")}>
+              <th class="p-3" onClick={() => handleSort("type")}>
                 Type {getSortIcon("type")}
               </th>
-              <th class="p-3" onClick={() => handleColumnSort("status")}>
+              <th class="p-3" onClick={() => handleSort("status")}>
                 Status {getSortIcon("status")}
               </th>
               {/* <th class="p-3">Uploaded Document</th> */}
               {/* <th class="p-3">Customer Priority</th> */}
               {/* <th class="p-3">Project Control</th> */}
               <Show when={isAdmin() || iscpl() || ishybrid()}>
-                <th class="p-3" onClick={() => handleColumnSort("budget")}>
+                <th class="p-3" onClick={() => handleSort("budget")}>
                   Budget {getSortIcon("budget")}
                 </th>
               </Show>
-              <th class="p-3" onClick={() => handleColumnSort("totalLeads")}>
+              <th class="p-3" onClick={() => handleSort("totalLeads")}>
                 {rangeLabel()} Total Leads {getSortIcon("totalLeads")}
               </th>
               {isAdmin() && <th class="p-3">{rangeLabel()} Extra Leads</th>}
-              <th class="p-3" onClick={() => handleColumnSort("totalSpent")}>
+              <th class="p-3" onClick={() => handleSort("totalSpent")}>
                 {rangeLabel()} Total Spent {getSortIcon("totalSpent")}
               </th>
-              <th class="p-3" onClick={() => handleColumnSort("avgCPL")}>
+              <th class="p-3" onClick={() => handleSort("avgCPL")}>
                 {rangeLabel()} AVG CPL {getSortIcon("avgCPL")}
               </th>
               {/* {userRole() === "admin" && (
-                <th class="p-3" onClick={() => handleColumnSort("premiumCPL")}>
+                <th class="p-3" onClick={() => handleSort("premiumCPL")}>
                   Premium CPL {getSortIcon("premiumCPL")}
                 </th>
               )} */}
-              <th
-                class="p-3"
-                onClick={() => handleColumnSort("activeCampaigns")}
-              >
+              <th class="p-3" onClick={() => handleSort("activeCampaigns")}>
                 Active Campaigns {getSortIcon("activeCampaigns")}
               </th>
-              <th
-                class="p-3"
-                onClick={() => handleColumnSort("pausedCampaigns")}
-              >
+              <th class="p-3" onClick={() => handleSort("pausedCampaigns")}>
                 Paused Campaigns {getSortIcon("pausedCampaigns")}
               </th>
             </tr>

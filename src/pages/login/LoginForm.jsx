@@ -104,6 +104,7 @@ export default function Login() {
       // Fetch client type — don't block login if it fails
       let client_type = null;
       let clientNomen = null; // ← add this
+      let serviceCharge = 13; // default
       if (role === "client") {
         try {
           const clientRes = await fetch(
@@ -113,6 +114,7 @@ export default function Login() {
           const clientData = await clientRes.json();
           client_type = clientData?.data?.client_type ?? null;
           clientNomen = clientData?.data?.client_nomen_name ?? null; // ← add this
+           serviceCharge = Number(clientData?.data?.service_charge ?? 13);
         } catch (err) {
           console.warn("Could not fetch client type:", err);
         }
@@ -127,6 +129,7 @@ export default function Login() {
         role,
         client_type,
         clientNomen, // ← add this
+        serviceCharge, // ← add this
       };
 
       localStorage.setItem("auth", JSON.stringify(authData));

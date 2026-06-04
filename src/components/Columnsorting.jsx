@@ -14,7 +14,12 @@ export default function useColumnSort() {
           direction: prev.direction === "asc" ? "desc" : "asc",
         };
       }
-      return { key, direction: "desc" };
+      const textColumns = ["name", "location", "type", "status"];
+
+      return {
+        key,
+        direction: textColumns.includes(key) ? "asc" : "desc",
+      };
     });
   };
 
@@ -34,8 +39,7 @@ export default function useColumnSort() {
       let valB = b[key];
 
       // number sorting
-      const isNumber =
-        typeof valA === "number" && typeof valB === "number";
+      const isNumber = typeof valA === "number" && typeof valB === "number";
 
       if (isNumber) {
         return direction === "asc" ? valA - valB : valB - valA;
@@ -52,10 +56,18 @@ export default function useColumnSort() {
     });
   };
 
+  const resetSort = () => {
+    setColumnSort({
+      key: "",
+      direction: "desc",
+    });
+  };
+
   return {
     columnSort,
     handleSort,
     getSortIcon,
     sortData,
+    resetSort,
   };
 }

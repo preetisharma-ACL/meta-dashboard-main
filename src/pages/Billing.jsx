@@ -1031,6 +1031,12 @@ export default function Billing() {
     }));
   });
 
+  const auth = JSON.parse(localStorage.getItem("auth") || "{}");
+
+  const serviceChargePercent = Number(auth?.serviceCharge ?? 13);
+
+  const serviceChargeRate = serviceChargePercent / 100;
+
   const totalReceived = createMemo(() => {
     return payments().reduce((sum, payment) => {
       return sum + (payment.amount || 0);
@@ -1085,21 +1091,33 @@ export default function Billing() {
     totalLeads() > 0 ? parseFloat((totalSpend() / totalLeads()).toFixed(2)) : 0,
   );
 
-  const totalSpendWithGST = createMemo(() => {
-    return parseFloat((Number(totalSpend()) * 1.18).toFixed(2));
+  const totalspentwithSC = createMemo(() => {
+    return parseFloat(
+      (Number(totalSpend()) * (1 + serviceChargeRate)).toFixed(2),
+    );
+  });
+
+  const totalSpendWithGSTandSC = createMemo(() => {
+    return parseFloat(
+      (Number(totalSpend()) * (1 + serviceChargeRate) * 1.18).toFixed(2),
+    );
   });
 
   // Remaining WITH GST
   const remainingBalanceAmount = createMemo(() => {
     return parseFloat(
-      (Number(totalReceived()) - totalSpendWithGST()).toFixed(2),
+      (Number(totalReceived()) - totalSpendWithGSTandSC()).toFixed(2),
     );
   });
 
   // Remaining WITHOUT GST
+  const totalSpendWithServiceCharge = createMemo(
+    () => Number(totalSpend()) * (1 + serviceChargeRate),
+  );
+
   const pendingPaymentAmount = createMemo(() => {
     return parseFloat(
-      (Number(totalReceivedExGST()) - Number(totalSpend())).toFixed(2),
+      (Number(totalReceivedExGST()) - totalSpendWithServiceCharge()).toFixed(2),
     );
   });
 
@@ -1309,18 +1327,22 @@ export default function Billing() {
               </Card>
               <Card class="p-4 text-center">
                 <p class="text-sm text-gray-700 dark:text-gray-400 font-medium">
-                  Total Spend + 13% Service Charge
+                  Total Spend + {serviceChargePercent}% Service Charge
                 </p>
                 <p class="text-xl font-bold mt-1 text-gray-900 dark:text-gray-100">
-                  {fmt((totalSpend() * 1.13).toFixed(2))}
+                  {fmt(
+                    (Number(totalSpend()) * (1 + serviceChargeRate)).toFixed(2),
+                  )}{" "}
                 </p>
               </Card>
               <Card class="p-4 text-center">
                 <p class="text-sm text-gray-700 dark:text-gray-400 font-medium">
-                  Total Spend + 13% Service Charge + 18% GST
+                  Total Spend + {serviceChargePercent}% Service Charge + 18% GST
                 </p>
                 <p class="text-xl font-bold mt-1 text-gray-900 dark:text-gray-100">
-                  {fmt((totalSpend() * 1.13 * 1.18).toFixed(2))}
+                  {fmt(
+                    (totalSpend() * (1 + serviceChargeRate) * 1.18).toFixed(2),
+                  )}
                 </p>
               </Card>
             </div>
