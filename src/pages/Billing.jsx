@@ -211,6 +211,11 @@ function BudgetCard(props) {
           {props.allocation}
         </span>
       )}
+      {props.showServiceCharge && (
+        <span class="inline-block text-[12px] text-gray-500 dark:text-gray-400 px-2 py-1  ">
+          Service Charge Applied 
+        </span>
+      )}
       <p
         class={`text-sm text-gray-600 dark:text-gray-400 ${
           props.allocation ? "pt-0" : "pt-10"
@@ -985,7 +990,7 @@ export default function Billing() {
   const [showInvoiceModal, setShowInvoiceModal] = createSignal(false);
   const [paymentsData] = createResource(fetchPaymentsDetails);
 
-  const { isRetainer } = clientRole();
+  const { isRetainer,iscpl } = clientRole();
 
   const payments = createMemo(() => {
     const apiData = paymentsData()?.data || [];
@@ -1203,7 +1208,7 @@ export default function Billing() {
               <SectionLabel>Budget Overview</SectionLabel>
 
               <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                <Show when={!isRetainer()}>
+                <Show when={!isRetainer() && !iscpl()}>
                   <BudgetCard
                     label="Budget Committed"
                     value={budgetCommitted()}
@@ -1231,7 +1236,7 @@ export default function Billing() {
                   />
                 </Show>
 
-                <Show when={!isRetainer()}>
+                <Show when={!isRetainer() && !iscpl()}>
                   <BudgetCard
                     label="Budget Utilized"
                     value={budgetUtilized()}
@@ -1273,6 +1278,7 @@ export default function Billing() {
                     </div>
                   }
                   sub="Available to spend"
+                  showServiceCharge={true}
                   pctValue={budgetRemaining()}
                   pctMax={budgetCommitted()}
                 />
@@ -1298,6 +1304,7 @@ export default function Billing() {
                       ? "Due immediately"
                       : "No dues outstanding"
                   }
+                  showServiceCharge={true}
                   pctValue={pendingPayment()}
                   pctMax={budgetCommitted()}
                 />

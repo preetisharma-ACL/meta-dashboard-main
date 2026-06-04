@@ -854,6 +854,11 @@ export default function MainDashboard() {
               <p class="text-md text-blue-800 dark:text-gray-400">
                 Total Budget Allocated
               </p>
+              <Show when={!cardRange() && !fromDate() && !toDate()}>
+                <span class="inline-flex mt-2 px-2.5 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                  Current Month Allocation
+                </span>
+              </Show>
               <h3 class="text-xl font-semibold mt-2 dark:text-white">
                 {"₹"}
                 {overviewStatsCards().totalBudget.toLocaleString("en-IN")}

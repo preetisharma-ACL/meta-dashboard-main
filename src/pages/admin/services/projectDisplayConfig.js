@@ -64,3 +64,18 @@ export const fetchProjects = async () => {
 
   return allProjects;
 };
+
+
+/**
+ * Fetches full markup config history for a specific client + project.
+ * active_only=false ensures we get all versioned rows, not just current.
+ *
+ * @param {number} clientId - from campaign.premium_metrics.client_id
+ * @param {number} projectId
+ */
+export const fetchConfigHistory = async (clientId, projectId) => {
+  return await api(
+    `/clients/admin/configs/?client_id=${clientId}&project_id=${projectId}&active_only=false`,
+    { method: "GET" }
+  );
+};

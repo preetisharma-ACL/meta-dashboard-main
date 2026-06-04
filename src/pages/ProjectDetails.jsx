@@ -25,7 +25,13 @@ import {
   setProjectDetailsCache,
   isProjectCacheStale,
 } from "../cacheStore/appStore";
-import Chart from "chart.js/auto"; // or load via CDN script tag
+import Chart from "chart.js/auto";
+import { fetchConfigHistory } from "./admin/services/projectDisplayConfig";
+import {
+  buildMarkupHistory,
+  getMarkupPctForDate,
+  applyMarkup,
+} from "../utils/markupUtils";
 
 export default function ProjectDetails() {
   const location = useLocation();
@@ -302,26 +308,55 @@ export default function ProjectDetails() {
         insightsMap[id] = insights;
       });
 
-      const formatted = apiData.map((item, index) => ({
-        number: index + 1,
-        id: item.id,
-        campaign_name:
-          userRole() === "admin"
-            ? item.name || "No Name"
-            : item.name
-                ?.split("|")
-                .slice(1, 2)
-                .map((s) => s.trim())
-                .join(" | ") || "No Name",
-        start_date: item.start_date || "No Date",
-        stop_date: item.stop_date || "No date",
-        location: item.project_name || "-",
-        ad_account: item.ad_account_name || "-",
-        status: item.status === "paused" ? "paused" : "Live",
-        cpl: item.cpl || 0,
-        premium_metrics: item.premium_metrics,
-        insights: insightsMap[item.id] || [],
-      }));
+      // Collect unique client IDs from this page's campaigns
+      const uniqueClientIds = [
+        ...new Set(
+          apiData
+            .map((item) => item.premium_metrics?.client_id)
+            .filter(Boolean),
+        ),
+      ];
+
+      // Fetch config history per unique client for this project — in parallel
+      const configHistoryMap = {};
+      await Promise.all(
+        uniqueClientIds.map(async (clientId) => {
+          try {
+            const res = await fetchConfigHistory(clientId, projectId);
+            const rows = Array.isArray(res?.data)
+              ? res.data
+              : (res?.data?.results ?? []);
+            configHistoryMap[clientId] = buildMarkupHistory(rows);
+          } catch {
+            configHistoryMap[clientId] = [];
+          }
+        }),
+      );
+
+      const formatted = apiData.map((item, index) => {
+        const clientId = item.premium_metrics?.client_id;
+        return {
+          number: index + 1,
+          id: item.id,
+          campaign_name:
+            userRole() === "admin"
+              ? item.name || "No Name"
+              : item.name
+                  ?.split("|")
+                  .slice(1, 2)
+                  .map((s) => s.trim())
+                  .join(" | ") || "No Name",
+          start_date: item.start_date || "No Date",
+          stop_date: item.stop_date || "No date",
+          location: item.project_name || "-",
+          ad_account: item.ad_account_name || "-",
+          status: item.status === "paused" ? "paused" : "Live",
+          cpl: item.cpl || 0,
+          premium_metrics: item.premium_metrics,
+          insights: insightsMap[item.id] || [],
+          markupHistory: configHistoryMap[clientId] ?? [], // ← date-accurate history
+        };
+      });
 
       const meta = res?.meta?.pagination;
 
@@ -343,6 +378,7 @@ export default function ProjectDetails() {
     if (allCampaignsLoaded() || loadingAllCampaigns()) return;
 
     setLoadingAllCampaigns(true);
+    const configHistoryMap = {};
     try {
       let currentPage = 1;
       let accumulated = [];
@@ -368,22 +404,51 @@ export default function ProjectDetails() {
           insightsMap[id] = insights;
         });
 
-        const formatted = apiData.map((item) => ({
-          id: item.id,
-          campaign_name: item.name
-            ? `${item.name
-                .split("|")
-                .slice(1, 2)
-                .map((s) => s.trim())
-                .join(" | ")} | ${item.start_date || "No Date"}`
-            : "No Name",
-          start_date: item.start_date || "No Date",
-          stop_date: item.stop_date || "No date",
-          status: item.status === "paused" ? "paused" : "Live",
-          cpl: item.cpl || 0,
-          premium_metrics: item.premium_metrics,
-          insights: insightsMap[item.id] || [],
-        }));
+        // Collect unique client IDs from this batch
+        const uniqueClientIds = [
+          ...new Set(
+            apiData
+              .map((item) => item.premium_metrics?.client_id)
+              .filter(Boolean),
+          ),
+        ];
+
+        // Fetch config history per unique client — in parallel, cached per run
+        await Promise.all(
+          uniqueClientIds.map(async (clientId) => {
+            if (configHistoryMap[clientId]) return; // already fetched this run
+            try {
+              const res = await fetchConfigHistory(clientId, projectId);
+              const rows = Array.isArray(res?.data)
+                ? res.data
+                : (res?.data?.results ?? []);
+              configHistoryMap[clientId] = buildMarkupHistory(rows);
+            } catch {
+              configHistoryMap[clientId] = [];
+            }
+          }),
+        );
+
+        const formatted = apiData.map((item) => {
+          const clientId = item.premium_metrics?.client_id;
+          return {
+            id: item.id,
+            campaign_name: item.name
+              ? `${item.name
+                  .split("|")
+                  .slice(1, 2)
+                  .map((s) => s.trim())
+                  .join(" | ")} | ${item.start_date || "No Date"}`
+              : "No Name",
+            start_date: item.start_date || "No Date",
+            stop_date: item.stop_date || "No date",
+            status: item.status === "paused" ? "paused" : "Live",
+            cpl: item.cpl || 0,
+            premium_metrics: item.premium_metrics,
+            insights: insightsMap[item.id] || [],
+            markupHistory: configHistoryMap[clientId] ?? [], // ← date-accurate
+          };
+        });
 
         accumulated = [...accumulated, ...formatted];
 
@@ -402,56 +467,91 @@ export default function ProjectDetails() {
   };
 
   // Add this inside ProjectDetails component
-  const getInsightsInRange = (insights, from, to) => {
-    console.log("=== getInsightsInRange called ===");
-    console.log("from:", from);
-    console.log("to:", to);
-    console.log("insights length:", insights?.length);
-    console.log("insights sample:", insights?.[0]);
-
+  /**
+   * Aggregates insight rows within an optional date range.
+   * Applies markup per insight row based on which config was active
+   * on that row's date — using valid_from / valid_to windows.
+   *
+   * modifiedSpent and modifiedCpl are null if no config covers
+   * any of the filtered dates (pre-config period).
+   *
+   * @param {Array}  insights      - raw insight rows for one campaign
+   * @param {string} from          - "YYYY-MM-DD" or ""
+   * @param {string} to            - "YYYY-MM-DD" or ""
+   * @param {Array}  markupHistory - output of buildMarkupHistory()
+   */
+  const getInsightsInRange = (insights, from, to, markupHistory = []) => {
     if (!insights?.length) {
-      return { leads: 0, clicks: 0, reach: 0, spent: 0, cpl: 0 };
+      return {
+        leads: 0,
+        clicks: 0,
+        reach: 0,
+        spent: 0,
+        modifiedSpent: null,
+        cpl: 0,
+        modifiedCpl: null,
+      };
     }
 
     const filtered =
       !from || !to
         ? insights
         : insights.filter((d) => {
-            // ✅ Extract only the date part (YYYY-MM-DD), ignore time/timezone
             const dateStr = d.date.includes("T")
-              ? d.date.split("T")[0] // "2025-05-26T00:00:00Z" → "2025-05-26"
-              : d.date; // "2025-05-26" → "2025-05-26"
-
-            // ✅ Compare as strings directly — no Date object, no timezone issue
+              ? d.date.split("T")[0]
+              : d.date;
             return dateStr >= from && dateStr <= to;
           });
 
-    console.log("filtered length:", filtered.length);
+    let totalLeads = 0;
+    let totalClicks = 0;
+    let totalReach = 0;
+    let totalSpent = 0;
+    let totalModifiedSpent = 0;
+    let anyModifiedSpendNull = false; // tracks if any day had no config
+    let allModifiedSpendNull = true; // tracks if every day had no config
 
-    const totalLeads = filtered.reduce((s, d) => s + (d.leads || 0), 0);
-    const totalClicks = filtered.reduce((s, d) => s + (d.clicks || 0), 0);
-    const totalReach = filtered.reduce((s, d) => s + (d.impressions || 0), 0);
-    const totalSpent = filtered.reduce(
-      (s, d) => s + parseFloat(d.spend || 0),
-      0,
-    );
-    const avgCPL =
+    for (const d of filtered) {
+      const dateStr = d.date.includes("T") ? d.date.split("T")[0] : d.date;
+      const daySpend = parseFloat(d.spend || 0);
+      const markupPct = getMarkupPctForDate(markupHistory, dateStr);
+      const { modifiedSpend, isNull } = applyMarkup(daySpend, markupPct);
+
+      totalLeads += d.leads || 0;
+      totalClicks += d.clicks || 0;
+      totalReach += d.impressions || 0;
+      totalSpent += daySpend;
+
+      if (isNull) {
+        anyModifiedSpendNull = true;
+      } else {
+        allModifiedSpendNull = false;
+        totalModifiedSpent += modifiedSpend;
+      }
+    }
+
+    const cpl =
       totalLeads > 0 ? Number((totalSpent / totalLeads).toFixed(2)) : 0;
 
-    console.log("result:", {
-      totalLeads,
-      totalClicks,
-      totalReach,
-      totalSpent,
-      avgCPL,
-    });
+    // If every insight in range predates all configs → fully null
+    // If some rows had configs and some didn't → use what we have
+    // (partial coverage: only markup-covered spend contributes to modifiedSpent)
+    const modifiedSpent = allModifiedSpendNull ? null : totalModifiedSpent;
+    const modifiedCpl =
+      modifiedSpent === null
+        ? null
+        : totalLeads > 0
+          ? Number((modifiedSpent / totalLeads).toFixed(2))
+          : 0;
 
     return {
       leads: totalLeads,
       clicks: totalClicks,
       reach: totalReach,
       spent: totalSpent,
-      cpl: avgCPL,
+      modifiedSpent,
+      cpl,
+      modifiedCpl,
     };
   };
 
@@ -488,21 +588,13 @@ export default function ProjectDetails() {
 
       if (!map.has(key)) {
         // Calculate from insights based on selected date range
-        const stats = getInsightsInRange(row.insights, fromDate(), toDate());
-        const label = row?.premium_metrics?.markup_rule?.label || "0%";
-
-        // extract number from "+25.00%" → 25
-        const percent = parseFloat(label.replace(/[^0-9.]/g, "")) || 0;
-
-        const modifiedCpl = parseFloat(
-          ((stats.cpl || 0) + ((stats.cpl || 0) * percent) / 100).toFixed(2),
+        const stats = getInsightsInRange(
+          row.insights,
+          fromDate(),
+          toDate(),
+          row.markupHistory ?? [], // ← date-accurate history
         );
 
-        const modifiedSpent = parseFloat(
-          ((stats.spent || 0) + ((stats.spent || 0) * percent) / 100).toFixed(
-            2,
-          ),
-        );
         map.set(key, {
           ...row,
           totalLeads: stats.leads,
@@ -510,8 +602,8 @@ export default function ProjectDetails() {
           totalReach: stats.reach,
           totalSpent: stats.spent,
           totalCPL: stats.cpl,
-          modifiedCpl: modifiedCpl,
-          modifiedSpent: modifiedSpent,
+          modifiedCpl: stats.modifiedCpl, // null if pre-config period
+          modifiedSpent: stats.modifiedSpent, // null if pre-config period
         });
       }
     }
@@ -676,21 +768,23 @@ export default function ProjectDetails() {
     let totalModifiedSpent = 0;
 
     for (const row of filtered) {
-      const stats = getInsightsInRange(row.insights, fromDate(), toDate());
+      const stats = getInsightsInRange(
+        row.insights,
+        fromDate(),
+        toDate(),
+        row.markupHistory ?? [], // ← date-accurate history
+      );
 
       totalLeads += stats.leads;
       totalClicks += stats.clicks;
       totalReach += stats.reach;
       totalSpent += stats.spent;
 
-      // Premium percentage calculation
-      const label = row?.premium_metrics?.markup_rule?.label || "0%";
-
-      const percent = parseFloat(label.replace(/[^0-9.]/g, "")) || 0;
-
-      const modifiedSpent = stats.spent + (stats.spent * percent) / 100;
-
-      totalModifiedSpent += modifiedSpent;
+      // Only add to modifiedSpent if this campaign had config coverage
+      // null means pre-config period — don't add 0, skip it
+      if (stats.modifiedSpent !== null) {
+        totalModifiedSpent += stats.modifiedSpent;
+      }
     }
 
     const avgCPL = totalLeads > 0 ? (totalSpent / totalLeads).toFixed(2) : 0;
@@ -1127,8 +1221,9 @@ export default function ProjectDetails() {
                   <td class="p-3">₹{(row.totalCPL ?? 0).toFixed(2)}</td>
                   {userRole() === "admin" && (
                     <td class="p-3">
-                      {"₹"}
-                      {row.modifiedCpl ?? "—"}
+                      {row.modifiedCpl !== null && row.modifiedCpl !== undefined
+                        ? `₹${row.modifiedCpl}`
+                        : "—"}
                     </td>
                   )}
                 </tr>
