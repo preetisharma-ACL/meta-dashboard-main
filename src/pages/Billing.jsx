@@ -213,7 +213,7 @@ function BudgetCard(props) {
       )}
       {props.showServiceCharge && (
         <span class="inline-block text-[12px] text-gray-500 dark:text-gray-400 px-2 py-1  ">
-          Service Charge Applied 
+          Service Charge Applied
         </span>
       )}
       <p
@@ -990,7 +990,7 @@ export default function Billing() {
   const [showInvoiceModal, setShowInvoiceModal] = createSignal(false);
   const [paymentsData] = createResource(fetchPaymentsDetails);
 
-  const { isRetainer,iscpl } = clientRole();
+  const { isRetainer, iscpl } = clientRole();
 
   const payments = createMemo(() => {
     const apiData = paymentsData()?.data || [];
@@ -1038,8 +1038,8 @@ export default function Billing() {
 
   const auth = JSON.parse(localStorage.getItem("auth") || "{}");
 
+  const applyServiceCharge = !iscpl();
   const serviceChargePercent = Number(auth?.serviceCharge ?? 13);
-
   const serviceChargeRate = serviceChargePercent / 100;
 
   const totalReceived = createMemo(() => {
@@ -1097,14 +1097,23 @@ export default function Billing() {
   );
 
   const totalspentwithSC = createMemo(() => {
+    const amount = Number(totalSpend());
+
     return parseFloat(
-      (Number(totalSpend()) * (1 + serviceChargeRate)).toFixed(2),
+      (applyServiceCharge ? amount * (1 + serviceChargeRate) : amount).toFixed(
+        2,
+      ),
     );
   });
 
   const totalSpendWithGSTandSC = createMemo(() => {
+    const amount = Number(totalSpend());
+
     return parseFloat(
-      (Number(totalSpend()) * (1 + serviceChargeRate) * 1.18).toFixed(2),
+      (applyServiceCharge
+        ? amount * (1 + serviceChargeRate) * 1.18
+        : amount * 1.18
+      ).toFixed(2),
     );
   });
 
@@ -1116,9 +1125,11 @@ export default function Billing() {
   });
 
   // Remaining WITHOUT GST
-  const totalSpendWithServiceCharge = createMemo(
-    () => Number(totalSpend()) * (1 + serviceChargeRate),
-  );
+  const totalSpendWithServiceCharge = createMemo(() => {
+    const amount = Number(totalSpend());
+
+    return applyServiceCharge ? amount * (1 + serviceChargeRate) : amount;
+  });
 
   const pendingPaymentAmount = createMemo(() => {
     return parseFloat(
@@ -1278,7 +1289,7 @@ export default function Billing() {
                     </div>
                   }
                   sub="Available to spend"
-                  showServiceCharge={true}
+                  showServiceCharge={applyServiceCharge}
                   pctValue={budgetRemaining()}
                   pctMax={budgetCommitted()}
                 />
@@ -1304,7 +1315,7 @@ export default function Billing() {
                       ? "Due immediately"
                       : "No dues outstanding"
                   }
-                  showServiceCharge={true}
+                  showServiceCharge={applyServiceCharge}
                   pctValue={pendingPayment()}
                   pctMax={budgetCommitted()}
                 />
@@ -1332,23 +1343,33 @@ export default function Billing() {
                   {fmt(totalSpend())}
                 </p>
               </Card>
+              <Show when={applyServiceCharge}>
+                <Card class="p-4 text-center">
+                  <p class="text-sm text-gray-700 dark:text-gray-400 font-medium">
+                    Total Spend + {serviceChargePercent}% Service Charge
+                  </p>
+                  <p class="text-xl font-bold mt-1 text-gray-900 dark:text-gray-100">
+                    {fmt(
+                      (Number(totalSpend()) * (1 + serviceChargeRate)).toFixed(
+                        2,
+                      ),
+                    )}{" "}
+                  </p>
+                </Card>
+              </Show>
               <Card class="p-4 text-center">
                 <p class="text-sm text-gray-700 dark:text-gray-400 font-medium">
-                  Total Spend + {serviceChargePercent}% Service Charge
+                  {applyServiceCharge
+                    ? `Total Spend + ${serviceChargePercent}% Service Charge + 18% GST`
+                    : "Total Spend + 18% GST"}
                 </p>
+
                 <p class="text-xl font-bold mt-1 text-gray-900 dark:text-gray-100">
                   {fmt(
-                    (Number(totalSpend()) * (1 + serviceChargeRate)).toFixed(2),
-                  )}{" "}
-                </p>
-              </Card>
-              <Card class="p-4 text-center">
-                <p class="text-sm text-gray-700 dark:text-gray-400 font-medium">
-                  Total Spend + {serviceChargePercent}% Service Charge + 18% GST
-                </p>
-                <p class="text-xl font-bold mt-1 text-gray-900 dark:text-gray-100">
-                  {fmt(
-                    (totalSpend() * (1 + serviceChargeRate) * 1.18).toFixed(2),
+                    (applyServiceCharge
+                      ? Number(totalSpend()) * (1 + serviceChargeRate) * 1.18
+                      : Number(totalSpend()) * 1.18
+                    ).toFixed(2),
                   )}
                 </p>
               </Card>

@@ -55,6 +55,12 @@ export default function MainDashboard() {
   // MainDashboard.jsx — update onMount
   onMount(() => {
     const auth = JSON.parse(localStorage.getItem("auth"));
+    // Admin dashboard route
+    if (auth?.role === "admin" && window.location.pathname === "/") {
+      localStorage.removeItem("selectedClientNomen");
+      localStorage.removeItem("selectedClientNomenId");
+      localStorage.removeItem("selectedClientName");
+    }
     setUserRole(auth?.role ?? "client");
 
     // ✅ FIX: always reload when admin has selected a client
@@ -62,15 +68,9 @@ export default function MainDashboard() {
     const isAdminViewingClient =
       auth?.role === "admin" && localStorage.getItem("selectedClientNomenId");
 
-    if (
-      isAdminViewingClient ||
-      isCacheStale(projectsCache.lastFetched) ||
-      projectsCache.allProjects.length === 0
-    ) {
-      loadData(1);
-      loadManualBatches();
-      loadAllProjects();
-    }
+    loadData(1);
+    loadManualBatches();
+    loadAllProjects();
   });
   const auth = JSON.parse(localStorage.getItem("auth") || "{}");
 
@@ -1003,7 +1003,7 @@ export default function MainDashboard() {
             </svg>
           </div>
         </div>
-        <Show when={ishybrid()}>
+        <Show when={!iscpl()}>
           <div class="bg-orange-50 dark:bg-gray-800 px-5 py-9 gap-4 shadow-sm hover:shadow-lg transition-all rounded-xl border border-orange-200 dark:border-gray-600 flex justify-between items-center">
             <div>
               <p class="text-sm text-orange-800 dark:text-gray-400">
@@ -1407,7 +1407,6 @@ export default function MainDashboard() {
                   {overviewStats().avgCPL}
                 </td>
 
-                {userRole() === "admin" && <td></td>}
 
                 {/* Active Campaigns */}
                 <td>{overviewStats().activeCampaigns}</td>
