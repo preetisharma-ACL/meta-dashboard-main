@@ -9,7 +9,6 @@ import {
   onCleanup,
 } from "solid-js";
 import { handleLogout } from "../pages/login/LoginForm";
-import { setProjectsCache } from "../cacheStore/appStore";
 
 const getAuthToken = () => {
   try {
@@ -32,21 +31,7 @@ const goToAdminDashboard = () => {
   localStorage.removeItem("selectedClientNomenId");
   localStorage.removeItem("selectedClientName");
 
-  setProjectsCache({
-    data: [],
-    allProjects: [],
-    insightsMap: {},
-    lastFetched: 0,
-    loading: false,
-    meta: {
-      page: 1,
-      page_size: 20,
-      total: 0,
-      total_pages: 1,
-      has_next: false,
-      has_prev: false,
-    },
-  });
+  
 };
 
 // ── Icon helpers ────────────────────────────────────────────────────────────
