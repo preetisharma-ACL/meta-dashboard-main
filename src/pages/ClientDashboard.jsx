@@ -302,6 +302,8 @@ export default function MainDashboard() {
       const avgCPL =
         totalLeads > 0 ? parseFloat(totalSpent / totalLeads).toFixed(2) : 0;
 
+      const resolvedCpl = totalLeads > 0 ? Number(avgCPL) : 1500;
+
       // ✅ Date-range aware campaign counts
       let activeCampaigns, pausedCampaigns;
       if (!from || !to) {
@@ -324,6 +326,7 @@ export default function MainDashboard() {
         extraLeads,
         totalSpent,
         avgCPL,
+        resolvedCpl,
         activeCampaigns,
         pausedCampaigns,
       };
@@ -509,6 +512,8 @@ export default function MainDashboard() {
       const avgCPL =
         totalLeads > 0 ? parseFloat(totalSpent / totalLeads).toFixed(2) : 0;
 
+      const resolvedCpl = totalLeads > 0 ? Number(avgCPL) : 1500;
+
       //  Campaigns that had any activity in the date window = active; rest = paused
       let activeCampaigns, pausedCampaigns;
       if (!from || !to) {
@@ -533,6 +538,7 @@ export default function MainDashboard() {
         extraLeads,
         totalSpent,
         avgCPL,
+        resolvedCpl,
         activeCampaigns,
         pausedCampaigns,
       };
@@ -629,13 +635,11 @@ export default function MainDashboard() {
 
     // const totalBudget = all.reduce((s, p) => s + (p.budget ?? 0), 0);
     const totalBudget = all.reduce((s, p) => {
-      const projectAvgCpl = Number(statsMap[p.id]?.avgCPL || 0);
-
-      // CPL client → budget = CPL * 5
       if (iscpl()) {
-        return s + projectAvgCpl * 5;
+        const leads = statsMap[p.id]?.totalLeads ?? 0;
+        const avgCpl = Number(statsMap[p.id]?.avgCPL || 0);
+        return s + (leads > 0 ? avgCpl * 5 : 1500);
       }
-
       return s + (p.budget ?? 0);
     }, 0);
     const activeProjects = all.filter((p) => p.status === "active").length;
@@ -1153,7 +1157,7 @@ export default function MainDashboard() {
               {/* <th class="p-3">Uploaded Document</th> */}
               {/* <th class="p-3">Customer Priority</th> */}
               {/* <th class="p-3">Project Control</th> */}
-              <Show when={isAdmin() || iscpl() || ishybrid()}>
+              <Show when={isAdmin() || ishybrid()}>
                 <th class="p-3" onClick={() => handleSort("budget")}>
                   Budget {getSortIcon("budget")}
                 </th>
@@ -1314,7 +1318,7 @@ export default function MainDashboard() {
                                         </td> */}
 
                       {/* Budget */}
-                      <Show when={isAdmin() || iscpl() || ishybrid()}>
+                      <Show when={isAdmin() || ishybrid()}>
                         <td class="p-2">
                           {"₹"}
                           {(iscpl()
@@ -1375,7 +1379,7 @@ export default function MainDashboard() {
                 <td></td>
 
                 {/* Budget Total */}
-                <Show when={isAdmin() || iscpl() || ishybrid()}>
+                <Show when={isAdmin() || ishybrid()}>
                   <td>
                     {"₹"}
                     {overviewStats().totalBudget.toLocaleString("en-IN")}
@@ -1406,7 +1410,6 @@ export default function MainDashboard() {
                   {"₹"}
                   {overviewStats().avgCPL}
                 </td>
-
 
                 {/* Active Campaigns */}
                 <td>{overviewStats().activeCampaigns}</td>
