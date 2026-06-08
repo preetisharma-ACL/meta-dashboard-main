@@ -1,10 +1,10 @@
-import { createSignal, Show, For, onMount, onCleanup } from 'solid-js';
+import { createSignal, Show, For, onMount, onCleanup, createEffect } from 'solid-js';
 import { useSidebar } from '../context/SidebarContext';
 import { useTheme } from '../context/ThemeContext';
 import { fetchUser } from '../services/userProfile';
 import { handleLogout } from '../pages/login/LoginForm';
 import { fetchAlerts } from "../services/alert-service";
-import { useNavigate } from "@solidjs/router";
+import { useNavigate, useLocation } from "@solidjs/router";
 import {
     headerCache,
     setHeaderCache,
@@ -15,6 +15,7 @@ export default function Header() {
     const { isCollapsed, toggleSidebar, toggleMobileSidebar } = useSidebar();
     const { isDark, toggleTheme } = useTheme();
     const navigate = useNavigate();
+    const location = useLocation();
 
     // ── UI-only signals (dropdowns) — never cached, local only ────────────────
     const [showUserMenu, setShowUserMenu] = createSignal(false);
@@ -39,24 +40,30 @@ export default function Header() {
         return `${diffDays} day${diffDays > 1 ? "s" : ""} ago`;
     }
 
+    //  User profile loads on every page (incl. Billing) — not an alert call.
     onMount(async () => {
-        if (!isHeaderCacheStale()) return;
+        if (headerCache.user) return;
         if (headerCache.loading) return;
 
         try {
             setHeaderCache("loading", true);
 
-            //  Load user first
             const userRes = await fetchUser();
 
-            //  Immediately update user UI
             setHeaderCache({
                 ...headerCache,
                 user: userRes.data,
                 loading: false,
             });
+        } catch (err) {
+            console.error("[Header] Failed to load user:", err);
+            setHeaderCache("loading", false);
+        }
+    });
 
-            //  Notifications load separately in background
+    //  Notifications/alerts load — paginates through every alert page.
+    const loadAlerts = async () => {
+        try {
             let pageNo = 1;
             let allAlerts = [];
 
@@ -92,11 +99,21 @@ export default function Header() {
                 unreadTotal: allNotifications.filter(n => n.unread).length,
                 lastFetched: Date.now(),
             });
-
         } catch (err) {
-            console.error("[Header] Failed:", err);
-            setHeaderCache("loading", false);
+            alertsLoaded = false; //  allow retry on a later navigation
+            console.error("[Header] Failed to load alerts:", err);
         }
+    };
+
+    //  Alerts are NEVER fetched on the Billing page. Header mounts once, so a
+    //  route-aware effect skips Billing yet still loads on any other page.
+    let alertsLoaded = false;
+    createEffect(() => {
+        if (location.pathname === "/billing") return; // ⛔ skip alerts on Billing
+        if (alertsLoaded) return;
+        if (!isHeaderCacheStale()) { alertsLoaded = true; return; } // cache fresh
+        alertsLoaded = true;
+        loadAlerts();
     });
 
     // ── Close dropdowns when clicking outside ─────────────────────────────────

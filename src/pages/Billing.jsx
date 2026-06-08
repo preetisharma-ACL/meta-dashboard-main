@@ -27,48 +27,7 @@ const MOCK_DELIVERIES = [
   { project: "Project 2", leads: 30, amountExGST: 30000, amountWithGST: 35400 },
 ];
 
-const MOCK_ALERTS = [
-  {
-    id: "a1",
-    type: "warning",
-    label: "Low Balance Alert",
-    desc: "Trigger when remaining balance falls below 10% of committed budget.",
-    activeMsg: "Budget utilization at 62% — review campaign pacing.",
-    defaultOn: true,
-  },
-  {
-    id: "a2",
-    type: "warning",
-    label: "Budget Exhaustion Alert",
-    desc: "Alert when any campaign reaches 95% of its cap.",
-    activeMsg: null,
-    defaultOn: true,
-  },
-  {
-    id: "a3",
-    type: "info",
-    label: "Payment Due Reminder",
-    desc: "Remind 7 days before next billing cycle.",
-    activeMsg: "Next billing cycle: 28 March 2025",
-    defaultOn: true,
-  },
-  {
-    id: "a4",
-    type: "caution",
-    label: "CPL Threshold Alert",
-    desc: "Alert when actual CPL exceeds proposed CPL for any project.",
-    activeMsg: null,
-    defaultOn: false,
-  },
-  {
-    id: "a5",
-    type: "success",
-    label: "CPL On-Target Notification",
-    desc: "Notify when CPL is within the agreed threshold.",
-    activeMsg: "CPL within threshold for all active campaigns.",
-    defaultOn: true,
-  },
-];
+
 
 // --- Transform API project → component-friendly shape ------------------------
 // projectMeta comes from the /projects/ list API (has name, status, logo, etc.)
