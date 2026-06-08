@@ -1,6 +1,7 @@
-import { For, Show, createSignal, createMemo } from "solid-js";
+import { For, Show, createSignal, createMemo, createEffect, on } from "solid-js";
 import { useParams } from "@solidjs/router";
 import { onMount } from "solid-js";
+import { useLocation } from "@solidjs/router";
 import Swal from "sweetalert2";
 import godrejlogo from "../assets/project-logo/dlf.png";
 import birlalogo from "../assets/project-logo/godrej.png";
@@ -18,6 +19,15 @@ import {
   isAllProjectsCacheStale,
 } from "../cacheStore/appStore";
 import useRole, { clientRole } from "./../hooks/useRole";
+
+// Guards against stale in-flight loads overwriting the cache after the
+// dashboard context switches (e.g. admin leaves a client dashboard and returns
+// to their own Main Dashboard). Every async loader captures this token when it
+// starts and only commits its results to the cache if the token is still
+// current. Bumping the token effectively cancels older in-flight loads so a
+// slow client-data request can no longer clobber freshly loaded admin data.
+let activeLoadToken = 0;
+const bumpLoadToken = () => ++activeLoadToken;
 
 export default function MainDashboard() {
   const [statusFilter, setStatusFilter] = createSignal("all");
@@ -45,22 +55,87 @@ export default function MainDashboard() {
   const hasPrev = () => projectsCache.meta?.has_prev ?? false;
   const insightsLoading = () => false; // handled inside loadAllProjectInsights
 
-  const selectedClientName = localStorage.getItem("selectedClientName");
+  // Recompute on navigation so the "Viewing Client" badge clears when the
+  // client context is removed on the Main Dashboard.
+  const selectedClientName = () => {
+    location.pathname; // track route changes
+    return localStorage.getItem("selectedClientName");
+  };
 
   const { isRetainer, iscpl, ishybrid, isAdmin } = clientRole();
   const { handleSort, getSortIcon, sortData, resetSort } = useColumnSort();
 
   const params = useParams();
+  const location = useLocation();
+
+  // ── Reactively clear client context when navigating back to the Main Dashboard ──
+  // Both "/" and "/:client-nomen-name" render THIS same component, so SolidJS
+  // reuses the instance on navigation and onMount does NOT re-run. Without this
+  // effect, clicking "Dashboard" in the sidebar after viewing a client would keep
+  // showing the previously selected client's cached data.
+  createEffect(
+    on(
+      () => location.pathname,
+      (pathname, prevPathname) => {
+        // First run is handled by onMount — skip to avoid a double load.
+        if (prevPathname === undefined) return;
+
+        const auth = JSON.parse(localStorage.getItem("auth") || "{}");
+        if (auth?.role !== "admin" || pathname !== "/") return;
+
+        const wasViewingClient = localStorage.getItem("selectedClientNomenId");
+
+        // Clear any selected-client context so only admin's own data is used.
+        localStorage.removeItem("selectedClientNomen");
+        localStorage.removeItem("selectedClientNomenId");
+        localStorage.removeItem("selectedClientName");
+
+        // Only bust cache + reload if we were actually viewing a client,
+        // otherwise leave the already-loaded admin dashboard untouched.
+        if (wasViewingClient) {
+          // Cancel the client's still-in-flight loads so they can't overwrite
+          // the admin data we're about to fetch.
+          bumpLoadToken();
+
+          setProjectsCache("lastFetched", 0);
+          setProjectsCache("lastFetchedAll", 0);
+          setProjectsCache("allProjects", []);
+          setProjectsCache("insightsMap", {});
+          setProjectsCache("data", []);
+
+          loadData(1);
+          loadManualBatches();
+          loadAllProjects();
+        }
+      },
+    ),
+  );
 
   // Update onMount to read the role
   // MainDashboard.jsx — update onMount
   onMount(() => {
+    // New mount → cancel any loads still in flight from a previous context.
+    bumpLoadToken();
+
     const auth = JSON.parse(localStorage.getItem("auth"));
 
+    // Admin returning to their own dashboard — clear client context AND cache
     if (auth?.role === "admin" && window.location.pathname === "/") {
+      const wasViewingClient = localStorage.getItem("selectedClientNomenId");
+
       localStorage.removeItem("selectedClientNomen");
       localStorage.removeItem("selectedClientNomenId");
       localStorage.removeItem("selectedClientName");
+
+      // ✅ If admin was viewing a client, bust the cache so admin's own
+      // data reloads — otherwise the client's projects stay visible
+      if (wasViewingClient) {
+        setProjectsCache("lastFetched", 0);
+        setProjectsCache("lastFetchedAll", 0);
+        setProjectsCache("allProjects", []);
+        setProjectsCache("insightsMap", {});
+        setProjectsCache("data", []);
+      }
     }
 
     setUserRole(auth?.role ?? "client");
@@ -68,15 +143,13 @@ export default function MainDashboard() {
     loadData(1);
     loadManualBatches();
 
-    // ✅ Only reload allProjects + statuses if cache is stale/empty
-    if (isCacheStale()) {
-      loadAllProjects();
-    }
-    // ✅ Skip the expensive allProjects + statuses fetch if cache is fresh
+    // Now the cache is guaranteed stale if we just busted it above
     if (isAllProjectsCacheStale()) {
       loadAllProjects();
     }
   });
+
+  
   const auth = JSON.parse(localStorage.getItem("auth") || "{}");
 
   const serviceChargePercent = Number(auth?.serviceCharge ?? 13);
@@ -84,8 +157,10 @@ export default function MainDashboard() {
   const serviceChargeRate = serviceChargePercent / 100;
 
   const loadManualBatches = async () => {
+    const token = activeLoadToken;
     try {
       const res = await fetchManualBatches();
+      if (token !== activeLoadToken) return;
 
       const data = Array.isArray(res?.data?.results)
         ? res.data.results
@@ -99,9 +174,12 @@ export default function MainDashboard() {
     }
   };
   const loadData = async (pageNo = 1, search = "") => {
+    const token = activeLoadToken;
     try {
       setProjectsCache("loading", true);
       const res = await fetchProjects(pageNo, search);
+      // Context switched while this request was in flight → discard its result.
+      if (token !== activeLoadToken) return;
       const apiData = Array.isArray(res?.data?.results)
         ? res.data.results
         : Array.isArray(res?.data)
@@ -146,11 +224,12 @@ export default function MainDashboard() {
     } catch (err) {
       console.error(err);
     } finally {
-      setProjectsCache("loading", false);
+      if (token === activeLoadToken) setProjectsCache("loading", false);
     }
   };
 
   const loadAllProjects = async (search = "") => {
+    const token = activeLoadToken;
     try {
       let currentPage = 1;
       let hasMore = true;
@@ -158,6 +237,8 @@ export default function MainDashboard() {
 
       while (hasMore) {
         const res = await fetchProjects(currentPage, search);
+        // Context switched mid-pagination → stop and discard.
+        if (token !== activeLoadToken) return;
 
         const apiData = Array.isArray(res?.data?.results)
           ? res.data.results
@@ -192,10 +273,11 @@ export default function MainDashboard() {
         currentPage++;
       }
 
+      if (token !== activeLoadToken) return;
       setProjectsCache("allProjects", allData);
       setProjectsCache("lastFetchedAll", Date.now());
-      await deriveProjectStatuses(allData);
-      await loadAllProjectInsights(allData);
+      await deriveProjectStatuses(allData, token);
+      await loadAllProjectInsights(allData, token);
     } catch (err) {
       console.error("Failed to load all projects", err);
     }
@@ -353,7 +435,7 @@ export default function MainDashboard() {
   //  2. Page-1 with pageSize=1000 is kept, but we now also paginate if needed so
   //     large accounts (>1000 campaigns per project) don't miss any active ones.
 
-  const deriveProjectStatuses = async (projectList) => {
+  const deriveProjectStatuses = async (projectList, token = activeLoadToken) => {
     const statusUpdates = await Promise.all(
       projectList.map(async (project) => {
         try {
@@ -405,6 +487,7 @@ export default function MainDashboard() {
       }),
     );
 
+    if (token !== activeLoadToken) return;
     setProjectsCache("data", (prev) =>
       prev.map((p) => {
         const update = statusUpdates.find((u) => u.id === p.id);
@@ -418,7 +501,7 @@ export default function MainDashboard() {
       }),
     );
   };
-  const loadAllProjectInsights = async (projectList) => {
+  const loadAllProjectInsights = async (projectList, token = activeLoadToken) => {
     const result = {};
     await Promise.all(
       projectList.map(async (project) => {
@@ -464,6 +547,7 @@ export default function MainDashboard() {
         }
       }),
     );
+    if (token !== activeLoadToken) return;
     setProjectsCache("insightsMap", result);
   };
 
@@ -811,7 +895,7 @@ export default function MainDashboard() {
         <Show when={userRole() === "admin"}>
           <div class="bg-blue-100 text-blue-700 px-4 py-2 rounded-lg mb-4">
             Viewing Client:
-            {selectedClientName}
+            {selectedClientName()}
           </div>
         </Show>
       </div>
