@@ -29,6 +29,8 @@ import Campaigns from './pages/admin/campaigns/Campaigns';
 import AdAccounts from './pages/admin/client/AdAccounts';
 import FeededLeads from './pages/admin/leads/FeededLeads';
 import ManualBatches from './pages/admin/leads/FeededLeads';
+import Projects from './pages/admin/projects/Projects';
+
 
 //  Layout is a named component — SolidJS reuses the SAME instance across all
 //    child route navigations, so Header and Sidebar mount exactly ONCE
@@ -112,6 +114,7 @@ function App() {
             <Route path="/project-display-config" component={ProjectDisplayConfig} />
             <Route path="/client-nomen" component={ClientNomen} />
             <Route path="/campaigns" component={Campaigns} />
+            <Route path="/projects" component={Projects} />
             <Route path="/ad-accounts" component={AdAccounts} />
             <Route path="/feeded-leads" component={ManualBatches} />
           </Route>

@@ -16,7 +16,7 @@ import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import {
   fetchCampaigns,
-  fetchCampaignInsights,
+  fetchBulkCampaignInsights,
   fetchProjectById,
 } from "../services/campaigns";
 import useColumnSort from "../components/Columnsorting";
@@ -294,19 +294,22 @@ export default function ProjectDetails() {
         return;
       }
 
-      // Fetch insights in parallel
-      const insightsResults = await Promise.all(
-        apiData.map((item) =>
-          fetchCampaignInsights(item.id)
-            .then((r) => ({ id: item.id, insights: r.data || [] }))
-            .catch(() => ({ id: item.id, insights: [] })),
-        ),
-      );
-
+      // Fetch insights for this page's campaigns in ONE bulk call
+      // (was: one fetchCampaignInsights request per campaign).
       const insightsMap = {};
-      insightsResults.forEach(({ id, insights }) => {
-        insightsMap[id] = insights;
-      });
+      try {
+        const bulk = await fetchBulkCampaignInsights(
+          apiData.map((item) => item.id),
+        );
+        for (const row of bulk.data || []) {
+          if (row.is_manual) continue; // manual leads come from a separate path
+          const key = row.campaign_id;
+          if (!insightsMap[key]) insightsMap[key] = [];
+          insightsMap[key].push(row);
+        }
+      } catch (err) {
+        console.error("Failed to load campaign insights:", err);
+      }
 
       // Collect unique client IDs from this page's campaigns
       const uniqueClientIds = [
@@ -390,19 +393,22 @@ export default function ProjectDetails() {
 
         if (!Array.isArray(apiData) || apiData.length === 0) break;
 
-        // Fetch insights in parallel for this batch
-        const insightsResults = await Promise.all(
-          apiData.map((item) =>
-            fetchCampaignInsights(item.id)
-              .then((r) => ({ id: item.id, insights: r.data || [] }))
-              .catch(() => ({ id: item.id, insights: [] })),
-          ),
-        );
-
+        // Fetch insights for this batch in ONE bulk call
+        // (was: one fetchCampaignInsights request per campaign).
         const insightsMap = {};
-        insightsResults.forEach(({ id, insights }) => {
-          insightsMap[id] = insights;
-        });
+        try {
+          const bulk = await fetchBulkCampaignInsights(
+            apiData.map((item) => item.id),
+          );
+          for (const row of bulk.data || []) {
+            if (row.is_manual) continue; // manual leads come from a separate path
+            const key = row.campaign_id;
+            if (!insightsMap[key]) insightsMap[key] = [];
+            insightsMap[key].push(row);
+          }
+        } catch (err) {
+          console.error("Failed to load campaign insights:", err);
+        }
 
         // Collect unique client IDs from this batch
         const uniqueClientIds = [

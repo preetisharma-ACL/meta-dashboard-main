@@ -1,7 +1,7 @@
 import { For, Show, createSignal, createMemo, onMount, batch } from "solid-js";
 import { DateRangeFilter } from "../components/DateRangeFilter";
 import { fetchProjects } from "../services/dashboard";
-import { fetchCampaigns, fetchCampaignInsights } from "../services/campaigns";
+import { fetchAllCampaigns, fetchBulkCampaignInsights } from "../services/campaigns";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import useRole, { clientRole } from "./../hooks/useRole";
@@ -88,56 +88,71 @@ export default function DailyReports() {
 
   const loadAllInsights = async (projectList) => {
     const result = {};
+    // Seed every project so it always emits a row, even with no campaigns.
+    for (const project of projectList) {
+      result[project.id] = { insights: [], status: "paused" };
+    }
 
-    await Promise.all(
-      projectList.map(async (project) => {
-        try {
-          // collect all campaigns for this project (paginated)
-          let allCampaigns = [];
-          let cp = 1;
-          let more = true;
-          while (more) {
-            const res = await fetchCampaigns(cp, project.id, "", 20);
-            const batch = res.data?.results || res.data || [];
-            if (!Array.isArray(batch) || batch.length === 0) break;
-            allCampaigns = [...allCampaigns, ...batch];
-            more = res.meta?.pagination?.has_next ?? false;
-            cp++;
-          }
-          const activeCampaigns = allCampaigns.filter(
-            (c) => c.status?.toLowerCase() === "active",
-          ).length;
+    // 1. Fetch ALL campaigns for the client in ONE paginated sweep, then group
+    //    them by project_id locally (was: one /campaigns/?project=N per project).
+    let allCampaigns = [];
+    try {
+      allCampaigns = await fetchAllCampaigns(1000);
+    } catch (err) {
+      console.error("DailyReports: failed to load campaigns", err);
+    }
 
-          const derivedStatus = activeCampaigns > 0 ? "active" : "paused";
+    const projectCampaigns = {};
+    for (const c of allCampaigns) {
+      const pid = c.project_id;
+      if (pid == null) continue;
+      if (!projectCampaigns[pid]) projectCampaigns[pid] = [];
+      projectCampaigns[pid].push(c);
+    }
 
-          if (allCampaigns.length === 0) {
-            result[project.id] = {
-              insights: [],
-              status: "paused",
-            };
-            return;
-          }
+    // Derive each project's status from its grouped campaigns.
+    for (const project of projectList) {
+      const camps = projectCampaigns[project.id] || [];
+      const activeCampaigns = camps.filter(
+        (c) => c.status?.toLowerCase() === "active",
+      ).length;
+      result[project.id].status = activeCampaigns > 0 ? "active" : "paused";
+    }
 
-          // fetch insights for every campaign in parallel
-          const insightArrays = await Promise.all(
-            allCampaigns.map((c) =>
-              fetchCampaignInsights(c.id)
-                .then((r) =>
-                  (r.data || []).map((d) => ({ ...d, campaignId: c.id })),
-                )
-                .catch(() => []),
-            ),
-          );
+    // 2. Build a campaign → {project, canonical id} lookup + the full ID list.
+    const campaignById = {};
+    const allCampaignIds = [];
+    for (const project of projectList) {
+      for (const c of projectCampaigns[project.id] || []) {
+        campaignById[String(c.id)] = { campaign: c, projectId: project.id };
+        allCampaignIds.push(c.id);
+      }
+    }
 
-          result[project.id] = {
-            insights: insightArrays.flat(),
-            status: derivedStatus,
-          };
-        } catch {
-          result[project.id] = [];
+    // 3. ONE bulk insights call for every campaign across all projects
+    //    (replaces the old per-campaign fetch loop — same fix as the dashboard).
+    if (allCampaignIds.length > 0) {
+      try {
+        const bulk = await fetchBulkCampaignInsights(allCampaignIds);
+        const rows = bulk.data || [];
+
+        // 4. Group rows back onto their project. Synthetic (is_manual) rows are
+        //    skipped to mirror the dashboard's handling. NOTE: this page has no
+        //    separate manual-lead path, so confirm totals still match the old
+        //    report — if they drop, remove this `is_manual` skip.
+        for (const row of rows) {
+          if (row.is_manual) continue;
+          const entry = campaignById[String(row.campaign_id)];
+          if (!entry) continue;
+          result[entry.projectId].insights.push({
+            ...row,
+            campaignId: entry.campaign.id,
+          });
         }
-      }),
-    );
+      } catch (err) {
+        console.error("DailyReports: bulk insights error", err);
+      }
+    }
 
     setInsightsMap(result);
   };

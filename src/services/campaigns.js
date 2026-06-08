@@ -36,6 +36,26 @@ export const fetchCampaigns = async (
   return await api(url, { method: "GET" });
 };
 
+// campaigns.js — fetch EVERY campaign for the current client in one paginated
+// sweep (no project filter), so callers can group by project_id locally instead
+// of firing one /campaigns/?project=N request per project.
+export const fetchAllCampaigns = async (pageSize = 1000) => {
+  let page = 1;
+  let all = [];
+  let hasMore = true;
+
+  while (hasMore) {
+    const res = await fetchCampaigns(page, undefined, "", pageSize);
+    const batch = res?.data?.results || res?.data || [];
+    if (!Array.isArray(batch) || batch.length === 0) break;
+    all = [...all, ...batch];
+    hasMore = res?.meta?.pagination?.has_next ?? false;
+    page += 1;
+  }
+
+  return all;
+};
+
 // campaigns.js — fetchCampaignInsights (add client_nomen here too)
 export const fetchCampaignInsights = async (campaignId, pageSize = 1000) => {
   // ✅ FIX: insights must be scoped the same way as campaigns
@@ -66,6 +86,55 @@ export const fetchCampaignInsights = async (campaignId, pageSize = 1000) => {
   }
   console.log(`Fetched ${allInsights.length} insights for campaign ${campaignId} with client_nomen=${clientNomen}`);
   return { ...lastResponse, data: allInsights };
+};
+
+// campaigns.js — bulk insights for many campaigns in one call.
+// Backend: GET /api/campaigns/insights/bulk/?campaign_ids=12,34&start_date&end_date
+//   • max 500 campaign_ids per call  → we chunk
+//   • page_size default 1000, max 10000 → we request 10000 and page if needed
+//   • rows carry campaign_id; synthetic rows have is_manual: true
+//   • scoping identical to single endpoint (client_nomen)
+export const fetchBulkCampaignInsights = async (
+  campaignIds,
+  { startDate, endDate, pageSize = 10000 } = {},
+) => {
+  const ids = [...new Set((campaignIds || []).filter((id) => id != null))];
+  if (ids.length === 0) return { data: [] };
+
+  const clientNomen = getClientNomen();
+  const CHUNK = 500; // backend hard limit on campaign_ids per call
+  let allRows = [];
+
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const chunk = ids.slice(i, i + CHUNK);
+    let page = 1;
+    let hasMore = true;
+
+    while (hasMore) {
+      let url =
+        `/campaigns/insights/bulk/?campaign_ids=${chunk.join(",")}` +
+        `&page=${page}&page_size=${pageSize}`;
+      if (startDate) url += `&start_date=${startDate}`;
+      if (endDate) url += `&end_date=${endDate}`;
+      if (clientNomen) url += `&client_nomen=${clientNomen}`;
+
+      const res = await api(url, { method: "GET" });
+
+      const pageData = Array.isArray(res?.data?.results)
+        ? res.data.results
+        : Array.isArray(res?.data)
+          ? res.data
+          : [];
+
+      allRows = [...allRows, ...pageData];
+
+      const pagination = res?.meta?.pagination;
+      hasMore = Boolean(pagination?.has_next) && pageData.length > 0;
+      page += 1;
+    }
+  }
+
+  return { data: allRows };
 };
 
 export const fetchProjectById = async (projectId) => {

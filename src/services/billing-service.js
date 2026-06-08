@@ -1,8 +1,10 @@
 import { api } from "../api/api";
 
-// ✅ Fetch top-level billing overview (budget, utilized, remaining, pending)
-export const fetchBillingOverview = async () => {
-  return await api("/billing/overview/", {
+// ✅ Fetch the monthly billing overview (client view).
+//    `month` is "YYYY-MM"; omit to let the backend default to the current month.
+export const fetchBillingOverview = async (month) => {
+  const qs = month ? `?month=${month}` : "";
+  return await api(`/billing/overview/${qs}`, {
     method: "GET",
   });
 };

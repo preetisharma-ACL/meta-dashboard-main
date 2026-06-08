@@ -11,7 +11,7 @@ import { DateRangeFilter } from "../components/DateRangeFilter";
 import useColumnSort from "../components/Columnsorting";
 import { fetchProjects, fetchManualBatches } from "../services/dashboard";
 import { fetchCampaigns } from "../services/campaigns";
-import { fetchCampaignInsights } from "../services/campaigns";
+import { fetchBulkCampaignInsights } from "../services/campaigns";
 import {
   projectsCache,
   setProjectsCache,
@@ -276,8 +276,10 @@ export default function MainDashboard() {
       if (token !== activeLoadToken) return;
       setProjectsCache("allProjects", allData);
       setProjectsCache("lastFetchedAll", Date.now());
-      await deriveProjectStatuses(allData, token);
-      await loadAllProjectInsights(allData, token);
+      // Fetch each project's campaigns ONCE here, then reuse them for insights
+      // so we don't fetch the same campaigns twice (was: two overlapping waves).
+      const campaignsByProject = await deriveProjectStatuses(allData, token);
+      await loadAllProjectInsights(allData, token, campaignsByProject);
     } catch (err) {
       console.error("Failed to load all projects", err);
     }
@@ -436,7 +438,7 @@ export default function MainDashboard() {
   //     large accounts (>1000 campaigns per project) don't miss any active ones.
 
   const deriveProjectStatuses = async (projectList, token = activeLoadToken) => {
-    const statusUpdates = await Promise.all(
+    const perProject = await Promise.all(
       projectList.map(async (project) => {
         try {
           // Fetch all campaigns for this project (large page size avoids
@@ -463,11 +465,16 @@ export default function MainDashboard() {
           ).length;
 
           return {
-            id: project.id,
-            // At least one active campaign → project is active
-            status: activeCampaigns > 0 ? "active" : "paused",
-            activeCampaigns,
-            pausedCampaigns,
+            // status update committed to the cache (campaigns NOT spread in)
+            status: {
+              id: project.id,
+              // At least one active campaign → project is active
+              status: activeCampaigns > 0 ? "active" : "paused",
+              activeCampaigns,
+              pausedCampaigns,
+            },
+            // raw campaigns handed back so the insights pass can reuse them
+            campaigns: allCampaigns,
           };
         } catch (err) {
           console.warn(
@@ -476,18 +483,27 @@ export default function MainDashboard() {
           );
           // Fall back to whatever the projects API said; keep original counts.
           return {
-            id: project.id,
-            status: project.status,
-            // project.activeCampaigns is mapped from campaign_count (total),
-            // not active-only. Preserve it so the table isn't blank.
-            activeCampaigns: project.activeCampaigns,
-            pausedCampaigns: project.pausedCampaigns,
+            status: {
+              id: project.id,
+              status: project.status,
+              // project.activeCampaigns is mapped from campaign_count (total),
+              // not active-only. Preserve it so the table isn't blank.
+              activeCampaigns: project.activeCampaigns,
+              pausedCampaigns: project.pausedCampaigns,
+            },
+            campaigns: [],
           };
         }
       }),
     );
 
-    if (token !== activeLoadToken) return;
+    const statusUpdates = perProject.map((p) => p.status);
+    const campaignsByProject = {};
+    perProject.forEach((p) => {
+      campaignsByProject[p.status.id] = p.campaigns;
+    });
+
+    if (token !== activeLoadToken) return campaignsByProject;
     setProjectsCache("data", (prev) =>
       prev.map((p) => {
         const update = statusUpdates.find((u) => u.id === p.id);
@@ -500,16 +516,30 @@ export default function MainDashboard() {
         return update ? { ...p, ...update } : p;
       }),
     );
+
+    // Return the campaigns so loadAllProjectInsights can skip re-fetching them.
+    return campaignsByProject;
   };
-  const loadAllProjectInsights = async (projectList, token = activeLoadToken) => {
+  const loadAllProjectInsights = async (
+    projectList,
+    token = activeLoadToken,
+    campaignsByProject = null,
+  ) => {
     const result = {};
+
+    // 1. Resolve each project's campaigns. Reuse the list deriveProjectStatuses
+    //    already fetched; only fetch here if it wasn't provided (standalone use).
+    const projectCampaigns = {};
     await Promise.all(
       projectList.map(async (project) => {
-        try {
-          let currentPage = 1;
-          let allCampaigns = [];
-          let hasMore = true;
+        let allCampaigns = campaignsByProject
+          ? campaignsByProject[project.id]
+          : undefined;
 
+        if (allCampaigns === undefined) {
+          let currentPage = 1;
+          allCampaigns = [];
+          let hasMore = true;
           while (hasMore) {
             const res = await fetchCampaigns(currentPage, project.id, "", 1000);
             const campaigns = res.data?.results || res.data || [];
@@ -518,35 +548,54 @@ export default function MainDashboard() {
             hasMore = res.meta?.pagination?.has_next ?? false;
             currentPage++;
           }
-
-          if (allCampaigns.length === 0) {
-            result[project.id] = { campaigns: [], insights: [] };
-            return;
-          }
-          const insightArrays = await Promise.all(
-            allCampaigns.map((c) =>
-              fetchCampaignInsights(c.id)
-                .then((r) =>
-                  (r.data || []).map((insight) => ({
-                    ...insight,
-                    campaignId: c.id,
-                  })),
-                )
-                .catch(() => []),
-            ),
-          );
-          result[project.id] = {
-            campaigns: allCampaigns.map((c) => ({
-              id: c.id,
-              status: c.status,
-            })),
-            insights: insightArrays.flat(),
-          };
-        } catch {
-          result[project.id] = { campaigns: [], insights: [] };
         }
+
+        projectCampaigns[project.id] = allCampaigns || [];
+        // Seed every project so it has an entry even with zero insights.
+        result[project.id] = {
+          campaigns: (allCampaigns || []).map((c) => ({
+            id: c.id,
+            status: c.status,
+          })),
+          insights: [],
+        };
       }),
     );
+
+    // 2. Build a campaign → {project, canonical id} lookup and the full ID list.
+    const campaignById = {};
+    const allCampaignIds = [];
+    for (const project of projectList) {
+      for (const c of projectCampaigns[project.id] || []) {
+        campaignById[String(c.id)] = { campaign: c, projectId: project.id };
+        allCampaignIds.push(c.id);
+      }
+    }
+
+    // 3. ONE bulk insights call for every campaign across all projects
+    //    (replaces the old ~180-200 per-campaign requests — Issue 2).
+    if (allCampaignIds.length > 0) {
+      try {
+        const bulk = await fetchBulkCampaignInsights(allCampaignIds);
+        const rows = bulk.data || [];
+
+        // 4. Group rows back onto their project. Synthetic (is_manual) rows are
+        //    skipped here — manual/extra leads are already counted separately via
+        //    manualBatches/getProjectExtraLeads, so keeping them would double-count.
+        for (const row of rows) {
+          if (row.is_manual) continue;
+          const entry = campaignById[String(row.campaign_id)];
+          if (!entry) continue;
+          result[entry.projectId].insights.push({
+            ...row,
+            campaignId: entry.campaign.id,
+          });
+        }
+      } catch (err) {
+        console.error("Failed to load bulk campaign insights", err);
+      }
+    }
+
     if (token !== activeLoadToken) return;
     setProjectsCache("insightsMap", result);
   };

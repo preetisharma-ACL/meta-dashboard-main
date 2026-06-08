@@ -4,22 +4,21 @@ import {
   createResource,
   For,
   Show,
-  onMount,
 } from "solid-js";
-import {
-  fetchBillingOverview,
-  fetchAllProjectsBilling,
-} from "../services/billing-service";
-import {
-  billingCache,
-  setBillingCache,
-  isCacheStale,
-} from "../cacheStore/appStore";
+import { fetchBillingOverview } from "../services/billing-service";
 import { fetchPaymentsDetails } from "../services/payments-service";
 import useRole, { clientRole } from "../hooks/useRole";
 
 // --- Helpers ------------------------------------------------------------------
-const fmt = (n) => "₹" + Number(n).toLocaleString("en-IN");
+// API returns decimals as strings; we only format for display (no further math),
+// so Number() here is safe. Currency formatting via Intl.NumberFormat.
+const inrFormatter = new Intl.NumberFormat("en-IN", {
+  style: "currency",
+  currency: "INR",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+const fmt = (n) => inrFormatter.format(Number(n ?? 0));
 const pct = (a, b) => (b === 0 ? 0 : Math.min(100, Math.round((a / b) * 100)));
 
 const MOCK_DELIVERIES = [
@@ -175,19 +174,22 @@ function BudgetCard(props) {
           Service Charge Applied
         </span>
       )}
+      {props.badge && (
+        <span class="inline-block text-[12px] px-2 py-1 rounded-full bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300 font-semibold">
+          {props.badge}
+        </span>
+      )}
       <p
         class={`text-sm text-gray-600 dark:text-gray-400 ${
-          props.allocation ? "pt-0" : "pt-10"
+          props.allocation || props.badge ? "pt-0" : "pt-10"
         }`}
       >
         {props.sub}
       </p>
 
-      {/* <p class="text-sm text-gray-600 dark:text-gray-400">
-        {props.sub}
-      </p> */}
-
-      <ProgressBar value={props.pctValue} max={props.pctMax} />
+      <Show when={props.pctMax}>
+        <ProgressBar value={props.pctValue} max={props.pctMax} />
+      </Show>
     </Card>
   );
 }
@@ -995,116 +997,64 @@ export default function Billing() {
     }));
   });
 
-  const auth = JSON.parse(localStorage.getItem("auth") || "{}");
+  // ── Month selection + single monthly overview fetch ──────────────────────
+  const pad2 = (n) => String(n).padStart(2, "0");
+  const nowDate = new Date();
+  const defaultMonth = `${nowDate.getFullYear()}-${pad2(nowDate.getMonth() + 1)}`;
+  const [selectedMonth, setSelectedMonth] = createSignal(defaultMonth);
 
-  const applyServiceCharge = !iscpl();
-  const serviceChargePercent = Number(auth?.serviceCharge ?? 13);
-  const serviceChargeRate = serviceChargePercent / 100;
+  // SaaS launched June 2026 — months before that have no records, so their
+  // tabs render disabled. Each new month becomes active as it arrives.
+  const LAUNCH = { year: 2026, month: 6 };
+  const isMonthEnabled = (m) =>
+    m.year > LAUNCH.year || (m.year === LAUNCH.year && m.month >= LAUNCH.month);
 
-  const totalReceived = createMemo(() => {
-    return payments().reduce((sum, payment) => {
-      return sum + (payment.amount || 0);
-    }, 0);
-  });
+  // Monthly overview — ONE API call, refetches on month change.
+  const [overviewRes, { refetch }] = createResource(
+    selectedMonth,
+    fetchBillingOverview,
+  );
 
-  const totalReceivedExGST = createMemo(() => {
-    return payments().reduce((sum, payment) => {
-      return sum + (payment.baseAmount || 0);
-    }, 0);
-  });
+  const data = () => overviewRes()?.data || {};
+  const availableMonths = () => data().available_months || [];
+  const currentPeriod = () => data().current_period || {};
+  const openingBalance = () => data().opening_balance || {};
+  const monthSpend = () => data().month_spend || {};
+  const monthFunds = () => data().month_funds || {};
+  const closingBalance = () => data().closing_balance || {};
+  const budgetInfo = () => data().budget || {};
 
-  // ✅ Single combined resource — fires overview + projects in parallel
-  // ✅ Replace createResource with a manual effect that respects cache
-  onMount(async () => {
-    if (!isCacheStale(billingCache.lastFetched)) return; // already fresh
+  const isLoading = () => overviewRes.loading;
+  const loadError = () => overviewRes.error;
 
-    setBillingCache("loading", true);
-    try {
-      const [overviewRes, projectsRes] = await Promise.all([
-        fetchBillingOverview(),
-        fetchAllProjectsBilling(),
-      ]);
-      setBillingCache({
-        overview: overviewRes?.data || {},
-        projects: projectsRes.map(({ projectMeta, billing }) =>
-          transformProject(billing, projectMeta),
-        ),
-        lastFetched: Date.now(),
-        loading: false,
-      });
-    } catch (err) {
-      console.error(err);
-      setBillingCache("loading", false);
+  // Service-charge / GST percentages come from the API (per-client, NOT
+  // hardcoded). Hide the service-charge card entirely when the rate is 0.
+  const serviceChargePct = () => monthSpend().service_charge_pct ?? "0.00";
+  const gstPct = () => monthSpend().gst_pct ?? "18.00";
+  const showServiceCharge = () => Number(serviceChargePct()) > 0;
+
+  // Friendly subtitle for where the opening balance was carried from.
+  const openingSourceLabel = () => {
+    switch (openingBalance().source) {
+      case "explicit_payment_row":
+        return "Carried over from previous month";
+      case "computed_from_previous_month":
+        return "Computed from last month";
+      case "zero_no_history":
+        return "First month — no previous history";
+      default:
+        return "";
     }
-  });
+  };
 
-  // ✅ Derived accessors from single resource
-  const overview = () => billingCache.overview;
-  const projects = () => billingCache.projects;
-  const isLoading = () => billingCache.loading;
-
-  const totalLeads = createMemo(() =>
-    projects().reduce((s, p) => s + p.totalLeads, 0),
+  // Payments-tab totals — all-time, summed from the payments list (independent
+  // of the monthly overview above).
+  const totalReceived = createMemo(() =>
+    payments().reduce((s, p) => s + (p.amount || 0), 0),
   );
-  const totalSpend = createMemo(() =>
-    projects()
-      .reduce((s, p) => s + p.totalSpend, 0)
-      .toFixed(2),
+  const totalReceivedExGST = createMemo(() =>
+    payments().reduce((s, p) => s + (p.baseAmount || 0), 0),
   );
-  const overallCPL = createMemo(() =>
-    totalLeads() > 0 ? parseFloat((totalSpend() / totalLeads()).toFixed(2)) : 0,
-  );
-
-  const totalspentwithSC = createMemo(() => {
-    const amount = Number(totalSpend());
-
-    return parseFloat(
-      (applyServiceCharge ? amount * (1 + serviceChargeRate) : amount).toFixed(
-        2,
-      ),
-    );
-  });
-
-  const totalSpendWithGSTandSC = createMemo(() => {
-    const amount = Number(totalSpend());
-
-    return parseFloat(
-      (applyServiceCharge
-        ? amount * (1 + serviceChargeRate) * 1.18
-        : amount * 1.18
-      ).toFixed(2),
-    );
-  });
-
-  // Remaining WITH GST
-  const remainingBalanceAmount = createMemo(() => {
-    return parseFloat(
-      (Number(totalReceived()) - totalSpendWithGSTandSC()).toFixed(2),
-    );
-  });
-
-  // Remaining WITHOUT GST
-  const totalSpendWithServiceCharge = createMemo(() => {
-    const amount = Number(totalSpend());
-
-    return applyServiceCharge ? amount * (1 + serviceChargeRate) : amount;
-  });
-
-  const pendingPaymentAmount = createMemo(() => {
-    return parseFloat(
-      (Number(totalReceivedExGST()) - totalSpendWithServiceCharge()).toFixed(2),
-    );
-  });
-
-  const budgetCommitted = () =>
-    parseFloat(overview().total_budget).toFixed(2) || 0;
-  const budgetUtilized = () => parseFloat(overview().utilized).toFixed(2) || 0;
-  const budgetRemaining = () =>
-    parseFloat(overview().remaining).toFixed(2) || 0;
-  const pendingPayment = () =>
-    parseFloat(overview().pending_payment).toFixed(2) || 0;
-  const utilizationPct = () =>
-    parseFloat(overview().utilization_percentage).toFixed(2) || 0;
 
   const tabs = [
     { id: "overview", label: "Overview" },
@@ -1124,7 +1074,7 @@ export default function Billing() {
           </div>
           <button
             onClick={() => setShowModal(true)}
-            class="flex items-center gap-2 px-4 py-3 text-sm font-medium rounded bg-blue-900 dark:bg-blue-800 text-white shadow-sm hover:bg-blue-800 active:scale-95 transition-all duration-200"
+            class="flex hidden items-center gap-2 px-4 py-3 text-sm font-medium rounded bg-blue-900 dark:bg-blue-800 text-white shadow-sm hover:bg-blue-800 active:scale-95 transition-all duration-200"
           >
             <svg
               class="w-4 h-4"
@@ -1161,27 +1111,70 @@ export default function Billing() {
       {/* ══ OVERVIEW TAB ══ */}
       <Show when={tab() === "overview"}>
         <div class="space-y-6">
-          <div class="flex items-center gap-2 text-sm font-medium bg-gray-50 dark:bg-gray-800/60 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-800 rounded-lg px-4 py-2.5 mt-3">
+          {/* Month tabs — populated from available_months */}
+          <Show when={availableMonths().length > 0}>
+            <div class="flex flex-wrap gap-2 mt-3">
+              <For each={availableMonths()}>
+                {(m) => {
+                  const value = `${m.year}-${pad2(m.month)}`;
+                  const enabled = isMonthEnabled(m);
+                  return (
+                    <button
+                      onClick={() => enabled && setSelectedMonth(value)}
+                      disabled={!enabled}
+                      title={enabled ? "" : "No records before June 2026"}
+                      class={`px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${
+                        selectedMonth() === value
+                          ? "bg-blue-900 dark:bg-blue-800 text-white border-transparent"
+                          : enabled
+                            ? "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-400"
+                            : "border-gray-100 dark:border-gray-800 text-gray-300 dark:text-gray-600 cursor-not-allowed opacity-60"
+                      }`}
+                    >
+                      {m.label}
+                    </button>
+                  );
+                }}
+              </For>
+            </div>
+          </Show>
+
+          {/* Error state */}
+          <Show when={loadError()}>
+            <div class="flex items-center justify-between gap-3 text-sm font-medium bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800 rounded-lg px-4 py-3">
+              <span>Couldn't load billing data for this month.</span>
+              <button onClick={() => refetch()} class="underline font-semibold">
+                Retry
+              </button>
+            </div>
+          </Show>
+
+          <div class="flex items-center gap-2 text-sm font-medium bg-gray-50 dark:bg-gray-800/60 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-800 rounded-lg px-4 py-2.5">
             All amounts shown{" "}
             <span class="font-semibold text-gray-800 dark:text-gray-200 mx-1">
-              excluding GST (18%)
+              excluding GST ({Number(gstPct())}%)
             </span>{" "}
             unless stated otherwise.
           </div>
 
-          {/* ✅ Single loading gate for everything */}
+          {/* ── Card row 1: Budget Overview (monthly) ── */}
           <div
             class={`transition-all duration-500 rounded-2xl
   ${isLoading() ? "animate-pulse shadow-inner" : ""}`}
           >
             <section>
-              <SectionLabel>Budget Overview</SectionLabel>
+              <SectionLabel>
+                Budget Overview
+                {budgetInfo().period_label || currentPeriod().label
+                  ? ` · ${budgetInfo().period_label || currentPeriod().label}`
+                  : ""}
+              </SectionLabel>
 
               <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 <Show when={!isRetainer() && !iscpl()}>
                   <BudgetCard
                     label="Budget Committed"
-                    value={budgetCommitted()}
+                    value={budgetInfo().allocated}
                     icon={
                       <div class="p-3 rounded-lg bg-blue-100 dark:bg-blue-300">
                         <svg
@@ -1201,15 +1194,15 @@ export default function Billing() {
                     }
                     allocation="Monthly Allocation"
                     sub="Total contracted"
-                    pctValue={budgetCommitted()}
-                    pctMax={budgetCommitted()}
+                    pctValue={Number(budgetInfo().utilized || 0)}
+                    pctMax={Number(budgetInfo().allocated || 0)}
                   />
                 </Show>
 
                 <Show when={!isRetainer() && !iscpl()}>
                   <BudgetCard
                     label="Budget Utilized"
-                    value={budgetUtilized()}
+                    value={budgetInfo().utilized}
                     icon={
                       <div class="p-3 rounded-lg bg-purple-100 dark:bg-purple-300">
                         <svg
@@ -1224,15 +1217,15 @@ export default function Billing() {
                         </svg>
                       </div>
                     }
-                    sub={`${utilizationPct()}% of committed`}
-                    pctValue={budgetUtilized()}
-                    pctMax={budgetCommitted()}
+                    sub={`${Number(budgetInfo().utilization_pct || 0)}% of committed`}
+                    pctValue={Number(budgetInfo().utilized || 0)}
+                    pctMax={Number(budgetInfo().allocated || 0)}
                   />
                 </Show>
 
                 <BudgetCard
-                  label="Remaining Balance (inc. GST)"
-                  value={remainingBalanceAmount()}
+                  label="Opening Balance (inc. GST)"
+                  value={openingBalance().inc_gst}
                   icon={
                     <div class="p-3 rounded-lg bg-blue-100 dark:bg-blue-300">
                       <svg
@@ -1247,15 +1240,12 @@ export default function Billing() {
                       </svg>
                     </div>
                   }
-                  sub="Available to spend"
-                  showServiceCharge={applyServiceCharge}
-                  pctValue={budgetRemaining()}
-                  pctMax={budgetCommitted()}
+                  sub={openingSourceLabel()}
                 />
 
                 <BudgetCard
-                  label="Remaining Balance (ex. GST)"
-                  value={pendingPaymentAmount()}
+                  label="Closing Balance (inc. GST)"
+                  value={closingBalance().inc_gst}
                   icon={
                     <div class="p-3 rounded-lg bg-red-100 dark:bg-red-300">
                       <svg
@@ -1269,18 +1259,18 @@ export default function Billing() {
                       </svg>
                     </div>
                   }
-                  sub={
-                    pendingPayment() > 0
-                      ? "Due immediately"
-                      : "No dues outstanding"
+                  sub="End-of-month position"
+                  badge={
+                    closingBalance().has_outstanding_dues
+                      ? "Outstanding Dues"
+                      : null
                   }
-                  showServiceCharge={applyServiceCharge}
-                  pctValue={pendingPayment()}
-                  pctMax={budgetCommitted()}
                 />
               </div>
             </section>
           </div>
+
+          {/* ── Card row 2: Spend Summary (monthly) ── */}
           <div
             class={`transition-all duration-500 rounded-2xl
   ${isLoading() ? "animate-pulse shadow-inner" : ""}`}
@@ -1291,7 +1281,7 @@ export default function Billing() {
                   Total Leads
                 </p>
                 <p class="text-xl font-bold mt-1 text-gray-700 dark:text-gray-400">
-                  {totalLeads()}
+                  {monthSpend().total_leads ?? 0}
                 </p>
               </Card>
               <Card class="p-4 text-center">
@@ -1299,45 +1289,56 @@ export default function Billing() {
                   Total Spend (ex-GST)
                 </p>
                 <p class="text-xl font-bold mt-1 text-gray-700 dark:text-gray-400">
-                  {fmt(totalSpend())}
+                  {fmt(monthSpend().total_spend_ex_gst)}
                 </p>
               </Card>
-              <Show when={applyServiceCharge}>
+              <Show when={showServiceCharge()}>
                 <Card class="p-4 text-center">
                   <p class="text-sm text-gray-700 dark:text-gray-400 font-medium">
-                    Total Spend + {serviceChargePercent}% Service Charge
+                    Total Spend + {Number(serviceChargePct())}% Service Charge
                   </p>
                   <p class="text-xl font-bold mt-1 text-gray-900 dark:text-gray-100">
-                    {fmt(
-                      (Number(totalSpend()) * (1 + serviceChargeRate)).toFixed(
-                        2,
-                      ),
-                    )}{" "}
+                    {fmt(monthSpend().total_with_service_charge)}
                   </p>
                 </Card>
               </Show>
               <Card class="p-4 text-center">
                 <p class="text-sm text-gray-700 dark:text-gray-400 font-medium">
-                  {applyServiceCharge
-                    ? `Total Spend + ${serviceChargePercent}% Service Charge + 18% GST`
-                    : "Total Spend + 18% GST"}
+                  {showServiceCharge()
+                    ? `Total Spend + ${Number(serviceChargePct())}% Service Charge + ${Number(gstPct())}% GST`
+                    : `Total Spend + ${Number(gstPct())}% GST`}
                 </p>
-
                 <p class="text-xl font-bold mt-1 text-gray-900 dark:text-gray-100">
-                  {fmt(
-                    (applyServiceCharge
-                      ? Number(totalSpend()) * (1 + serviceChargeRate) * 1.18
-                      : Number(totalSpend()) * 1.18
-                    ).toFixed(2),
-                  )}
+                  {fmt(monthSpend().total_with_service_charge_and_gst)}
                 </p>
               </Card>
             </div>
           </div>
-          <section>
-            <SectionLabel>Project-wise Budget Breakdown</SectionLabel>
-            <ProjectTable projects={projects()} />
-          </section>
+
+          {/* ── Card row 3: Funds Added this month ── */}
+          <div
+            class={`transition-all duration-500 rounded-2xl
+  ${isLoading() ? "animate-pulse shadow-inner" : ""}`}
+          >
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Card class="p-4">
+                <p class="text-md text-gray-600 dark:text-gray-400">
+                  Funds Added This Month (ex-GST)
+                </p>
+                <p class="text-xl font-bold mt-2 text-gray-900 dark:text-white">
+                  {fmt(monthFunds().funds_added_ex_gst)}
+                </p>
+              </Card>
+              <Card class="p-4">
+                <p class="text-md text-gray-600 dark:text-gray-400">
+                  Funds Added This Month (inc-GST)
+                </p>
+                <p class="text-xl font-bold mt-2 text-gray-900 dark:text-white">
+                  {fmt(monthFunds().funds_added_inc_gst)}
+                </p>
+              </Card>
+            </div>
+          </div>
         </div>
       </Show>
 
