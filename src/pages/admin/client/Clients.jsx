@@ -218,6 +218,11 @@ export default function Clients() {
         has_prev: false,
       },
     });
+    // In Clients.jsx, wherever you currently bust the cache before navigating:
+    setProjectsCache("lastFetched", 0);
+    setProjectsCache("lastFetchedAll", 0); // ← add this
+    setProjectsCache("allProjects", []);
+    setProjectsCache("insightsMap", {});
 
     navigate(`/${client.client_nomen_name.toLowerCase().replace(/\s+/g, "-")}`);
   };
@@ -500,8 +505,6 @@ export default function Clients() {
                     <td class="p-3 text-gray-500 dark:text-gray-400 whitespace-nowrap">
                       {fmt(client.created_at)}
                     </td>
-
-                    
                   </tr>
                 )}
               </For>

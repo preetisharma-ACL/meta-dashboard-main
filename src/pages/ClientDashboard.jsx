@@ -15,6 +15,7 @@ import {
   projectsCache,
   setProjectsCache,
   isCacheStale,
+  isAllProjectsCacheStale,
 } from "../cacheStore/appStore";
 import useRole, { clientRole } from "./../hooks/useRole";
 
@@ -55,22 +56,26 @@ export default function MainDashboard() {
   // MainDashboard.jsx — update onMount
   onMount(() => {
     const auth = JSON.parse(localStorage.getItem("auth"));
-    // Admin dashboard route
+
     if (auth?.role === "admin" && window.location.pathname === "/") {
       localStorage.removeItem("selectedClientNomen");
       localStorage.removeItem("selectedClientNomenId");
       localStorage.removeItem("selectedClientName");
     }
-    setUserRole(auth?.role ?? "client");
 
-    // ✅ FIX: always reload when admin has selected a client
-    // (cache was busted in Clients.jsx before navigation)
-    const isAdminViewingClient =
-      auth?.role === "admin" && localStorage.getItem("selectedClientNomenId");
+    setUserRole(auth?.role ?? "client");
 
     loadData(1);
     loadManualBatches();
-    loadAllProjects();
+
+    // ✅ Only reload allProjects + statuses if cache is stale/empty
+    if (isCacheStale()) {
+      loadAllProjects();
+    }
+    // ✅ Skip the expensive allProjects + statuses fetch if cache is fresh
+    if (isAllProjectsCacheStale()) {
+      loadAllProjects();
+    }
   });
   const auth = JSON.parse(localStorage.getItem("auth") || "{}");
 
@@ -188,6 +193,7 @@ export default function MainDashboard() {
       }
 
       setProjectsCache("allProjects", allData);
+      setProjectsCache("lastFetchedAll", Date.now());
       await deriveProjectStatuses(allData);
       await loadAllProjectInsights(allData);
     } catch (err) {

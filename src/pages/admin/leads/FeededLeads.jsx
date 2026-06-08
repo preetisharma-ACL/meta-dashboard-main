@@ -1,10 +1,8 @@
 import { createSignal, createMemo, onMount, For, Show } from "solid-js";
 import { fetchManualBatches, createManualBatch } from "../services/feededLeads";
 import { fetchClients } from "../services/fetchClients";
-import {
-  fetchProjectDisplayConfig,
-  fetchProjects,
-} from "../services/projectDisplayConfig";
+import { fetchProjectDisplayConfig } from "../services/projectDisplayConfig";
+import { fetchProjectsByClient } from "../services/fetchProjectsByClient";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -37,6 +35,7 @@ export default function ManualBatches() {
   const [clients, setClients] = createSignal([]);
   const [configs, setConfigs] = createSignal([]);
   const [projects, setProjects] = createSignal([]);
+  const [projectsLoading, setProjectsLoading] = createSignal(false);
   const [sidebarMounted, setSidebarMounted] = createSignal(false);
   const [sidebarVisible, setSidebarVisible] = createSignal(false);
 
@@ -99,17 +98,33 @@ export default function ManualBatches() {
       console.log("Fetched clients:", clientRes.data);
       setClients(clientRes.data ?? []);
 
-      const [configRes, projectRes] = await Promise.all([
-        fetchProjectDisplayConfig(),
-        fetchProjects(),
-      ]);
+      const configRes = await fetchProjectDisplayConfig();
 
       setConfigs(configRes.data ?? []);
-      setProjects(projectRes || []);
     } catch (err) {
       console.error(err);
     }
   });
+
+  const loadProjectsForClient = async (clientId) => {
+    setProjects([]);
+    setProjectSearch("");
+    setShowProjectDropdown(false);
+
+    handleInputChange("project_id", "");
+
+    setProjectsLoading(true);
+
+    try {
+      const clientProjects = await fetchProjectsByClient(clientId);
+      setProjects(clientProjects);
+    } catch (err) {
+      console.error("Failed to load projects:", err);
+      setProjects([]);
+    } finally {
+      setProjectsLoading(false);
+    }
+  };
 
   // ── Sort toggle ───────────────────────────────────────────────────────────
 
@@ -204,6 +219,9 @@ export default function ManualBatches() {
   const closeSidebar = () => {
     setSidebarVisible(false);
 
+    setShowClientDropdown(false);
+    setShowProjectDropdown(false);
+
     setTimeout(() => {
       setSidebarMounted(false);
 
@@ -217,6 +235,7 @@ export default function ManualBatches() {
 
       setClientSearch("");
       setProjectSearch("");
+      setProjects([]);
     }, 300);
   };
 
@@ -759,11 +778,9 @@ export default function ManualBatches() {
                                 `${client.client_nomen_name} (${client.email})`,
                               );
 
-                              setProjectSearch("");
-
-                              handleInputChange("project_id", "");
-
                               setShowClientDropdown(false);
+
+                              loadProjectsForClient(client.id);
                             }}
                             class="w-full text-left px-3 py-2
                              hover:bg-purple-50 dark:hover:bg-gray-800
@@ -791,8 +808,15 @@ export default function ManualBatches() {
                 <div class="relative">
                   <input
                     type="text"
+                    disabled={!formData().target_client_id || projectsLoading()}
                     value={projectSearch()}
-                    placeholder="Search project..."
+                    placeholder={
+                      !formData().target_client_id
+                        ? "Select client first..."
+                        : projectsLoading()
+                          ? "Loading projects..."
+                          : "Search project..."
+                    }
                     onFocus={() => setShowProjectDropdown(true)}
                     onInput={(e) => {
                       setProjectSearch(e.target.value);

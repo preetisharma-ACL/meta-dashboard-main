@@ -82,6 +82,12 @@ export const setProjectDetailsCache = (...args) => {
 export const isProjectCacheStale = (projectId) =>
     isCacheStale(projectDetailsCache[projectId]?.lastFetched ?? null);
 
+
+// And add a helper:
+export const isAllProjectsCacheStale = (maxAgeMs = 5 * 60 * 1000) => {
+  return Date.now() - (projectsCache.lastFetchedAll ?? 0) > maxAgeMs;
+};
+
 // ─── Campaign Details (keyed by campaignId) ──────────────────────────────────
 export const [campaignDetailsCache, setCampaignDetailsCacheRaw] = createStore(
     hydrate("cache_campaign_details", {}) ?? {}
