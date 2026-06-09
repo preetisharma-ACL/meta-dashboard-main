@@ -1,36 +1,36 @@
-import { Router, Route } from '@solidjs/router';
-import { ThemeProvider } from './context/ThemeContext';
-import { SidebarProvider } from './context/SidebarContext';
-import { useSidebar } from './context/SidebarContext';
-import { useNavigate } from '@solidjs/router';
-import { onMount, onCleanup } from 'solid-js';
-import Sidebar from './components/Sidebar';
-import Header from './components/Header';
-import MainDashboard from './pages/ClientDashboard';
-import AddProject from './pages/AddProjects';
-import Billing from './pages/Billing';
-import ClientDelivery from './pages/Client-Delivery';
-import PerformingProjects from './pages/PerformingProjects';
-import Settings from './pages/Settings';
-import Notifications from './pages/Alert';
-import ProjectDetails from './pages/ProjectDetails';
-import CampaignDetails from './pages/CampaignDetails';
-import Login from './pages/login/LoginForm';
-import ProtectedRoute from './routes/ProtectedRoute';
-import LeadsPage from './pages/LeadPerformance';
-import Leads from './pages/Leads';
-import FollowUp from './pages/FollowUp';
-import DailyReports from './pages/DailyReports';
-import Clients from './pages/admin/client/Clients';
-import ImpersonationBanner from './pages/admin/component/ImpersonationBanner';
-import ProjectDisplayConfig from './pages/admin/client/ProjectDisplayConfig';
-import ClientNomen from './pages/admin/client/ClientNomen';
-import Campaigns from './pages/admin/campaigns/Campaigns';
-import AdAccounts from './pages/admin/client/AdAccounts';
-import FeededLeads from './pages/admin/leads/FeededLeads';
-import ManualBatches from './pages/admin/leads/FeededLeads';
-import Projects from './pages/admin/projects/Projects';
-
+import { Router, Route } from "@solidjs/router";
+import { ThemeProvider } from "./context/ThemeContext";
+import { SidebarProvider } from "./context/SidebarContext";
+import { useSidebar } from "./context/SidebarContext";
+import { useNavigate } from "@solidjs/router";
+import { onMount, onCleanup } from "solid-js";
+import Sidebar from "./components/Sidebar";
+import Header from "./components/Header";
+import MainDashboard from "./pages/ClientDashboard";
+import AddProject from "./pages/AddProjects";
+import Billing from "./pages/Billing";
+import ClientDelivery from "./pages/Client-Delivery";
+import PerformingProjects from "./pages/PerformingProjects";
+import Settings from "./pages/Settings";
+import Notifications from "./pages/Alert";
+import ProjectDetails from "./pages/ProjectDetails";
+import CampaignDetails from "./pages/CampaignDetails";
+import Login from "./pages/login/LoginForm";
+import ProtectedRoute from "./routes/ProtectedRoute";
+import LeadsPage from "./pages/LeadPerformance";
+import Leads from "./pages/Leads";
+import FollowUp from "./pages/FollowUp";
+import DailyReports from "./pages/DailyReports";
+import Clients from "./pages/admin/client/Clients";
+import ImpersonationBanner from "./pages/admin/component/ImpersonationBanner";
+import ProjectDisplayConfig from "./pages/admin/client/ProjectDisplayConfig";
+import ClientNomen from "./pages/admin/client/ClientNomen";
+import Campaigns from "./pages/admin/campaigns/Campaigns";
+import AdAccounts from "./pages/admin/client/AdAccounts";
+import FeededLeads from "./pages/admin/leads/FeededLeads";
+import ManualBatches from "./pages/admin/leads/FeededLeads";
+import Projects from "./pages/admin/projects/Projects";
+import AdminRoute from "./utils/AdminRoute";
 
 //  Layout is a named component — SolidJS reuses the SAME instance across all
 //    child route navigations, so Header and Sidebar mount exactly ONCE
@@ -41,11 +41,11 @@ function Layout(props) {
     <div class="min-h-screen bg-gray-50 dark:bg-gray-900">
       <ImpersonationBanner />
       <Sidebar />
-      <div class={`transition-all duration-300 ${isCollapsed() ? 'lg:ml-20' : 'lg:ml-64'}`}>
+      <div
+        class={`transition-all duration-300 ${isCollapsed() ? "lg:ml-20" : "lg:ml-64"}`}
+      >
         <Header />
-        <main class="min-h-[calc(100vh-4rem)]">
-          {props.children}
-        </main>
+        <main class="min-h-[calc(100vh-4rem)]">{props.children}</main>
       </div>
     </div>
   );
@@ -64,8 +64,6 @@ function Root(props) {
 
     window.addEventListener("auth-logout", handleLogout);
     onCleanup(() => window.removeEventListener("auth-logout", handleLogout));
-
-   
   });
 
   return <>{props.children}</>;
@@ -76,9 +74,7 @@ function Root(props) {
 function ProtectedLayout(props) {
   return (
     <ProtectedRoute>
-      <Layout>
-        {props.children}
-      </Layout>
+      <Layout>{props.children}</Layout>
     </ProtectedRoute>
   );
 }
@@ -88,7 +84,6 @@ function App() {
     <ThemeProvider>
       <SidebarProvider>
         <Router root={Root}>
-
           {/* Public route — no layout, no auth guard */}
           <Route path="/login" component={Login} />
 
@@ -110,13 +105,62 @@ function App() {
             <Route path="/leads" component={Leads} />
             <Route path="/follow-up" component={FollowUp} />
             {/* admin pages */}
-            <Route path="/clients" component={Clients} />
-            <Route path="/project-display-config" component={ProjectDisplayConfig} />
-            <Route path="/client-nomen" component={ClientNomen} />
-            <Route path="/campaigns" component={Campaigns} />
-            <Route path="/projects" component={Projects} />
-            <Route path="/ad-accounts" component={AdAccounts} />
-            <Route path="/feeded-leads" component={ManualBatches} />
+            <Route
+              path="/clients"
+              component={() => (
+                <AdminRoute>
+                  <Clients />
+                </AdminRoute>
+              )}
+            />
+            <Route
+              path="/project-display-config"
+              component={() => (
+                <AdminRoute>
+                  <ProjectDisplayConfig />
+                </AdminRoute>
+              )}
+            />
+            <Route
+              path="/client-nomen"
+              component={() => (
+                <AdminRoute>
+                  <ClientNomen />
+                </AdminRoute>
+              )}
+            />
+            <Route
+              path="/campaigns"
+              component={() => (
+                <AdminRoute>
+                  <Campaigns />
+                </AdminRoute>
+              )}
+            />
+            <Route
+              path="/projects"
+              component={() => (
+                <AdminRoute>
+                  <Projects />
+                </AdminRoute>
+              )}
+            />
+            <Route
+              path="/ad-accounts"
+              component={() => (
+                <AdminRoute>
+                  <AdAccounts />
+                </AdminRoute>
+              )}
+            />
+            <Route
+              path="/feeded-leads"
+              component={() => (
+                <AdminRoute>
+                  <ManualBatches />
+                </AdminRoute>
+              )}
+            />
           </Route>
         </Router>
       </SidebarProvider>

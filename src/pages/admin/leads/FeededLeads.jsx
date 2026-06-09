@@ -3,6 +3,7 @@ import { fetchManualBatches, createManualBatch } from "../services/feededLeads";
 import { fetchClients } from "../services/fetchClients";
 import { fetchProjectDisplayConfig } from "../services/projectDisplayConfig";
 import { fetchProjectsByClient } from "../services/fetchProjectsByClient";
+import Avatar from "../../../components/common/Avatar";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -529,10 +530,19 @@ export default function ManualBatches() {
                     <td class="p-3 text-gray-700 dark:text-gray-300 font-medium text-sm whitespace-nowrap">
                       {b.id}
                     </td>
-
+                    
                     {/* Project */}
-                    <td class="p-3 text-gray-700 dark:text-gray-300 font-medium whitespace-nowrap">
-                      {b.project_name ?? "—"}
+                    <td class="p-3">
+                      <div class="flex items-center gap-2">
+                        <div class="flex-shrink-0">
+                          <Avatar name={b.project_name} />
+                        </div>
+                        <div class="flex items-center">
+                          <span class="text-purple-700 dark:text-gray-300 font-medium">
+                            {b.project_name ?? "—"}
+                          </span>
+                        </div>
+                      </div>
                     </td>
 
                     {/* Client Nomen */}

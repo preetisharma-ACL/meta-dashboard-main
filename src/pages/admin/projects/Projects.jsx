@@ -1,5 +1,6 @@
 import { createSignal, createMemo, onMount, For, Show } from "solid-js";
 import { fetchProjects } from "../services/fetchProjects"; // ← adjust path
+import Avatar from "../../../components/common/Avatar";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -277,8 +278,7 @@ export default function Projects() {
               >
                 Budget {sortIcon("budget")}
               </th>
-            
-             
+
               <th
                 class="p-3 text-center cursor-pointer hover:text-blue-600 whitespace-nowrap"
                 onClick={() => toggleSort("campaign_count")}
@@ -352,8 +352,13 @@ export default function Projects() {
                     <td class="p-3 text-purple-700 dark:text-gray-300 font-medium">
                       {project.id}
                     </td>
-                    <td class="p-3 font-medium text-gray-900 dark:text-white max-w-[200px] truncate">
-                      {project.name}
+                    <td class="p-3">
+                      <div class="flex items-center gap-2">
+                        <Avatar name={project.name} />
+                        <span class="text-purple-700 dark:text-gray-300 font-medium">
+                          {project.name}
+                        </span>
+                      </div>
                     </td>
                     <td class="p-3 text-center">
                       <span
