@@ -1,4 +1,11 @@
-import { For, Show, createSignal, createMemo, createEffect, on } from "solid-js";
+import {
+  For,
+  Show,
+  createSignal,
+  createMemo,
+  createEffect,
+  on,
+} from "solid-js";
 import { useParams } from "@solidjs/router";
 import { onMount } from "solid-js";
 import { useLocation } from "@solidjs/router";
@@ -104,7 +111,9 @@ export default function MainDashboard() {
           setProjectsCache("data", []);
 
           loadData(1);
-          loadManualBatches();
+          if (auth?.role === "admin") {
+            loadManualBatches();
+          }
           loadAllProjects();
         }
       },
@@ -141,7 +150,9 @@ export default function MainDashboard() {
     setUserRole(auth?.role ?? "client");
 
     loadData(1);
-    loadManualBatches();
+    if (auth?.role === "admin") {
+      loadManualBatches();
+    }
 
     // Now the cache is guaranteed stale if we just busted it above
     if (isAllProjectsCacheStale()) {
@@ -149,7 +160,6 @@ export default function MainDashboard() {
     }
   });
 
-  
   const auth = JSON.parse(localStorage.getItem("auth") || "{}");
 
   const serviceChargePercent = Number(auth?.serviceCharge ?? 13);
@@ -437,7 +447,10 @@ export default function MainDashboard() {
   //  2. Page-1 with pageSize=1000 is kept, but we now also paginate if needed so
   //     large accounts (>1000 campaigns per project) don't miss any active ones.
 
-  const deriveProjectStatuses = async (projectList, token = activeLoadToken) => {
+  const deriveProjectStatuses = async (
+    projectList,
+    token = activeLoadToken,
+  ) => {
     const perProject = await Promise.all(
       projectList.map(async (project) => {
         try {
