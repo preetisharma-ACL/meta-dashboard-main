@@ -19,6 +19,7 @@ import useColumnSort from "../components/Columnsorting";
 import { fetchProjects, fetchManualBatches } from "../services/dashboard";
 import { fetchCampaigns } from "../services/campaigns";
 import { fetchBulkCampaignInsights } from "../services/campaigns";
+import Avatar from "../components/common/Avatar";
 import {
   projectsCache,
   setProjectsCache,
@@ -1383,12 +1384,8 @@ export default function MainDashboard() {
                             : "bg-purple-50 dark:bg-gray-900")
                         }
                       >
-                        <div class="flex items-center gap-2">
-                          <div
-                            class={`rounded flex items-center justify-center w-10 h-10 font-bold text-lg uppercase ${getColor(project.name)}`}
-                          >
-                            {project.name ? project.name.charAt(0) : "?"}
-                          </div>
+                        <div class="flex items-center gap-4">
+                          <Avatar name={project.name} />
                           <A
                             href={`/project/${project.id}`} //  ADD THIS
                             state={{ project }}
@@ -1411,10 +1408,10 @@ export default function MainDashboard() {
                           class={
                             "px-3 py-1 text-sm rounded-full capitalize " +
                             (project.status === "active"
-                              ? "bg-green-100 text-green-700"
+                              ? "bg-green-100 text-green-700 border border-green-300"
                               : project.status === "paused"
-                                ? "bg-yellow-100 text-yellow-700"
-                                : "bg-red-100 text-red-700")
+                                ? "bg-red-100 text-red-700 border border-red-300"
+                                : "bg-red-100 text-red-700 border border-red-300")
                           }
                         >
                           {project.status}

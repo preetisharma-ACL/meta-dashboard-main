@@ -32,6 +32,7 @@ import {
   getMarkupPctForDate,
   applyMarkup,
 } from "../utils/markupUtils";
+import Avatar from "../components/common/Avatar";
 
 export default function ProjectDetails() {
   const location = useLocation();
@@ -1139,6 +1140,11 @@ export default function ProjectDetails() {
         <table class="min-w-full text-sm">
           <thead class="bg-gray-100 dark:bg-gray-800">
             <tr class="[&_th]:text-center [&_th]:cursor-pointer [&_th]:whitespace-nowrap [&_th:first-child]:text-left">
+              {userRole() === "admin" && (
+                <th class="p-3" onClick={() => handleSort("id")}>
+                  ID {getSortIcon("id")}
+                </th>
+              )}
               <th class="p-3" onClick={() => handleSort("campaign_name")}>
                 Campaign {getSortIcon("campaign_name")}
               </th>
@@ -1185,27 +1191,35 @@ export default function ProjectDetails() {
                       : "bg-purple-50 dark:bg-gray-900"
                   }`}
                 >
-                  <td class="p-3 font-medium">
-                    <A
-                      href={`/campaign/${row.id}`}
-                      class="text-purple-800  dark:text-purple-300"
-                    >
-                      {row.campaign_name}
-                    </A>
-                    <Show
-                      when={
-                        row.totalLeads ===
-                        Math.max(...sortedCampaigns().map((c) => c.totalLeads))
-                      }
-                    >
-                      <span class="ml-2 px-2 py-0.5 text-xs rounded bg-green-100 text-green-700">
-                        Top Leads
-                      </span>
-                    </Show>
+                  {userRole() === "admin" && <td class="p-3">{row.id}</td>}
+
+                  <td class="p-3 font-medium w-[300px]">
+                    <div class="flex items-center gap-2">
+                      <Avatar name={row.campaign_name} />
+                      <A
+                        href={`/campaign/${row.id}`}
+                        class="text-purple-800  dark:text-purple-300 whitespace-nowrap"
+                      >
+                        {row.campaign_name}
+                      </A>
+
+                      <Show
+                        when={
+                          row.totalLeads ===
+                          Math.max(
+                            ...sortedCampaigns().map((c) => c.totalLeads),
+                          )
+                        }
+                      >
+                        <span class="ml-2 px-2 py-0.5 text-xs rounded bg-green-100 text-green-700">
+                          Top Leads
+                        </span>
+                      </Show>
+                    </div>
                   </td>
                   <td class="p-3 ">{row.start_date || "No Date"}</td>
                   {userRole() === "admin" && (
-                    <td class="p-3 ">{row.ad_account}</td>
+                    <td class="p-3 whitespace-nowrap ">{row.ad_account}</td>
                   )}
                   <td class="px-4 py-3">
                     <span
@@ -1256,6 +1270,7 @@ export default function ProjectDetails() {
               {/* ✅ Add this — matches the Ad Account column in thead */}
               {userRole() === "admin" && <td></td>}
 
+              {userRole() === "admin" && <td></td>}
               <td></td>
               <td></td>
 
