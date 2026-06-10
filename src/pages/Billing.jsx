@@ -17,7 +17,7 @@ const pct = (a, b) => (b === 0 ? 0 : Math.min(100, Math.round((a / b) * 100)));
 
 // TODO: replace with the API field once the backend exposes the contracted
 // per-lead rate (e.g. budget.fixed_cpl). Hardcoded for now per requirement.
-const FIXED_CPL = 250;
+const FIXED_CPL = "NA";
 
 // --- Primitive UI Components --------------------------------------------------
 
