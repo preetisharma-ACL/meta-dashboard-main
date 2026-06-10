@@ -585,54 +585,60 @@ export default function MainDashboard() {
       }),
     );
 
-    // 2. Collect all unique clientIds across every campaign in every project
-    const configHistoryMap = {};
-    const uniqueClientIds = [
-      ...new Set(
-        projectList.flatMap((project) =>
-          (projectCampaigns[project.id] || [])
-            .map((c) => c.premium_metrics?.client_id)
-            .filter(Boolean),
-        ),
-      ),
-    ];
+    // ── Step 3: Fetch markup config history ──────────────────────────────────
+    // FIXED: fetch per (clientId, projectId) pair, not just per clientId
+    // Old code used one projectId per clientId which was wrong for clients
+    // that span multiple projects with different markup configs.
 
-    // 3. Fetch markup config history for each unique clientId — in parallel
+    const configHistoryMap = {}; // key: `${clientId}_${projectId}`
+
+    // Collect all unique (clientId, projectId) pairs
+    const clientProjectPairs = [];
+    for (const project of projectList) {
+      for (const c of projectCampaigns[project.id] || []) {
+        const clientId = c.premium_metrics?.client_id;
+        if (!clientId) continue;
+        const key = `${clientId}_${project.id}`;
+        if (
+          !configHistoryMap[key] &&
+          !clientProjectPairs.find((p) => p.key === key)
+        ) {
+          clientProjectPairs.push({ key, clientId, projectId: project.id });
+        }
+      }
+    }
+
     await Promise.all(
-      uniqueClientIds.map(async (clientId) => {
-        // Use the first project that has this clientId for the project scope
-        const projectId = projectList.find((p) =>
-          (projectCampaigns[p.id] || []).some(
-            (c) => c.premium_metrics?.client_id === clientId,
-          ),
-        )?.id;
+      clientProjectPairs.map(async ({ key, clientId, projectId }) => {
         try {
           const res = await fetchConfigHistory(clientId, projectId);
           const rows = Array.isArray(res?.data)
             ? res.data
             : (res?.data?.results ?? []);
-          configHistoryMap[clientId] = buildMarkupHistory(rows);
+          configHistoryMap[key] = buildMarkupHistory(rows);
         } catch {
-          configHistoryMap[clientId] = [];
+          configHistoryMap[key] = [];
         }
       }),
     );
 
-    // 4. Build campaign lookup and full ID list
+    // ── Step 4: Build campaign lookup ────────────────────────────────────────
     const campaignById = {};
     const allCampaignIds = [];
+
     for (const project of projectList) {
       for (const c of projectCampaigns[project.id] || []) {
+        const clientId = c.premium_metrics?.client_id;
+        const configKey = `${clientId}_${project.id}`; // ← FIXED key
+
         campaignById[String(c.id)] = {
           campaign: c,
           projectId: project.id,
-          // Carry markup history so insight rows can use it
-          markupHistory: configHistoryMap[c.premium_metrics?.client_id] ?? [],
+          markupHistory: configHistoryMap[configKey] ?? [], // ← uses correct config
         };
         allCampaignIds.push(c.id);
       }
     }
-
     // 5. ONE bulk insights call for all campaigns
     if (allCampaignIds.length > 0) {
       try {
@@ -719,6 +725,13 @@ export default function MainDashboard() {
         const dateStr = d.date?.includes("T") ? d.date.split("T")[0] : d.date;
         const daySpend = parseFloat(d.spend || 0);
         const markupPct = getMarkupPctForDate(d.markupHistory ?? [], dateStr);
+        // Temporarily add inside allProjectStats loop
+        console.log(
+          "insight row markupHistory:",
+          d.markupHistory,
+          "date:",
+          d.date,
+        );
         const { modifiedSpend, isNull } = applyMarkup(daySpend, markupPct);
 
         if (!isNull) {
