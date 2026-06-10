@@ -268,7 +268,7 @@ export default function Sidebar() {
         } lg:translate-x-0`}
       >
         {/* Logo */}
-        <div class="h-16 flex items-center justify-between px-4 border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900">
+        <div class="h-16 flex items-center justify-between px-4 border-b border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800">
           <div class="flex items-center gap-3">
             <div class="w-9 h-9 bg-white rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm border border-gray-100 dark:border-gray-700">
               <img src="/aajneeti-favicon.png" alt="aajneeti" class="w-7 h-7 object-contain" />
