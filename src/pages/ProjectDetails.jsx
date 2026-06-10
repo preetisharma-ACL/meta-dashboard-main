@@ -877,9 +877,9 @@ export default function ProjectDetails() {
             <Info label="Project name" value={project?.name} />
             <Info label="Location" value={project?.location} />
             <Info label="Property type" value={project?.type} />
-            <Info label="Priority" value={project?.priority} badge />
+            {/* <Info label="Priority" value={project?.priority} badge />
             <Info label="Project control" value={project?.projectControl} />
-            <Info label="Pricing & typology" value={project?.summary} />
+            <Info label="Pricing & typology" value={project?.summary} /> */}
           </div>
         </section>
       </Show>
@@ -1162,12 +1162,16 @@ export default function ProjectDetails() {
               <th class="p-3" onClick={() => handleSort("totalLeads")}>
                 {rangeLabel()} Leads {getSortIcon("totalLeads")}
               </th>
-              <th class="p-3" onClick={() => handleSort("totalClicks")}>
-                {rangeLabel()} Clicks {getSortIcon("totalClicks")}
-              </th>
-              <th class="p-3" onClick={() => handleSort("totalReach")}>
-                {rangeLabel()} Impression {getSortIcon("totalReach")}
-              </th>
+              {userRole() === "client" && (
+                <th class="p-3" onClick={() => handleSort("totalClicks")}>
+                  {rangeLabel()} Clicks {getSortIcon("totalClicks")}
+                </th>
+              )}
+              {userRole() === "client" && (
+                <th class="p-3" onClick={() => handleSort("totalReach")}>
+                  {rangeLabel()} Impression {getSortIcon("totalReach")}
+                </th>
+              )}
               <th class="p-3" onClick={() => handleSort("totalSpent")}>
                 {rangeLabel()} Spent {getSortIcon("totalSpent")}
               </th>
@@ -1235,8 +1239,12 @@ export default function ProjectDetails() {
                     </span>
                   </td>
                   <td class="p-3 font-semibold">{row.totalLeads}</td>
-                  <td class="p-3">{row.totalClicks}</td>
-                  <td class="p-3">{row.totalReach}</td>
+                  {userRole() === "client" && (
+                    <td class="p-3">{row.totalClicks}</td>
+                  )}
+                  {userRole() === "client" && (
+                    <td class="p-3">{row.totalReach}</td>
+                  )}
                   <td class="p-3">₹{row.totalSpent.toLocaleString("en-IN")}</td>
                   <td class="p-3">₹{(row.totalCPL ?? 0).toFixed(2)}</td>
                   {userRole() === "admin" && (
@@ -1280,14 +1288,18 @@ export default function ProjectDetails() {
               </td>
 
               {/* Clicks */}
-              <td class="text-blue-700 dark:text-blue-300 font-bold">
-                {footerTotals().totalClicks}
-              </td>
+              {userRole() === "client" && (
+                <td class="text-blue-700 dark:text-blue-300 font-bold">
+                  {footerTotals().totalClicks}
+                </td>
+              )}
 
               {/* Reach */}
-              <td class="text-indigo-700 dark:text-indigo-300 font-bold">
-                {footerTotals().totalReach}
-              </td>
+              {userRole() === "client" && (
+                <td class="text-indigo-700 dark:text-indigo-300 font-bold">
+                  {footerTotals().totalReach}
+                </td>
+              )}
 
               {/* Spend */}
               <td class="text-red-700 dark:text-red-300 font-bold">

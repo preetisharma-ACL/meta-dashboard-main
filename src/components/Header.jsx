@@ -104,7 +104,7 @@ export default function Header() {
   //  route-aware effect skips Billing yet still loads on any other page.
   let alertsLoaded = false;
   createEffect(() => {
-    if (location.pathname === "/billing") return; // ⛔ skip alerts on Billing
+    if (location.pathname === "/billing") return; //  skip alerts on Billing
     if (alertsLoaded) return;
     if (!isHeaderCacheStale()) {
       alertsLoaded = true;
@@ -380,7 +380,7 @@ export default function Header() {
             </button>
 
             <Show when={showUserMenu()}>
-              <div class="absolute right-0 mt-2 w-56 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden z-50">
+              <div class="absolute right-0 mt-2 w-70 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden z-50">
                 <div class="p-3 border-b border-gray-200 dark:border-gray-700">
                   <p class="text-sm font-medium text-gray-900 dark:text-white">
                     {user()?.username}

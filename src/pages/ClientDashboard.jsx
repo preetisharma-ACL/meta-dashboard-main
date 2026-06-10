@@ -27,6 +27,12 @@ import {
   isAllProjectsCacheStale,
 } from "../cacheStore/appStore";
 import useRole, { clientRole } from "./../hooks/useRole";
+import { fetchConfigHistory } from "./admin/services/projectDisplayConfig";
+import {
+  buildMarkupHistory,
+  getMarkupPctForDate,
+  applyMarkup,
+} from "../utils/markupUtils";
 
 // Guards against stale in-flight loads overwriting the cache after the
 // dashboard context switches (e.g. admin leaves a client dashboard and returns
@@ -256,6 +262,10 @@ export default function MainDashboard() {
           : Array.isArray(res?.data)
             ? res.data
             : [];
+
+        // ← ADD THIS TEMPORARILY
+        console.log("Sample project from API:", apiData[0]);
+        console.log("modified_cpl value:", apiData[0]?.modified_cpl);
 
         const mappedProjects = apiData.map((item) => ({
           id: item.id,
@@ -534,16 +544,16 @@ export default function MainDashboard() {
     // Return the campaigns so loadAllProjectInsights can skip re-fetching them.
     return campaignsByProject;
   };
+
   const loadAllProjectInsights = async (
     projectList,
     token = activeLoadToken,
     campaignsByProject = null,
   ) => {
     const result = {};
-
-    // 1. Resolve each project's campaigns. Reuse the list deriveProjectStatuses
-    //    already fetched; only fetch here if it wasn't provided (standalone use).
     const projectCampaigns = {};
+
+    // 1. Resolve campaigns per project (reuse or fetch)
     await Promise.all(
       projectList.map(async (project) => {
         let allCampaigns = campaignsByProject
@@ -565,7 +575,6 @@ export default function MainDashboard() {
         }
 
         projectCampaigns[project.id] = allCampaigns || [];
-        // Seed every project so it has an entry even with zero insights.
         result[project.id] = {
           campaigns: (allCampaigns || []).map((c) => ({
             id: c.id,
@@ -576,33 +585,69 @@ export default function MainDashboard() {
       }),
     );
 
-    // 2. Build a campaign → {project, canonical id} lookup and the full ID list.
+    // 2. Collect all unique clientIds across every campaign in every project
+    const configHistoryMap = {};
+    const uniqueClientIds = [
+      ...new Set(
+        projectList.flatMap((project) =>
+          (projectCampaigns[project.id] || [])
+            .map((c) => c.premium_metrics?.client_id)
+            .filter(Boolean),
+        ),
+      ),
+    ];
+
+    // 3. Fetch markup config history for each unique clientId — in parallel
+    await Promise.all(
+      uniqueClientIds.map(async (clientId) => {
+        // Use the first project that has this clientId for the project scope
+        const projectId = projectList.find((p) =>
+          (projectCampaigns[p.id] || []).some(
+            (c) => c.premium_metrics?.client_id === clientId,
+          ),
+        )?.id;
+        try {
+          const res = await fetchConfigHistory(clientId, projectId);
+          const rows = Array.isArray(res?.data)
+            ? res.data
+            : (res?.data?.results ?? []);
+          configHistoryMap[clientId] = buildMarkupHistory(rows);
+        } catch {
+          configHistoryMap[clientId] = [];
+        }
+      }),
+    );
+
+    // 4. Build campaign lookup and full ID list
     const campaignById = {};
     const allCampaignIds = [];
     for (const project of projectList) {
       for (const c of projectCampaigns[project.id] || []) {
-        campaignById[String(c.id)] = { campaign: c, projectId: project.id };
+        campaignById[String(c.id)] = {
+          campaign: c,
+          projectId: project.id,
+          // Carry markup history so insight rows can use it
+          markupHistory: configHistoryMap[c.premium_metrics?.client_id] ?? [],
+        };
         allCampaignIds.push(c.id);
       }
     }
 
-    // 3. ONE bulk insights call for every campaign across all projects
-    //    (replaces the old ~180-200 per-campaign requests — Issue 2).
+    // 5. ONE bulk insights call for all campaigns
     if (allCampaignIds.length > 0) {
       try {
         const bulk = await fetchBulkCampaignInsights(allCampaignIds);
         const rows = bulk.data || [];
 
-        // 4. Group rows back onto their project. Synthetic (is_manual) rows are
-        //    skipped here — manual/extra leads are already counted separately via
-        //    manualBatches/getProjectExtraLeads, so keeping them would double-count.
         for (const row of rows) {
           if (row.is_manual) continue;
           const entry = campaignById[String(row.campaign_id)];
           if (!entry) continue;
+          // Attach markupHistory onto each insight row so allProjectStats can use it
           result[entry.projectId].insights.push({
             ...row,
             campaignId: entry.campaign.id,
+            markupHistory: entry.markupHistory,
           });
         }
       } catch (err) {
@@ -664,13 +709,33 @@ export default function MainDashboard() {
       );
       const avgCPL =
         totalLeads > 0 ? parseFloat(totalSpent / totalLeads).toFixed(2) : 0;
-
       const resolvedCpl = totalLeads > 0 ? Number(avgCPL) : 1500;
 
-      //  Campaigns that had any activity in the date window = active; rest = paused
+      // ── Compute modifiedCpl from per-row markup history ──────────────────
+      let totalModifiedSpent = 0;
+      let allModifiedSpendNull = true;
+
+      for (const d of filtered) {
+        const dateStr = d.date?.includes("T") ? d.date.split("T")[0] : d.date;
+        const daySpend = parseFloat(d.spend || 0);
+        const markupPct = getMarkupPctForDate(d.markupHistory ?? [], dateStr);
+        const { modifiedSpend, isNull } = applyMarkup(daySpend, markupPct);
+
+        if (!isNull) {
+          allModifiedSpendNull = false;
+          totalModifiedSpent += modifiedSpend;
+        }
+      }
+
+      const modifiedCpl = allModifiedSpendNull
+        ? null
+        : totalLeads > 0
+          ? Number((totalModifiedSpent / totalLeads).toFixed(2))
+          : 0;
+      // ─────────────────────────────────────────────────────────────────────
+
       let activeCampaigns, pausedCampaigns;
       if (!from || !to) {
-        // No date range selected → use live counts from project data
         activeCampaigns = project.activeCampaigns ?? 0;
         pausedCampaigns = project.pausedCampaigns ?? 0;
       } else {
@@ -680,7 +745,6 @@ export default function MainDashboard() {
             .map((d) => d.campaignId),
         );
         activeCampaigns = activeCampaignIds.size;
-        // Paused = campaigns that exist but had NO activity in the window
         pausedCampaigns = campaigns.filter(
           (c) => !activeCampaignIds.has(c.id),
         ).length;
@@ -691,6 +755,7 @@ export default function MainDashboard() {
         extraLeads,
         totalSpent,
         avgCPL,
+        modifiedCpl, // ← now properly computed
         resolvedCpl,
         activeCampaigns,
         pausedCampaigns,
@@ -711,6 +776,7 @@ export default function MainDashboard() {
         avgCPL: Number(stats.avgCPL || 0),
         activeCampaigns: stats.activeCampaigns || 0,
         pausedCampaigns: stats.pausedCampaigns || 0,
+        modifiedCpl: stats.modifiedCpl ?? null, // ← add this
       };
     });
 
@@ -1310,7 +1376,7 @@ export default function MainDashboard() {
               {/* <th class="p-3">Uploaded Document</th> */}
               {/* <th class="p-3">Customer Priority</th> */}
               {/* <th class="p-3">Project Control</th> */}
-              <Show when={isAdmin() || ishybrid()}>
+              <Show when={ishybrid()}>
                 <th class="p-3" onClick={() => handleSort("budget")}>
                   Budget {getSortIcon("budget")}
                 </th>
@@ -1325,11 +1391,11 @@ export default function MainDashboard() {
               <th class="p-3" onClick={() => handleSort("avgCPL")}>
                 {rangeLabel()} AVG CPL {getSortIcon("avgCPL")}
               </th>
-              {/* {userRole() === "admin" && (
-                <th class="p-3" onClick={() => handleSort("premiumCPL")}>
-                  Premium CPL {getSortIcon("premiumCPL")}
+              <Show when={isAdmin()}>
+                <th class="p-3" onClick={() => handleSort("modifiedCpl")}>
+                  Premium CPL {getSortIcon("modifiedCpl")}
                 </th>
-              )} */}
+              </Show>
               <th class="p-3" onClick={() => handleSort("activeCampaigns")}>
                 Active Campaigns {getSortIcon("activeCampaigns")}
               </th>
@@ -1467,7 +1533,7 @@ export default function MainDashboard() {
                                         </td> */}
 
                       {/* Budget */}
-                      <Show when={isAdmin() || ishybrid()}>
+                      <Show when={ishybrid()}>
                         <td class="p-2">
                           {"₹"}
                           {(iscpl()
@@ -1494,12 +1560,14 @@ export default function MainDashboard() {
                         {"₹"}
                         {stats().avgCPL}
                       </td>
-                      {/* {userRole() === "admin" && (
-                        <td class="p-2">
-                          {"₹"}
-                          {project.modifiedCpl ?? "—"}
+                      <Show when={isAdmin()}>
+                        <td class="p-3">
+                          {project.modifiedCpl !== null &&
+                          project.modifiedCpl !== undefined
+                            ? `₹${Number(project.modifiedCpl).toLocaleString("en-IN")}`
+                            : "—"}
                         </td>
-                      )} */}
+                      </Show>
 
                       {/* Active Campaigns */}
                       <td class="p-2 text-center">
@@ -1528,7 +1596,7 @@ export default function MainDashboard() {
                 <td></td>
 
                 {/* Budget Total */}
-                <Show when={isAdmin() || ishybrid()}>
+                <Show when={ishybrid()}>
                   <td>
                     {"₹"}
                     {overviewStats().totalBudget.toLocaleString("en-IN")}
@@ -1559,6 +1627,10 @@ export default function MainDashboard() {
                   {"₹"}
                   {overviewStats().avgCPL}
                 </td>
+                {/* Premium CPL — no meaningful aggregate, show dash */}
+                <Show when={isAdmin()}>
+                  <td>—</td>
+                </Show>
 
                 {/* Active Campaigns */}
                 <td>{overviewStats().activeCampaigns}</td>
