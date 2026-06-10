@@ -1,10 +1,4 @@
-import {
-  createSignal,
-  createMemo,
-  createResource,
-  For,
-  Show,
-} from "solid-js";
+import { createSignal, createMemo, createResource, For, Show } from "solid-js";
 import { fetchBillingOverview } from "../services/billing-service";
 import { fetchPaymentsDetails } from "../services/payments-service";
 import useRole, { clientRole } from "../hooks/useRole";
@@ -21,54 +15,9 @@ const inrFormatter = new Intl.NumberFormat("en-IN", {
 const fmt = (n) => inrFormatter.format(Number(n ?? 0));
 const pct = (a, b) => (b === 0 ? 0 : Math.min(100, Math.round((a / b) * 100)));
 
-const MOCK_DELIVERIES = [
-  { project: "Project 1", leads: 50, amountExGST: 25000, amountWithGST: 29500 },
-  { project: "Project 2", leads: 30, amountExGST: 30000, amountWithGST: 35400 },
-];
-
-
-
-// --- Transform API project → component-friendly shape ------------------------
-// projectMeta comes from the /projects/ list API (has name, status, logo, etc.)
-// apiData comes from /billing/project/:id
-function transformProject(apiData, projectMeta = {}) {
-  const campaigns = (apiData.campaign_breakdown || []).map((c) => ({
-    id: String(c.campaign_id),
-    // Show 2nd and 4th segments (index 1 and 3) joined
-    name: [
-      c.campaign_name.split("|")[1]?.trim(),
-      c.campaign_name.split("|")[3]?.trim(),
-    ]
-      .filter(Boolean)
-      .join(" | "),
-    // fullName: c.campaign_name,
-    status: c.status,
-    spend: parseFloat(c.spent) || 0,
-    budgetCap: parseFloat(c.budget) || 0,
-    leads: c.leads || 0,
-    cpl: c.cpl ? parseFloat(c.cpl) : 0,
-    result: "Lead",
-    // dailyAvg is not in this API — set 0 until available
-    dailyAvg: 0,
-  }));
-
-  return {
-    // prefer billing API fields, fall back to projectMeta from projects list
-    id: String(apiData.project_id ?? projectMeta.id),
-    name: apiData.project_name ?? projectMeta.name,
-    status: projectMeta.status ?? "active",
-    logo: projectMeta.logo ?? null,
-    budgetAllocated: parseFloat(apiData.budget_allocated),
-    totalSpend: parseFloat(apiData.cpl?.total_spend),
-    remaining: parseFloat(apiData.remaining),
-    qualificationPct: apiData.cpl?.qualification_percent || 30,
-    qualifiedLeads: apiData.cpl?.qualified_leads,
-    expectedQualifiedLeads: apiData.cpl?.expected_qualified_leads,
-    totalLeads: apiData.cpl?.total_leads,
-    avgCPL: parseFloat(apiData.cpl?.avg_cpl),
-    campaigns,
-  };
-}
+// TODO: replace with the API field once the backend exposes the contracted
+// per-lead rate (e.g. budget.fixed_cpl). Hardcoded for now per requirement.
+const FIXED_CPL = 250;
 
 // --- Primitive UI Components --------------------------------------------------
 
@@ -83,7 +32,7 @@ function SectionLabel(props) {
 function Card(props) {
   return (
     <div
-      class={`rounded-xl shadow-md transition border border-gray-200/80 dark:border dark:border-gray-700 bg-white/70 dark:bg-gray-800/70 backdrop-blur-xl ${props.class || ""}`}
+      class={`rounded-xl shadow-sm transition border border-gray-200/80 dark:border dark:border-gray-700 bg-white/70 dark:bg-gray-800/70 backdrop-blur-xl ${props.class || ""}`}
     >
       {props.children}
     </div>
@@ -107,380 +56,195 @@ function Tag(props) {
   );
 }
 
-function ProgressBar(props) {
-  const width = () => pct(props.value, props.max);
+// Tiny label used across the Overview, mirrors the reference design.
+function Eyebrow(props) {
   return (
-    <div class="h-1 w-full rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden">
-      <div
-        class={`h-full rounded-full transition-all duration-700 ${props.colorClass || "bg-gray-700 dark:bg-gray-300"}`}
-        style={{ width: `${width()}%` }}
-      />
-    </div>
+    <p class="text-sm text-gray-600 dark:text-gray-300">{props.children}</p>
   );
 }
 
-function Toggle(props) {
+// --- Overview: Hero cards -------------------------------------------------------
+function HeroCard(props) {
   return (
-    <button
-      role="switch"
-      aria-checked={props.checked}
-      onClick={props.onChange}
-      class={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full transition-colors duration-200 focus:outline-none ${props.checked ? "bg-gray-800 dark:bg-gray-200" : "bg-gray-200 dark:bg-gray-700"}`}
+    <section
+      aria-label={props.ariaLabel}
+      class={`rounded-2xl border p-6 transition shadow-sm ${
+        props.accent
+          ? "border-blue-300/60 dark:border-blue-800/70 bg-gradient-to-b from-blue-50/90 to-white dark:from-blue-950/40 dark:to-gray-800/70"
+          : "border-gray-200/80 dark:border-gray-700 bg-white/70 dark:bg-gray-800/70 backdrop-blur-xl"
+      }`}
     >
-      <span
-        class={`inline-block h-4 w-4 rounded-full bg-white dark:bg-gray-800 shadow-sm transform transition-transform duration-200 mt-0.5 ${props.checked ? "translate-x-4" : "translate-x-0.5"}`}
-      />
-    </button>
-  );
-}
-
-function CPLIndicator(props) {
-  return (
-    <div class="space-y-1">
-      <div class="flex justify-between text-sm">
-        <span class="text-gray-500 dark:text-gray-400">
-          vs Proposed {fmt(props.proposed)}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-// --- Budget Card --------------------------------------------------------------
-function BudgetCard(props) {
-  return (
-    <Card class="p-5 space-y-3 shadow-lg">
-      <div class="flex items-start justify-between">
-        <div class="space-y-0.5">
-          <p class="text-md font-semibold text-gray-700 dark:text-gray-400">
-            {props.label}
-          </p>
-
-          <p class="text-lg font-bold text-gray-800 dark:text-gray-100">
-            {fmt(props.value)}
-          </p>
-        </div>
-
-        <span class="text-2xl">{props.icon}</span>
-      </div>
-
-      {props.allocation && (
-        <span class="inline-block text-[12px] px-2 text-gray-800 dark:text-gray-300 bg-blue-100 dark:bg-blue-800 px-2 py-1 rounded-full">
-          {props.allocation}
-        </span>
-      )}
-      {props.showServiceCharge && (
-        <span class="inline-block text-[12px] text-gray-500 dark:text-gray-400 px-2 py-1  ">
-          Service Charge Applied
-        </span>
-      )}
-      {props.badge && (
-        <span class="inline-block text-[12px] px-2 py-1 rounded-full bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300 font-semibold">
-          {props.badge}
-        </span>
-      )}
+      <Eyebrow>{props.label}</Eyebrow>
       <p
-        class={`text-sm text-gray-600 dark:text-gray-400 ${
-          props.allocation || props.badge ? "pt-0" : "pt-10"
+        class={`mt-3 text-2xl font-bold tracking-tight tabular-nums ${
+          props.accent
+            ? "text-blue-900 dark:text-blue-300"
+            : "text-gray-900 dark:text-gray-100"
         }`}
       >
-        {props.sub}
+        {props.value}
       </p>
+      <p class="mt-2.5 text-sm text-gray-500 dark:text-gray-400">{props.sub}</p>
+    </section>
+  );
+}
 
-      <Show when={props.pctMax}>
-        <ProgressBar value={props.pctValue} max={props.pctMax} />
+// --- Overview: Leads card (CPL value optional, per client type) -----------------
+function LeadsCard(props) {
+  return (
+    <Card class={`p-6 ${props.class || ""}`} aria-label="Lead performance">
+      <div
+        class={`flex h-full gap-8 ${
+          props.stacked
+            ? "flex-row md:flex-col md:gap-5 justify-center"
+            : "flex-row items-center justify-center"
+        }`}
+      >
+        <div>
+          <Eyebrow>Total Leads</Eyebrow>
+          <p class="mt-1.5 text-2xl font-bold tracking-tight tabular-nums text-gray-900 dark:text-gray-100">
+            {props.leads}
+          </p>
+        </div>
+        <Show when={props.showCpl}>
+          <div>
+            <Eyebrow>Cost per Lead</Eyebrow>
+            <p class="mt-1.5 text-xl font-bold tracking-tight tabular-nums text-blue-900 dark:text-blue-400">
+              {props.cpl > 0 ? fmt(props.cpl) : "—"}
+              <span class="ml-2 text-sm font-medium tracking-normal text-gray-500 dark:text-gray-400">
+                ex-GST
+              </span>
+            </p>
+          </div>
+        </Show>
+      </div>
+    </Card>
+  );
+}
+
+// --- Overview: Budget pacing card ----------------------------------------------
+function PacingCard(props) {
+  return (
+    <Card class="p-6">
+      <Eyebrow>Budget Utilized · Monthly Allocation</Eyebrow>
+
+      <div class="mt-3 flex flex-wrap items-baseline justify-between gap-2">
+        <p class="text-2xl font-bold tracking-tight tabular-nums text-gray-900 dark:text-gray-100">
+          {fmt(props.utilized)}
+          <span class="ml-2 text-sm font-medium tracking-normal text-gray-500 dark:text-gray-400">
+            of {fmt(props.allocated)} committed
+          </span>
+        </p>
+        <p class="text-sm text-gray-500 dark:text-gray-400">
+          <span class="font-semibold text-gray-900 dark:text-gray-100">
+            {props.utilizationPct}%
+          </span>{" "}
+          used
+        </p>
+      </div>
+
+      {/* Progress bar with a "today" marker */}
+      <div
+        class="relative mt-5 h-2 rounded-full bg-gray-100 dark:bg-gray-700"
+        role="img"
+        aria-label={`${props.utilizationPct} percent of budget used, ${Math.round(props.elapsedPct)} percent of month elapsed`}
+      >
+        <div
+          class="absolute inset-y-0 left-0 rounded-full bg-blue-900 dark:bg-blue-400 transition-all duration-700 motion-reduce:transition-none"
+          style={{ width: `${Math.min(100, props.utilizationPct)}%` }}
+        />
+        <Show when={props.elapsedPct > 0 && props.elapsedPct < 100}>
+          <div
+            class="absolute -top-1 -bottom-1 w-0.5 rounded bg-gray-400 dark:bg-gray-500"
+            style={{ left: `${props.elapsedPct}%` }}
+          />
+        </Show>
+      </div>
+
+      <div class="mt-2.5 flex justify-between text-xs text-gray-400 dark:text-gray-500">
+        <span>1 {props.monthShort}</span>
+        <Show
+          when={props.dayOfMonth > 0 && props.dayOfMonth < props.daysInMonth}
+        >
+          <span class="text-gray-500 dark:text-gray-400">
+            Today · day {props.dayOfMonth} of {props.daysInMonth}
+          </span>
+        </Show>
+        <span>
+          {props.daysInMonth} {props.monthShort}
+        </span>
+      </div>
+
+      <Show when={props.pacing}>
+        <p class="mt-4 inline-flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+          <span class={`h-2 w-2 rounded-full ${props.pacing.dotClass}`} />
+          {props.pacing.text}
+        </p>
       </Show>
     </Card>
   );
 }
 
-// --- Campaign Table -----------------------------------------------------------
-function CampaignTable(props) {
-  const colHeads = [
-    "Campaign",
-    "Status",
-    "Spend",
-    "Budget Cap",
-    "Leads",
-    "CPL",
-  ];
-
-  const totalSpend = () => props.campaigns.reduce((s, c) => s + c.spend, 0);
-  const totalLeads = () => props.campaigns.reduce((s, c) => s + c.leads, 0);
-  const totalCPL = () =>
-    totalLeads() > 0 ? Math.round(totalSpend() / totalLeads()) : 0;
-
+// --- Overview: Ledger (account statement) --------------------------------------
+function LedgerRow(props) {
+  const borderClass = () => {
+    if (props.noBorder) return "";
+    if (props.total) return "border-t border-gray-200 dark:border-gray-700";
+    if (props.sub)
+      return "border-t border-dashed border-gray-100 dark:border-gray-700/70";
+    return "border-t border-gray-100 dark:border-gray-700/70";
+  };
   return (
-    <div class="overflow-x-auto rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm hover:shadow-md transition">
-      <table class="w-full text-base">
-        <thead>
-          <tr class="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-            <For each={colHeads}>
-              {(h) => (
-                <th
-                  class={`py-3 px-4 text-md font-semibold text-gray-500 dark:text-gray-400 ${h === "Campaign" ? "text-left" : "text-center"}`}
-                >
-                  {h}
-                </th>
-              )}
-            </For>
-          </tr>
-        </thead>
-        <tbody>
-          <For each={props.campaigns}>
-            {(c, i) => (
-              <tr
-                class={`group transition-all duration-200 hover:bg-gray-50 dark:hover:bg-gray-800/60 ${i() < props.campaigns.length - 1 ? "border-b border-gray-100 dark:border-gray-700" : ""}`}
-              >
-                {/* Campaign */}
-                <td class="py-4 px-4">
-                  <p class="font-semibold text-sm md:text-base text-gray-800 dark:text-gray-100">
-                    {c.name}
-                  </p>
-                  <p
-                    class="text-xs text-gray-400 dark:text-gray-600 mt-0.5 truncate max-w-xs"
-                    title={c.fullName}
-                  >
-                    {c.fullName}
-                  </p>
-                  {/* <span class="inline-block mt-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400">
-                    {c.result}
-                  </span> */}
-                </td>
-                {/* Status */}
-                <td class="py-4 px-4 text-center">
-                  <span
-                    class={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${c.status === "active" ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400" : "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400"}`}
-                  >
-                    {c.status === "active" ? "● Active" : "⏸ Paused"}
-                  </span>
-                </td>
-                {/* Spend */}
-                <td class="py-4 px-4 text-center text-sm md:text-base font-medium text-gray-700 dark:text-gray-300">
-                  {fmt(c.spend)}
-                </td>
-                {/* Budget Cap */}
-                <td class="py-4 px-4 text-center text-sm md:text-base text-gray-600 dark:text-gray-400">
-                  {fmt(c.budgetCap)}
-                </td>
-                {/* Leads */}
-                <td class="py-4 px-4 text-center text-sm md:text-base font-semibold text-gray-800 dark:text-gray-200">
-                  {c.leads.toLocaleString()}
-                </td>
-                {/* CPL */}
-                <td class="py-4 px-4 text-right text-sm md:text-base font-semibold text-indigo-600 dark:text-indigo-400">
-                  {c.cpl > 0 ? fmt(c.cpl) : "—"}
-                </td>
-              </tr>
-            )}
-          </For>
-        </tbody>
-        <tfoot>
-          <tr class="bg-gray-50 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700">
-            <td class="py-4 px-4 text-xs font-bold uppercase tracking-wider text-gray-500">
-              Total
-            </td>
-            <td></td>
-            <td class="py-4 px-4 text-center text-sm md:text-base font-bold text-gray-900 dark:text-white">
-              {fmt(totalSpend())}
-            </td>
-            <td></td>
-            <td class="py-4 px-4 text-center text-sm md:text-base font-bold text-gray-900 dark:text-white">
-              {totalLeads().toLocaleString()}
-            </td>
-            <td class="py-4 px-4 text-right text-sm md:text-base font-bold text-indigo-600 dark:text-indigo-400">
-              {fmt(totalCPL())}
-            </td>
-          </tr>
-        </tfoot>
-      </table>
+    <div
+      class={`flex items-baseline justify-between gap-4 px-6 py-3.5 ${borderClass()} ${
+        props.total ? "bg-gray-50 dark:bg-gray-800/80" : ""
+      }`}
+    >
+      <div
+        class={`flex items-baseline gap-2.5 ${
+          props.sub
+            ? "pl-9 text-sm font-normal text-gray-500 dark:text-gray-400"
+            : `text-sm md:text-base ${props.total ? "font-semibold" : "font-medium"} text-gray-900 dark:text-gray-100`
+        }`}
+      >
+        <Show when={props.op}>
+          <span
+            class={`inline-block w-4 text-center text-sm font-medium ${
+              props.op === "+"
+                ? "text-green-600 dark:text-green-400"
+                : "text-red-600 dark:text-red-400"
+            }`}
+          >
+            {props.op}
+          </span>
+        </Show>
+        {props.name}
+        <Show when={props.tag}>
+          <span class="text-[11px] font-medium text-gray-400 dark:text-gray-500">
+            {props.tag}
+          </span>
+        </Show>
+      </div>
+      <p
+        class={`tabular-nums ${
+          props.total
+            ? "text-2xl font-bold tracking-tight text-blue-900 dark:text-blue-300"
+            : props.sub
+              ? "text-sm font-medium text-gray-500 dark:text-gray-400"
+              : `text-sm md:text-base font-semibold ${
+                  props.tone === "neg"
+                    ? "text-red-600 dark:text-red-400"
+                    : props.tone === "zero"
+                      ? "text-gray-400 dark:text-gray-500"
+                      : "text-gray-900 dark:text-gray-100"
+                }`
+        }`}
+      >
+        {props.value}
+      </p>
     </div>
   );
 }
-
-// Replace ProjectRow with this ProjectTable component
-function ProjectTable(props) {
-  const [sortKey, setSortKey] = createSignal("");
-  const [sortDir, setSortDir] = createSignal("desc");
-
-  const textCols = new Set(["name", "status"]);
-
-  const handleSort = (key) => {
-    if (sortKey() === key) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortKey(key);
-      setSortDir(textCols.has(key) ? "asc" : "desc");
-    }
-  };
-
-  const sortIcon = (key) => {
-    if (sortKey() !== key) return "⇅";
-    return sortDir() === "asc" ? "↑" : "↓";
-  };
-
-  const sorted = createMemo(() => {
-    const key = sortKey();
-    const dir = sortDir();
-    return [...props.projects].sort((a, b) => {
-      let va, vb;
-      if (key === "name") {
-        va = a.name;
-        vb = b.name;
-      } else if (key === "status") {
-        va = a.status;
-        vb = b.status;
-      } else if (key === "campaigns") {
-        va = a.campaigns.length;
-        vb = b.campaigns.length;
-      } else if (key === "leads") {
-        va = a.totalLeads;
-        vb = b.totalLeads;
-      } else if (key === "budget") {
-        va = a.budgetAllocated;
-        vb = b.budgetAllocated;
-      } else if (key === "spent") {
-        va = a.totalSpend;
-        vb = b.totalSpend;
-      } else if (key === "cpl") {
-        va = a.avgCPL;
-        vb = b.avgCPL;
-      } else return 0;
-      if (typeof va === "string")
-        return dir === "asc" ? va.localeCompare(vb) : vb.localeCompare(va);
-      return dir === "asc" ? va - vb : vb - va;
-    });
-  });
-
-  const totals = createMemo(() => ({
-    campaigns: props.projects.reduce((s, p) => s + p.campaigns.length, 0),
-    leads: props.projects.reduce((s, p) => s + p.totalLeads, 0),
-    budget: props.projects.reduce((s, p) => s + p.budgetAllocated, 0),
-    spent: props.projects.reduce((s, p) => s + p.totalSpend, 0),
-    cpl: (() => {
-      const tl = props.projects.reduce((s, p) => s + p.totalLeads, 0);
-      const ts = props.projects.reduce((s, p) => s + p.totalSpend, 0);
-      return tl > 0 ? parseFloat(ts / tl).toFixed(2) : 0;
-    })(),
-  }));
-
-  const thClass =
-    "py-3 px-4 text-md font-semibold text-gray-700 dark:text-gray-400  cursor-pointer select-none hover:text-gray-800 dark:hover:text-gray-200 transition-colors";
-
-  return (
-    <div class="overflow-x-auto rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm hover:shadow-md transition">
-      <table class="w-full text-sm">
-        <thead>
-          <tr class="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-            <th
-              class={`${thClass} text-left`}
-              onClick={() => handleSort("name")}
-            >
-              Project name {sortIcon("name")}
-            </th>
-            <th
-              class={`${thClass} text-center`}
-              onClick={() => handleSort("campaigns")}
-            >
-              Campaigns {sortIcon("campaigns")}
-            </th>
-            <th
-              class={`${thClass} text-center`}
-              onClick={() => handleSort("leads")}
-            >
-              Total leads {sortIcon("leads")}
-            </th>
-            <th
-              class={`${thClass} text-center`}
-              onClick={() => handleSort("budget")}
-            >
-              Budget allocated {sortIcon("budget")}
-            </th>
-            <th
-              class={`${thClass} text-center`}
-              onClick={() => handleSort("spent")}
-            >
-              Total spent {sortIcon("spent")}
-            </th>
-            <th
-              class={`${thClass} text-right`}
-              onClick={() => handleSort("cpl")}
-            >
-              Avg CPL {sortIcon("cpl")}
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <For each={sorted()}>
-            {(p, i) => (
-              <tr
-                class={`transition-all hover:bg-blue-50 dark:hover:bg-gray-800/60 ${i() < sorted().length - 1 ? "border-b border-gray-100 dark:border-gray-700" : ""}`}
-              >
-                <td class="py-3 px-4">
-                  <div class="flex items-center gap-3">
-                    <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-900 to-blue-600 flex items-center justify-center text-white text-sm font-semibold flex-shrink-0">
-                      {p.name?.charAt(0).toUpperCase()}
-                    </div>
-                    <div>
-                      <p class="font-semibold text-gray-900 dark:text-white text-sm">
-                        {p.name}
-                      </p>
-                      <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                        {p.campaigns.length} campaign
-                        {p.campaigns.length !== 1 ? "s" : ""}
-                      </p>
-                    </div>
-                  </div>
-                </td>
-
-                <td class="py-3 px-4 text-center font-medium text-gray-700 dark:text-gray-300">
-                  {p.campaigns.length}
-                </td>
-                <td class="py-3 px-4 text-center font-semibold text-gray-800 dark:text-gray-200">
-                  {p.totalLeads.toLocaleString()}
-                </td>
-                <td class="py-3 px-4 text-center text-gray-600 dark:text-gray-400">
-                  {fmt(p.budgetAllocated)}
-                </td>
-                <td class="py-3 px-4 text-center font-medium text-gray-700 dark:text-gray-300">
-                  {fmt(p.totalSpend)}
-                </td>
-                <td class="py-3 px-4 text-right font-semibold text-indigo-600 dark:text-indigo-400">
-                  {p.avgCPL > 0 ? fmt(p.avgCPL) : "—"}
-                </td>
-              </tr>
-            )}
-          </For>
-        </tbody>
-        <tfoot>
-          <tr class="bg-gray-50 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700">
-            <td class="py-3 px-4 text-xs font-bold uppercase tracking-wider text-gray-500">
-              Total
-            </td>
-            <td class="py-3 px-4 text-center font-bold text-gray-900 dark:text-white">
-              {totals().campaigns}
-            </td>
-            <td class="py-3 px-4 text-center font-bold text-gray-900 dark:text-white">
-              {totals().leads.toLocaleString()}
-            </td>
-            <td class="py-3 px-4 text-center font-bold text-gray-900 dark:text-white">
-              {fmt(totals().budget)}
-            </td>
-            <td class="py-3 px-4 text-center font-bold text-gray-900 dark:text-white">
-              {fmt(totals().spent)}
-            </td>
-            <td class="py-3 px-4 text-right font-bold text-indigo-600 dark:text-indigo-400">
-              {fmt(totals().cpl)}
-            </td>
-          </tr>
-        </tfoot>
-      </table>
-    </div>
-  );
-}
-
-// --- CPL Comparison Panel -----------------------------------------------------
-function CPLComparisonPanel(props) {}
 
 // --- Payment History ----------------------------------------------------------
 function PaymentHistory(props) {
@@ -587,75 +351,6 @@ function PaymentHistory(props) {
   );
 }
 
-// --- Delivery Breakdown -------------------------------------------------------
-function DeliveryBreakdown(props) {
-  const totalExGST = props.deliveries.reduce((s, d) => s + d.amountExGST, 0);
-  const totalWithGST = props.deliveries.reduce(
-    (s, d) => s + d.amountWithGST,
-    0,
-  );
-  const totalLeads = props.deliveries.reduce((s, d) => s + d.leads, 0);
-  const remaining = props.totalPaid - totalWithGST;
-
-  return (
-    <Card class="p-5 space-y-4">
-      <SectionLabel>Delivery Breakdown</SectionLabel>
-      <div class="overflow-x-auto">
-        <table class="w-full text-sm">
-          <thead>
-            <tr class="border-b border-gray-100 dark:border-gray-700">
-              <th class="pb-2.5 text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-left pr-4">
-                Project
-              </th>
-              {/* <th class="pb-2.5 text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-center">Leads</th> */}
-              <th class="pb-2.5 text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-center">
-                Amount (ex-GST)
-              </th>
-              <th class="pb-2.5 text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-right">
-                With GST (18%)
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <For each={props.deliveries}>
-              {(d) => (
-                <tr class="border-b border-gray-50 dark:border-gray-700">
-                  <td class="py-2.5 pr-4 font-medium text-gray-800 dark:text-gray-200">
-                    {d.project}
-                  </td>
-                  {/* <td class="py-2.5 text-center text-gray-600 dark:text-gray-400">{d.leads}</td> */}
-                  <td class="py-2.5 text-center text-gray-600 dark:text-gray-400">
-                    {fmt(d.amountExGST)}
-                  </td>
-                  <td class="py-2.5 text-right font-semibold text-gray-900 dark:text-gray-100">
-                    {fmt(d.amountWithGST)}
-                  </td>
-                </tr>
-              )}
-            </For>
-          </tbody>
-          <tfoot>
-            <tr class="border-t border-gray-200 dark:border-gray-700 font-bold text-gray-900 dark:text-gray-100">
-              <td class="pt-3">Total</td>
-              {/* <td class="pt-3 text-center">{totalLeads}</td> */}
-              <td class="pt-3 text-center">{fmt(totalExGST)}</td>
-              <td class="pt-3 text-right text-base">{fmt(totalWithGST)}</td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
-      <div class="flex flex-wrap justify-between items-center pt-3 border-t border-gray-100 dark:border-gray-700 gap-2">
-        <span class="text-sm text-gray-500 dark:text-gray-400">
-          Remaining: {fmt(props.totalPaid)} – {fmt(totalWithGST)}
-        </span>
-        <span class="text-sm font-bold text-green-600 dark:text-green-400">
-          {fmt(remaining)}
-        </span>
-      </div>
-    </Card>
-  );
-}
-
 // --- Add Funds Modal ----------------------------------------------------------
 function AddFundsModal(props) {
   const [amount, setAmount] = createSignal("");
@@ -678,7 +373,7 @@ function AddFundsModal(props) {
       <div
         class={`w-full max-w-md transition-all duration-200 ${props.open ? "scale-100 translate-y-0" : "scale-95 translate-y-4"}`}
       >
-        <Card class="p-6 space-y-5 shadow-2xl">
+        <Card class="p-6 space-y-5 shadow-sm">
           <div class="flex items-start justify-between">
             <div>
               <h3 class="font-bold text-gray-900 dark:text-gray-100 text-lg">
@@ -796,7 +491,7 @@ function InvoiceModal(props) {
           props.open ? "scale-100 translate-y-0" : "scale-95 translate-y-4"
         }`}
       >
-        <Card class="p-6 space-y-5 shadow-2xl">
+        <Card class="p-6 space-y-5 shadow-sm">
           {/* ── Header ── */}
           <div class="flex items-start justify-between">
             <div>
@@ -930,19 +625,6 @@ function InvoiceModal(props) {
   );
 }
 
-// --- Skeleton Loader ----------------------------------------------------------
-// function Skeleton() {
-//   return (
-//     <div class="space-y-4 animate-pulse">
-//       <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
-//         {[1, 2, 3, 4].map(() => <div class="h-28 rounded-xl bg-gray-100 dark:bg-gray-800" />)}
-//       </div>
-//       <div class="h-40 rounded-xl bg-gray-100 dark:bg-gray-800" />
-//       <div class="h-64 rounded-xl bg-gray-100 dark:bg-gray-800" />
-//     </div>
-//   );
-// }
-
 // --- Root Component -----------------------------------------------------------
 export default function Billing() {
   const [tab, setTab] = createSignal("overview");
@@ -951,48 +633,36 @@ export default function Billing() {
   const [showInvoiceModal, setShowInvoiceModal] = createSignal(false);
   const [paymentsData] = createResource(fetchPaymentsDetails);
 
-  const { isRetainer, iscpl } = clientRole();
+  // Client type decides which cards and which statement rows render:
+  //   hybrid   → everything (balance heroes, pacing, leads+CPL, full statement)
+  //   retainer → spend + leads cards; statement without opening/closing rows
+  //   cpl      → fixed CPL + plain spend + leads cards; statement without
+  //              ad-spend/SC/GST sub-rows and without the closing row
+  const { ishybrid, isRetainer, iscpl } = clientRole();
 
   const payments = createMemo(() => {
     const apiData = paymentsData()?.data || [];
 
     return apiData.map((item) => ({
       id: `PAY-${item.id}`,
-
       date: new Date(item.paid_at).toLocaleDateString("en-IN", {
         day: "2-digit",
         month: "short",
         year: "numeric",
       }),
-
-      // updated field
       amount: parseFloat(item.final_amount || 0),
-
-      // optional extra fields from latest API
       baseAmount: parseFloat(item.base_amount || 0),
-
       gstPct: item.gst_pct,
-
       gstLabel: item.gst_pct_label,
-
       gstAmount: parseFloat(item.gst_amount || 0),
-
       includingGst: parseFloat(item.including_gst || 0),
-
       method: item.method_label || item.method,
-
       status: item.status,
-
       statusLabel: item.status_label,
-
       gstFiled: false,
-
       invoiceUrl: "#",
-
       credit: false,
-
       creditedBy: null,
-
       creditDate: null,
     }));
   });
@@ -1003,12 +673,6 @@ export default function Billing() {
   const defaultMonth = `${nowDate.getFullYear()}-${pad2(nowDate.getMonth() + 1)}`;
   const [selectedMonth, setSelectedMonth] = createSignal(defaultMonth);
 
-  // SaaS launched June 2026 — months before that have no records, so their
-  // tabs render disabled. Each new month becomes active as it arrives.
-  const LAUNCH = { year: 2026, month: 6 };
-  const isMonthEnabled = (m) =>
-    m.year > LAUNCH.year || (m.year === LAUNCH.year && m.month >= LAUNCH.month);
-
   // Monthly overview — ONE API call, refetches on month change.
   const [overviewRes, { refetch }] = createResource(
     selectedMonth,
@@ -1016,7 +680,15 @@ export default function Billing() {
   );
 
   const data = () => overviewRes()?.data || {};
-  const availableMonths = () => data().available_months || [];
+  // Only show months from launch (June 2026) up to the current month.
+  const LAUNCH_KEY = "2026-06";
+  const availableMonths = () => {
+    const currentKey = defaultMonth; // "YYYY-MM" for today
+    return (data().available_months || []).filter((m) => {
+      const key = `${m.year}-${pad2(m.month)}`;
+      return key >= LAUNCH_KEY && key <= currentKey;
+    });
+  };
   const currentPeriod = () => data().current_period || {};
   const openingBalance = () => data().opening_balance || {};
   const monthSpend = () => data().month_spend || {};
@@ -1028,23 +700,112 @@ export default function Billing() {
   const loadError = () => overviewRes.error;
 
   // Service-charge / GST percentages come from the API (per-client, NOT
-  // hardcoded). Hide the service-charge card entirely when the rate is 0.
+  // hardcoded). Hide the service-charge ledger row entirely when the rate is 0.
   const serviceChargePct = () => monthSpend().service_charge_pct ?? "0.00";
   const gstPct = () => monthSpend().gst_pct ?? "18.00";
   const showServiceCharge = () => Number(serviceChargePct()) > 0;
+
+  // ── Derived figures for the redesigned Overview ───────────────────────────
+  const adSpendExGst = () => Number(monthSpend().total_spend_ex_gst || 0);
+  const billedIncGst = () =>
+    Number(monthSpend().total_with_service_charge_and_gst || 0);
+  const withServiceCharge = () =>
+    Number(monthSpend().total_with_service_charge ?? adSpendExGst());
+  const serviceChargeAmt = () =>
+    Math.max(0, withServiceCharge() - adSpendExGst());
+  const gstAmt = () => Math.max(0, billedIncGst() - withServiceCharge());
+  const remainingBalance = () => Number(closingBalance().inc_gst || 0);
+  const fundsAddedIncGst = () => Number(monthFunds().funds_added_inc_gst || 0);
+  const totalLeads = () => monthSpend().total_leads ?? 0;
+  const avgCpl = () => (totalLeads() > 0 ? adSpendExGst() / totalLeads() : 0);
+  const utilizationPct = () => Number(budgetInfo().utilization_pct || 0);
+
+  // CPL clients are billed on the plain ex-SC, ex-GST figure; everyone else on
+  // the fully loaded amount. Used by both the spend card and the statement so
+  // the two always agree.
+  const billedForClient = () => (iscpl() ? adSpendExGst() : billedIncGst());
+
+  // Month progress: where "today" falls within the selected month.
+  const monthProgress = createMemo(() => {
+    const [y, m] = selectedMonth().split("-").map(Number);
+    const now = new Date();
+    const daysInMonth = new Date(y, m, 0).getDate();
+    const monthStart = new Date(y, m - 1, 1);
+    let dayOfMonth;
+    if (now.getFullYear() === y && now.getMonth() + 1 === m) {
+      dayOfMonth = now.getDate(); // current month
+    } else if (now > monthStart) {
+      dayOfMonth = daysInMonth; // past month → fully elapsed
+    } else {
+      dayOfMonth = 0; // future month
+    }
+    const monthShort = monthStart.toLocaleDateString("en-IN", {
+      month: "short",
+    });
+    return {
+      dayOfMonth,
+      daysInMonth,
+      monthShort,
+      pct: daysInMonth ? (dayOfMonth / daysInMonth) * 100 : 0,
+    };
+  });
+
+  // Pacing flag: budget % used vs month % elapsed (±5pt band = on track).
+  const pacing = createMemo(() => {
+    const mp = monthProgress();
+    if (mp.dayOfMonth === 0) return null;
+    const used = utilizationPct();
+    const elapsed = Math.round(mp.pct);
+    if (!Number(budgetInfo().allocated || 0)) return null;
+    if (used < elapsed - 5)
+      return {
+        text: `Pacing behind: ${elapsed}% of month elapsed, ${used}% of budget spent`,
+        dotClass: "bg-amber-500 dark:bg-amber-400",
+      };
+    if (used > elapsed + 5)
+      return {
+        text: `Pacing ahead: ${elapsed}% of month elapsed, ${used}% of budget spent`,
+        dotClass: "bg-red-500 dark:bg-red-400",
+      };
+    return {
+      text: `On track: ${elapsed}% of month elapsed, ${used}% of budget spent`,
+      dotClass: "bg-green-500 dark:bg-green-400",
+    };
+  });
+
+  // Rough runway: remaining balance ÷ current daily burn (inc GST).
+  const runwayDays = createMemo(() => {
+    const mp = monthProgress();
+    if (!mp.dayOfMonth || !billedIncGst()) return null;
+    const dailyBurn = billedIncGst() / mp.dayOfMonth;
+    if (dailyBurn <= 0) return null;
+    return Math.floor(remainingBalance() / dailyBurn);
+  });
 
   // Friendly subtitle for where the opening balance was carried from.
   const openingSourceLabel = () => {
     switch (openingBalance().source) {
       case "explicit_payment_row":
-        return "Carried over from previous month";
+        return "carried over from previous month";
       case "computed_from_previous_month":
-        return "Computed from last month";
+        return "computed from last month";
       case "zero_no_history":
-        return "First month — no previous history";
+        return "first month, no previous history";
       default:
         return "";
     }
+  };
+
+  const monthLabel = () => {
+    const match = availableMonths().find(
+      (m) => `${m.year}-${pad2(m.month)}` === selectedMonth(),
+    );
+    if (match) return match.label;
+    const [y, m] = selectedMonth().split("-").map(Number);
+    return new Date(y, m - 1, 1).toLocaleDateString("en-IN", {
+      month: "long",
+      year: "numeric",
+    });
   };
 
   // Payments-tab totals — all-time, summed from the payments list (independent
@@ -1063,85 +824,69 @@ export default function Billing() {
 
   return (
     <div class="min-h-screen bg-white p-6 dark:bg-gray-900 text-gray-800 dark:text-gray-200 transition-all duration-300">
-      {/* Header */}
-      <header>
-        <div class="flex flex-col md:flex-row md:justify-between md:items-center gap-4 mb-3">
-          <div>
-            <h1 class="text-2xl font-semibold mb-1">Billing</h1>
-            <p class="text-md text-gray-700 dark:text-gray-400">
-              Manage your billing and payment information.
-            </p>
+      <div class=" mx-auto">
+        {/* Header — title + tabs on one baseline, like the reference */}
+        <header class="flex flex-wrap items-baseline justify-between gap-3">
+          <h1 class="text-2xl font-semibold tracking-tight text-gray-900 dark:text-gray-100">
+            Billing{" "}
+            <span class="font-medium text-gray-500 dark:text-gray-400">
+              · {monthLabel()}
+            </span>
+          </h1>
+          <nav class="flex gap-6 text-sm font-medium">
+            <For each={tabs}>
+              {(t) => (
+                <button
+                  onClick={() => setTab(t.id)}
+                  class={`pb-1.5 border-b-2 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 focus-visible:outline-offset-4 ${
+                    tab() === t.id
+                      ? "border-blue-900 dark:border-blue-400 text-gray-900 dark:text-gray-100"
+                      : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                  }`}
+                >
+                  {t.label}
+                </button>
+              )}
+            </For>
+          </nav>
+        </header>
+
+        {/* ══ OVERVIEW TAB ══ */}
+        <Show when={tab() === "overview"}>
+          {/* Month bar: pills left, GST note right (note hidden for CPL — no
+              GST/SC wording anywhere for that client type) */}
+          <div class="mt-6 flex flex-wrap items-center gap-2">
+            <For each={availableMonths()}>
+              {(m) => {
+                const value = `${m.year}-${pad2(m.month)}`;
+                return (
+                  <button
+                    onClick={() => setSelectedMonth(value)}
+                    class={`rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 focus-visible:outline-offset-2 ${
+                      selectedMonth() === value
+                        ? "bg-blue-900 dark:bg-blue-800 text-white border-blue-900 dark:border-blue-800 font-semibold"
+                        : "border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-400 dark:hover:border-gray-500"
+                    }`}
+                  >
+                    {m.label}
+                  </button>
+                );
+              }}
+            </For>
+            <Show when={!iscpl()}>
+              <span class="ml-auto text-xs text-gray-400 dark:text-gray-500">
+                Amounts are{" "}
+                <b class="font-medium text-gray-500 dark:text-gray-400">
+                  excluding GST ({Number(gstPct())}%)
+                </b>{" "}
+                unless marked
+              </span>
+            </Show>
           </div>
-          <button
-            onClick={() => setShowModal(true)}
-            class="flex hidden items-center gap-2 px-4 py-3 text-sm font-medium rounded bg-blue-900 dark:bg-blue-800 text-white shadow-sm hover:bg-blue-800 active:scale-95 transition-all duration-200"
-          >
-            <svg
-              class="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M12 4v16m8-8H4"
-              />
-            </svg>
-            <span>Add Funds</span>
-          </button>
-        </div>
-      </header>
-
-      {/* Tabs */}
-      <div class="mx-auto flex gap-1 mb-2">
-        <For each={tabs}>
-          {(t) => (
-            <button
-              onClick={() => setTab(t.id)}
-              class={`text-md font-semibold px-4 py-2.5 border-b-2 transition-colors ${tab() === t.id ? "border-gray-900 dark:border-gray-100 text-gray-900 dark:text-gray-100" : "border-transparent text-gray-400 hover:text-gray-600"}`}
-            >
-              {t.label}
-            </button>
-          )}
-        </For>
-      </div>
-
-      {/* ══ OVERVIEW TAB ══ */}
-      <Show when={tab() === "overview"}>
-        <div class="space-y-6">
-          {/* Month tabs — populated from available_months */}
-          <Show when={availableMonths().length > 0}>
-            <div class="flex flex-wrap gap-2 mt-3">
-              <For each={availableMonths()}>
-                {(m) => {
-                  const value = `${m.year}-${pad2(m.month)}`;
-                  const enabled = isMonthEnabled(m);
-                  return (
-                    <button
-                      onClick={() => enabled && setSelectedMonth(value)}
-                      disabled={!enabled}
-                      title={enabled ? "" : "No records before June 2026"}
-                      class={`px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${
-                        selectedMonth() === value
-                          ? "bg-blue-900 dark:bg-blue-800 text-white border-transparent"
-                          : enabled
-                            ? "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-400"
-                            : "border-gray-100 dark:border-gray-800 text-gray-300 dark:text-gray-600 cursor-not-allowed opacity-60"
-                      }`}
-                    >
-                      {m.label}
-                    </button>
-                  );
-                }}
-              </For>
-            </div>
-          </Show>
 
           {/* Error state */}
           <Show when={loadError()}>
-            <div class="flex items-center justify-between gap-3 text-sm font-medium bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800 rounded-lg px-4 py-3">
+            <div class="mt-5 flex items-center justify-between gap-3 text-sm font-medium bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800 rounded-lg px-4 py-3">
               <span>Couldn't load billing data for this month.</span>
               <button onClick={() => refetch()} class="underline font-semibold">
                 Retry
@@ -1149,274 +894,263 @@ export default function Billing() {
             </div>
           </Show>
 
-          <div class="flex items-center gap-2 text-sm font-medium bg-gray-50 dark:bg-gray-800/60 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-800 rounded-lg px-4 py-2.5">
-            All amounts shown{" "}
-            <span class="font-semibold text-gray-800 dark:text-gray-200 mx-1">
-              excluding GST ({Number(gstPct())}%)
-            </span>{" "}
-            unless stated otherwise.
-          </div>
-
-          {/* ── Card row 1: Budget Overview (monthly) ── */}
           <div
-            class={`transition-all duration-500 rounded-2xl
-  ${isLoading() ? "animate-pulse shadow-inner" : ""}`}
+            class={`transition-all duration-500 ${isLoading() ? "animate-pulse" : ""}`}
           >
-            <section>
-              <SectionLabel>
-                Budget Overview
-                {budgetInfo().period_label || currentPeriod().label
-                  ? ` · ${budgetInfo().period_label || currentPeriod().label}`
-                  : ""}
-              </SectionLabel>
-
-              <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                <Show when={!isRetainer() && !iscpl()}>
-                  <BudgetCard
-                    label="Budget Committed"
-                    value={budgetInfo().allocated}
-                    icon={
-                      <div class="p-3 rounded-lg bg-blue-100 dark:bg-blue-300">
-                        <svg
-                          class="w-5 h-5 text-blue-600 dark:text-blue-800"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            stroke-width="2"
-                            d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"
-                          />
-                        </svg>
-                      </div>
-                    }
-                    allocation="Monthly Allocation"
-                    sub="Total contracted"
-                    pctValue={Number(budgetInfo().utilized || 0)}
-                    pctMax={Number(budgetInfo().allocated || 0)}
-                  />
-                </Show>
-
-                <Show when={!isRetainer() && !iscpl()}>
-                  <BudgetCard
-                    label="Budget Utilized"
-                    value={budgetInfo().utilized}
-                    icon={
-                      <div class="p-3 rounded-lg bg-purple-100 dark:bg-purple-300">
-                        <svg
-                          class="w-5 h-5 text-purple-600 dark:text-purple-800"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="2"
-                          viewBox="0 0 24 24"
-                        >
-                          <path d="M3 3v18h18" />
-                          <path d="M18 17l-5-5-4 4-3-3" />
-                        </svg>
-                      </div>
-                    }
-                    sub={`${Number(budgetInfo().utilization_pct || 0)}% of committed`}
-                    pctValue={Number(budgetInfo().utilized || 0)}
-                    pctMax={Number(budgetInfo().allocated || 0)}
-                  />
-                </Show>
-
-                <BudgetCard
-                  label="Opening Balance (inc. GST)"
-                  value={openingBalance().inc_gst}
-                  icon={
-                    <div class="p-3 rounded-lg bg-blue-100 dark:bg-blue-300">
-                      <svg
-                        class="w-5 h-5 text-blue-600 dark:text-blue-800"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                        viewBox="0 0 24 24"
-                      >
-                        <circle cx="12" cy="12" r="9" />
-                        <path d="M12 7v5l3 3" />
-                      </svg>
-                    </div>
+            {/* ════ HYBRID: 4 cards + full statement ════ */}
+            <Show when={ishybrid()}>
+              {/* Hero row: Remaining Balance + Total Spent */}
+              <div class="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <HeroCard
+                  accent
+                  ariaLabel="Remaining balance"
+                  label="Remaining Balance · inc GST"
+                  value={fmt(remainingBalance())}
+                  sub={
+                    <>
+                      After this month's billing
+                      <Show when={runwayDays() !== null}>
+                        {" "}
+                        · covers roughly{" "}
+                        <b class="font-semibold text-gray-900 dark:text-gray-100">
+                          {runwayDays()} more days
+                        </b>{" "}
+                        at current daily spend
+                      </Show>
+                      <Show when={closingBalance().has_outstanding_dues}>
+                        {" "}
+                        <Tag variant="red">Outstanding Dues</Tag>
+                      </Show>
+                    </>
                   }
-                  sub={openingSourceLabel()}
                 />
-
-                <BudgetCard
-                  label="Closing Balance (inc. GST)"
-                  value={closingBalance().inc_gst}
-                  icon={
-                    <div class="p-3 rounded-lg bg-red-100 dark:bg-red-300">
-                      <svg
-                        class="w-5 h-5 text-red-600 dark:text-red-800"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                        viewBox="0 0 24 24"
-                      >
-                        <path d="M5 13l4 4L19 7" />
-                      </svg>
-                    </div>
-                  }
-                  sub="End-of-month position"
-                  badge={
-                    closingBalance().has_outstanding_dues
-                      ? "Outstanding Dues"
-                      : null
+                <HeroCard
+                  ariaLabel="Total spent this month"
+                  label={`Total Spent · ${monthProgress().monthShort} · inc GST & Service Charge`}
+                  value={fmt(billedIncGst())}
+                  sub={
+                    <>
+                      Ad spend{" "}
+                      <b class="font-semibold text-gray-900 dark:text-gray-100">
+                        {fmt(adSpendExGst())}
+                      </b>{" "}
+                      ex-GST · breakdown in statement below
+                    </>
                   }
                 />
               </div>
-            </section>
-          </div>
 
-          {/* ── Card row 2: Spend Summary (monthly) ── */}
-          <div
-            class={`transition-all duration-500 rounded-2xl
-  ${isLoading() ? "animate-pulse shadow-inner" : ""}`}
-          >
-            <div class="grid grid-cols-1 lg:grid-cols-4 gap-3">
-              <Card class="p-4 text-center">
-                <p class="text-sm text-gray-700 dark:text-gray-400 font-medium">
-                  Total Leads
-                </p>
-                <p class="text-xl font-bold mt-1 text-gray-700 dark:text-gray-400">
-                  {monthSpend().total_leads ?? 0}
-                </p>
-              </Card>
-              <Card class="p-4 text-center">
-                <p class="text-sm text-gray-700 dark:text-gray-400 font-medium">
-                  Total Spend (ex-GST)
-                </p>
-                <p class="text-xl font-bold mt-1 text-gray-700 dark:text-gray-400">
-                  {fmt(monthSpend().total_spend_ex_gst)}
-                </p>
-              </Card>
-              <Show when={showServiceCharge()}>
-                <Card class="p-4 text-center">
-                  <p class="text-sm text-gray-700 dark:text-gray-400 font-medium">
-                    Total Spend + {Number(serviceChargePct())}% Service Charge
-                  </p>
-                  <p class="text-xl font-bold mt-1 text-gray-900 dark:text-gray-100">
-                    {fmt(monthSpend().total_with_service_charge)}
-                  </p>
-                </Card>
+              {/* Pacing + Leads row */}
+              <div class="mt-4 grid grid-cols-1 md:grid-cols-[1.8fr_1fr] gap-4">
+                <PacingCard
+                  utilized={budgetInfo().utilized}
+                  allocated={budgetInfo().allocated}
+                  utilizationPct={utilizationPct()}
+                  elapsedPct={monthProgress().pct}
+                  dayOfMonth={monthProgress().dayOfMonth}
+                  daysInMonth={monthProgress().daysInMonth}
+                  monthShort={monthProgress().monthShort}
+                  pacing={pacing()}
+                />
+                <LeadsCard
+                  stacked
+                  leads={totalLeads()}
+                  showCpl
+                  cpl={avgCpl()}
+                />
+              </div>
+            </Show>
+
+            {/* ════ RETAINER: Total Spent + Total Leads only ════ */}
+            <Show when={isRetainer()}>
+              <div class="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <HeroCard
+                  ariaLabel="Total spent this month"
+                  label={`Total Spent · ${monthProgress().monthShort} · inc GST & Service Charge`}
+                  value={fmt(billedIncGst())}
+                  sub={
+                    <>
+                      Ad spend{" "}
+                      <b class="font-semibold text-gray-900 dark:text-gray-100">
+                        {fmt(adSpendExGst())}
+                      </b>{" "}
+                      ex-GST · breakdown in statement below
+                    </>
+                  }
+                />
+                <LeadsCard leads={totalLeads()} showCpl={false} />
+              </div>
+            </Show>
+
+            {/* ════ CPL: Fixed CPL + plain Total Spent + Total Leads ════
+                No SC/GST wording on any of these cards. */}
+            <Show when={iscpl()}>
+              <div class="mt-5 grid grid-cols-1 md:grid-cols-3 gap-4">
+                <HeroCard
+                  accent
+                  ariaLabel="Fixed cost per lead"
+                  label="Fixed CPL"
+                  value={fmt(FIXED_CPL)}
+                  sub="Contracted rate per lead"
+                />
+                <HeroCard
+                  ariaLabel="Total spent this month"
+                  label={`Total Spent · ${monthProgress().monthShort}`}
+                  value={fmt(adSpendExGst())}
+                  sub="Details in statement below"
+                />
+                <LeadsCard leads={totalLeads()} showCpl={false} />
+              </div>
+            </Show>
+
+            {/* ── Account statement ledger (rows vary by client type) ── */}
+            <Card
+              class="mt-4 overflow-hidden"
+              aria-label={`Account statement for ${monthLabel()}`}
+            >
+              <div class="px-6 pt-5 pb-1">
+                <Eyebrow>Account Statement · {monthLabel()}</Eyebrow>
+              </div>
+
+              {/* Opening balance — hidden for retainer */}
+              <Show when={!isRetainer()}>
+                <LedgerRow
+                  noBorder
+                  name="Opening balance"
+                  tag={
+                    iscpl()
+                      ? openingSourceLabel()
+                      : `inc GST${openingSourceLabel() ? ` · ${openingSourceLabel()}` : ""}`
+                  }
+                  value={fmt(openingBalance().inc_gst)}
+                />
               </Show>
-              <Card class="p-4 text-center">
-                <p class="text-sm text-gray-700 dark:text-gray-400 font-medium">
-                  {showServiceCharge()
-                    ? `Total Spend + ${Number(serviceChargePct())}% Service Charge + ${Number(gstPct())}% GST`
-                    : `Total Spend + ${Number(gstPct())}% GST`}
+
+              <LedgerRow
+                noBorder={isRetainer()}
+                op="+"
+                name="Funds added this month"
+                value={fmt(fundsAddedIncGst())}
+                tone={fundsAddedIncGst() === 0 ? "zero" : "pos"}
+              />
+
+              {/* CPL clients see the plain ex-SC/ex-GST figure with no GST tag,
+                  so the card above and this row always match. */}
+              <LedgerRow
+                op="−"
+                name="Billed this month"
+                tag={iscpl() ? "" : "inc GST"}
+                value={fmt(billedForClient())}
+                tone="neg"
+              />
+
+              {/* Sub-rows — hidden entirely for CPL */}
+              <Show when={!iscpl()}>
+                <LedgerRow sub name="Ad spend" value={fmt(adSpendExGst())} />
+                <Show when={showServiceCharge()}>
+                  <LedgerRow
+                    sub
+                    name={`Service charge · ${Number(serviceChargePct())}%`}
+                    value={fmt(serviceChargeAmt())}
+                  />
+                </Show>
+                <LedgerRow
+                  sub
+                  name={`GST · ${Number(gstPct())}%`}
+                  value={fmt(gstAmt())}
+                />
+              </Show>
+
+              {/* Closing/remaining row — hybrid only */}
+              <Show when={ishybrid()}>
+                <LedgerRow
+                  total
+                  name="Remaining balance"
+                  tag="inc GST · end of month position"
+                  value={fmt(remainingBalance())}
+                />
+              </Show>
+            </Card>
+          </div>
+        </Show>
+
+        {/* ══ PAYMENTS TAB ══ */}
+        <Show when={tab() === "payments"}>
+          <div class="space-y-5 mt-6">
+            <div class="flex items-center justify-between">
+              <SectionLabel>Payment & Invoice Tracking</SectionLabel>
+              <span class="text-sm text-gray-400">
+                Managed by Accounts Team
+              </span>
+            </div>
+            <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
+              <Card class="p-4">
+                <p class="text-md text-gray-600 dark:text-gray-400">
+                  Total Received (with GST)
                 </p>
-                <p class="text-xl font-bold mt-1 text-gray-900 dark:text-gray-100">
-                  {fmt(monthSpend().total_with_service_charge_and_gst)}
+                <p class="text-xl font-bold mt-2 text-gray-900 dark:text-white">
+                  {fmt(totalReceived())}
+                </p>
+              </Card>
+              <Card class="p-4">
+                <p class="text-md text-gray-600 dark:text-gray-400">
+                  Total Received (ex-GST)
+                </p>
+                <p class="text-xl font-bold mt-2 text-gray-900 dark:text-white">
+                  {fmt(totalReceivedExGST())}
+                </p>
+              </Card>
+              <Card class="p-4">
+                <p class="text-md text-gray-600 dark:text-gray-400">
+                  Total Utilized
+                </p>
+                <p class="text-xl font-bold mt-2 text-gray-900 dark:text-gray-100">
+                  0
+                </p>
+              </Card>
+              <Card class="p-4">
+                <p class="text-md text-gray-600 dark:text-gray-400">
+                  Remaining Balance
+                </p>
+                <p class="text-xl font-bold mt-2 text-green-600 dark:text-green-400">
+                  0
+                </p>
+              </Card>
+              <Card class="p-4">
+                <p class="text-md text-gray-600 dark:text-gray-400">
+                  Pending Payment
+                </p>
+                <p class="text-xl font-bold mt-2 text-gray-900 dark:text-gray-100">
+                  0
                 </p>
               </Card>
             </div>
+            <Show
+              when={!paymentsData.loading}
+              fallback={
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  Loading payments...
+                </p>
+              }
+            >
+              <PaymentHistory
+                payments={payments()}
+                onViewInvoice={(payment) => {
+                  setSelectedInvoice(payment);
+                  setShowInvoiceModal(true);
+                }}
+              />
+            </Show>
           </div>
+        </Show>
 
-          {/* ── Card row 3: Funds Added this month ── */}
-          <div
-            class={`transition-all duration-500 rounded-2xl
-  ${isLoading() ? "animate-pulse shadow-inner" : ""}`}
-          >
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Card class="p-4">
-                <p class="text-md text-gray-600 dark:text-gray-400">
-                  Funds Added This Month (ex-GST)
-                </p>
-                <p class="text-xl font-bold mt-2 text-gray-900 dark:text-white">
-                  {fmt(monthFunds().funds_added_ex_gst)}
-                </p>
-              </Card>
-              <Card class="p-4">
-                <p class="text-md text-gray-600 dark:text-gray-400">
-                  Funds Added This Month (inc-GST)
-                </p>
-                <p class="text-xl font-bold mt-2 text-gray-900 dark:text-white">
-                  {fmt(monthFunds().funds_added_inc_gst)}
-                </p>
-              </Card>
-            </div>
-          </div>
-        </div>
-      </Show>
-
-      {/* ══ PAYMENTS TAB ══ */}
-      <Show when={tab() === "payments"}>
-        <div class="space-y-5">
-          <div class="flex items-center justify-between">
-            <SectionLabel>Payment & Invoice Tracking</SectionLabel>
-            <span class="text-sm text-gray-400">Managed by Accounts Team</span>
-          </div>
-          <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
-            <Card class="p-4">
-              <p class="text-md text-gray-600 dark:text-gray-400">
-                Total Received (with GST)
-              </p>
-              <p class="text-xl font-bold mt-2 text-gray-900 dark:text-white">
-                {fmt(totalReceived())}
-              </p>
-            </Card>
-            <Card class="p-4">
-              <p class="text-md text-gray-600 dark:text-gray-400">
-                Total Received (ex-GST)
-              </p>
-              <p class="text-xl font-bold mt-2 text-gray-900 dark:text-white">
-                {fmt(totalReceivedExGST())}
-              </p>
-            </Card>
-            <Card class="p-4">
-              <p class="text-md text-gray-600 dark:text-gray-400">
-                Total Utilized
-              </p>
-              <p class="text-xl font-bold mt-2 text-gray-900 dark:text-gray-100">
-                0
-              </p>
-            </Card>
-            <Card class="p-4">
-              <p class="text-md text-gray-600 dark:text-gray-400">
-                Remaining Balance
-              </p>
-              <p class="text-xl font-bold mt-2 text-green-600 dark:text-green-400">
-                0
-              </p>
-            </Card>
-            <Card class="p-4">
-              <p class="text-md text-gray-600 dark:text-gray-400">
-                Pending Payment
-              </p>
-              <p class="text-xl font-bold mt-2 text-gray-900 dark:text-gray-100">
-                0
-              </p>
-            </Card>
-          </div>
-          <Show
-            when={!paymentsData.loading}
-            fallback={
-              <p class="text-sm text-gray-500 dark:text-gray-400">
-                Loading payments...
-              </p>
-            }
-          >
-            <PaymentHistory
-              payments={payments()}
-              onViewInvoice={(payment) => {
-                setSelectedInvoice(payment);
-                setShowInvoiceModal(true);
-              }}
-            />
-          </Show>
-          {/* <DeliveryBreakdown deliveries={MOCK_DELIVERIES} totalPaid={budgetCommitted()} /> */}
-        </div>
-      </Show>
-
-      <AddFundsModal open={showModal()} onClose={() => setShowModal(false)} />
-      <InvoiceModal
-        open={showInvoiceModal()}
-        invoice={selectedInvoice()}
-        onClose={() => setShowInvoiceModal(false)}
-      />
+        <AddFundsModal open={showModal()} onClose={() => setShowModal(false)} />
+        <InvoiceModal
+          open={showInvoiceModal()}
+          invoice={selectedInvoice()}
+          onClose={() => setShowInvoiceModal(false)}
+        />
+      </div>
     </div>
   );
 }

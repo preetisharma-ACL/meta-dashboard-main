@@ -393,12 +393,6 @@ export default function Header() {
                   <button class="w-full text-left px-4 py-2 text-sm text-blue-800 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-gray-700 transition-colors">
                     Profile Settings
                   </button>
-                  <button class="w-full text-left px-4 py-2 text-sm text-blue-800 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-gray-700 transition-colors">
-                    Account Settings
-                  </button>
-                  <button class="w-full text-left px-4 py-2 text-sm text-blue-800 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-gray-700 transition-colors">
-                    Help Center
-                  </button>
                 </div>
                 <div class="border-t border-gray-200 dark:border-gray-700">
                   <button
