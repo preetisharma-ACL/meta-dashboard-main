@@ -989,7 +989,7 @@ export default function Billing() {
                 <HeroCard
                   accent
                   ariaLabel="Fixed cost per lead"
-                  label="Fixed CPL"
+                  label="CPL As Given"
                   value={fmt(FIXED_CPL)}
                   sub="Contracted rate per lead"
                 />
