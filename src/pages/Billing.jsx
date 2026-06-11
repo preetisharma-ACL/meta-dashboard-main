@@ -897,7 +897,7 @@ export default function Billing() {
               · {monthLabel()}
             </span>
           </h1>
-          <nav class="flex gap-6 text-sm font-medium">
+          <nav class="flex gap-6 text-md font-medium">
             <For each={tabs}>
               {(t) => (
                 <button
@@ -937,7 +937,7 @@ export default function Billing() {
                 );
               }}
             </For>
-            <Show when={!iscpl()}>
+            {/* <Show when={!iscpl()}>
               <span class="ml-auto text-xs text-gray-400 dark:text-gray-500">
                 Amounts are{" "}
                 <b class="font-medium text-gray-500 dark:text-gray-400">
@@ -945,7 +945,7 @@ export default function Billing() {
                 </b>{" "}
                 unless marked
               </span>
-            </Show>
+            </Show> */}
           </div>
 
           {/* Error state */}
@@ -1193,17 +1193,17 @@ export default function Billing() {
 
                 {/* Points note as a quiet pill */}
                 {/* Points note — only when points have actually been credited */}
-                <Show when={totalPointsReceived() > 0}>
-                  <div class="mt-4 inline-flex items-center gap-2 rounded-full border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 px-3 py-1">
-                    <span class="h-1.5 w-1.5 rounded-full bg-blue-900 dark:bg-blue-400" />
-                    <span class="text-xs text-gray-500 dark:text-gray-400">
-                      Points included ·{" "}
-                      <b class="font-semibold text-gray-700 dark:text-gray-300">
-                        {fmtPoints(totalPointsReceived())} pts · 1 pt = ₹1
-                      </b>
-                    </span>
-                  </div>
-                </Show>
+<Show when={totalPointsReceived() > 0}>
+  <div class="mt-4 inline-flex items-center gap-2 rounded-full border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 px-3 py-1">
+    <span class="h-1.5 w-1.5 rounded-full bg-blue-900 dark:bg-blue-400" />
+    <span class="text-xs text-gray-500 dark:text-gray-400">
+      Points included ·{" "}
+      <b class="font-semibold text-gray-700 dark:text-gray-300">
+        {fmtPoints(totalPointsReceived())} pts · 1 pt = ₹1
+      </b>
+    </span>
+  </div>
+</Show>
               </div>
 
               {/* ── Remaining balance — hybrid clients only ── */}

@@ -30,6 +30,13 @@ export function DateRangeFilter(props) {
     { label: "Last 1 Month", value: "lastMonth" },
   ];
 
+  // True when a date range / date is currently applied as a filter
+  const hasSelection = () => {
+    const from = props.fromDate();
+    const to = props.toDate();
+    return !!from && !!to;
+  };
+
   const formatDisplayDate = () => {
     const from = props.fromDate();
     const to = props.toDate();
@@ -302,13 +309,16 @@ export function DateRangeFilter(props) {
       {/* Trigger Button */}
       <button
         onClick={handleOpen}
-        class="flex items-center gap-2 px-3 py-2 text-md rounded-lg
-                 bg-gray-100 dark:bg-gray-800
-                 text-gray-900 dark:text-gray-100
-                 border border-gray-300 dark:border-gray-700 transition-colors"
+        class={`flex items-center gap-2 px-3 py-2 text-md rounded-lg border transition-colors ${
+          hasSelection()
+            ? "bg-blue-900 text-white border-blue-600 hover:bg-blue-800"
+            : "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-700"
+        }`}
       >
         <svg
-          class="w-5 h-5 text-gray-900 dark:text-gray-200"
+          class={`w-5 h-5 ${
+            hasSelection() ? "text-white" : "text-gray-900 dark:text-gray-200"
+          }`}
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -320,11 +330,17 @@ export function DateRangeFilter(props) {
             d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
           />
         </svg>
-        <span class="text-md font-medium text-gray-900 dark:text-gray-200">
+        <span
+          class={`text-md font-medium ${
+            hasSelection() ? "text-white" : "text-gray-900 dark:text-gray-200"
+          }`}
+        >
           {formatDisplayDate()}
         </span>
         <svg
-          class="w-4 h-4 text-gray-900 dark:text-gray-200"
+          class={`w-4 h-4 ${
+            hasSelection() ? "text-white" : "text-gray-900 dark:text-gray-200"
+          }`}
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
