@@ -14,6 +14,16 @@ const inrFormatter = new Intl.NumberFormat("en-IN", {
 });
 const fmt = (n) => inrFormatter.format(Number(n ?? 0));
 const pct = (a, b) => (b === 0 ? 0 : Math.min(100, Math.round((a / b) * 100)));
+// Plain number format (no ₹) for points-based amounts
+const numFormatter = new Intl.NumberFormat("en-IN", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+const fmtPoints = (n) => numFormatter.format(Number(n ?? 0));
+const isPointsMethod = (m) =>
+  String(m || "")
+    .toLowerCase()
+    .includes("point");
 
 // TODO: replace with the API field once the backend exposes the contracted
 // per-lead rate (e.g. budget.fixed_cpl). Hardcoded for now per requirement.
@@ -285,7 +295,9 @@ function PaymentHistory(props) {
                     <div>
                       <div class="flex items-center gap-2 flex-wrap">
                         <span class="font-semibold text-gray-900 dark:text-gray-100">
-                          {fmt(pay.amount)}
+                          {pay.isPoints
+                            ? `${fmtPoints(pay.amount)} `
+                            : fmt(pay.amount)}
                         </span>
 
                         <Show
@@ -338,7 +350,7 @@ function PaymentHistory(props) {
                           d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
                         />
                       </svg>
-                      Invoice
+                      Receipt
                     </button>
                   </Show>
                 </div>
@@ -496,7 +508,7 @@ function InvoiceModal(props) {
           <div class="flex items-start justify-between">
             <div>
               <h3 class="font-bold text-gray-900 dark:text-gray-100 text-lg">
-                Invoice
+                Receipt
               </h3>
               <p class="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
                 {props.invoice?.id ?? "—"}
@@ -608,7 +620,7 @@ function InvoiceModal(props) {
                   d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
                 />
               </svg>
-              Download Invoice
+              Download Receipt
             </button>
           </div>
 
@@ -645,6 +657,9 @@ export default function Billing() {
 
     return apiData.map((item) => ({
       id: `PAY-${item.id}`,
+      paidAt: item.paid_at, // raw date, needed for monthly points filter
+      isPoints:
+        isPointsMethod(item.method) || isPointsMethod(item.method_label),
       date: new Date(item.paid_at).toLocaleDateString("en-IN", {
         day: "2-digit",
         month: "short",
@@ -672,6 +687,19 @@ export default function Billing() {
   const nowDate = new Date();
   const defaultMonth = `${nowDate.getFullYear()}-${pad2(nowDate.getMonth() + 1)}`;
   const [selectedMonth, setSelectedMonth] = createSignal(defaultMonth);
+
+  // Points credited within the selected month, from the payments list
+  const pointsAddedThisMonth = createMemo(() => {
+    const [y, m] = selectedMonth().split("-").map(Number);
+    return payments()
+      .filter((p) => {
+        if (!p.isPoints || !p.paidAt) return false;
+        if (p.status && p.status !== "succeeded") return false;
+        const d = new Date(p.paidAt);
+        return d.getFullYear() === y && d.getMonth() + 1 === m;
+      })
+      .reduce((s, p) => s + (p.amount || 0), 0);
+  });
 
   // Monthly overview — ONE API call, refetches on month change.
   const [overviewRes, { refetch }] = createResource(
@@ -708,14 +736,29 @@ export default function Billing() {
   // ── Derived figures for the redesigned Overview ───────────────────────────
   const adSpendExGst = () => Number(monthSpend().total_spend_ex_gst || 0);
   const billedIncGst = () =>
-    Number(monthSpend().total_with_service_charge_and_gst || 0);
+    ishybrid()
+      ? Number(monthSpend().total_with_service_charge_and_gst || 0)
+      : Number(monthSpend().total_spend_ex_gst || 0);
+
+  const billedForClient = () => billedIncGst();
   const withServiceCharge = () =>
     Number(monthSpend().total_with_service_charge ?? adSpendExGst());
   const serviceChargeAmt = () =>
     Math.max(0, withServiceCharge() - adSpendExGst());
-  const gstAmt = () => Math.max(0, billedIncGst() - withServiceCharge());
+  const gstAmt = () =>
+    Math.max(
+      0,
+      Number(monthSpend().total_with_service_charge_and_gst || 0) -
+        withServiceCharge(),
+    );
   const remainingBalance = () => Number(closingBalance().inc_gst || 0);
-  const fundsAddedIncGst = () => Number(monthFunds().funds_added_inc_gst || 0);
+  // API's funds_added_inc_gst currently includes points-method payments;
+  // strip them out so points only appear in their own ledger row.
+  const fundsAddedIncGst = () =>
+    Math.max(
+      0,
+      Number(monthFunds().funds_added_inc_gst || 0) - pointsAddedThisMonth(),
+    );
   const totalLeads = () => monthSpend().total_leads ?? 0;
   const avgCpl = () => (totalLeads() > 0 ? adSpendExGst() / totalLeads() : 0);
   const utilizationPct = () => Number(budgetInfo().utilization_pct || 0);
@@ -723,7 +766,6 @@ export default function Billing() {
   // CPL clients are billed on the plain ex-SC, ex-GST figure; everyone else on
   // the fully loaded amount. Used by both the spend card and the statement so
   // the two always agree.
-  const billedForClient = () => (iscpl() ? adSpendExGst() : billedIncGst());
 
   // Month progress: where "today" falls within the selected month.
   const monthProgress = createMemo(() => {
@@ -819,8 +861,30 @@ export default function Billing() {
 
   const tabs = [
     { id: "overview", label: "Overview" },
-    { id: "payments", label: "Payments & Invoices" },
+    { id: "payments", label: "Payments & Receipts" },
   ];
+
+  // ── Retainer billing: client pays only the service charge + GST on it ─────
+  // Service charge comes strictly from the API — service_charge_amount when
+  // present, else service_charge_pct × ad spend. No hardcoded default.
+  const retainerScPct = () => Number(serviceChargePct()) || 0;
+
+  const retainerScAmount = () => {
+    const apiAmt = Number(monthSpend().service_charge_amount);
+    if (apiAmt > 0) return apiAmt;
+    return (adSpendExGst() * retainerScPct()) / 100;
+  };
+
+  const retainerScGst = () => (retainerScAmount() * Number(gstPct())) / 100;
+
+  const retainerPayable = () => retainerScAmount() + retainerScGst();
+
+  // All-time points credited, from the payments list
+  const totalPointsReceived = createMemo(() =>
+    payments()
+      .filter((p) => p.isPoints && (!p.status || p.status === "succeeded"))
+      .reduce((s, p) => s + (p.amount || 0), 0),
+  );
 
   return (
     <div class="min-h-screen bg-white p-6 dark:bg-gray-900 text-gray-800 dark:text-gray-200 transition-all duration-300">
@@ -966,17 +1030,8 @@ export default function Billing() {
               <div class="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
                 <HeroCard
                   ariaLabel="Total spent this month"
-                  label={`Total Spent · ${monthProgress().monthShort} · inc GST & Service Charge`}
+                  label={`Total Spent · ${monthProgress().monthShort} · ex GST & Service Charge`}
                   value={fmt(billedIncGst())}
-                  sub={
-                    <>
-                      Ad spend{" "}
-                      <b class="font-semibold text-gray-900 dark:text-gray-100">
-                        {fmt(adSpendExGst())}
-                      </b>{" "}
-                      ex-GST · breakdown in statement below
-                    </>
-                  }
                 />
                 <LeadsCard leads={totalLeads()} showCpl={false} />
               </div>
@@ -1038,19 +1093,33 @@ export default function Billing() {
                   so the card above and this row always match. */}
               <LedgerRow
                 op="−"
-                name="Billed this month"
-                tag={iscpl() ? "" : "inc GST"}
+                name={ishybrid() ? "Billed This Month" : "Total Spend"}
+                tag={
+                  ishybrid()
+                    ? "inc GST & Service Charge"
+                    : iscpl()
+                      ? ""
+                      : "ex GST"
+                }
                 value={fmt(billedForClient())}
                 tone="neg"
               />
 
-              {/* Sub-rows — hidden entirely for CPL */}
-              <Show when={!iscpl()}>
+              <LedgerRow
+                op="+"
+                name="Points Added This Month"
+                tag="via Points"
+                value={fmtPoints(pointsAddedThisMonth())}
+                tone={pointsAddedThisMonth() === 0 ? "zero" : "pos"}
+              />
+
+              {/* Sub-rows — hidden entirely for CPL or retainer */}
+              <Show when={ishybrid()}>
                 <LedgerRow sub name="Ad spend" value={fmt(adSpendExGst())} />
-                <Show when={showServiceCharge()}>
+                <Show when={showServiceCharge() || isRetainer()}>
                   <LedgerRow
                     sub
-                    name={`Service charge · ${Number(serviceChargePct())}%`}
+                    name={`Service charge${Number(serviceChargePct()) > 0 ? ` · ${Number(serviceChargePct())}%` : ""}`}
                     value={fmt(serviceChargeAmt())}
                   />
                 </Show>
@@ -1058,6 +1127,24 @@ export default function Billing() {
                   sub
                   name={`GST · ${Number(gstPct())}%`}
                   value={fmt(gstAmt())}
+                />
+              </Show>
+
+              {/* ── Retainer payable: service charge + GST on the charge ── */}
+              <Show when={isRetainer()}>
+                <LedgerRow
+                  name="Service charge"
+                  tag={retainerScPct() > 0 ? `${retainerScPct()}% ` : ""}
+                  value={fmt(retainerScAmount())}
+                />
+                <LedgerRow
+                  name={`GST · ${Number(gstPct())}%`}
+                  value={fmt(retainerScGst())}
+                />
+                <LedgerRow
+                  total
+                  name="Payable amount"
+                  value={fmt(retainerPayable())}
                 />
               </Show>
 
@@ -1078,52 +1165,65 @@ export default function Billing() {
         <Show when={tab() === "payments"}>
           <div class="space-y-5 mt-6">
             <div class="flex items-center justify-between">
-              <SectionLabel>Payment & Invoice Tracking</SectionLabel>
+              <SectionLabel>Payment & Receipts Tracking</SectionLabel>
               <span class="text-sm text-gray-400">
                 Managed by Accounts Team
               </span>
             </div>
-            <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
-              <Card class="p-4">
-                <p class="text-md text-gray-600 dark:text-gray-400">
-                  Total Received (with GST)
+            <div class="relative overflow-hidden rounded-2xl border border-gray-200/80 dark:border-gray-700 bg-white/70 dark:bg-gray-800/70 backdrop-blur-xl shadow-sm flex flex-col md:flex-row md:items-stretch">
+              {/* ── Total Received ── */}
+              <div class="flex-1 p-6">
+                <p class="text-sm text-gray-600 dark:text-gray-300">
+                  Total Received
                 </p>
-                <p class="text-xl font-bold mt-2 text-gray-900 dark:text-white">
+
+                <p class="mt-2 text-2xl font-bold tracking-tight tabular-nums text-gray-900 dark:text-gray-100">
                   {fmt(totalReceived())}
+                  <span class="ml-2 align-middle text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                    inc GST
+                  </span>
                 </p>
-              </Card>
-              <Card class="p-4">
-                <p class="text-md text-gray-600 dark:text-gray-400">
-                  Total Received (ex-GST)
-                </p>
-                <p class="text-xl font-bold mt-2 text-gray-900 dark:text-white">
+
+                <p class="mt-1 text-md font-semibold tabular-nums text-gray-600 dark:text-gray-400">
                   {fmt(totalReceivedExGST())}
+                  <span class="ml-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                    ex GST
+                  </span>
                 </p>
-              </Card>
-              <Card class="p-4">
-                <p class="text-md text-gray-600 dark:text-gray-400">
-                  Total Utilized
-                </p>
-                <p class="text-xl font-bold mt-2 text-gray-900 dark:text-gray-100">
-                  0
-                </p>
-              </Card>
-              <Card class="p-4">
-                <p class="text-md text-gray-600 dark:text-gray-400">
-                  Remaining Balance
-                </p>
-                <p class="text-xl font-bold mt-2 text-green-600 dark:text-green-400">
-                  0
-                </p>
-              </Card>
-              <Card class="p-4">
-                <p class="text-md text-gray-600 dark:text-gray-400">
-                  Pending Payment
-                </p>
-                <p class="text-xl font-bold mt-2 text-gray-900 dark:text-gray-100">
-                  0
-                </p>
-              </Card>
+
+                {/* Points note as a quiet pill */}
+                {/* Points note — only when points have actually been credited */}
+                <Show when={totalPointsReceived() > 0}>
+                  <div class="mt-4 inline-flex items-center gap-2 rounded-full border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 px-3 py-1">
+                    <span class="h-1.5 w-1.5 rounded-full bg-blue-900 dark:bg-blue-400" />
+                    <span class="text-xs text-gray-500 dark:text-gray-400">
+                      Points included ·{" "}
+                      <b class="font-semibold text-gray-700 dark:text-gray-300">
+                        {fmtPoints(totalPointsReceived())} pts · 1 pt = ₹1
+                      </b>
+                    </span>
+                  </div>
+                </Show>
+              </div>
+
+              {/* ── Remaining balance — hybrid clients only ── */}
+              <Show when={ishybrid()}>
+                {/* Divider: horizontal on mobile, vertical on desktop */}
+                <div class="h-px w-full md:h-auto md:w-px bg-gray-200 dark:bg-gray-700" />
+
+                <div class="flex-1 p-6 bg-gradient-to-b from-green-50/80 to-white dark:from-green-950/30 dark:to-gray-800/70">
+                  <p class="text-sm text-gray-600 dark:text-gray-300">
+                    Remaining Balance
+                  </p>
+                  <p class="mt-2 text-3xl font-bold tracking-tight tabular-nums text-green-900 dark:text-green-400">
+                    {fmt(remainingBalance())}
+                  </p>
+                  <p class="mt-1.5 inline-flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    <span class="h-1.5 w-1.5 rounded-full bg-green-900 dark:bg-green-400" />
+                    Available to use · inc GST
+                  </p>
+                </div>
+              </Show>
             </div>
             <Show
               when={!paymentsData.loading}
