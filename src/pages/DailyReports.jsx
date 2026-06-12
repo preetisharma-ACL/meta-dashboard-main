@@ -9,7 +9,8 @@ import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import useRole, { clientRole } from "./../hooks/useRole";
 import autoTable from "jspdf-autotable";
-const GST_RATE = 0.18;
+import { createResource } from "solid-js"; // add to existing solid-js import
+import { fetchBillingOverview } from "../services/billing-service";
 const logoUrl = "/logo.webp";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -50,6 +51,8 @@ export default function DailyReports() {
   const [previewGenerating, setPreviewGenerating] = createSignal(false);
   const { isRetainer, iscpl, ishybrid, isAdmin } = clientRole();
 
+  // inside DailyReports(), near the other state:
+  const [billingOverview] = createResource(() => fetchBillingOverview());
   /* ── lifecycle ── */
   onMount(() => {
     loadAllData();
@@ -161,6 +164,18 @@ export default function DailyReports() {
     setInsightsMap(result);
   };
 
+  // Same defaults as the Billing page: SC 0 unless API says otherwise, GST 18.
+  const monthSpendInfo = () => billingOverview()?.data?.month_spend || {};
+  const scPct = () => Number(monthSpendInfo().service_charge_pct ?? 0);
+  const gstPctNum = () => Number(monthSpendInfo().gst_pct ?? 18);
+  const scMult = () => 1 + scPct() / 100;
+  const gstMult = () => 1 + gstPctNum() / 100;
+  const scColLabel = () => `Amt Spent + ${scPct()}% S.C`;
+  const finalColLabel = () =>
+    iscpl()
+      ? `Amt Spent + ${gstPctNum()}% GST`
+      : `Amt Spent + ${scPct()}% S.C + ${gstPctNum()}% GST`;
+
   /* ── derived: ONE row per project (aggregated over selected date range) ── */
   const reportRows = createMemo(() => {
     const from = fromDate();
@@ -209,9 +224,9 @@ export default function DailyReports() {
         filtered.reduce((s, d) => s + parseFloat(d.spend || 0), 0).toFixed(2),
       );
       const cpl = leads > 0 ? parseFloat((spent / leads).toFixed(2)) : 0;
-      const spentwithServiceCharge = parseFloat((spent * 1.13).toFixed(2));
+      const spentwithServiceCharge = parseFloat((spent * scMult()).toFixed(2));
       const spentwithservice_gst = parseFloat(
-        (iscpl() ? spent * 1.18 : spent * 1.13 * 1.18).toFixed(2),
+        (iscpl() ? spent * gstMult() : spent * scMult() * gstMult()).toFixed(2),
       );
 
       // Always push — even when leads === 0 and spent === 0
@@ -503,13 +518,9 @@ export default function DailyReports() {
                 <th class="p-3">CPL</th>
                 <th class="p-3">Amount Spent</th>
                 <Show when={!iscpl()}>
-                  <th class="p-3">Amt Spent + 13% S.C</th>
+                  <th class="p-3">{scColLabel()}</th>
                 </Show>
-                <th class="p-3">
-                  {iscpl()
-                    ? "Amt Spent + 18% GST"
-                    : "Amt Spent + 13% S.C + 18% GST"}
-                </th>
+                <th class="p-3">{finalColLabel()}</th>
               </tr>
             </thead>
 
@@ -604,7 +615,6 @@ export default function DailyReports() {
                           {fmt(row.spent)}
                         </td>
                         <Show when={!iscpl()}>
-                          {/* spent + service charge */}
                           <td class="p-3 text-green-700 dark:text-green-400">
                             {fmt(row.spentwithServiceCharge)}
                           </td>
@@ -810,13 +820,11 @@ export default function DailyReports() {
                   </th>
                   <Show when={!iscpl()}>
                     <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
-                      Amt Spent + 13% S.C
+                      {scColLabel()}
                     </th>
                   </Show>
                   <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
-                    {iscpl()
-                      ? "Amt Spent + 18% GST"
-                      : "Amt Spent + 13% S.C + 18% GST"}
+                    {finalColLabel()}
                   </th>
                 </tr>
               </thead>
@@ -999,13 +1007,11 @@ export default function DailyReports() {
                     </th>
                     <Show when={!iscpl()}>
                       <th style="padding:11px 14px;text-align:center;color:#f5d9a0;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;">
-                        Amt Spent + 13% S.C
+                        {scColLabel()}
                       </th>
                     </Show>
                     <th style="padding:11px 14px;text-align:center;color:#f5d9a0;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;">
-                      {iscpl()
-                        ? "Amt Spent + 18% GST"
-                        : "Amt Spent + 13% S.C + 18% GST"}
+                     {finalColLabel()}
                     </th>
                   </tr>
                 </thead>
