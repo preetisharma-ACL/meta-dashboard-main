@@ -4,6 +4,7 @@ import {
   createProjectDisplayConfig,
   updateProjectDisplayConfig,
   fetchClients,
+  previewClientCpl, // ← NEW: CPL preview
   // ← CHANGED: removed fetchProjects, added this
 } from "../services/projectDisplayConfig";
 import Avatar from "../../../components/common/Avatar";
@@ -54,7 +55,58 @@ export default function ProjectDisplayConfig() {
   const [showClientDropdown, setShowClientDropdown] = createSignal(false);
   const [editingConfig, setEditingConfig] = createSignal(null);
 
+  // ── NEW: CPL preview state ──────────────────────────────────────────────
+  const [previewLoading, setPreviewLoading] = createSignal(false);
+  const [previewData, setPreviewData] = createSignal(null);
+  const [previewError, setPreviewError] = createSignal("");
+
   const isEditMode = createMemo(() => editingConfig() !== null);
+
+  // Preview is allowed only once client + project + a non-empty rule value are set.
+  const canPreview = createMemo(
+    () =>
+      !!formData().client_id &&
+      !!formData().project_id &&
+      String(formData().rule_value ?? "").trim() !== "",
+  );
+
+  // Stale preview is cleared whenever any input that affects it changes.
+  const clearPreview = () => {
+    setPreviewData(null);
+    setPreviewError("");
+  };
+
+  // ₹ formatter for the string money fields (display only — no math).
+  const formatMoney = (val) => {
+    const n = parseFloat(val);
+    if (val == null || Number.isNaN(n)) return "—";
+    return `₹${n.toFixed(2)}`;
+  };
+
+  const handlePreviewCpl = async () => {
+    if (!canPreview()) return;
+    setPreviewError("");
+    setPreviewData(null);
+    setPreviewLoading(true);
+    try {
+      const res = await previewClientCpl({
+        clientId: formData().client_id,
+        projectId: formData().project_id,
+        ruleType: formData().rule_type,
+        ruleValue: formData().rule_value,
+      });
+
+      if (!res || res.success === false) {
+        setPreviewError(res?.message || "Failed to compute CPL preview.");
+      } else {
+        setPreviewData(res.data ?? null);
+      }
+    } catch (err) {
+      setPreviewError(err?.message || "Failed to compute CPL preview.");
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
 
   const PAGE_SIZE = 20;
   const [page, setPage] = createSignal(1);
@@ -233,6 +285,8 @@ export default function ProjectDisplayConfig() {
     setShowProjectDropdown(false);
     setShowClientDropdown(false);
     setEditingConfig(null);
+    clearPreview(); // ← NEW: drop any stale CPL preview
+    setPreviewLoading(false);
 
     setTimeout(() => {
       setSidebarMounted(false);
@@ -248,6 +302,10 @@ export default function ProjectDisplayConfig() {
 
   const handleInputChange = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
+    // Any change to a preview input invalidates the current preview table.
+    if (["client_id", "project_id", "rule_type", "rule_value"].includes(field)) {
+      clearPreview();
+    }
   };
 
   const handleSubmitConfig = async () => {
@@ -921,6 +979,94 @@ export default function ProjectDisplayConfig() {
                   placeholder="Enter markup percentage"
                   class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-purple-500 outline-none"
                 />
+              </div>
+
+              {/* ── NEW: Preview client CPL ── */}
+              <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 p-4 space-y-3">
+                <div class="flex items-center justify-between gap-3">
+                  <div>
+                    <h3 class="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                      Preview client CPL
+                    </h3>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      See what the client would pay across recent time windows
+                      before saving.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handlePreviewCpl}
+                    disabled={!canPreview() || previewLoading()}
+                    class="shrink-0 px-3 py-2 text-sm rounded-lg bg-blue-900 text-white hover:bg-blue-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {previewLoading() ? "Previewing…" : "Preview client CPL"}
+                  </button>
+                </div>
+
+                {/* Error state */}
+                <Show when={previewError()}>
+                  <div class="rounded-md border border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-800 px-3 py-2 text-sm text-red-600 dark:text-red-400">
+                    {previewError()}
+                  </div>
+                </Show>
+
+                {/* Results */}
+                <Show when={previewData()}>
+                  {/* rule_used caption */}
+                  <p class="text-xs text-gray-500 dark:text-gray-400">
+                    Rule applied:{" "}
+                    <span class="font-medium text-gray-700 dark:text-gray-300">
+                      {previewData().rule_used}
+                    </span>
+                  </p>
+
+                  <div class="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+                    <table class="min-w-full text-sm">
+                      <thead>
+                        <tr class="bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider">
+                          <th class="p-2.5 text-left">Window</th>
+                          <th class="p-2.5 text-right">Raw CPL</th>
+                          <th class="p-2.5 text-right">Client sees</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <For each={previewData().windows ?? []}>
+                          {(w) => (
+                            <tr class="border-t border-gray-100 dark:border-gray-800">
+                              <td class="p-2.5 text-gray-700 dark:text-gray-300">
+                                {w.label}
+                                <Show when={w.has_data}>
+                                  <span class="block text-xs text-gray-400">
+                                    {w.raw_leads} lead
+                                    {Number(w.raw_leads) !== 1 ? "s" : ""}
+                                  </span>
+                                </Show>
+                              </td>
+                              <Show
+                                when={w.has_data}
+                                fallback={
+                                  <td
+                                    colspan="2"
+                                    class="p-2.5 text-center text-gray-400 italic"
+                                  >
+                                    — no leads —
+                                  </td>
+                                }
+                              >
+                                <td class="p-2.5 text-right text-gray-600 dark:text-gray-400">
+                                  {formatMoney(w.raw_cpl)}
+                                </td>
+                                <td class="p-2.5 text-right font-semibold text-blue-800 dark:text-blue-400">
+                                  {formatMoney(w.displayed_cpl)}
+                                </td>
+                              </Show>
+                            </tr>
+                          )}
+                        </For>
+                      </tbody>
+                    </table>
+                  </div>
+                </Show>
               </div>
 
               {/* Notes — unchanged */}

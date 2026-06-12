@@ -31,6 +31,36 @@ export const updateProjectDisplayConfig = async (
   );
 };
 
+/**
+ * Preview what a client's CPL would become under a given markup rule —
+ * across 3 time windows (current month, last 7 days, last 3 days) — WITHOUT
+ * saving anything. Sends exactly ONE rule param matching ruleType; the backend
+ * errors if more than one is present.
+ *
+ * @param {object} args
+ * @param {number|string} args.clientId
+ * @param {number|string} args.projectId
+ * @param {string} args.ruleType - one of cpl_markup_pct | cpl_markup_flat | target_cpl | fixed_cpl
+ * @param {number|string} args.ruleValue - the current Rule Value
+ */
+export const previewClientCpl = async ({
+  clientId,
+  projectId,
+  ruleType,
+  ruleValue,
+}) => {
+  const params = new URLSearchParams({
+    client_id: clientId,
+    project_id: projectId,
+  });
+  // Exactly one rule param — the one matching the selected Rule Type.
+  params.set(ruleType, ruleValue);
+
+  return await api(`/clients/admin/configs/preview-cpl/?${params.toString()}`, {
+    method: "GET",
+  });
+};
+
 export const fetchClients = async (page = 1, pageSize = 20) => {
   return await api(
     `/clients/admin/clients?page=${page}&page_size=${pageSize}`,

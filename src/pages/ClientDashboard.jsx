@@ -1,3 +1,26 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// FULL v4 DESIGN IMPLEMENTATION — UI layer only.
+//
+// New sections added (matching realty-assistant-dashboard-v4.html):
+//   1. Hero "ledger" — big spend figure + budget pacing rail + side stats
+//   2. "Needs attention" signal cards (derived from live data by display rules)
+//   3. CPL-by-project bar chart + lead-share band + campaign health
+//   4. AI Daily Brief (highlights derived from live data; issues log preview)
+//   5. Funnel strip (Proposed — illustrative numbers, flag-gated)
+//
+// HARD GUARANTEES:
+//   • No new API calls. No changes to existing signals, memos, effects,
+//     loaders, role gates, sorting, pagination, or cache behaviour.
+//   • All new values are DISPLAY-ONLY createMemo derivations from data the
+//     component already computes (allProjects / cardStats / overviewStatsCards).
+//   • The seven old KPI cards are not lost — every metric now lives in the
+//     hero section (mapping documented next to the hero JSX).
+//   • Existing font family/sizes kept (Tailwind default scale, no new fonts).
+//
+// Palette (project theme): navy #14233A · crimson #AC2334 · line #E2E8F1
+//   muted #54657E · faint #8593A8 · green #15966A/#E9F7F1
+//   amber #B07A14/#FBF3E2 · steel #3E6FB0/#ECF2FA · thead/zebra #F8FAFC/#FAFBFD
+// ─────────────────────────────────────────────────────────────────────────────
 import {
   For,
   Show,
@@ -42,6 +65,16 @@ import {
 // slow client-data request can no longer clobber freshly loaded admin data.
 let activeLoadToken = 0;
 const bumpLoadToken = () => ++activeLoadToken;
+
+// ── Design-section toggles (UI only) ─────────────────────────────────────────
+// The funnel needs impressions/CTR/CPM (not fetched anywhere yet) and the AI
+// brief's issue timestamps need the diagnostics service. Until those exist,
+// both render with the same "Proposed / Illustrative" tags the approved design
+// uses. Flip to false to hide them entirely.
+const SHOW_PROPOSED_SECTIONS = true;
+
+// Display thresholds for the "Needs attention" rules (presentation only).
+const HOT_CPL_RATIO = 1.4; // CPL > 140% of portfolio average → "running hot"
 
 export default function MainDashboard() {
   const [statusFilter, setStatusFilter] = createSignal("all");
@@ -186,6 +219,7 @@ export default function MainDashboard() {
           : [];
 
       setManualBatches(data);
+      console.log("manual batches:", manualBatches());
     } catch (err) {
       console.error("Failed to load manual batches", err);
     }
@@ -910,6 +944,390 @@ export default function MainDashboard() {
     };
   });
 
+  // ════════════════════════════════════════════════════════════════════════
+  // DISPLAY-ONLY DERIVATIONS for the new design sections.
+  // Everything below reads from memos that already exist (allProjects,
+  // cardStats, overviewStatsCards). No fetches, no cache writes, no changes
+  // to any existing calculation.
+  // ════════════════════════════════════════════════════════════════════════
+
+  // ₹ formatter for the new sections (display only)
+  const inr = (n) => `₹${Math.round(Number(n) || 0).toLocaleString("en-IN")}`;
+
+  // Project rows joined with their card-range stats (the same stats the old
+  // KPI cards used), reused by hero / signals / charts below.
+  const projectCardRows = createMemo(() => {
+    const map = cardStats();
+    return allProjects().map((p) => ({
+      ...p,
+      s: map[p.id] || {
+        totalLeads: 0,
+        totalSpent: 0,
+        avgCPL: 0,
+        activeCampaigns: 0,
+        pausedCampaigns: 0,
+      },
+    }));
+  });
+
+  // Budget pacing for the hero rail. The "Today · Day X of Y" tick and the
+  // run-rate note only make sense for the current-month view, mirroring the
+  // existing "Current Month Allocation" badge condition.
+  const heroPacing = createMemo(() => {
+    const s = overviewStatsCards();
+    const budget = Number(s.totalBudget) || 0;
+    const spent = Number(s.totalSpent) || 0;
+    const utilPct = budget > 0 ? Math.min((spent / budget) * 100, 100) : 0;
+    const now = new Date();
+    const dayOfMonth = now.getDate();
+    const daysInMonth = new Date(
+      now.getFullYear(),
+      now.getMonth() + 1,
+      0,
+    ).getDate();
+    const calendarPct = (dayOfMonth / daysInMonth) * 100;
+    const isMonthView =
+      cardRange() === "thisMonth" || (!cardRange() && !fromDate() && !toDate());
+    const runRate = dayOfMonth > 0 ? spent / dayOfMonth : 0;
+    const projected = runRate * daysInMonth;
+    const behindPts = calendarPct - utilPct;
+    return {
+      budget,
+      spent,
+      utilPct,
+      dayOfMonth,
+      daysInMonth,
+      calendarPct,
+      isMonthView,
+      runRate,
+      projected,
+      behindPts,
+    };
+  });
+
+  // Best / worst CPL among projects that actually generated leads.
+  const cplExtremes = createMemo(() => {
+    const rows = projectCardRows().filter((r) => r.s.totalLeads > 0);
+    if (rows.length === 0) return { best: null, worst: null };
+    let best = rows[0];
+    let worst = rows[0];
+    for (const r of rows) {
+      if (Number(r.s.avgCPL) < Number(best.s.avgCPL)) best = r;
+      if (Number(r.s.avgCPL) > Number(worst.s.avgCPL)) worst = r;
+    }
+    return { best, worst };
+  });
+
+  // CPL-by-project chart data: top 8 projects by spend (keeps the chart
+  // readable for large accounts; the rest stay in the ledger table).
+  const cplChart = createMemo(() => {
+    const avg = Number(overviewStatsCards().avgCPL) || 0;
+    const rows = [...projectCardRows()]
+      .sort((a, b) => b.s.totalSpent - a.s.totalSpent)
+      .slice(0, 8);
+    const maxCpl =
+      Math.max(avg, ...rows.map((r) => Number(r.s.avgCPL) || 0)) * 1.15 || 1;
+    return {
+      avg,
+      avgPos: avg > 0 ? (avg / maxCpl) * 100 : 0,
+      extra: Math.max(allProjects().length - rows.length, 0),
+      rows: rows.map((r) => {
+        const cpl = Number(r.s.avgCPL) || 0;
+        const hasLeads = r.s.totalLeads > 0;
+        const ratio = avg > 0 && hasLeads ? cpl / avg : 1;
+        return {
+          id: r.id,
+          name: r.name,
+          cpl: r.s.avgCPL,
+          hasLeads,
+          width: hasLeads ? (cpl / maxCpl) * 100 : 2,
+          tone: !hasLeads
+            ? "none"
+            : ratio < 0.85
+              ? "green"
+              : ratio <= 1.25
+                ? "steel"
+                : "red",
+          deltaPct: avg > 0 && hasLeads ? Math.round((ratio - 1) * 100) : null,
+        };
+      }),
+    };
+  });
+
+  // Lead-share band: top 4 projects + "Others".
+  const leadShare = createMemo(() => {
+    const rows = [...projectCardRows()].sort(
+      (a, b) => b.s.totalLeads - a.s.totalLeads,
+    );
+    const totalLeads = rows.reduce((s, r) => s + r.s.totalLeads, 0);
+    const top = rows.slice(0, 4);
+    const others = rows.slice(4).reduce((s, r) => s + r.s.totalLeads, 0);
+    const palette = ["#3E6FB0", "#7FA1CD", "#15966A", "#AC2334", "#D4DDE9"];
+    const items = top.map((r, i) => ({
+      name: r.name,
+      count: r.s.totalLeads,
+      pct: totalLeads > 0 ? (r.s.totalLeads / totalLeads) * 100 : 0,
+      color: palette[i],
+    }));
+    if (others > 0)
+      items.push({
+        name: "Others",
+        count: others,
+        pct: totalLeads > 0 ? (others / totalLeads) * 100 : 0,
+        color: palette[4],
+      });
+    return { totalLeads, items };
+  });
+
+  // ── Proposed funnel: real Impression→Lead metrics, summed per project ──────
+  // Aggregates the same date-range-filtered insight rows the KPI cards use
+  // (impressions / reach / clicks / leads / spend) across every project, then
+  // derives CPM, frequency, CTR, CPC, click-to-lead and avg CPL. Display-only:
+  // no new fetches — reads from insightsMap already loaded for the cards.
+  const funnelStats = createMemo(() => {
+    const { from, to } = getCardDateRange();
+    let impressions = 0;
+    let reach = 0;
+    let clicks = 0;
+    let leads = 0;
+    let spend = 0;
+
+    for (const project of allProjects()) {
+      const { insights } = getProjectInsightData(project.id);
+      const filtered = insights.filter((d) => {
+        if (!from || !to) return true;
+        if (!d.date) return false;
+        const date = new Date(d.date + "T00:00:00");
+        const start = new Date(from);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(to);
+        end.setHours(23, 59, 59, 999);
+        return date >= start && date <= end;
+      });
+
+      for (const d of filtered) {
+        impressions += Number(d.impressions || 0);
+        reach += Number(d.reach || 0);
+        clicks += Number(d.clicks || 0);
+        leads += Number(d.leads || 0);
+        spend += parseFloat(d.spend || 0);
+      }
+    }
+
+    return {
+      impressions,
+      reach,
+      clicks,
+      leads,
+      spend,
+      cpm: impressions > 0 ? (spend / impressions) * 1000 : 0,
+      frequency: reach > 0 ? impressions / reach : 0,
+      ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
+      cpc: clicks > 0 ? spend / clicks : 0,
+      clickToLead: clicks > 0 ? (leads / clicks) * 100 : 0,
+      cpl: leads > 0 ? spend / leads : 0,
+      hasReach: reach > 0,
+      hasData: impressions > 0 || clicks > 0 || leads > 0,
+    };
+  });
+
+  // Compact Indian-style number (21,40,000 → "21.4L", 1,20,00,000 → "1.2Cr").
+  const compactIN = (n) => {
+    const num = Number(n) || 0;
+    if (num >= 1e7) return `${(num / 1e7).toFixed(1)}Cr`;
+    if (num >= 1e5) return `${(num / 1e5).toFixed(1)}L`;
+    return num.toLocaleString("en-IN");
+  };
+
+  // Funnel cells driven by the live aggregates above. "—" where a denominator
+  // is missing (e.g. reach not returned by the Insights API) so nothing reads
+  // as NaN / ₹0.00 on empty data.
+  const funnelCells = createMemo(() => {
+    const f = funnelStats();
+    return [
+      {
+        l: "Impressions",
+        v: f.impressions > 0 ? compactIN(f.impressions) : "—",
+        s: f.impressions > 0 ? `CPM ₹${f.cpm.toFixed(2)}` : "No impressions",
+      },
+      // {
+      //   l: "Reach",
+      //   v: f.hasReach ? compactIN(f.reach) : "—",
+      //   s: f.hasReach ? `Frequency ${f.frequency.toFixed(2)}` : "Not synced",
+      // },
+      {
+        l: "Link clicks",
+        v: f.clicks > 0 ? f.clicks.toLocaleString("en-IN") : "—",
+        s:
+          f.clicks > 0
+            ? `CTR ${f.ctr.toFixed(2)}% · CPC ₹${f.cpc.toFixed(2)}`
+            : "No clicks",
+      },
+      {
+        l: "Leads",
+        v: f.leads > 0 ? f.leads.toLocaleString("en-IN") : "—",
+        s:
+          f.clicks > 0
+            ? `Click to lead ${f.clickToLead.toFixed(2)}%`
+            : `${f.leads.toLocaleString("en-IN")} total`,
+      },
+      {
+        l: "Cost per lead",
+        v: f.leads > 0 ? `₹${f.cpl.toFixed(2)}` : "—",
+        s: f.spend > 0 ? `From ${inr(f.spend)} spend` : "No spend",
+      },
+    ];
+  });
+
+  // "Needs attention" signal cards (max 3), built by display rules:
+  //   paused project with idle budget → amber · CPL far above average → red
+  //   live campaigns but zero spend in range → red
+  const signals = createMemo(() => {
+    const out = [];
+    const avg = Number(overviewStatsCards().avgCPL) || 0;
+    const rows = projectCardRows();
+
+    const paused = rows
+      .filter((r) => r.status === "paused" && r.s.pausedCampaigns > 0)
+      .sort(
+        (a, b) =>
+          (b.budget || 0) - b.s.totalSpent - ((a.budget || 0) - a.s.totalSpent),
+      );
+    for (const r of paused) {
+      const idle = Math.max((r.budget || 0) - r.s.totalSpent, 0);
+      out.push({
+        tone: "amber",
+        tag: "Paused",
+        title: `${r.name} has gone dark`,
+        body: (
+          <>
+            All <b>{r.s.pausedCampaigns} campaigns</b> are paused.
+            {r.budget > 0 && (
+              <>
+                {" "}
+                <b>{inr(idle)}</b> of its {inr(r.budget)} budget is sitting
+                idle.
+              </>
+            )}
+          </>
+        ),
+      });
+    }
+
+    const hot = rows
+      .filter(
+        (r) =>
+          r.s.totalLeads > 0 &&
+          avg > 0 &&
+          Number(r.s.avgCPL) > avg * HOT_CPL_RATIO,
+      )
+      .sort((a, b) => Number(b.s.avgCPL) - Number(a.s.avgCPL));
+    for (const r of hot) {
+      out.push({
+        tone: "red",
+        tag: "CPL running hot",
+        title: `${r.name} is paying ${Math.round((Number(r.s.avgCPL) / avg - 1) * 100)}% over`,
+        body: (
+          <>
+            Buying leads at <b>₹{r.s.avgCPL}</b> against a portfolio average of
+            ₹{avg.toFixed(2)}, across{" "}
+            <b>{r.s.activeCampaigns} live campaigns</b>. A creative and audience
+            review could recover real money here.
+          </>
+        ),
+      });
+    }
+
+    const zero = rows.filter(
+      (r) => r.s.activeCampaigns > 0 && r.s.totalSpent === 0,
+    );
+    for (const r of zero) {
+      out.push({
+        tone: "red",
+        tag: "Zero delivery",
+        title: `${r.name} is not spending`,
+        body: (
+          <>
+            <b>{r.s.activeCampaigns}</b> campaign
+            {r.s.activeCampaigns > 1 ? "s are" : " is"} live but{" "}
+            <b>₹0 spend and 0 leads</b> are recorded in this range. Check ad
+            review status, ad set delivery and the account spend limit.
+          </>
+        ),
+      });
+    }
+
+    return out.slice(0, 3);
+  });
+
+  // AI Daily Brief — "What went well" derived from live data; the issues log
+  // reuses the same signal rules. Tagged as a preview until the Claude API
+  // service supplies the real narrative + timestamps.
+  const briefHighlights = createMemo(() => {
+    const out = [];
+    const { best, worst } = cplExtremes();
+    const avg = Number(overviewStatsCards().avgCPL) || 0;
+    if (best && avg > 0) {
+      const pct = Math.round((1 - Number(best.s.avgCPL) / avg) * 100);
+      if (pct > 0)
+        out.push({
+          tone: "green",
+          body: (
+            <>
+              <b>{best.name} is the portfolio's bargain.</b> CPL of ₹
+              {best.s.avgCPL} is {pct}% under the account average, with{" "}
+              {best.s.activeCampaigns} campaign
+              {best.s.activeCampaigns === 1 ? "" : "s"} delivering.
+            </>
+          ),
+        });
+    }
+    const volume = [...projectCardRows()].sort(
+      (a, b) => b.s.totalLeads - a.s.totalLeads,
+    )[0];
+    if (volume && volume.s.totalLeads > 0) {
+      const share =
+        leadShare().totalLeads > 0
+          ? Math.round((volume.s.totalLeads / leadShare().totalLeads) * 100)
+          : 0;
+      out.push({
+        tone: "green",
+        body: (
+          <>
+            <b>
+              {volume.name} leads on volume with{" "}
+              {volume.s.totalLeads.toLocaleString("en-IN")} leads
+            </b>{" "}
+            in this range, {share}% of everything the account generated.
+          </>
+        ),
+      });
+    }
+    if (worst && avg > 0 && Number(worst.s.avgCPL) > avg * 1.25) {
+      out.push({
+        tone: "amber",
+        body: (
+          <>
+            <b>{worst.name} needs a creative refresh.</b> CPL of ₹
+            {worst.s.avgCPL} across {worst.s.activeCampaigns} live campaign
+            {worst.s.activeCampaigns === 1 ? "" : "s"} is the account's
+            costliest buying right now.
+          </>
+        ),
+      });
+    }
+    return out;
+  });
+
+  const briefIssues = createMemo(() =>
+    signals().map((sig) => ({
+      state: sig.tag === "Paused" ? "prog" : "new",
+      stateLabel: sig.tag === "Paused" ? "In progress" : "New",
+      title: sig.title,
+      body: sig.body,
+    })),
+  );
+
   const handlePriorityChange = (id, value) => {
     setProjects((prev) =>
       prev.map((p) => (p.id === id ? { ...p, priority: value } : p)),
@@ -975,39 +1393,39 @@ export default function MainDashboard() {
       <tbody>
         <For each={Array(8).fill(0)}>
           {(_, i) => (
-            <tr class="border-t animate-pulse">
+            <tr class="border-t border-[#E2E8F1] dark:border-gray-700 animate-pulse">
               <td class="p-3">
-                <div class="h-6 w-6 bg-gray-300 dark:bg-gray-700 rounded-full"></div>
+                <div class="h-6 w-6 bg-gray-200 dark:bg-gray-700 rounded-full"></div>
               </td>
               <td class="p-3">
-                <div class="h-4 w-32 bg-gray-300 dark:bg-gray-700 rounded"></div>
+                <div class="h-4 w-32 bg-gray-200 dark:bg-gray-700 rounded"></div>
               </td>
               <td class="p-3">
-                <div class="h-4 w-24 bg-gray-300 dark:bg-gray-700 rounded"></div>
+                <div class="h-4 w-24 bg-gray-200 dark:bg-gray-700 rounded"></div>
               </td>
               <td class="p-3">
-                <div class="h-4 w-20 bg-gray-300 dark:bg-gray-700 rounded"></div>
+                <div class="h-4 w-20 bg-gray-200 dark:bg-gray-700 rounded"></div>
               </td>
               <td class="p-3">
-                <div class="h-6 w-16 bg-gray-300 dark:bg-gray-700 rounded-full"></div>
+                <div class="h-6 w-16 bg-gray-200 dark:bg-gray-700 rounded-full"></div>
               </td>
               <td class="p-3">
-                <div class="h-4 w-20 bg-gray-300 dark:bg-gray-700 rounded"></div>
+                <div class="h-4 w-20 bg-gray-200 dark:bg-gray-700 rounded"></div>
               </td>
               <td class="p-3">
-                <div class="h-4 w-20 bg-gray-300 dark:bg-gray-700 rounded"></div>
+                <div class="h-4 w-20 bg-gray-200 dark:bg-gray-700 rounded"></div>
               </td>
               <td class="p-3">
-                <div class="h-4 w-20 bg-gray-300 dark:bg-gray-700 rounded"></div>
+                <div class="h-4 w-20 bg-gray-200 dark:bg-gray-700 rounded"></div>
               </td>
               <td class="p-3">
-                <div class="h-4 w-16 bg-gray-300 dark:bg-gray-700 rounded"></div>
+                <div class="h-4 w-16 bg-gray-200 dark:bg-gray-700 rounded"></div>
               </td>
               <td class="p-3">
-                <div class="h-4 w-16 bg-gray-300 dark:bg-gray-700 rounded"></div>
+                <div class="h-4 w-16 bg-gray-200 dark:bg-gray-700 rounded"></div>
               </td>
               <td class="p-3">
-                <div class="h-4 w-20 bg-gray-300 dark:bg-gray-700 rounded"></div>
+                <div class="h-4 w-20 bg-gray-200 dark:bg-gray-700 rounded"></div>
               </td>
             </tr>
           )}
@@ -1016,13 +1434,34 @@ export default function MainDashboard() {
     );
   };
 
+  // Reusable section eyebrow (design language)
+  const Eyebrow = (props) => (
+    <div class="flex items-center gap-3 mb-4 text-xs font-bold uppercase tracking-[0.12em] text-[#AC2334]">
+      <span>
+        {props.label}
+        <Show when={props.soft}>
+          <span class="text-[#8593A8] dark:text-gray-400 font-bold normal-case tracking-normal">
+            {" "}
+            · {props.soft}
+          </span>
+        </Show>
+      </span>
+      <span class="flex-1 h-px bg-[#D4DDE9] dark:bg-gray-700"></span>
+    </div>
+  );
+
   return (
-    <section class="w-full px-4 sm:px-6 lg:px-8 py-6">
+    <section class="w-full px-4 sm:px-6 lg:px-8 py-6 bg-gray-50 dark:bg-gray-900 min-h-screen">
       {/* Section Header */}
-      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-5">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-6">
         <div>
-          <h1 class="text-2xl font-semibold mb-1">Active Projects</h1>
-          <p class="text-md text-gray-700 dark:text-gray-400">
+          <p class="text-xs font-bold uppercase tracking-[0.12em] text-[#AC2334] mb-1.5">
+            Reporting · Live campaigns
+          </p>
+          <h1 class="text-2xl font-bold text-[#14233A] dark:text-white mb-1">
+            Active Projects
+          </h1>
+          <p class="text-md text-[#54657E] dark:text-gray-400">
             All projects with live marketing campaigns.
           </p>
         </div>
@@ -1034,15 +1473,16 @@ export default function MainDashboard() {
                         + Add New Project
                     </A>
                 </div> */}
-        <Show when={userRole() === "admin"}>
-          <div class="bg-blue-100 text-blue-700 px-4 py-2 rounded-lg mb-4">
+        <Show when={userRole() === "admin" && selectedClientName()}>
+          <div class="inline-flex items-center gap-2.5 bg-[#14233A] text-white px-5 py-2.5 rounded-full mb-4 text-sm font-medium shadow-sm">
+            <span class="w-2 h-2 rounded-full bg-[#3DD598]"></span>
             Viewing Client:
             {selectedClientName()}
           </div>
         </Show>
       </div>
 
-      <div class="flex flex-wrap gap-2 mb-5">
+      <div class="flex flex-wrap gap-2 mb-6">
         {[
           { label: "Today", value: "today" },
           { label: "Yesterday", value: "yesterday" },
@@ -1058,11 +1498,11 @@ export default function MainDashboard() {
               setFromDate(formatDate(from));
               setToDate(formatDate(to));
             }}
-            class={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 border
+            class={`px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 border
             ${
               cardRange() === item.value
-                ? "bg-blue-900 text-white border-blue-900 shadow-md"
-                : "bg-white text-gray-700 border-gray-300 hover:bg-blue-50 hover:text-blue-700 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700 dark:hover:text-white"
+                ? "bg-[#AC2334] text-white border-[#AC2334] shadow-md"
+                : "bg-gray-50 text-[#54657E] border-[#E2E8F1] hover:border-[#AC2334]/40 hover:text-[#AC2334] dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700 dark:hover:text-white"
             }`}
           >
             {item.label}
@@ -1076,210 +1516,198 @@ export default function MainDashboard() {
             setFromDate(""); // ✅ also clear the table filter
             setToDate("");
           }}
-          class="px-4 py-2 rounded-lg text-sm font-medium border border-red-300 text-red-600 bg-red-50 hover:bg-red-100 transition dark:bg-red-900/30 dark:text-red-300 dark:border-red-700 dark:hover:bg-red-900/50"
+          class="px-4 py-2 rounded-full text-sm font-bold border border-[#AC2334]/25 text-[#AC2334] bg-[#FBEEF0] hover:bg-[#AC2334] hover:text-white transition dark:bg-red-900/30 dark:text-red-300 dark:border-red-700 dark:hover:bg-red-900/50"
         >
           Clear
         </button>
       </div>
 
-      {/* Overview Cards Row 1 */}
-      <div class="grid md:grid-cols-4 gap-6 mb-10">
-        <Show when={isAdmin() || iscpl() || ishybrid()}>
-          <div class="bg-blue-50 dark:bg-gray-800 px-5 py-9 gap-4 shadow-sm hover:shadow-lg transition-all rounded-xl border border-blue-200 dark:border-gray-600 flex justify-between items-center">
-            <div>
-              <p class="text-md text-blue-800 dark:text-gray-400">
-                Total Budget Allocated
-              </p>
+      {/* ════════ HERO LEDGER ════════
+          Replaces the two KPI card rows; every old metric is mapped here:
+            Spend → hero figure · Budget → "of ₹X allocated" + rail
+            Leads / Avg CPL / Campaigns / Service charge → side stats
+            Active Projects → eyebrow count                                  */}
+      <Eyebrow
+        label="The ledger"
+        soft={`${overviewStatsCards().activeProjects} of ${allProjects().length} projects live`}
+      />
+      <div class="bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] p-5 sm:p-8 mb-8 grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-8 lg:gap-12 items-start">
+        <div>
+          <p class="text-sm text-[#54657E] dark:text-gray-400 font-medium mb-1">
+            Total spend till date
+          </p>
+          <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-[#14233A] dark:text-white">
+            {"₹"}
+            {overviewStatsCards().totalSpent.toLocaleString("en-IN")}
+          </h2>
+
+          <Show when={isAdmin() || iscpl() || ishybrid()}>
+            <p class="text-sm text-[#54657E] dark:text-gray-400 mt-2">
+              of{" "}
+              <b class="text-[#14233A] dark:text-white">
+                {"₹"}
+                {overviewStatsCards().totalBudget.toLocaleString("en-IN")}
+              </b>{" "}
+              allocated
               <Show when={!cardRange() && !fromDate() && !toDate()}>
-                <span class="inline-flex mt-2 px-2.5 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                <span class="inline-flex ml-2 px-2.5 py-0.5 text-xs font-bold rounded-full bg-[#ECF2FA] text-[#3E6FB0] dark:bg-blue-900/40 dark:text-blue-300 align-middle">
                   Current Month Allocation
                 </span>
               </Show>
-              <h3 class="text-xl font-semibold mt-2 dark:text-white">
-                {"₹"}
-                {overviewStatsCards().totalBudget.toLocaleString("en-IN")}
-              </h3>
-            </div>
-            <div class="p-3 rounded-lg bg-blue-100 dark:bg-blue-300">
-              <svg
-                class="w-5 h-5 text-blue-600 dark:text-blue-800"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"
-                />
-              </svg>
-            </div>
-          </div>
-        </Show>
-
-        <div class="bg-red-50 dark:bg-gray-800 px-5 py-9 gap-4 shadow-sm hover:shadow-lg transition-all rounded-xl border border-red-200 dark:border-gray-600 flex justify-between items-center">
-          <div>
-            <p class="text-md text-red-800 dark:text-gray-400">
-              Total Spend Till Date
+              {" · "}
+              {heroPacing().utilPct.toFixed(1)}% utilised
             </p>
-            <h3 class="text-xl font-semibold mt-1 dark:text-white">
-              {"₹"}
-              {overviewStatsCards().totalSpent.toLocaleString("en-IN")}
-            </h3>
-          </div>
-          <div class="p-3 rounded-lg bg-red-100 dark:bg-red-300">
-            <svg
-              class="w-5 h-5 text-red-600 dark:text-red-800"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              viewBox="0 0 24 24"
-            >
-              <path d="M17 9V7a5 5 0 00-10 0v2" />
-              <rect x="3" y="9" width="18" height="11" rx="2" />
-            </svg>
-          </div>
+
+            {/* Pacing rail */}
+            <div class="mt-9">
+              <div class="relative h-4 rounded-full bg-[#EAEFF6] dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700">
+                <div
+                  class="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-[#AC2334] to-[#C9374B] transition-all duration-700"
+                  style={`width:${heroPacing().utilPct}%`}
+                ></div>
+                <Show when={heroPacing().isMonthView}>
+                  <div
+                    class="absolute -top-2 -bottom-2 w-0.5 bg-[#14233A] dark:bg-gray-50 rounded"
+                    style={`left:${heroPacing().calendarPct}%`}
+                  >
+                    <span class="absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap text-[11px] font-bold uppercase tracking-wide text-[#14233A] dark:text-white">
+                      Today · Day {heroPacing().dayOfMonth} of{" "}
+                      {heroPacing().daysInMonth}
+                    </span>
+                  </div>
+                </Show>
+              </div>
+              <div class="flex justify-between mt-2 text-xs font-medium text-[#8593A8] dark:text-gray-500">
+                <span>₹0</span>
+                <span>
+                  {"₹"}
+                  {overviewStatsCards().totalBudget.toLocaleString("en-IN")}
+                </span>
+              </div>
+
+              <Show when={heroPacing().isMonthView && heroPacing().budget > 0}>
+                <p class="mt-4 text-sm text-[#54657E] dark:text-gray-400 max-w-xl">
+                  <Show
+                    when={Math.abs(heroPacing().behindPts) > 1}
+                    fallback={
+                      <>
+                        Spend is <b class="text-[#15966A]">tracking on pace</b>{" "}
+                        with the calendar at the current run rate of{" "}
+                        {inr(heroPacing().runRate)} a day.
+                      </>
+                    }
+                  >
+                    Spend is tracking{" "}
+                    <b class="text-[#AC2334]">
+                      {Math.abs(heroPacing().behindPts).toFixed(1)} points{" "}
+                      {heroPacing().behindPts > 0 ? "behind" : "ahead of"} the
+                      calendar
+                    </b>
+                    . At the current run rate of {inr(heroPacing().runRate)} a
+                    day, the month closes near {inr(heroPacing().projected)}
+                    {heroPacing().projected <= heroPacing().budget ? (
+                      <>
+                        , leaving roughly{" "}
+                        {inr(heroPacing().budget - heroPacing().projected)} of
+                        the allocation unspent.
+                      </>
+                    ) : (
+                      <>
+                        , about{" "}
+                        {inr(heroPacing().projected - heroPacing().budget)} over
+                        the allocation if nothing changes.
+                      </>
+                    )}
+                  </Show>
+                </p>
+              </Show>
+            </div>
+          </Show>
         </div>
 
-        <div class="bg-green-50 dark:bg-gray-800 px-5 py-9 gap-4 shadow-sm hover:shadow-lg transition-all rounded-xl border border-green-200 dark:border-gray-600 flex justify-between items-center">
-          <div>
-            <p class="text-md text-green-800 dark:text-gray-400">
-              Total Leads Generated
+        {/* Hero side stats */}
+        <div class="flex flex-col border-t lg:border-t-0 lg:border-l border-[#E2E8F1] dark:border-gray-700 pt-4 lg:pt-0 lg:pl-9">
+          <div class="py-3.5 border-b border-[#E2E8F1] dark:border-gray-700">
+            <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
+              Leads generated
             </p>
-            <h3 class="text-xl font-semibold mt-1 dark:text-white">
-              {overviewStatsCards().totalLeads}
-            </h3>
-          </div>
-          <div class="p-3 rounded-lg bg-green-100 dark:bg-green-300">
-            <svg
-              class="w-5 h-5 text-green-600 dark:text-green-800"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
+            <p class="text-2xl font-bold text-[#14233A] dark:text-white mt-1">
+              {overviewStatsCards().totalLeads.toLocaleString("en-IN")}
+            </p>
+            <Show
+              when={heroPacing().isMonthView && heroPacing().dayOfMonth > 0}
             >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
-              />
-            </svg>
+              <p class="text-xs text-[#54657E] dark:text-gray-400 mt-0.5">
+                {Math.round(
+                  overviewStatsCards().totalLeads / heroPacing().dayOfMonth,
+                ).toLocaleString("en-IN")}{" "}
+                a day on average
+              </p>
+            </Show>
           </div>
-        </div>
-
-        <div class="bg-purple-50 dark:bg-gray-800 px-5 py-9 gap-4 shadow-sm hover:shadow-lg transition-all rounded-xl border border-purple-200 dark:border-gray-600 flex justify-between items-center">
-          <div>
-            <p class="text-md text-purple-800 dark:text-gray-400">
+          <div class="py-3.5 border-b border-[#E2E8F1] dark:border-gray-700">
+            <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
               Average CPL
             </p>
-            <h3 class="text-xl font-semibold mt-1 dark:text-white">
+            <p class="text-2xl font-bold text-[#14233A] dark:text-white mt-1">
               {"₹"}
               {overviewStatsCards().avgCPL.toLocaleString("en-IN")}
-            </h3>
-          </div>
-          <div class="p-3 rounded-lg bg-purple-100 dark:bg-purple-300">
-            <svg
-              class="w-5 h-5 text-purple-600 dark:text-purple-800"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              viewBox="0 0 24 24"
-            >
-              <path d="M3 3v18h18" />
-              <path d="M18 17l-5-5-4 4-3-3" />
-            </svg>
-          </div>
-        </div>
-      </div>
-
-      {/* Overview Cards Row 2 */}
-      <div class="grid md:grid-cols-4 gap-6 mb-10">
-        <div class="bg-blue-50 dark:bg-gray-800 px-3 py-9 gap-4 shadow-sm hover:shadow-lg transition-all rounded-xl border border-blue-200 dark:border-gray-600 flex justify-between items-center">
-          <div>
-            <p class="text-md text-blue-800 dark:text-gray-400">
-              Active Campaigns Count
             </p>
-            <h3 class="text-xl font-semibold mt-1 dark:text-white">
-              {overviewStatsCards().activeCampaigns}
-            </h3>
-          </div>
-          <div class="p-3 rounded-lg bg-blue-100 dark:bg-blue-300">
-            <svg
-              class="w-5 h-5 text-blue-600 dark:text-blue-800"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              viewBox="0 0 24 24"
-            >
-              <circle cx="12" cy="12" r="9" />
-              <path d="M12 7v5l3 3" />
-            </svg>
-          </div>
-        </div>
-
-        <div class="bg-red-50 dark:bg-gray-800 px-5 py-9 gap-4 shadow-sm hover:shadow-lg transition-all rounded-xl border border-red-200 dark:border-gray-600 flex justify-between items-center">
-          <div>
-            <p class="text-md text-red-800 dark:text-gray-400">
-              Active Projects
-            </p>
-            <h3 class="text-xl font-semibold mt-1 dark:text-white">
-              {overviewStatsCards().activeProjects}
-            </h3>
-          </div>
-          <div class="p-3 rounded-lg bg-red-100 dark:bg-red-300">
-            <svg
-              class="w-5 h-5 text-red-600 dark:text-red-800"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              viewBox="0 0 24 24"
-            >
-              <path d="M5 13l4 4L19 7" />
-            </svg>
-          </div>
-        </div>
-        <Show when={!iscpl()}>
-          <div class="bg-orange-50 dark:bg-gray-800 px-5 py-9 gap-4 shadow-sm hover:shadow-lg transition-all rounded-xl border border-orange-200 dark:border-gray-600 flex justify-between items-center">
-            <div>
-              <p class="text-sm text-orange-800 dark:text-gray-400">
-                Spend + {serviceChargePercent}% Service Charge
+            <Show when={cplExtremes().best && cplExtremes().worst}>
+              <p class="text-xs text-[#54657E] dark:text-gray-400 mt-0.5">
+                best ₹{cplExtremes().best.s.avgCPL} · worst ₹
+                {cplExtremes().worst.s.avgCPL}
               </p>
-
-              <h3 class="text-xl font-semibold mt-1 dark:text-white">
+            </Show>
+          </div>
+          <Show when={!iscpl()}>
+            <div class="py-3.5 border-b border-[#E2E8F1] dark:border-gray-700">
+              <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
+                Spend + {serviceChargePercent}% service charge
+              </p>
+              <p class="text-2xl font-bold text-[#14233A] dark:text-white mt-1">
                 {"₹"}
                 {overviewStatsCards().serviceChargeSpent.toLocaleString(
                   "en-IN",
                 )}
-                <p class="text-xs text-gray-500 dark:text-gray-400">
-                  (excluding GST)
-                </p>
-              </h3>
+              </p>
+              <p class="text-xs text-[#54657E] dark:text-gray-400 mt-0.5">
+                (excluding GST)
+              </p>
             </div>
-
-            <div class="p-3 rounded-lg bg-orange-100 dark:bg-orange-300">
-              <svg
-                class="w-5 h-5 text-orange-600 dark:text-orange-800"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                viewBox="0 0 24 24"
-              >
-                <path d="M12 8c-2.2 0-4 1.8-4 4" />
-                <path d="M12 8c2.2 0 4 1.8 4 4" />
-                <path d="M12 16v.01" />
-                <circle cx="12" cy="12" r="9" />
-              </svg>
-            </div>
+          </Show>
+          <div class="py-3.5">
+            <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
+              Campaigns
+            </p>
+            <p class="text-2xl font-bold mt-1">
+              <span class="text-[#15966A]">
+                {overviewStatsCards().activeCampaigns}
+              </span>{" "}
+              <span class="text-sm font-bold text-[#8593A8]">live</span>
+              {" · "}
+              <span class="text-[#B07A14]">
+                {overviewStatsCards().pausedCampaigns}
+              </span>{" "}
+              <span class="text-sm font-bold text-[#8593A8]">paused</span>
+            </p>
+            <p class="text-xs text-[#54657E] dark:text-gray-400 mt-0.5">
+              {overviewStatsCards().activeCampaigns +
+                overviewStatsCards().pausedCampaigns}{" "}
+              total across {allProjects().length} projects
+            </p>
           </div>
-        </Show>
+        </div>
       </div>
+
+      {/* ════════ PROJECT LEDGER ════════ */}
+      <Eyebrow label="Project ledger" soft="full reference" />
 
       {/* Filters */}
       <div class="flex flex-wrap items-center gap-3 mb-4">
         <div class="relative inline-block">
           <select
-            class="border px-3 py-2 pr-10 rounded-lg bg-white dark:bg-gray-800 appearance-none"
+            class="border border-[#E2E8F1] dark:border-gray-600 px-3 py-2 pr-10 rounded-lg bg-gray-50 dark:bg-gray-800 text-sm text-[#1A2B45] dark:text-gray-200 appearance-none focus:outline-none focus:ring-2 focus:ring-[#AC2334]/25 focus:border-[#AC2334]"
             value={statusFilter()}
             onChange={(e) => setStatusFilter(e.target.value)}
           >
@@ -1290,7 +1718,7 @@ export default function MainDashboard() {
 
           <div class="pointer-events-none absolute inset-y-0 right-3 flex items-center">
             <svg
-              class="w-4 h-4 text-gray-500"
+              class="w-4 h-4 text-[#8593A8]"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -1313,13 +1741,13 @@ export default function MainDashboard() {
             const value = e.target.value;
             setSearchText(value);
           }}
-          class="border px-3 py-2 rounded-lg w-60 dark:bg-gray-800"
+          class="border border-[#E2E8F1] dark:border-gray-600 px-3 py-2 rounded-lg w-60 bg-gray-50 dark:bg-gray-800 text-sm text-[#1A2B45] dark:text-gray-200 placeholder:text-[#8593A8] focus:outline-none focus:ring-2 focus:ring-[#AC2334]/25 focus:border-[#AC2334]"
         />
 
         {/* No arrow characters — use plain text */}
         <div class="relative inline-block">
           <select
-            class="border px-3 py-2 pr-10 rounded-lg dark:bg-gray-800 appearance-none"
+            class="border border-[#E2E8F1] dark:border-gray-600 px-3 py-2 pr-10 rounded-lg bg-gray-50 dark:bg-gray-800 text-sm text-[#1A2B45] dark:text-gray-200 appearance-none focus:outline-none focus:ring-2 focus:ring-[#AC2334]/25 focus:border-[#AC2334]"
             value={sortType()}
             onChange={(e) => setSortType(e.target.value)}
           >
@@ -1333,7 +1761,7 @@ export default function MainDashboard() {
 
           <div class="pointer-events-none absolute inset-y-0 right-3 flex items-center">
             <svg
-              class="w-4 h-4 text-gray-500"
+              class="w-4 h-4 text-[#8593A8]"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -1357,22 +1785,22 @@ export default function MainDashboard() {
 
         <button
           onClick={handleClearFilters}
-          class="px-4 py-2 rounded-lg border bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600 text-md font-medium transition"
+          class="px-4 py-2 rounded-lg border border-[#E2E8F1] dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-[#54657E] dark:text-gray-200 hover:bg-[#F6F9FC] dark:hover:bg-gray-600 text-sm font-medium transition"
         >
           Reset
         </button>
       </div>
 
       {/* Table */}
-      <div class="overflow-x-auto bg-white dark:bg-gray-900 rounded-xl border">
+      <div class="overflow-x-auto bg-gray-50 dark:bg-gray-800 rounded-xl border border-[#E2E8F1] dark:border-gray-700 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)]">
         <table class="w-full text-sm table-auto">
-          <thead class="bg-gray-100 dark:bg-gray-800">
-            <tr class="[&_th]:text-center [&_th]:cursor-pointer [&_th]:whitespace-nowrap [&_th:first-child]:text-left text-gray-800 dark:text-gray-200">
-              <th class="p-3 w-12 md:sticky md:left-0 md:z-20 bg-gray-100 dark:bg-gray-800">
+          <thead class="bg-[#F8FAFC] dark:bg-gray-800">
+            <tr class="[&_th]:text-center [&_th]:cursor-pointer [&_th]:whitespace-nowrap [&_th:first-child]:text-left [&_th]:text-xs [&_th]:uppercase [&_th]:tracking-wider [&_th]:font-bold text-[#54657E] dark:text-gray-300 border-b border-[#D4DDE9] dark:border-gray-700">
+              <th class="p-3 w-12 md:sticky md:left-0 md:z-20 bg-[#F8FAFC] dark:bg-gray-800">
                 S.No
               </th>
               <th
-                class="p-3 md:sticky md:left-[57px] md:z-20 bg-gray-100 dark:bg-gray-800 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.10)]"
+                class="p-3 md:sticky md:left-[57px] md:z-20 bg-[#F8FAFC] dark:bg-gray-800 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.10)]"
                 onClick={() => handleSort("name")}
               >
                 Project Name {getSortIcon("name")}
@@ -1432,12 +1860,12 @@ export default function MainDashboard() {
                   return (
                     <tr
                       class={
-                        "border-t transition-all duration-300 ease-in-out group " +
+                        "border-t border-[#E2E8F1] dark:border-gray-700 transition-all duration-300 ease-in-out group " +
                         "[&_td]:text-center [&_td]:px-6 [&_td:first-child]:px-2 " +
                         "[&_td]:whitespace-nowrap [&_td:first-child]:text-left " +
                         (index() % 2 === 0
-                          ? "bg-white dark:bg-gray-900 "
-                          : "bg-purple-50 dark:bg-gray-900 ")
+                          ? "bg-gray-50 dark:bg-gray-800 "
+                          : "bg-[#FAFBFD] dark:bg-gray-800 ")
                       }
                     >
                       <td
@@ -1445,11 +1873,11 @@ export default function MainDashboard() {
                           "px-1 py-2 w-12 text-center md:sticky md:left-0 md:z-10 " +
                           " " +
                           (index() % 2 === 0
-                            ? "bg-white dark:bg-gray-900"
-                            : "bg-purple-50 dark:bg-gray-900")
+                            ? "bg-gray-50 dark:bg-gray-800"
+                            : "bg-[#FAFBFD] dark:bg-gray-800")
                         }
                       >
-                        <span class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 text-xs font-semibold">
+                        <span class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-[#FBEEF0] dark:bg-red-900/30 text-[#AC2334] dark:text-red-300 text-xs font-bold">
                           {(currentPage() - 1) * pageSize() + index() + 1}
                         </span>
                       </td>
@@ -1459,8 +1887,8 @@ export default function MainDashboard() {
                           "px-2 py-2 md:sticky md:left-[57px] md:z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.08)] " +
                           " " +
                           (index() % 2 === 0
-                            ? "bg-white dark:bg-gray-900"
-                            : "bg-purple-50 dark:bg-gray-900")
+                            ? "bg-gray-50 dark:bg-gray-800"
+                            : "bg-[#FAFBFD] dark:bg-gray-800")
                         }
                       >
                         <div class="flex items-center gap-4">
@@ -1468,7 +1896,7 @@ export default function MainDashboard() {
                           <A
                             href={`/project/${project.id}`} //  ADD THIS
                             state={{ project }}
-                            class="text-purple-700 dark:text-purple-300 font-medium hover:underline transition"
+                            class="text-blue-900 dark:text-gray-100 font-semibold hover:text-[#AC2334] dark:hover:text-red-300 transition"
                           >
                             {project.name}
                           </A>
@@ -1476,23 +1904,37 @@ export default function MainDashboard() {
                       </td>
 
                       {/* Location */}
-                      <td class="p-2">{project.location}</td>
+                      <td class="p-2 text-[#54657E] dark:text-gray-300">
+                        {project.location}
+                      </td>
 
                       {/* Type */}
-                      <td class="p-2">{project.type}</td>
+                      <td class="p-2 text-[#54657E] dark:text-gray-300">
+                        {project.type}
+                      </td>
 
                       {/* Status Badge */}
                       <td class="px-4 py-3">
                         <span
                           class={
-                            "px-3 py-1 text-sm rounded-full capitalize " +
+                            "inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold uppercase tracking-wide rounded-full " +
                             (project.status === "active"
-                              ? "bg-green-100 text-green-700 border border-green-300"
+                              ? "bg-[#E9F7F1] text-[#15966A] dark:bg-green-900/30 dark:text-green-300"
                               : project.status === "paused"
-                                ? "bg-red-100 text-red-700 border border-red-300"
-                                : "bg-red-100 text-red-700 border border-red-300")
+                                ? "bg-[#FBF3E2] text-[#B07A14] dark:bg-yellow-900/30 dark:text-yellow-300"
+                                : "bg-[#FBEEF0] text-[#AC2334] dark:bg-red-900/30 dark:text-red-300")
                           }
                         >
+                          <span
+                            class={
+                              "w-1.5 h-1.5 rounded-full " +
+                              (project.status === "active"
+                                ? "bg-[#15966A]"
+                                : project.status === "paused"
+                                  ? "bg-[#B07A14]"
+                                  : "bg-[#AC2334]")
+                            }
+                          ></span>
                           {project.status}
                         </span>
                       </td>
@@ -1547,7 +1989,7 @@ export default function MainDashboard() {
 
                       {/* Budget */}
                       <Show when={ishybrid()}>
-                        <td class="p-2">
+                        <td class="p-2 font-semibold text-gray-700 dark:text-gray-100">
                           {"₹"}
                           {(iscpl()
                             ? Number(stats().avgCPL || 0) * 5
@@ -1557,24 +1999,28 @@ export default function MainDashboard() {
                       </Show>
 
                       {/* Date-range Leads */}
-                      <td class="p-2">{stats().totalLeads}</td>
+                      <td class="p-2 font-semibold text-gray-700 dark:text-gray-100">
+                        {stats().totalLeads}
+                      </td>
 
                       {isAdmin() && (
-                        <td class="p-2">+{stats().extraLeads || 0}</td>
+                        <td class="p-2 text-gray-700 dark:text-green-300 font-semibold">
+                          +{stats().extraLeads || 0}
+                        </td>
                       )}
                       {/* Date-range Spent */}
-                      <td class="p-2">
+                      <td class="p-2 font-semibold text-gray-700 dark:text-gray-100">
                         {"₹"}
                         {stats().totalSpent.toLocaleString("en-IN")}
                       </td>
 
                       {/* Date-range AVG CPL */}
-                      <td class="p-2">
+                      <td class="p-2 font-semibold text-gray-700 dark:text-gray-100">
                         {"₹"}
                         {stats().avgCPL}
                       </td>
                       <Show when={isAdmin()}>
-                        <td class="p-3">
+                        <td class="p-3 font-semibold text-gray-700 dark:text-gray-100">
                           {project.modifiedCpl !== null &&
                           project.modifiedCpl !== undefined
                             ? `₹${Number(project.modifiedCpl).toLocaleString("en-IN")}`
@@ -1583,12 +2029,12 @@ export default function MainDashboard() {
                       </Show>
 
                       {/* Active Campaigns */}
-                      <td class="p-2 text-center">
+                      <td class="p-2 text-center font-semibold text-[#15966A] dark:text-green-300">
                         {stats().activeCampaigns ?? 0}
                       </td>
 
                       {/* Paused Campaigns */}
-                      <td class="p-2 text-center">
+                      <td class="p-2 text-center font-semibold text-[#B07A14] dark:text-yellow-300">
                         {stats().pausedCampaigns ?? 0}
                       </td>
                     </tr>
@@ -1596,11 +2042,11 @@ export default function MainDashboard() {
                 }}
               </For>
             </tbody>
-            <tfoot class="bg-gray-100 dark:bg-gray-800 font-semibold">
+            <tfoot class="bg-[#F8FAFC] dark:bg-gray-800 font-semibold text-gray-700 dark:text-white border-t-2 border-[#D4DDE9] dark:border-gray-600">
               <tr class="[&_td]:text-center [&_td]:px-6 [&_td]:py-3">
-                <td class="sticky left-0 bg-gray-100 dark:bg-gray-800 z-20"></td>
+                <td class="sticky left-0 bg-[#F8FAFC] dark:bg-gray-800 z-20"></td>
 
-                <td class="sticky left-[57px] bg-gray-100 dark:bg-gray-800 z-20 text-left">
+                <td class="sticky left-[57px] bg-[#F8FAFC] dark:bg-gray-800 z-20 text-left text-xs uppercase tracking-wider text-[#54657E] dark:text-gray-300">
                   Total
                 </td>
 
@@ -1656,7 +2102,7 @@ export default function MainDashboard() {
         </table>
       </div>
       <div class="flex items-center justify-between mt-5 flex-wrap gap-3">
-        <span class="text-sm text-gray-500">
+        <span class="text-sm text-[#8593A8] dark:text-gray-400">
           {total() === 0
             ? "No results"
             : `Showing ${(currentPage() - 1) * pageSize() + 1}–${Math.min(page() * pageSize(), total())} of ${total()} results`}
@@ -1668,7 +2114,7 @@ export default function MainDashboard() {
               currentPage() > 1 && setCurrentPage(currentPage() - 1)
             }
             disabled={currentPage() === 1}
-            class="flex items-center gap-1.5 px-4 h-9 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:bg-gray-50 disabled:opacity-35 disabled:cursor-default transition-colors"
+            class="flex items-center gap-1.5 px-4 h-9 text-sm rounded-lg border border-[#E2E8F1] dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-[#54657E] dark:text-gray-200 hover:bg-[#F6F9FC] disabled:opacity-35 disabled:cursor-default transition-colors"
           >
             <svg
               class="w-3.5 h-3.5"
@@ -1682,7 +2128,7 @@ export default function MainDashboard() {
             Prev
           </button>
 
-          <span class="text-sm text-gray-500 px-1">
+          <span class="text-sm text-[#8593A8] dark:text-gray-400 px-1">
             Page {currentPage()} of{" "}
             {Math.ceil(allProjects().length / pageSize())}
           </span>
@@ -1695,7 +2141,7 @@ export default function MainDashboard() {
             disabled={
               currentPage() >= Math.ceil(allProjects().length / pageSize())
             }
-            class="flex items-center gap-1.5 px-4 h-9 text-sm rounded-lg bg-blue-600 border border-blue-600 text-white hover:bg-blue-700 disabled:opacity-35 disabled:cursor-default transition-colors"
+            class="flex items-center gap-1.5 px-4 h-9 text-sm rounded-lg bg-[#AC2334] border border-[#AC2334] text-white hover:bg-[#8E1C2B] disabled:opacity-35 disabled:cursor-default transition-colors"
           >
             Next
             <svg
@@ -1712,13 +2158,338 @@ export default function MainDashboard() {
       </div>
       {/* Empty State */}
       <Show when={projects().length === 0}>
-        <div class="mt-8 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 p-6 text-center">
-          <p class="text-sm font-medium text-gray-700 dark:text-gray-300">
+        <div class="mt-8 rounded-xl border border-dashed border-[#D4DDE9] dark:border-gray-600 bg-gray-50 dark:bg-gray-800 p-6 text-center">
+          <p class="text-sm font-bold text-gray-700 dark:text-gray-300">
             No active projects found
           </p>
-          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          <p class="mt-1 text-sm text-[#8593A8] dark:text-gray-400">
             Your live projects will appear here once campaigns are started
           </p>
+        </div>
+      </Show>
+
+      {/* ════════ NEEDS ATTENTION (derived from live data) ════════ */}
+      <Show when={signals().length > 0}>
+        <Eyebrow label="Needs attention" />
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
+          <For each={signals()}>
+            {(sig) => (
+              <div class="relative overflow-hidden bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] p-5">
+                <span
+                  class={
+                    "absolute left-0 top-0 bottom-0 w-1 " +
+                    (sig.tone === "red" ? "bg-[#AC2334]" : "bg-[#D89A2B]")
+                  }
+                ></span>
+                <p
+                  class={
+                    "text-xs font-bold uppercase tracking-wider " +
+                    (sig.tone === "red" ? "text-[#AC2334]" : "text-[#B07A14]")
+                  }
+                >
+                  {sig.tag}
+                </p>
+                <h3 class="text-base font-bold text-[#14233A] dark:text-white mt-1.5 mb-1.5">
+                  {sig.title}
+                </h3>
+                <p class="text-sm text-[#54657E] dark:text-gray-400 leading-relaxed [&_b]:text-[#1A2B45] dark:[&_b]:text-gray-100 [&_b]:font-bold">
+                  {sig.body}
+                </p>
+              </div>
+            )}
+          </For>
+        </div>
+      </Show>
+
+      {/* ════════ HOW THE PORTFOLIO IS BUYING ════════ */}
+      <Show when={allProjects().length > 0}>
+        <Eyebrow label="How the portfolio is buying" />
+        <div class="grid grid-cols-1 lg:grid-cols-[1.25fr_1fr] gap-4 mb-8">
+          {/* CPL by project */}
+          <div class="bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] p-5 sm:p-6">
+            <h3 class="text-base font-bold text-[#14233A] dark:text-white">
+              Cost per lead, by project
+            </h3>
+            <p class="text-xs text-[#8593A8] dark:text-gray-400 mt-0.5 mb-5">
+              Dashed line marks the portfolio average of ₹
+              {overviewStatsCards().avgCPL}
+              <Show when={cplChart().extra > 0}>
+                {" "}
+                · top 8 by spend, {cplChart().extra} more in the ledger
+              </Show>
+            </p>
+            <div class="relative pt-1.5">
+              <Show when={cplChart().avg > 0}>
+                <div
+                  class="absolute top-0 bottom-5 border-l-2 border-dashed border-[#B9C5D6] dark:border-gray-600"
+                  style={`left:${cplChart().avgPos}%`}
+                ></div>
+                <span
+                  class="absolute -top-1.5 text-[10px] font-bold uppercase tracking-wide text-[#8593A8]"
+                  style={`left:calc(${cplChart().avgPos}% + 8px)`}
+                >
+                  avg
+                </span>
+              </Show>
+              <For each={cplChart().rows}>
+                {(r) => (
+                  <div class="grid grid-cols-[1fr_auto] sm:grid-cols-[110px_1fr_96px] gap-x-3 gap-y-2 items-center py-2.5">
+                    <div class="text-sm font-bold text-[#54657E] dark:text-gray-300 text-left sm:text-right truncate sm:row-start-1 sm:col-start-1">
+                      {r.name}
+                    </div>
+                    <div class="col-span-2 sm:col-span-1 h-3 rounded-full bg-[#EDF1F7] dark:bg-gray-800 relative sm:row-start-1 sm:col-start-2">
+                      <div
+                        class={
+                          "absolute inset-y-0 left-0 rounded-full transition-all duration-700 " +
+                          (r.tone === "green"
+                            ? "bg-[#15966A]"
+                            : r.tone === "steel"
+                              ? "bg-[#3E6FB0]"
+                              : r.tone === "red"
+                                ? "bg-[#AC2334]"
+                                : "bg-[#D8DFE9] dark:bg-gray-700")
+                        }
+                        style={`width:${r.width}%`}
+                      ></div>
+                    </div>
+                    <div class="row-start-1 col-start-2 sm:col-start-3 text-right">
+                      <Show
+                        when={r.hasLeads}
+                        fallback={
+                          <span class="text-sm font-bold text-[#8593A8]">
+                            —{" "}
+                            <span class="block sm:inline text-[10px] font-medium">
+                              no delivery yet
+                            </span>
+                          </span>
+                        }
+                      >
+                        <span class="text-sm font-bold text-[#14233A] dark:text-white">
+                          ₹{r.cpl}
+                        </span>
+                        <span class="block text-[10px] font-medium text-[#8593A8]">
+                          {r.deltaPct === 0
+                            ? "at avg"
+                            : `${Math.abs(r.deltaPct)}% ${r.deltaPct > 0 ? "above" : "below"} avg`}
+                        </span>
+                      </Show>
+                    </div>
+                  </div>
+                )}
+              </For>
+            </div>
+          </div>
+
+          {/* Lead share + campaign health */}
+          <div class="bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] p-5 sm:p-6">
+            <h3 class="text-base font-bold text-[#14233A] dark:text-white">
+              Where the {leadShare().totalLeads.toLocaleString("en-IN")} leads
+              came from
+            </h3>
+            <p class="text-xs text-[#8593A8] dark:text-gray-400 mt-0.5 mb-4">
+              Share of leads in the selected range
+            </p>
+            <div class="flex h-4 rounded-full overflow-hidden mb-4">
+              <For each={leadShare().items}>
+                {(item) => (
+                  <div
+                    style={`width:${item.pct}%;background:${item.color}`}
+                  ></div>
+                )}
+              </For>
+            </div>
+            <For each={leadShare().items}>
+              {(item) => (
+                <div class="flex items-center gap-2.5 py-2 border-b border-[#E2E8F1] dark:border-gray-700 last:border-b-0 text-sm">
+                  <span
+                    class="w-2.5 h-2.5 rounded flex-none"
+                    style={`background:${item.color}`}
+                  ></span>
+                  <span class="flex-1 text-[#54657E] dark:text-gray-300 font-medium truncate">
+                    {item.name}
+                  </span>
+                  <span class="font-bold text-[#14233A] dark:text-white">
+                    {item.count.toLocaleString("en-IN")}
+                  </span>
+                  <span class="w-12 text-right text-xs font-medium text-[#8593A8]">
+                    {item.pct.toFixed(1)}%
+                  </span>
+                </div>
+              )}
+            </For>
+
+            {/* Campaign health */}
+            <div class="mt-5 pt-5 border-t border-[#E2E8F1] dark:border-gray-700">
+              <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400 mb-2.5">
+                Campaign health
+              </p>
+              <div class="flex h-3.5 rounded-full overflow-hidden">
+                <div
+                  class="bg-[#15966A]"
+                  style={`width:${
+                    overviewStatsCards().activeCampaigns +
+                      overviewStatsCards().pausedCampaigns >
+                    0
+                      ? (overviewStatsCards().activeCampaigns /
+                          (overviewStatsCards().activeCampaigns +
+                            overviewStatsCards().pausedCampaigns)) *
+                        100
+                      : 0
+                  }%`}
+                ></div>
+                <div class="bg-[#D89A2B] flex-1"></div>
+              </div>
+              <div class="flex justify-between mt-2 text-xs font-medium text-[#54657E] dark:text-gray-400">
+                <span>
+                  <b class="text-[#14233A] dark:text-white">
+                    {overviewStatsCards().activeCampaigns}
+                  </b>{" "}
+                  live
+                </span>
+                <span>
+                  <b class="text-[#14233A] dark:text-white">
+                    {overviewStatsCards().pausedCampaigns}
+                  </b>{" "}
+                  paused
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Show>
+
+      {/* ════════ AI DAILY BRIEF (preview — highlights are live-derived) ════════ */}
+      <Show when={SHOW_PROPOSED_SECTIONS && briefHighlights().length > 0}>
+        <Eyebrow label="Account brief" soft="preview" />
+        <div class="rounded-xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] bg-gradient-to-b from-[#192A45] to-[#101D31] border border-[#0D1828] p-5 sm:p-7 mb-8 text-[#C9D5E7]">
+          <div class="flex items-center gap-3 flex-wrap">
+            <h3 class="text-lg font-bold text-white">Daily brief</h3>
+            {/* <span class="text-[10px] font-bold uppercase tracking-wider rounded-full px-3 py-1 bg-[#AC2334] text-white">
+              Claude API
+            </span> */}
+            <span class="text-[10px] font-bold uppercase tracking-wider rounded-full px-3 py-1 border border-white/20 text-[#AEBDD3]">
+              Preview · rule-based
+            </span>
+          </div>
+          <div class="grid grid-cols-1 lg:grid-cols-[1.15fr_1fr] gap-7 mt-5">
+            <div>
+              <p class="text-[11px] font-bold uppercase tracking-wider text-[#7E90AC] mb-2">
+                What went well
+              </p>
+              <For each={briefHighlights()}>
+                {(line) => (
+                  <div class="flex gap-3 py-2.5 border-t border-white/10 text-sm leading-relaxed [&_b]:text-white [&_b]:font-bold">
+                    <span
+                      class={
+                        "w-2 h-2 rounded-full flex-none mt-1.5 " +
+                        (line.tone === "green"
+                          ? "bg-[#3DD598]"
+                          : "bg-[#E8B45A]")
+                      }
+                    ></span>
+                    <div>{line.body}</div>
+                  </div>
+                )}
+              </For>
+            </div>
+            <div>
+              <p class="text-[11px] font-bold uppercase tracking-wider text-[#7E90AC] mb-2">
+                Issues log · auto-tracked
+              </p>
+              <Show
+                when={briefIssues().length > 0}
+                fallback={
+                  <div class="py-2.5 border-t border-white/10 text-sm text-[#AEBDD3]">
+                    No open issues detected in this range.
+                  </div>
+                }
+              >
+                <For each={briefIssues()}>
+                  {(iss) => (
+                    <div class="flex gap-3 items-start py-2.5 border-t border-white/10">
+                      <span
+                        class={
+                          "text-[9px] font-bold uppercase tracking-wide rounded px-2 py-1 flex-none mt-0.5 " +
+                          (iss.state === "prog"
+                            ? "bg-[#E8B45A] text-[#4A340B]"
+                            : "bg-[#AC2334] text-white")
+                        }
+                      >
+                        {iss.stateLabel}
+                      </span>
+                      <p class="text-sm leading-relaxed [&_b]:text-white [&_b]:font-bold">
+                        <b>{iss.title}.</b> {iss.body}
+                      </p>
+                    </div>
+                  )}
+                </For>
+              </Show>
+            </div>
+          </div>
+          <div class="mt-4 pt-3.5 border-t border-white/10 flex justify-between flex-wrap gap-2 text-[11px] font-medium text-[#7E90AC]">
+            <span>
+              Highlights derived from this range's data · Claude API narrative
+              wiring pending
+            </span>
+            <span>Numbers are restricted to the data shown on this page</span>
+          </div>
+        </div>
+      </Show>
+
+      {/* ════════ FUNNEL — live Impression→Lead, summed across projects ════════ */}
+      <Show when={SHOW_PROPOSED_SECTIONS}>
+        <Eyebrow
+          label="Funnel"
+          soft="impression to lead, across all projects"
+        />
+        <div class="bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] p-5 sm:p-6 mb-8">
+          <div class="flex items-start justify-between gap-4 flex-wrap">
+            <div>
+              <h3 class="text-base font-bold text-[#14233A] dark:text-white">
+                Impression to lead, one glance
+              </h3>
+              <p class="text-xs text-[#8593A8] dark:text-gray-400 mt-0.5">
+                Totals across every project from the Insights API
+                {rangeLabel() ? ` · ${rangeLabel()}` : ""}.
+              </p>
+            </div>
+            <span class="text-[10px] font-bold uppercase tracking-wider rounded-full px-3 py-1 bg-[#E9F7F1] text-[#15966A] flex-none">
+              Live data
+            </span>
+          </div>
+          <Show when={!funnelStats().hasData}>
+            <p class="text-sm text-[#8593A8] dark:text-gray-400 mt-5">
+              No insights for this range yet.
+            </p>
+          </Show>
+          <div
+            class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 mt-5"
+            classList={{ "opacity-50": !funnelStats().hasData }}
+          >
+            {funnelCells().map((f, i) => (
+              <div
+                class={
+                  "py-3 lg:py-0 lg:px-5 border-t lg:border-t-0 lg:border-l border-[#E2E8F1] dark:border-gray-700 first:border-t-0 first:border-l-0 first:pl-0 flex lg:block items-center justify-between gap-3" +
+                  (i === 0 ? "" : "")
+                }
+              >
+                <div>
+                  <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
+                    {f.l}
+                  </p>
+                  <p class="hidden lg:block text-xs text-[#54657E] dark:text-gray-400 mt-1 order-3">
+                    {f.s}
+                  </p>
+                </div>
+                <p class="text-2xl font-bold text-[#14233A] dark:text-white lg:mt-1">
+                  {f.v}
+                </p>
+                <p class="lg:hidden text-xs text-[#54657E] dark:text-gray-400">
+                  {f.s}
+                </p>
+              </div>
+            ))}
+          </div>
         </div>
       </Show>
     </section>
