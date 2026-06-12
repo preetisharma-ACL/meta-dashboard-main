@@ -1,10 +1,14 @@
 import { For, Show, createSignal, createMemo, onMount, batch } from "solid-js";
 import { DateRangeFilter } from "../components/DateRangeFilter";
 import { fetchProjects } from "../services/dashboard";
-import { fetchAllCampaigns, fetchBulkCampaignInsights } from "../services/campaigns";
+import {
+  fetchAllCampaigns,
+  fetchBulkCampaignInsights,
+} from "../services/campaigns";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import useRole, { clientRole } from "./../hooks/useRole";
+import autoTable from "jspdf-autotable";
 const GST_RATE = 0.18;
 const logoUrl = "/logo.webp";
 
@@ -308,19 +312,45 @@ export default function DailyReports() {
     return `${fmtDate(fromDate())} – ${fmtDate(toDate())}`;
   });
 
-  /* ── PDF download ── */
   const downloadPDF = async () => {
     const el = document.getElementById("pdf-daily-report");
     if (!el) return;
+
     const canvas = await html2canvas(el, {
-      scale: 2,
-      backgroundColor: "#fbfbfb",
+      scale: 2, // keep 2 so text stays sharp; size is controlled by JPEG below
+      backgroundColor: "#ffffff",
+      useCORS: true, // lets the /logo.webp render into the canvas
     });
-    const imgData = canvas.toDataURL("image/png");
-    const pdf = new jsPDF("p", "mm", "a4");
-    const imgWidth = 210;
-    const imgHeight = (canvas.height * imgWidth) / canvas.width;
-    pdf.addImage(imgData, "PNG", 0, 0, imgWidth, imgHeight);
+
+    // JPEG ~0.85 + jsPDF compression: this is where the size saving comes from
+    const imgData = canvas.toDataURL("image/jpeg", 0.85);
+
+    const pdf = new jsPDF({
+      orientation: "p",
+      unit: "mm",
+      format: "a4",
+      compress: true,
+    });
+
+    const pageW = 210;
+    const pageH = 297;
+    const imgW = pageW;
+    const imgH = (canvas.height * imgW) / canvas.width;
+
+    // Multi-page: instead of squeezing the whole report onto one page (which is
+    // what shrank and clipped your text), draw the full-height image and shift
+    // it up by one page-height per page.
+    let position = 0;
+    pdf.addImage(imgData, "JPEG", 0, position, imgW, imgH, undefined, "FAST");
+    let remaining = imgH - pageH;
+
+    while (remaining > 0) {
+      position -= pageH;
+      pdf.addPage();
+      pdf.addImage(imgData, "JPEG", 0, position, imgW, imgH, undefined, "FAST");
+      remaining -= pageH;
+    }
+
     pdf.save("daily-report.pdf");
   };
 
@@ -1037,7 +1067,7 @@ export default function DailyReports() {
                         {fmt(totals().totalspentwithServiceCharge)}
                       </td>
                     </Show>
-                    <td style="padding:11px 14px;text-align:center;color:#6b4c10;font-size:14px;font-weight:700;background:rgba(201,168,76,0.10);">
+                    <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
                       {fmt(totals().totalspentwithservice_gst)}
                     </td>
                   </tr>
