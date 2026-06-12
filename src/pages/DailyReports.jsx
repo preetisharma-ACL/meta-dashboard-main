@@ -8,7 +8,6 @@ import {
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import useRole, { clientRole } from "./../hooks/useRole";
-import autoTable from "jspdf-autotable";
 import { createResource } from "solid-js"; // add to existing solid-js import
 import { fetchBillingOverview } from "../services/billing-service";
 const logoUrl = "/logo.webp";

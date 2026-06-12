@@ -4,6 +4,7 @@ import { fetchClients } from "../services/fetchClients";
 import { fetchProjectDisplayConfig } from "../services/projectDisplayConfig";
 import { fetchProjectsByClient } from "../services/fetchProjectsByClient";
 import Avatar from "../../../components/common/Avatar";
+import SuccessToast, {showToast} from "../../../components/common/SuccessToast";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -284,11 +285,16 @@ export default function ManualBatches() {
       };
 
       await createManualBatch(payload);
-      alert("Leads feeded successfully");
-
+      const leadCount = formData().synthetic_lead_count;
+      const projectName =
+        projects().find((p) => p.id === Number(formData().project_id))?.name ||
+        projectSearch();
       await loadBatches(page());
-
       closeSidebar();
+      showToast(
+        `Successfully feeded ${leadCount} leads to the "${projectName}" project.`,
+        "Leads feeded",
+      );
     } catch (err) {
       console.error(err);
     } finally {
@@ -319,6 +325,7 @@ export default function ManualBatches() {
         >
           + Feed Leads
         </button>
+       
         <Show when={activeFilterCount() > 0}>
           <button
             onClick={clearFilters}
@@ -530,7 +537,7 @@ export default function ManualBatches() {
                     <td class="p-3 text-gray-700 dark:text-gray-300 font-medium text-sm whitespace-nowrap">
                       {b.id}
                     </td>
-                    
+
                     {/* Project */}
                     <td class="p-3">
                       <div class="flex items-center gap-2">
@@ -963,6 +970,7 @@ export default function ManualBatches() {
           </div>
         </div>
       </Show>
+      <SuccessToast />
     </div>
   );
 }

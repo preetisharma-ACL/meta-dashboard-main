@@ -8,6 +8,9 @@ import {
 } from "../services/projectDisplayConfig";
 import Avatar from "../../../components/common/Avatar";
 import { fetchProjectsByClient } from "../services/fetchProjectsByClient"; // ← NEW
+import SuccessToast, {
+  showToast,
+} from "../../../components/common/SuccessToast";
 
 const TYPE_COLORS = {
   hybrid: "bg-blue-100 text-blue-800 ring-1 ring-blue-300",
@@ -258,7 +261,14 @@ export default function ProjectDisplayConfig() {
         notes: formData().notes,
       };
 
-      if (isEditMode()) {
+      // Capture for the toast before the sidebar reset wipes them
+      const ruleValue = formData().rule_value;
+      const projectName =
+        projects().find((p) => p.id === Number(formData().project_id))?.name ||
+        projectSearch();
+      const wasEdit = isEditMode();
+
+      if (wasEdit) {
         await updateProjectDisplayConfig(editingConfig().id, payload);
       } else {
         await createProjectDisplayConfig(payload);
@@ -267,6 +277,13 @@ export default function ProjectDisplayConfig() {
       const res = await fetchProjectDisplayConfig();
       setConfigs(res.data ?? []);
       closeSidebar();
+
+      showToast(
+        wasEdit
+          ? `Successfully updated "${ruleValue}%" configuration for the "${projectName}" project.`
+          : `Successfully added "${ruleValue}%" configuration to the "${projectName}" project.`,
+        "Configuration saved",
+      );
     } catch (err) {
       console.error("Failed to save config:", err);
     } finally {
@@ -292,8 +309,8 @@ export default function ProjectDisplayConfig() {
         >
           + Add Project Config
         </button>
+       
       </div>
-
       {/* Filters Bar */}
       <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-4 mb-4 flex flex-wrap items-center gap-3">
         <div class="relative flex w-[500px]">
@@ -351,7 +368,6 @@ export default function ProjectDisplayConfig() {
           {filtered().length} result{filtered().length !== 1 ? "s" : ""}
         </span>
       </div>
-
       {/* Table — unchanged from original */}
       <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 overflow-x-auto">
         <table class="min-w-full text-sm">
@@ -613,7 +629,6 @@ export default function ProjectDisplayConfig() {
           </tfoot>
         </table>
       </div>
-
       {/* Pagination */}
       <div class="flex items-center justify-between mt-5 flex-wrap gap-3">
         <span class="text-sm text-gray-500 dark:text-gray-400">
@@ -671,7 +686,6 @@ export default function ProjectDisplayConfig() {
           </button>
         </div>
       </div>
-
       {/* ───────────────── Sidebar Modal ───────────────── */}
       <Show when={sidebarMounted()}>
         <div class="fixed inset-0 z-50 flex">
@@ -947,6 +961,9 @@ export default function ProjectDisplayConfig() {
           </div>
         </div>
       </Show>
+
+      {/* ── Success Toast (blue + confetti) ── */}
+      <SuccessToast />
     </div>
   );
 }
