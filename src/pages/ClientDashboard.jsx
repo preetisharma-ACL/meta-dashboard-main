@@ -1989,7 +1989,7 @@ export default function MainDashboard() {
 
                       {/* Budget */}
                       <Show when={ishybrid()}>
-                        <td class="p-2 font-semibold text-gray-700 dark:text-gray-100">
+                        <td class="p-2 font-medium text-gray-700 dark:text-gray-100">
                           {"₹"}
                           {(iscpl()
                             ? Number(stats().avgCPL || 0) * 5
@@ -1999,28 +1999,28 @@ export default function MainDashboard() {
                       </Show>
 
                       {/* Date-range Leads */}
-                      <td class="p-2 font-semibold text-gray-700 dark:text-gray-100">
+                      <td class="p-2 font-medium text-gray-700 dark:text-gray-100">
                         {stats().totalLeads}
                       </td>
 
                       {isAdmin() && (
-                        <td class="p-2 text-gray-700 dark:text-green-300 font-semibold">
+                        <td class="p-2 text-gray-700 dark:text-green-300 font-medium">
                           +{stats().extraLeads || 0}
                         </td>
                       )}
                       {/* Date-range Spent */}
-                      <td class="p-2 font-semibold text-gray-700 dark:text-gray-100">
+                      <td class="p-2 font-medium text-gray-700 dark:text-gray-100">
                         {"₹"}
                         {stats().totalSpent.toLocaleString("en-IN")}
                       </td>
 
                       {/* Date-range AVG CPL */}
-                      <td class="p-2 font-semibold text-gray-700 dark:text-gray-100">
+                      <td class="p-2 font-medium text-gray-700 dark:text-gray-100">
                         {"₹"}
                         {stats().avgCPL}
                       </td>
                       <Show when={isAdmin()}>
-                        <td class="p-3 font-semibold text-gray-700 dark:text-gray-100">
+                        <td class="p-3 font-medium text-gray-700 dark:text-gray-100">
                           {project.modifiedCpl !== null &&
                           project.modifiedCpl !== undefined
                             ? `₹${Number(project.modifiedCpl).toLocaleString("en-IN")}`
@@ -2029,12 +2029,12 @@ export default function MainDashboard() {
                       </Show>
 
                       {/* Active Campaigns */}
-                      <td class="p-2 text-center font-semibold text-[#15966A] dark:text-green-300">
+                      <td class="p-2 text-center font-medium text-[#15966A] dark:text-green-300">
                         {stats().activeCampaigns ?? 0}
                       </td>
 
                       {/* Paused Campaigns */}
-                      <td class="p-2 text-center font-semibold text-[#B07A14] dark:text-yellow-300">
+                      <td class="p-2 text-center font-medium text-[#B07A14] dark:text-yellow-300">
                         {stats().pausedCampaigns ?? 0}
                       </td>
                     </tr>

@@ -31,6 +31,7 @@ import FeededLeads from "./pages/admin/leads/FeededLeads";
 import ManualBatches from "./pages/admin/leads/FeededLeads";
 import Projects from "./pages/admin/projects/Projects";
 import AdminRoute from "./utils/AdminRoute";
+import CoordinationDashboard from "./pages/coordination/pages/CoordinationDashboard";
 
 //  Layout is a named component — SolidJS reuses the SAME instance across all
 //    child route navigations, so Header and Sidebar mount exactly ONCE
@@ -158,6 +159,14 @@ function App() {
               component={() => (
                 <AdminRoute>
                   <ManualBatches />
+                </AdminRoute>
+              )}
+            />
+             <Route
+              path="/coordination-dashboard"
+              component={() => (
+                <AdminRoute>
+                  <CoordinationDashboard/>
                 </AdminRoute>
               )}
             />
