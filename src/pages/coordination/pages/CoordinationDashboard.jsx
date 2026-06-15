@@ -82,6 +82,9 @@ export default function CoordinationDashboard() {
   });
 
   const handleMonthChange = (value) => {
+    if (!value) return;
+    // Never allow a future month (max attr guards the picker; this guards typing).
+    if (value > currentMonthStr()) value = currentMonthStr();
     setMonth(value);
     load(false); // month change refetches with ?month=
   };
@@ -286,6 +289,7 @@ export default function CoordinationDashboard() {
             <input
               type="month"
               value={month()}
+              max={currentMonthStr()}
               onInput={(e) => handleMonthChange(e.currentTarget.value)}
               class="border border-[#E2E8F1] dark:border-gray-600 px-3 py-2 rounded-lg bg-white dark:bg-gray-800 text-sm text-[#1A2B45] dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#AC2334]/25 focus:border-[#AC2334]"
             />
@@ -401,31 +405,17 @@ export default function CoordinationDashboard() {
 
       {/* ════════ FILTER BAR ════════ */}
       <div class="flex flex-wrap items-center gap-3 mb-4">
-        {/* Status filter pills */}
-        <div class="flex flex-wrap gap-2">
-          <For
-            each={[
-              { label: "All", value: "all" },
-              { label: "Owes", value: "owes" },
-              { label: "Low", value: "low" },
-              { label: "Healthy", value: "healthy" },
-            ]}
-          >
-            {(item) => (
-              <button
-                onClick={() => setStatusFilter(item.value)}
-                class={
-                  "px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 border " +
-                  (statusFilter() === item.value
-                    ? "bg-[#AC2334] text-white border-[#AC2334] shadow-md"
-                    : "bg-white text-[#54657E] border-[#E2E8F1] hover:border-[#AC2334]/40 hover:text-[#AC2334] dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700 dark:hover:text-white")
-                }
-              >
-                {item.label}
-              </button>
-            )}
-          </For>
-        </div>
+        {/* Status filter dropdown */}
+        <select
+          value={statusFilter()}
+          onChange={(e) => setStatusFilter(e.currentTarget.value)}
+          class="border border-[#E2E8F1] dark:border-gray-600 px-3 py-2 rounded-lg bg-white dark:bg-gray-800 text-sm text-[#1A2B45] dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#AC2334]/25 focus:border-[#AC2334] cursor-pointer"
+        >
+          <option value="all">All</option>
+          <option value="owes">Owes</option>
+          <option value="low">Low</option>
+          <option value="healthy">Healthy</option>
+        </select>
 
         {/* Search */}
         <input
@@ -435,6 +425,19 @@ export default function CoordinationDashboard() {
           onInput={(e) => setSearchText(e.currentTarget.value)}
           class="border border-[#E2E8F1] dark:border-gray-600 px-3 py-2 rounded-lg w-72 max-w-full bg-white dark:bg-gray-800 text-sm text-[#1A2B45] dark:text-gray-200 placeholder:text-[#8593A8] focus:outline-none focus:ring-2 focus:ring-[#AC2334]/25 focus:border-[#AC2334]"
         />
+
+        {/* Clear all filters */}
+        <Show when={statusFilter() !== "all" || searchText().trim() !== ""}>
+          <button
+            onClick={() => {
+              setStatusFilter("all");
+              setSearchText("");
+            }}
+            class="px-3 py-2 rounded-lg text-sm font-medium border border-[#E2E8F1] dark:border-gray-600 text-[#54657E] dark:text-gray-300 bg-white dark:bg-gray-800 hover:border-[#AC2334]/40 hover:text-[#AC2334] dark:hover:bg-gray-700 dark:hover:text-white transition-colors"
+          >
+            Clear all
+          </button>
+        </Show>
 
         {/* GST toggle */}
         <div class="ml-auto inline-flex items-center gap-1 bg-white dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-600 rounded-full p-1">
