@@ -21,6 +21,16 @@
 import { For, Show, createSignal, createMemo, onMount } from "solid-js";
 import { fetchPaymentsOverview } from "../services/coDashboard-service"
 
+// Distinct badge colors per client type (v4 theme tokens)
+const TYPE_BADGE = {
+  retainer:
+    "bg-[#ECF2FA] text-[#3E6FB0] dark:bg-gray-800 dark:text-blue-300", // steel
+  hybrid:
+    "bg-[#F3ECFB] text-[#7A3EB0] dark:bg-gray-800 dark:text-purple-300", // violet
+  cpl:
+    "bg-[#FBF3E2] text-[#B07A14] dark:bg-gray-800 dark:text-amber-300", // amber
+};
+
 export default function CoordinationDashboard() {
   // ── State ──────────────────────────────────────────────────────────────────
   const currentMonthStr = () => {
@@ -517,7 +527,13 @@ export default function CoordinationDashboard() {
 
                     {/* Type */}
                     <td class="px-4 py-3 text-center">
-                      <span class="inline-block px-2.5 py-1 text-xs font-semibold rounded-md bg-[#ECF2FA] text-[#3E6FB0] dark:bg-gray-800 dark:text-blue-300 capitalize">
+                      <span
+                        class={
+                          "inline-block px-2.5 py-1 text-xs font-semibold rounded-md uppercase " +
+                          (TYPE_BADGE[(c.client_type || "").toLowerCase()] ||
+                            "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300")
+                        }
+                      >
                         {c.client_type || "—"}
                       </span>
                     </td>
