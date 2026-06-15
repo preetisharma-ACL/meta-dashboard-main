@@ -33,6 +33,7 @@ import {
   applyMarkup,
 } from "../utils/markupUtils";
 import Avatar from "../components/common/Avatar";
+import useRole, { clientRole } from "./../hooks/useRole";
 
 export default function ProjectDetails() {
   const location = useLocation();
@@ -238,6 +239,7 @@ export default function ProjectDetails() {
   const totalPages = () => cachedProject().meta?.total_pages ?? 1;
   const hasNext = () => cachedProject().meta?.has_next ?? false;
   const hasPrev = () => cachedProject().meta?.has_prev ?? false;
+  const { isRetainer, iscpl, ishybrid, isAdmin } = clientRole();
 
   // ── Write helper — merges into this project's cache slot ────────────────────
   const setProjectCache = (patch) =>
@@ -1172,9 +1174,11 @@ export default function ProjectDetails() {
                   {rangeLabel()} Impression {getSortIcon("totalReach")}
                 </th>
               )}
-              <th class="p-3" onClick={() => handleSort("totalSpent")}>
-                {rangeLabel()} Spent {getSortIcon("totalSpent")}
-              </th>
+              <Show when={!iscpl()}>
+                <th class="p-3" onClick={() => handleSort("totalSpent")}>
+                  {rangeLabel()} Spent {getSortIcon("totalSpent")}
+                </th>
+              </Show>
               <th class="p-3" onClick={() => handleSort("cpl")}>
                 {rangeLabel()} Avg CPL {getSortIcon("cpl")}
               </th>
@@ -1245,7 +1249,9 @@ export default function ProjectDetails() {
                   {userRole() === "client" && (
                     <td class="p-3">{row.totalReach}</td>
                   )}
+                   <Show when={!iscpl()}>
                   <td class="p-3">₹{row.totalSpent.toLocaleString("en-IN")}</td>
+                  </Show>
                   <td class="p-3">₹{(row.totalCPL ?? 0).toFixed(2)}</td>
                   {userRole() === "admin" && (
                     <td class="p-3">
@@ -1302,9 +1308,11 @@ export default function ProjectDetails() {
               )}
 
               {/* Spend */}
-              <td class="text-red-700 dark:text-red-300 font-bold">
-                ₹{footerTotals().totalSpent.toLocaleString("en-IN")}
-              </td>
+              <Show when={!iscpl()}>
+                <td class="text-red-700 dark:text-red-300 font-bold">
+                  ₹{footerTotals().totalSpent.toLocaleString("en-IN")}
+                </td>
+              </Show>
 
               {/* CPL */}
               <td class="text-purple-700 dark:text-purple-300 font-bold">
@@ -1445,6 +1453,7 @@ export default function ProjectDetails() {
           </div>
 
           {/* Total spent */}
+           <Show when={!iscpl()}>
           <div
             class="rounded-lg p-3
             bg-orange-50     dark:bg-orange-900/20
@@ -1457,6 +1466,7 @@ export default function ProjectDetails() {
               ₹{footerTotals().totalSpent.toLocaleString("en-IN")}
             </p>
           </div>
+          </Show>
 
           {/* Top campaign */}
           <div

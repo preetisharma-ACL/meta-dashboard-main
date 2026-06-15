@@ -1533,6 +1533,7 @@ export default function MainDashboard() {
       />
       <div class="bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] p-5 sm:p-8 mb-8 grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-8 lg:gap-12 items-start">
         <div>
+          <Show when={!iscpl()}>
           <p class="text-sm text-[#54657E] dark:text-gray-400 font-medium mb-1">
             Total spend till date
           </p>
@@ -1540,8 +1541,9 @@ export default function MainDashboard() {
             {"₹"}
             {overviewStatsCards().totalSpent.toLocaleString("en-IN")}
           </h2>
+          </Show>
 
-          <Show when={isAdmin() || iscpl() || ishybrid()}>
+          <Show when={isAdmin()  || ishybrid()}>
             <p class="text-sm text-[#54657E] dark:text-gray-400 mt-2">
               of{" "}
               <b class="text-[#14233A] dark:text-white">
@@ -1826,9 +1828,11 @@ export default function MainDashboard() {
                 {rangeLabel()} Total Leads {getSortIcon("totalLeads")}
               </th>
               {isAdmin() && <th class="p-3">{rangeLabel()} Extra Leads</th>}
+              <Show when={!iscpl()}>
               <th class="p-3" onClick={() => handleSort("totalSpent")}>
                 {rangeLabel()} Total Spent {getSortIcon("totalSpent")}
               </th>
+              </Show>
               <th class="p-3" onClick={() => handleSort("avgCPL")}>
                 {rangeLabel()} AVG CPL {getSortIcon("avgCPL")}
               </th>
@@ -2009,10 +2013,12 @@ export default function MainDashboard() {
                         </td>
                       )}
                       {/* Date-range Spent */}
+                      <Show when={!iscpl()}>
                       <td class="p-2 font-medium text-gray-700 dark:text-gray-100">
                         {"₹"}
                         {stats().totalSpent.toLocaleString("en-IN")}
                       </td>
+                      </Show>
 
                       {/* Date-range AVG CPL */}
                       <td class="p-2 font-medium text-gray-700 dark:text-gray-100">
@@ -2076,10 +2082,12 @@ export default function MainDashboard() {
                 )}
 
                 {/* Spent Total */}
-                <td>
-                  {"₹"}
-                  {overviewStats().totalSpent.toLocaleString("en-IN")}
-                </td>
+                <Show when={!iscpl()}>
+                  <td>
+                    {"₹"}
+                    {overviewStats().totalSpent.toLocaleString("en-IN")}
+                  </td>
+                </Show>
 
                 {/* Avg CPL */}
                 <td>
