@@ -150,6 +150,8 @@ export default function ProjectDetails() {
             borderWidth: 1,
             padding: 10,
             cornerRadius: 8,
+            // CPL clients don't see spend anywhere — drop it from the tooltip too.
+            filter: (item) => !(iscpl() && item.dataset.label === "Spent (₹)"),
             callbacks: {
               title: (items) =>
                 campaigns[items[0].dataIndex]?.campaign_name ?? items[0].label,
@@ -1264,7 +1266,7 @@ export default function ProjectDetails() {
               )}
             </For>
           </tbody>
-          <tfoot class="sticky bottom-0 z-30">
+          <tfoot class="sticky bottom-0 z-10">
             <tr
               class="
     bg-gradient-to-r from-purple-100 to-purple-50 
