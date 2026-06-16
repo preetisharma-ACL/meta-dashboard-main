@@ -444,7 +444,7 @@ export default function DailyReports() {
             onChange={(e) => setStatusFilter(e.target.value)}
           >
             <option value="all">All Projects</option>
-            <option value="active">live Projects</option>
+            <option value="active">Active Projects</option>
             <option value="paused">Paused Projects</option>
           </select>
           <div class="pointer-events-none absolute inset-y-0 right-3 flex items-center">

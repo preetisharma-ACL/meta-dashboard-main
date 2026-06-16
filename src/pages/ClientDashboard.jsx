@@ -1527,142 +1527,222 @@ export default function MainDashboard() {
             Spend → hero figure · Budget → "of ₹X allocated" + rail
             Leads / Avg CPL / Campaigns / Service charge → side stats
             Active Projects → eyebrow count                                  */}
+      {/* ════════ HERO LEDGER ════════
+          Replaces the two KPI card rows; every old metric is mapped here:
+            Spend → hero figure · Budget → "of ₹X allocated" + rail
+            Leads / Avg CPL / Campaigns / Service charge → side stats
+            Active Projects → eyebrow count
+
+          LAYOUT NOTE: CPL clients have no spend figure and no budget rail, so
+          the left "1fr" column would render empty and leave a gap. For that
+          case we drop the two-column grid and lay the stats out full-width in a
+          responsive row instead, so there is no dead space.                 */}
       <Eyebrow
         label="The ledger"
         soft={`${overviewStatsCards().activeProjects} of ${allProjects().length} projects live`}
       />
-      <div class="bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] p-5 sm:p-8 mb-8 grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-8 lg:gap-12 items-start">
-        <div>
-          <Show when={!iscpl()}>
-          <p class="text-sm text-[#54657E] dark:text-gray-400 font-medium mb-1">
-            Total spend till date
-          </p>
-          <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-[#14233A] dark:text-white">
-            {"₹"}
-            {overviewStatsCards().totalSpent.toLocaleString("en-IN")}
-          </h2>
-          </Show>
 
-          <Show when={isAdmin()  || ishybrid()}>
-            <p class="text-sm text-[#54657E] dark:text-gray-400 mt-2">
-              of{" "}
-              <b class="text-[#14233A] dark:text-white">
-                {"₹"}
-                {overviewStatsCards().totalBudget.toLocaleString("en-IN")}
-              </b>{" "}
-              allocated
-              <Show when={!cardRange() && !fromDate() && !toDate()}>
-                <span class="inline-flex ml-2 px-2.5 py-0.5 text-xs font-bold rounded-full bg-[#ECF2FA] text-[#3E6FB0] dark:bg-blue-900/40 dark:text-blue-300 align-middle">
-                  Current Month Allocation
-                </span>
-              </Show>
-              {" · "}
-              {heroPacing().utilPct.toFixed(1)}% utilised
-            </p>
-
-            {/* Pacing rail */}
-            <div class="mt-9">
-              <div class="relative h-4 rounded-full bg-[#EAEFF6] dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700">
-                <div
-                  class="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-[#AC2334] to-[#C9374B] transition-all duration-700"
-                  style={`width:${heroPacing().utilPct}%`}
-                ></div>
-                <Show when={heroPacing().isMonthView}>
-                  <div
-                    class="absolute -top-2 -bottom-2 w-0.5 bg-[#14233A] dark:bg-gray-50 rounded"
-                    style={`left:${heroPacing().calendarPct}%`}
-                  >
-                    <span class="absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap text-[11px] font-bold uppercase tracking-wide text-[#14233A] dark:text-white">
-                      Today · Day {heroPacing().dayOfMonth} of{" "}
-                      {heroPacing().daysInMonth}
-                    </span>
-                  </div>
-                </Show>
-              </div>
-              <div class="flex justify-between mt-2 text-xs font-medium text-[#8593A8] dark:text-gray-500">
-                <span>₹0</span>
-                <span>
-                  {"₹"}
-                  {overviewStatsCards().totalBudget.toLocaleString("en-IN")}
-                </span>
-              </div>
-
-              <Show when={heroPacing().isMonthView && heroPacing().budget > 0}>
-                <p class="mt-4 text-sm text-[#54657E] dark:text-gray-400 max-w-xl">
-                  <Show
-                    when={Math.abs(heroPacing().behindPts) > 1}
-                    fallback={
-                      <>
-                        Spend is <b class="text-[#15966A]">tracking on pace</b>{" "}
-                        with the calendar at the current run rate of{" "}
-                        {inr(heroPacing().runRate)} a day.
-                      </>
-                    }
-                  >
-                    Spend is tracking{" "}
-                    <b class="text-[#AC2334]">
-                      {Math.abs(heroPacing().behindPts).toFixed(1)} points{" "}
-                      {heroPacing().behindPts > 0 ? "behind" : "ahead of"} the
-                      calendar
-                    </b>
-                    . At the current run rate of {inr(heroPacing().runRate)} a
-                    day, the month closes near {inr(heroPacing().projected)}
-                    {heroPacing().projected <= heroPacing().budget ? (
-                      <>
-                        , leaving roughly{" "}
-                        {inr(heroPacing().budget - heroPacing().projected)} of
-                        the allocation unspent.
-                      </>
-                    ) : (
-                      <>
-                        , about{" "}
-                        {inr(heroPacing().projected - heroPacing().budget)} over
-                        the allocation if nothing changes.
-                      </>
-                    )}
-                  </Show>
+      {/* ── CPL client: full-width balanced stat row (no empty left column) ── */}
+      <Show when={iscpl()}>
+        <div class="bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] p-5 sm:p-7 mb-8">
+          <div class="grid grid-cols-1 sm:grid-cols-3 sm:divide-x divide-[#E2E8F1] dark:divide-gray-700">
+            {/* Leads generated */}
+            <div class="py-2 sm:py-1 sm:px-6 first:sm:pl-0">
+              <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
+                Leads generated
+              </p>
+              <p class="text-3xl font-bold text-[#14233A] dark:text-white mt-1.5">
+                {overviewStatsCards().totalLeads.toLocaleString("en-IN")}
+              </p>
+              <Show
+                when={heroPacing().isMonthView && heroPacing().dayOfMonth > 0}
+              >
+                <p class="text-xs text-[#54657E] dark:text-gray-400 mt-1">
+                  {Math.round(
+                    overviewStatsCards().totalLeads / heroPacing().dayOfMonth,
+                  ).toLocaleString("en-IN")}{" "}
+                  a day on average
                 </p>
               </Show>
             </div>
-          </Show>
-        </div>
 
-        {/* Hero side stats */}
-        <div class="flex flex-col border-t lg:border-t-0 lg:border-l border-[#E2E8F1] dark:border-gray-700 pt-4 lg:pt-0 lg:pl-9">
-          <div class="py-3.5 border-b border-[#E2E8F1] dark:border-gray-700">
-            <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
-              Leads generated
-            </p>
-            <p class="text-2xl font-bold text-[#14233A] dark:text-white mt-1">
-              {overviewStatsCards().totalLeads.toLocaleString("en-IN")}
-            </p>
-            <Show
-              when={heroPacing().isMonthView && heroPacing().dayOfMonth > 0}
-            >
-              <p class="text-xs text-[#54657E] dark:text-gray-400 mt-0.5">
-                {Math.round(
-                  overviewStatsCards().totalLeads / heroPacing().dayOfMonth,
-                ).toLocaleString("en-IN")}{" "}
-                a day on average
+            {/* Average CPL */}
+            <div class="py-2 sm:py-1 sm:px-6 border-t sm:border-t-0 border-[#E2E8F1] dark:border-gray-700">
+              <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
+                Average CPL
               </p>
-            </Show>
+              <p class="text-3xl font-bold text-[#14233A] dark:text-white mt-1.5">
+                {"₹"}
+                {overviewStatsCards().avgCPL.toLocaleString("en-IN")}
+              </p>
+              <Show when={cplExtremes().best && cplExtremes().worst}>
+                <p class="text-xs text-[#54657E] dark:text-gray-400 mt-1">
+                  best ₹{cplExtremes().best.s.avgCPL} · worst ₹
+                  {cplExtremes().worst.s.avgCPL}
+                </p>
+              </Show>
+            </div>
+
+            {/* Campaigns */}
+            <div class="py-2 sm:py-1 sm:px-6 border-t sm:border-t-0 border-[#E2E8F1] dark:border-gray-700">
+              <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
+                Campaigns
+              </p>
+              <p class="text-3xl font-bold mt-1.5">
+                <span class="text-[#15966A]">
+                  {overviewStatsCards().activeCampaigns}
+                </span>{" "}
+                <span class="text-sm font-bold text-[#8593A8]">live</span>
+                {" · "}
+                <span class="text-[#B07A14]">
+                  {overviewStatsCards().pausedCampaigns}
+                </span>{" "}
+                <span class="text-sm font-bold text-[#8593A8]">paused</span>
+              </p>
+              <p class="text-xs text-[#54657E] dark:text-gray-400 mt-1">
+                {overviewStatsCards().activeCampaigns +
+                  overviewStatsCards().pausedCampaigns}{" "}
+                total across {allProjects().length} projects
+              </p>
+            </div>
           </div>
-          <div class="py-3.5 border-b border-[#E2E8F1] dark:border-gray-700">
-            <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
-              Average CPL
+        </div>
+      </Show>
+
+      {/* ── Non-CPL clients: original two-column ledger (spend + rail + stats) ── */}
+      <Show when={!iscpl()}>
+        <div class="bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] p-5 sm:p-8 mb-8 grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-8 lg:gap-12 items-start">
+          <div>
+            <p class="text-sm text-[#54657E] dark:text-gray-400 font-medium mb-1">
+              Total spend till date
             </p>
-            <p class="text-2xl font-bold text-[#14233A] dark:text-white mt-1">
+            <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-[#14233A] dark:text-white">
               {"₹"}
-              {overviewStatsCards().avgCPL.toLocaleString("en-IN")}
-            </p>
-            <Show when={cplExtremes().best && cplExtremes().worst}>
-              <p class="text-xs text-[#54657E] dark:text-gray-400 mt-0.5">
-                best ₹{cplExtremes().best.s.avgCPL} · worst ₹
-                {cplExtremes().worst.s.avgCPL}
+              {overviewStatsCards().totalSpent.toLocaleString("en-IN")}
+            </h2>
+
+            <Show when={isAdmin() || ishybrid()}>
+              <p class="text-sm text-[#54657E] dark:text-gray-400 mt-2">
+                of{" "}
+                <b class="text-[#14233A] dark:text-white">
+                  {"₹"}
+                  {overviewStatsCards().totalBudget.toLocaleString("en-IN")}
+                </b>{" "}
+                allocated
+                <Show when={!cardRange() && !fromDate() && !toDate()}>
+                  <span class="inline-flex ml-2 px-2.5 py-0.5 text-xs font-bold rounded-full bg-[#ECF2FA] text-[#3E6FB0] dark:bg-blue-900/40 dark:text-blue-300 align-middle">
+                    Current Month Allocation
+                  </span>
+                </Show>
+                {" · "}
+                {heroPacing().utilPct.toFixed(1)}% utilised
               </p>
+
+              {/* Pacing rail */}
+              <div class="mt-9">
+                <div class="relative h-4 rounded-full bg-[#EAEFF6] dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700">
+                  <div
+                    class="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-[#AC2334] to-[#C9374B] transition-all duration-700"
+                    style={`width:${heroPacing().utilPct}%`}
+                  ></div>
+                  <Show when={heroPacing().isMonthView}>
+                    <div
+                      class="absolute -top-2 -bottom-2 w-0.5 bg-[#14233A] dark:bg-gray-50 rounded"
+                      style={`left:${heroPacing().calendarPct}%`}
+                    >
+                      <span class="absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap text-[11px] font-bold uppercase tracking-wide text-[#14233A] dark:text-white">
+                        Today · Day {heroPacing().dayOfMonth} of{" "}
+                        {heroPacing().daysInMonth}
+                      </span>
+                    </div>
+                  </Show>
+                </div>
+                <div class="flex justify-between mt-2 text-xs font-medium text-[#8593A8] dark:text-gray-500">
+                  <span>₹0</span>
+                  <span>
+                    {"₹"}
+                    {overviewStatsCards().totalBudget.toLocaleString("en-IN")}
+                  </span>
+                </div>
+
+                <Show
+                  when={heroPacing().isMonthView && heroPacing().budget > 0}
+                >
+                  <p class="mt-4 text-sm text-[#54657E] dark:text-gray-400 max-w-xl">
+                    <Show
+                      when={Math.abs(heroPacing().behindPts) > 1}
+                      fallback={
+                        <>
+                          Spend is{" "}
+                          <b class="text-[#15966A]">tracking on pace</b> with
+                          the calendar at the current run rate of{" "}
+                          {inr(heroPacing().runRate)} a day.
+                        </>
+                      }
+                    >
+                      Spend is tracking{" "}
+                      <b class="text-[#AC2334]">
+                        {Math.abs(heroPacing().behindPts).toFixed(1)} points{" "}
+                        {heroPacing().behindPts > 0 ? "behind" : "ahead of"} the
+                        calendar
+                      </b>
+                      . At the current run rate of {inr(heroPacing().runRate)} a
+                      day, the month closes near {inr(heroPacing().projected)}
+                      {heroPacing().projected <= heroPacing().budget ? (
+                        <>
+                          , leaving roughly{" "}
+                          {inr(heroPacing().budget - heroPacing().projected)} of
+                          the allocation unspent.
+                        </>
+                      ) : (
+                        <>
+                          , about{" "}
+                          {inr(heroPacing().projected - heroPacing().budget)}{" "}
+                          over the allocation if nothing changes.
+                        </>
+                      )}
+                    </Show>
+                  </p>
+                </Show>
+              </div>
             </Show>
           </div>
-          <Show when={!iscpl()}>
+
+          {/* Hero side stats */}
+          <div class="flex flex-col border-t lg:border-t-0 lg:border-l border-[#E2E8F1] dark:border-gray-700 pt-4 lg:pt-0 lg:pl-9">
+            <div class="py-3.5 border-b border-[#E2E8F1] dark:border-gray-700">
+              <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
+                Leads generated
+              </p>
+              <p class="text-2xl font-bold text-[#14233A] dark:text-white mt-1">
+                {overviewStatsCards().totalLeads.toLocaleString("en-IN")}
+              </p>
+              <Show
+                when={heroPacing().isMonthView && heroPacing().dayOfMonth > 0}
+              >
+                <p class="text-xs text-[#54657E] dark:text-gray-400 mt-0.5">
+                  {Math.round(
+                    overviewStatsCards().totalLeads / heroPacing().dayOfMonth,
+                  ).toLocaleString("en-IN")}{" "}
+                  a day on average
+                </p>
+              </Show>
+            </div>
+            <div class="py-3.5 border-b border-[#E2E8F1] dark:border-gray-700">
+              <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
+                Average CPL
+              </p>
+              <p class="text-2xl font-bold text-[#14233A] dark:text-white mt-1">
+                {"₹"}
+                {overviewStatsCards().avgCPL.toLocaleString("en-IN")}
+              </p>
+              <Show when={cplExtremes().best && cplExtremes().worst}>
+                <p class="text-xs text-[#54657E] dark:text-gray-400 mt-0.5">
+                  best ₹{cplExtremes().best.s.avgCPL} · worst ₹
+                  {cplExtremes().worst.s.avgCPL}
+                </p>
+              </Show>
+            </div>
             <div class="py-3.5 border-b border-[#E2E8F1] dark:border-gray-700">
               <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
                 Spend + {serviceChargePercent}% service charge
@@ -1677,31 +1757,30 @@ export default function MainDashboard() {
                 (excluding GST)
               </p>
             </div>
-          </Show>
-          <div class="py-3.5">
-            <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
-              Campaigns
-            </p>
-            <p class="text-2xl font-bold mt-1">
-              <span class="text-[#15966A]">
-                {overviewStatsCards().activeCampaigns}
-              </span>{" "}
-              <span class="text-sm font-bold text-[#8593A8]">live</span>
-              {" · "}
-              <span class="text-[#B07A14]">
-                {overviewStatsCards().pausedCampaigns}
-              </span>{" "}
-              <span class="text-sm font-bold text-[#8593A8]">paused</span>
-            </p>
-            <p class="text-xs text-[#54657E] dark:text-gray-400 mt-0.5">
-              {overviewStatsCards().activeCampaigns +
-                overviewStatsCards().pausedCampaigns}{" "}
-              total across {allProjects().length} projects
-            </p>
+            <div class="py-3.5">
+              <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
+                Campaigns
+              </p>
+              <p class="text-2xl font-bold mt-1">
+                <span class="text-[#15966A]">
+                  {overviewStatsCards().activeCampaigns}
+                </span>{" "}
+                <span class="text-sm font-bold text-[#8593A8]">live</span>
+                {" · "}
+                <span class="text-[#B07A14]">
+                  {overviewStatsCards().pausedCampaigns}
+                </span>{" "}
+                <span class="text-sm font-bold text-[#8593A8]">paused</span>
+              </p>
+              <p class="text-xs text-[#54657E] dark:text-gray-400 mt-0.5">
+                {overviewStatsCards().activeCampaigns +
+                  overviewStatsCards().pausedCampaigns}{" "}
+                total across {allProjects().length} projects
+              </p>
+            </div>
           </div>
         </div>
-      </div>
-
+      </Show>
       {/* ════════ PROJECT LEDGER ════════ */}
       <Eyebrow label="Project ledger" soft="full reference" />
 
@@ -1829,9 +1908,9 @@ export default function MainDashboard() {
               </th>
               {isAdmin() && <th class="p-3">{rangeLabel()} Extra Leads</th>}
               <Show when={!iscpl()}>
-              <th class="p-3" onClick={() => handleSort("totalSpent")}>
-                {rangeLabel()} Total Spent {getSortIcon("totalSpent")}
-              </th>
+                <th class="p-3" onClick={() => handleSort("totalSpent")}>
+                  {rangeLabel()} Total Spent {getSortIcon("totalSpent")}
+                </th>
               </Show>
               <th class="p-3" onClick={() => handleSort("avgCPL")}>
                 {rangeLabel()} AVG CPL {getSortIcon("avgCPL")}
@@ -2014,10 +2093,10 @@ export default function MainDashboard() {
                       )}
                       {/* Date-range Spent */}
                       <Show when={!iscpl()}>
-                      <td class="p-2 font-medium text-gray-700 dark:text-gray-100">
-                        {"₹"}
-                        {stats().totalSpent.toLocaleString("en-IN")}
-                      </td>
+                        <td class="p-2 font-medium text-gray-700 dark:text-gray-100">
+                          {"₹"}
+                          {stats().totalSpent.toLocaleString("en-IN")}
+                        </td>
                       </Show>
 
                       {/* Date-range AVG CPL */}
