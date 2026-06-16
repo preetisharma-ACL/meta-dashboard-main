@@ -1049,12 +1049,12 @@ export default function Billing() {
                   sub="Contracted rate per lead"
                 />
                 <Show when={!iscpl()}>
-                <HeroCard
-                  ariaLabel="Total spent this month"
-                  label={`Total Spent · ${monthProgress().monthShort}`}
-                  value={fmt(adSpendExGst())}
-                  sub="Details in statement below"
-                />
+                  <HeroCard
+                    ariaLabel="Total spent this month"
+                    label={`Total Spent · ${monthProgress().monthShort}`}
+                    value={fmt(adSpendExGst())}
+                    sub="Details in statement below"
+                  />
                 </Show>
                 <LeadsCard leads={totalLeads()} showCpl={false} />
               </div>
@@ -1093,19 +1093,21 @@ export default function Billing() {
 
               {/* CPL clients see the plain ex-SC/ex-GST figure with no GST tag,
                   so the card above and this row always match. */}
-              <LedgerRow
-                op="−"
-                name={ishybrid() ? "Billed This Month" : "Total Spend"}
-                tag={
-                  ishybrid()
-                    ? "inc GST & Service Charge"
-                    : iscpl()
-                      ? ""
-                      : "ex GST"
-                }
-                value={fmt(billedForClient())}
-                tone="neg"
-              />
+              <Show when={!iscpl()}>
+                <LedgerRow
+                  op="−"
+                  name={ishybrid() ? "Billed This Month" : "Total Spend"}
+                  tag={
+                    ishybrid()
+                      ? "inc GST & Service Charge"
+                      : iscpl()
+                        ? ""
+                        : "ex GST"
+                  }
+                  value={fmt(billedForClient())}
+                  tone="neg"
+                />
+              </Show>
 
               <LedgerRow
                 op="+"
@@ -1195,17 +1197,17 @@ export default function Billing() {
 
                 {/* Points note as a quiet pill */}
                 {/* Points note — only when points have actually been credited */}
-<Show when={totalPointsReceived() > 0}>
-  <div class="mt-4 inline-flex items-center gap-2 rounded-full border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 px-3 py-1">
-    <span class="h-1.5 w-1.5 rounded-full bg-blue-900 dark:bg-blue-400" />
-    <span class="text-xs text-gray-500 dark:text-gray-400">
-      Points included ·{" "}
-      <b class="font-semibold text-gray-700 dark:text-gray-300">
-        {fmtPoints(totalPointsReceived())} pts · 1 pt = ₹1
-      </b>
-    </span>
-  </div>
-</Show>
+                <Show when={totalPointsReceived() > 0}>
+                  <div class="mt-4 inline-flex items-center gap-2 rounded-full border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 px-3 py-1">
+                    <span class="h-1.5 w-1.5 rounded-full bg-blue-900 dark:bg-blue-400" />
+                    <span class="text-xs text-gray-500 dark:text-gray-400">
+                      Points included ·{" "}
+                      <b class="font-semibold text-gray-700 dark:text-gray-300">
+                        {fmtPoints(totalPointsReceived())} pts · 1 pt = ₹1
+                      </b>
+                    </span>
+                  </div>
+                </Show>
               </div>
 
               {/* ── Remaining balance — hybrid clients only ── */}
