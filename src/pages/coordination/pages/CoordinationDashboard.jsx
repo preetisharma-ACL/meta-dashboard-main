@@ -18,17 +18,22 @@
 //   • Status filter + search + GST toggle + sorting are all client-side
 //     (every client arrives in one response)
 // ─────────────────────────────────────────────────────────────────────────────
-import { For, Show, createSignal, createMemo, onMount } from "solid-js";
-import { fetchPaymentsOverview } from "../services/coDashboard-service"
+import {
+  For,
+  Show,
+  createSignal,
+  createMemo,
+  createEffect,
+  onMount,
+} from "solid-js";
+import { fetchPaymentsOverview } from "../services/coDashboard-service";
+import Avatar from "../../../components/common/Avatar";
 
 // Distinct badge colors per client type (v4 theme tokens)
 const TYPE_BADGE = {
-  retainer:
-    "bg-[#ECF2FA] text-[#3E6FB0] dark:bg-gray-800 dark:text-blue-300", // steel
-  hybrid:
-    "bg-[#F3ECFB] text-[#7A3EB0] dark:bg-gray-800 dark:text-purple-300", // violet
-  cpl:
-    "bg-[#FBF3E2] text-[#B07A14] dark:bg-gray-800 dark:text-amber-300", // amber
+  retainer: "bg-[#ECF2FA] text-[#3E6FB0] dark:bg-gray-800 dark:text-blue-300", // steel
+  hybrid: "bg-[#F3ECFB] text-[#7A3EB0] dark:bg-gray-800 dark:text-purple-300", // violet
+  cpl: "bg-[#FBF3E2] text-[#B07A14] dark:bg-gray-800 dark:text-amber-300", // amber
 };
 
 export default function CoordinationDashboard() {
@@ -45,10 +50,13 @@ export default function CoordinationDashboard() {
   const [data, setData] = createSignal(null); // the `data` object from the API
 
   const [statusFilter, setStatusFilter] = createSignal("all"); // all|owes|low|healthy
+  const [typeFilter, setTypeFilter] = createSignal("all"); // all|retainer|hybrid|cpl
   const [searchText, setSearchText] = createSignal("");
   const [incGst, setIncGst] = createSignal(true); // GST toggle, default Including
   const [sortKey, setSortKey] = createSignal("closing"); // default sort
   const [sortDir, setSortDir] = createSignal("asc"); // debtors first
+  const [page, setPage] = createSignal(1);
+  const PAGE_SIZE = 20;
 
   // ── Data loading ─────────────────────────────────────────────────────────────
   const load = async (refresh = false) => {
@@ -81,6 +89,15 @@ export default function CoordinationDashboard() {
     load(false);
   });
 
+  // Snap back to page 1 when the result set changes underneath us.
+  createEffect(() => {
+    statusFilter();
+    typeFilter();
+    searchText();
+    month();
+    setPage(1);
+  });
+
   const handleMonthChange = (value) => {
     if (!value) return;
     // Never allow a future month (max attr guards the picker; this guards typing).
@@ -107,8 +124,7 @@ export default function CoordinationDashboard() {
     return `${n < 0 ? "-" : ""}₹${abs}`;
   };
 
-  const fmtINR0 = (v) =>
-    `₹${Math.round(toNum(v)).toLocaleString("en-IN")}`;
+  const fmtINR0 = (v) => `₹${Math.round(toNum(v)).toLocaleString("en-IN")}`;
 
   const monthLabel = createMemo(() => {
     const m = data()?.month || month();
@@ -136,6 +152,12 @@ export default function CoordinationDashboard() {
 
     if (statusFilter() !== "all") {
       list = list.filter((c) => c.status === statusFilter());
+    }
+
+    if (typeFilter() !== "all") {
+      list = list.filter(
+        (c) => (c.client_type || "").toLowerCase() === typeFilter(),
+      );
     }
 
     const q = searchText().toLowerCase().trim();
@@ -182,6 +204,15 @@ export default function CoordinationDashboard() {
     });
   });
 
+  const totalPages = createMemo(() =>
+    Math.max(1, Math.ceil(filteredRows().length / PAGE_SIZE)),
+  );
+
+  const pagedRows = createMemo(() => {
+    const start = (page() - 1) * PAGE_SIZE;
+    return filteredRows().slice(start, start + PAGE_SIZE);
+  });
+
   const handleSort = (key) => {
     if (sortKey() === key) {
       setSortDir(sortDir() === "asc" ? "desc" : "asc");
@@ -220,7 +251,7 @@ export default function CoordinationDashboard() {
     return (
       <span
         class={
-          "inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold uppercase tracking-wide rounded-full " +
+          "inline-flex items-center gap-1.5 px-3 py-1 text-xs font-medium uppercase tracking-wide rounded-full " +
           tone
         }
       >
@@ -233,8 +264,8 @@ export default function CoordinationDashboard() {
   // Closing balance colour: negative → crimson, otherwise green.
   const closingClass = (row) =>
     toNum(rowField(row, "closing_balance")) < 0
-      ? "text-[#AC2334] dark:text-red-300 font-bold"
-      : "text-[#15966A] dark:text-green-300 font-bold";
+      ? "text-[#AC2334] dark:text-gray-300 font-medium"
+      : "text-[#15966A] dark:text-green-300 font-medium";
 
   const TableSkeleton = () => (
     <tbody>
@@ -264,7 +295,7 @@ export default function CoordinationDashboard() {
   );
 
   return (
-    <section class="w-full px-4 sm:px-6 lg:px-8 py-6 bg-gray-50 dark:bg-gray-950 min-h-screen">
+    <section class="w-full px-4 sm:px-6 lg:px-8 py-6 bg-gray-50 dark:bg-gray-900 min-h-screen">
       {/* ════════ HEADER ════════ */}
       <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 mb-6">
         <div>
@@ -334,7 +365,7 @@ export default function CoordinationDashboard() {
           <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
             Total Owed
           </p>
-          <h3 class="text-3xl font-extrabold mt-2 text-[#AC2334] tracking-tight">
+          <h3 class="text-3xl font-bold mt-2 text-[#AC2334] tracking-tight">
             {fmtINR0(totals().total_owed_inc_gst)}
           </h3>
           <p class="text-xs text-[#54657E] dark:text-gray-400 mt-1">
@@ -347,7 +378,7 @@ export default function CoordinationDashboard() {
           <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
             Clients Owing
           </p>
-          <h3 class="text-2xl font-extrabold mt-2 text-[#14233A] dark:text-white">
+          <h3 class="text-2xl font-bold mt-2 text-[#14233A] dark:text-white">
             {totals().clients_owing ?? 0}
           </h3>
           <span class="inline-flex mt-2 items-center gap-1.5 px-2.5 py-1 text-xs font-bold rounded-full bg-[#FBEEF0] text-[#AC2334] dark:bg-red-900/30 dark:text-red-300">
@@ -361,7 +392,7 @@ export default function CoordinationDashboard() {
           <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
             Clients Low
           </p>
-          <h3 class="text-2xl font-extrabold mt-2 text-[#14233A] dark:text-white">
+          <h3 class="text-2xl font-bold mt-2 text-[#14233A] dark:text-white">
             {totals().clients_low ?? 0}
           </h3>
           <span class="inline-flex mt-2 items-center gap-1.5 px-2.5 py-1 text-xs font-bold rounded-full bg-[#FBF3E2] text-[#B07A14] dark:bg-yellow-900/30 dark:text-yellow-300">
@@ -375,7 +406,7 @@ export default function CoordinationDashboard() {
           <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
             Clients Healthy
           </p>
-          <h3 class="text-2xl font-extrabold mt-2 text-[#14233A] dark:text-white">
+          <h3 class="text-2xl font-bold mt-2 text-[#14233A] dark:text-white">
             {totals().clients_healthy ?? 0}
           </h3>
           <span class="inline-flex mt-2 items-center gap-1.5 px-2.5 py-1 text-xs font-bold rounded-full bg-[#E9F7F1] text-[#15966A] dark:bg-green-900/30 dark:text-green-300">
@@ -417,6 +448,18 @@ export default function CoordinationDashboard() {
           <option value="healthy">Healthy</option>
         </select>
 
+        {/* Client type filter dropdown */}
+        <select
+          value={typeFilter()}
+          onChange={(e) => setTypeFilter(e.currentTarget.value)}
+          class="border border-[#E2E8F1] dark:border-gray-600 px-3 py-2 rounded-lg bg-white dark:bg-gray-800 text-sm text-[#1A2B45] dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#AC2334]/25 focus:border-[#AC2334] cursor-pointer"
+        >
+          <option value="all">Client Type</option>
+          <option value="retainer">Retainer</option>
+          <option value="hybrid">Hybrid</option>
+          <option value="cpl">CPL</option>
+        </select>
+
         {/* Search */}
         <input
           type="text"
@@ -427,10 +470,17 @@ export default function CoordinationDashboard() {
         />
 
         {/* Clear all filters */}
-        <Show when={statusFilter() !== "all" || searchText().trim() !== ""}>
+        <Show
+          when={
+            statusFilter() !== "all" ||
+            typeFilter() !== "all" ||
+            searchText().trim() !== ""
+          }
+        >
           <button
             onClick={() => {
               setStatusFilter("all");
+              setTypeFilter("all");
               setSearchText("");
             }}
             class="px-3 py-2 rounded-lg text-sm font-medium border border-[#E2E8F1] dark:border-gray-600 text-[#54657E] dark:text-gray-300 bg-white dark:bg-gray-800 hover:border-[#AC2334]/40 hover:text-[#AC2334] dark:hover:bg-gray-700 dark:hover:text-white transition-colors"
@@ -467,7 +517,7 @@ export default function CoordinationDashboard() {
       </div>
 
       {/* ════════ MAIN TABLE ════════ */}
-      <div class="overflow-x-auto bg-white dark:bg-gray-900 rounded-xl border border-[#E2E8F1] dark:border-gray-700 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)]">
+      <div class="overflow-x-auto bg-white dark:bg-gray-800 rounded-xl border border-[#E2E8F1] dark:border-gray-700 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)]">
         <table class="w-full text-sm table-auto">
           <thead class="bg-[#F8FAFC] dark:bg-gray-800">
             <tr class="[&_th]:cursor-pointer [&_th]:whitespace-nowrap [&_th]:text-xs [&_th]:uppercase [&_th]:tracking-wider [&_th]:font-bold [&_th]:px-4 [&_th]:py-3.5 text-[#54657E] dark:text-gray-300 border-b border-[#D4DDE9] dark:border-gray-700">
@@ -500,15 +550,15 @@ export default function CoordinationDashboard() {
 
           <Show when={!loading()} fallback={<TableSkeleton />}>
             <tbody>
-              <For each={filteredRows()}>
+              <For each={pagedRows()}>
                 {(c, index) => (
                   <tr
                     class={
                       "border-t border-[#E2E8F1] dark:border-gray-700 transition-colors " +
                       (index() % 2 === 0
                         ? "bg-white dark:bg-gray-900"
-                        : "bg-[#FAFBFD] dark:bg-gray-900") +
-                      " hover:bg-[#F6F9FC] dark:hover:bg-gray-800"
+                        : "bg-[#FAFBFD] dark:bg-gray-900") 
+                      
                     }
                   >
                     {/* Client */}
@@ -520,11 +570,16 @@ export default function CoordinationDashboard() {
                           : "bg-[#FAFBFD] dark:bg-gray-900")
                       }
                     >
-                      <div class="font-bold text-[#14233A] dark:text-gray-100 leading-tight">
-                        {c.client_nomen || "—"}
-                      </div>
-                      <div class="text-xs text-[#8593A8] dark:text-gray-400">
-                        {c.client_email}
+                      <div class="flex items-center gap-4">
+                        <Avatar name={c.client_nomen} />
+                        <div>
+                          <div class="font-semibold text-blue-900 dark:text-gray-100 ">
+                            {c.client_nomen || "—"}
+                          </div>
+                          <div class="text-xs text-[#8593A8] dark:text-gray-400">
+                            {c.client_email}
+                          </div>
+                        </div>
                       </div>
                     </td>
 
@@ -544,22 +599,22 @@ export default function CoordinationDashboard() {
                     {/* Opening */}
                     <td
                       class={
-                        "px-4 py-3 text-right tabular-nums font-semibold " +
+                        "px-4 py-3 text-right tabular-nums font-medium " +
                         (toNum(rowField(c, "opening_balance")) < 0
                           ? "text-[#AC2334] dark:text-red-300"
-                          : "text-[#14233A] dark:text-gray-100")
+                          : "text-[#14233A] dark:text-gray-300")
                       }
                     >
                       {fmtINR(rowField(c, "opening_balance"))}
                     </td>
 
                     {/* Received */}
-                    <td class="px-4 py-3 text-right tabular-nums font-semibold text-[#15966A] dark:text-green-300">
+                    <td class="px-4 py-3 text-right tabular-nums font-medium text-[#15966A] dark:text-gray-300">
                       {fmtINR(rowField(c, "received"))}
                     </td>
 
                     {/* Utilized */}
-                    <td class="px-4 py-3 text-right tabular-nums font-semibold text-[#14233A] dark:text-gray-100">
+                    <td class="px-4 py-3 text-right tabular-nums font-medium text-[#14233A] dark:text-gray-300">
                       {fmtINR(rowField(c, "utilized"))}
                     </td>
 
@@ -605,10 +660,48 @@ export default function CoordinationDashboard() {
             ? `${rows().length} clients`
             : `Showing ${filteredRows().length} of ${rows().length} clients`}
         </span>
-        <span class="text-xs text-[#8593A8] dark:text-gray-500">
-          Sorted by {sortKey()} ({sortDir() === "asc" ? "ascending" : "descending"})
-          · {incGst() ? "Including" : "Excluding"} GST
-        </span>
+
+        <Show when={totalPages() > 1}>
+          <div class="flex items-center gap-2">
+            <button
+              onClick={() => page() > 1 && setPage(page() - 1)}
+              disabled={page() === 1}
+              class="flex items-center gap-1.5 px-4 h-9 text-sm rounded-lg border border-[#E2E8F1] dark:border-gray-700 bg-white dark:bg-gray-900 text-[#54657E] dark:text-gray-200 hover:bg-[#F6F9FC] dark:hover:bg-gray-800 disabled:opacity-35 disabled:cursor-default transition-colors"
+            >
+              <svg
+                class="w-3.5 h-3.5"
+                fill="none"
+                viewBox="0 0 16 16"
+                stroke="currentColor"
+                stroke-width="1.8"
+              >
+                <path d="M10 12L6 8l4-4" />
+              </svg>
+              Prev
+            </button>
+
+            <span class="text-sm text-[#8593A8] dark:text-gray-400 px-1">
+              Page {page()} of {totalPages()}
+            </span>
+
+            <button
+              onClick={() => page() < totalPages() && setPage(page() + 1)}
+              disabled={page() >= totalPages()}
+              class="flex items-center gap-1.5 px-4 h-9 text-sm rounded-lg bg-blue-900 border border-[#14233A] text-white hover:bg-[#1d3252] disabled:opacity-35 disabled:cursor-default transition-colors"
+            >
+              Next
+              <svg
+                class="w-3.5 h-3.5"
+                fill="none"
+                viewBox="0 0 16 16"
+                stroke="currentColor"
+                stroke-width="1.8"
+              >
+                <path d="M6 4l4 4-4 4" />
+              </svg>
+            </button>
+          </div>
+        </Show>
       </div>
     </section>
   );
