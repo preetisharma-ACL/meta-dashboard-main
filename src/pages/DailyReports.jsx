@@ -515,11 +515,11 @@ export default function DailyReports() {
                 <th class="p-3">Project</th>
                 <th class="p-3">Leads</th>
                 <th class="p-3">CPL</th>
-                <th class="p-3">Amount Spent</th>
                 <Show when={!iscpl()}>
+                  <th class="p-3">Amount Spent</th>
                   <th class="p-3">{scColLabel()}</th>
+                  <th class="p-3">{finalColLabel()}</th>
                 </Show>
-                <th class="p-3">{finalColLabel()}</th>
               </tr>
             </thead>
 
@@ -610,18 +610,20 @@ export default function DailyReports() {
                         </td>
 
                         {/* Spent */}
-                        <td class="p-3 text-green-700 dark:text-green-400">
-                          {fmt(row.spent)}
-                        </td>
                         <Show when={!iscpl()}>
+                          <td class="p-3 text-green-700 dark:text-green-400">
+                            {fmt(row.spent)}
+                          </td>
+
                           <td class="p-3 text-green-700 dark:text-green-400">
                             {fmt(row.spentwithServiceCharge)}
                           </td>
+
+                          {/* spent + service charge + GST  */}
+                          <td class="p-3 text-green-900 dark:text-green-400">
+                            {fmt(row.spentwithservice_gst)}
+                          </td>
                         </Show>
-                        {/* spent + service charge + GST  */}
-                        <td class="p-3 text-green-900 dark:text-green-400">
-                          {fmt(row.spentwithservice_gst)}
-                        </td>
                       </tr>
                     )}
                   </For>
@@ -642,17 +644,17 @@ export default function DailyReports() {
                     <td class="p-3 text-purple-700 dark:text-purple-300 font-bold">
                       {fmt(totals().avgCPL)}
                     </td>
-                    <td class="p-3 text-green-700 dark:text-green-300 font-bold">
-                      {fmt(totals().totalSpent)}
-                    </td>
                     <Show when={!iscpl()}>
+                      <td class="p-3 text-green-700 dark:text-green-300 font-bold">
+                        {fmt(totals().totalSpent)}
+                      </td>
                       <td class="p-3 text-green-700 dark:text-green-300 font-bold">
                         {fmt(totals().totalspentwithServiceCharge)}
                       </td>
+                      <td class="p-3 text-green-900 dark:text-green-400 font-bold">
+                        {fmt(totals().totalspentwithservice_gst)}
+                      </td>
                     </Show>
-                    <td class="p-3 text-green-900 dark:text-green-400 font-bold">
-                      {fmt(totals().totalspentwithservice_gst)}
-                    </td>
                   </tr>
                 </tfoot>
               </Show>
@@ -814,17 +816,17 @@ export default function DailyReports() {
                   <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
                     CPL
                   </th>
-                  <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
-                    Amount Spent
-                  </th>
                   <Show when={!iscpl()}>
+                    <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
+                      Amount Spent
+                    </th>
                     <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
                       {scColLabel()}
                     </th>
+                    <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
+                      {finalColLabel()}
+                    </th>
                   </Show>
-                  <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
-                    {finalColLabel()}
-                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -859,18 +861,18 @@ export default function DailyReports() {
                       <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
                         {fmt(row.cpl)}
                       </td>
-                      <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
-                        {fmt(row.spent)}
-                      </td>
                       <Show when={!iscpl()}>
+                        <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
+                          {fmt(row.spent)}
+                        </td>
                         {/* GST — warm gold tint */}
                         <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
                           {fmt(row.spentwithServiceCharge)}
                         </td>
+                        <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
+                          {fmt(row.spentwithservice_gst)}
+                        </td>
                       </Show>
-                      <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
-                        {fmt(row.spentwithservice_gst)}
-                      </td>
                     </tr>
                   )}
                 </For>
@@ -888,17 +890,17 @@ export default function DailyReports() {
                   <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
                     {fmt(totals().avgCPL)}
                   </td>
-                  <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
-                    {fmt(totals().totalSpent)}
-                  </td>
                   <Show when={!iscpl()}>
+                    <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
+                      {fmt(totals().totalSpent)}
+                    </td>
                     <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
                       {fmt(totals().totalspentwithServiceCharge)}
                     </td>
+                    <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
+                      {fmt(totals().totalspentwithservice_gst)}
+                    </td>
                   </Show>
-                  <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
-                    {fmt(totals().totalspentwithservice_gst)}
-                  </td>
                 </tr>
               </tfoot>
             </table>
@@ -1001,17 +1003,17 @@ export default function DailyReports() {
                     <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
                       CPL
                     </th>
-                    <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
-                      Amt Spent
-                    </th>
                     <Show when={!iscpl()}>
+                      <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
+                        Amt Spent
+                      </th>
                       <th style="padding:11px 14px;text-align:center;color:#f5d9a0;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;">
                         {scColLabel()}
                       </th>
+                      <th style="padding:11px 14px;text-align:center;color:#f5d9a0;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;">
+                        {finalColLabel()}
+                      </th>
                     </Show>
-                    <th style="padding:11px 14px;text-align:center;color:#f5d9a0;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;">
-                     {finalColLabel()}
-                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1039,17 +1041,17 @@ export default function DailyReports() {
                       <td style="padding:10px 14px;text-align:center;font-size:14px;color:#333;border-right:1px solid rgba(123,28,28,0.1);">
                         {fmt(row.cpl)}
                       </td>
-                      <td style="padding:10px 14px;text-align:center;font-size:14px;color:#333;border-right:1px solid rgba(123,28,28,0.1);">
-                        {fmt(row.spent)}
-                      </td>
                       <Show when={!iscpl()}>
+                        <td style="padding:10px 14px;text-align:center;font-size:14px;color:#333;border-right:1px solid rgba(123,28,28,0.1);">
+                          {fmt(row.spent)}
+                        </td>
                         <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:600;color:#6b4c10;background:rgba(201,168,76,0.10);">
                           {fmt(row.spentwithServiceCharge)}
                         </td>
+                        <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:600;color:#6b4c10;background:rgba(201,168,76,0.10);">
+                          {fmt(row.spentwithservice_gst)}
+                        </td>
                       </Show>
-                      <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:600;color:#6b4c10;background:rgba(201,168,76,0.10);">
-                        {fmt(row.spentwithservice_gst)}
-                      </td>
                     </tr>
                   ))}
                   {/* totals */}
@@ -1064,17 +1066,17 @@ export default function DailyReports() {
                     <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
                       {fmt(totals().avgCPL)}
                     </td>
-                    <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
-                      {fmt(totals().totalSpent)}
-                    </td>
                     <Show when={!iscpl()}>
+                      <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
+                        {fmt(totals().totalSpent)}
+                      </td>
                       <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;">
                         {fmt(totals().totalspentwithServiceCharge)}
                       </td>
+                      <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
+                        {fmt(totals().totalspentwithservice_gst)}
+                      </td>
                     </Show>
-                    <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
-                      {fmt(totals().totalspentwithservice_gst)}
-                    </td>
                   </tr>
                 </tbody>
               </table>

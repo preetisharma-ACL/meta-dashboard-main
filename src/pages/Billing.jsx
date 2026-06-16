@@ -1048,12 +1048,14 @@ export default function Billing() {
                   value={fmt(FIXED_CPL)}
                   sub="Contracted rate per lead"
                 />
+                <Show when={!iscpl()}>
                 <HeroCard
                   ariaLabel="Total spent this month"
                   label={`Total Spent · ${monthProgress().monthShort}`}
                   value={fmt(adSpendExGst())}
                   sub="Details in statement below"
                 />
+                </Show>
                 <LeadsCard leads={totalLeads()} showCpl={false} />
               </div>
             </Show>
