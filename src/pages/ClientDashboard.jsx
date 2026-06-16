@@ -137,6 +137,7 @@ export default function MainDashboard() {
         localStorage.removeItem("selectedClientNomenId");
         localStorage.removeItem("selectedClientName");
 
+        
         // Only bust cache + reload if we were actually viewing a client,
         // otherwise leave the already-loaded admin dashboard untouched.
         if (wasViewingClient) {
