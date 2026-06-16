@@ -1616,7 +1616,7 @@ export default function MainDashboard() {
             <p class="text-sm text-[#54657E] dark:text-gray-400 font-medium mb-1">
               Total spend till date
             </p>
-            <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-[#14233A] dark:text-white">
+            <h2 class="text-xl sm:text-2xl font-bold tracking-tight text-gray-700 dark:text-white">
               {"₹"}
               {overviewStatsCards().totalSpent.toLocaleString("en-IN")}
             </h2>
@@ -1714,13 +1714,13 @@ export default function MainDashboard() {
               <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
                 Leads generated
               </p>
-              <p class="text-2xl font-bold text-[#14233A] dark:text-white mt-1">
+              <p class="text-xl font-bold text-[#14233A] dark:text-white mt-1">
                 {overviewStatsCards().totalLeads.toLocaleString("en-IN")}
               </p>
               <Show
                 when={heroPacing().isMonthView && heroPacing().dayOfMonth > 0}
               >
-                <p class="text-xs text-[#54657E] dark:text-gray-400 mt-0.5">
+                <p class="text-xs text-gray-700 dark:text-gray-400 mt-0.5">
                   {Math.round(
                     overviewStatsCards().totalLeads / heroPacing().dayOfMonth,
                   ).toLocaleString("en-IN")}{" "}
@@ -1732,7 +1732,7 @@ export default function MainDashboard() {
               <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
                 Average CPL
               </p>
-              <p class="text-2xl font-bold text-[#14233A] dark:text-white mt-1">
+              <p class="text-xl font-bold text-gray-700 dark:text-white mt-1">
                 {"₹"}
                 {overviewStatsCards().avgCPL.toLocaleString("en-IN")}
               </p>
@@ -1747,7 +1747,7 @@ export default function MainDashboard() {
               <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
                 Spend + {serviceChargePercent}% service charge
               </p>
-              <p class="text-2xl font-bold text-[#14233A] dark:text-white mt-1">
+              <p class="text-xl font-bold text-gray-700 dark:text-white mt-1">
                 {"₹"}
                 {overviewStatsCards().serviceChargeSpent.toLocaleString(
                   "en-IN",
@@ -1761,7 +1761,7 @@ export default function MainDashboard() {
               <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
                 Campaigns
               </p>
-              <p class="text-2xl font-bold mt-1">
+              <p class="text-xl font-bold mt-1">
                 <span class="text-[#15966A]">
                   {overviewStatsCards().activeCampaigns}
                 </span>{" "}
