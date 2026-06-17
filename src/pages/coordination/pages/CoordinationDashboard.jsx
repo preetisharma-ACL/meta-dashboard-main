@@ -56,7 +56,7 @@ export default function CoordinationDashboard() {
   const [sortKey, setSortKey] = createSignal("closing"); // default sort
   const [sortDir, setSortDir] = createSignal("asc"); // debtors first
   const [page, setPage] = createSignal(1);
-  const PAGE_SIZE = 20;
+  const PAGE_SIZE = 30;
 
   // ── Data loading ─────────────────────────────────────────────────────────────
   const load = async (refresh = false) => {

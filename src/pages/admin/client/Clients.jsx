@@ -134,7 +134,7 @@ export default function Clients() {
           c.organization_name?.toLowerCase().includes(q),
       );
     }
-
+ 
     if (typeFilter() !== "all")
       data = data.filter((c) => c.client_type === typeFilter());
 
