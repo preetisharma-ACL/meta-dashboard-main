@@ -1,4 +1,11 @@
-import { For, Show, createMemo, createSignal, createEffect } from "solid-js";
+import {
+  For,
+  Show,
+  createMemo,
+  createSignal,
+  createEffect,
+  untrack,
+} from "solid-js";
 import { DateRangeFilter } from "../components/DateRangeFilter";
 import { A, useParams } from "@solidjs/router";
 import { useLocation } from "@solidjs/router";
@@ -23,15 +30,8 @@ import useColumnSort from "../components/Columnsorting";
 import {
   projectDetailsCache,
   setProjectDetailsCache,
-  isProjectCacheStale,
 } from "../cacheStore/appStore";
 import Chart from "chart.js/auto";
-import { fetchConfigHistory } from "./admin/services/projectDisplayConfig";
-import {
-  buildMarkupHistory,
-  getMarkupPctForDate,
-  applyMarkup,
-} from "../utils/markupUtils";
 import Avatar from "../components/common/Avatar";
 import useRole, { clientRole } from "./../hooks/useRole";
 
@@ -223,8 +223,11 @@ export default function ProjectDetails() {
   // const [totalPages, setTotalPages] = createSignal(1);
   // const [hasNext, setHasNext] = createSignal(false);
   // const [hasPrev, setHasPrev] = createSignal(false);
-  // Add near your other signals
-  const [userRole, setUserRole] = createSignal("client");
+  // Add near your other signals — init from auth so role is correct before the
+  // date-reactive effect fires (avoids a race with onMount).
+  const [userRole, setUserRole] = createSignal(
+    JSON.parse(localStorage.getItem("auth") || "null")?.role ?? "client",
+  );
   const { handleSort, getSortIcon, sortData } = useColumnSort();
   // Add near your other signals
   const [allCampaigns, setAllCampaigns] = createSignal([]);
@@ -247,17 +250,34 @@ export default function ProjectDetails() {
   const setProjectCache = (patch) =>
     setProjectDetailsCache(projectId, (prev) => ({ ...prev, ...patch }));
 
+  // ── Date range sent to the API (premium_metrics is computed server-side for
+  //    this window). Clamped: floor 2026-04-01, ceiling today. ────────────────
+  const PREMIUM_FLOOR = "2026-04-01";
+  const todayStr = () => new Date().toISOString().split("T")[0];
+  const rangeStart = () => {
+    const f = fromDate();
+    return f && f > PREMIUM_FLOOR ? f : PREMIUM_FLOOR;
+  };
+  const rangeEnd = () => {
+    const t = toDate();
+    const today = todayStr();
+    return t && t < today ? t : today;
+  };
+
+  // ── Re-scope to the selected date range. premium_metrics is server-computed
+  //    per range, so changing the filter must re-fetch the list (raw columns
+  //    stay reactive via their own client-side insight filtering). Tracks only
+  //    the date signals; search is handled by its own input handler. ──────────
+  createEffect(() => {
+    fromDate();
+    toDate();
+    untrack(() => {
+      loadCampaigns(1, search());
+      loadAllCampaignsForTotals(true);
+    });
+  });
+
   onMount(() => {
-    const auth = JSON.parse(localStorage.getItem("auth"));
-    setUserRole(auth?.role ?? "client");
-
-    if (projectId && isProjectCacheStale(projectId)) {
-      // ✅ Only fetch if cache is missing or expired
-      loadCampaigns(1);
-    }
-    // Load all campaigns for accurate footer totals
-    loadAllCampaignsForTotals();
-
     const handleClickOutside = (e) => {
       if (!e.target.closest(".notification-wrapper")) {
         setShowNotifications(false);
@@ -291,7 +311,14 @@ export default function ProjectDetails() {
     try {
       setProjectCache({ loading: true });
 
-      const res = await fetchCampaigns(pageNo, projectId, searchValue, 20);
+      const res = await fetchCampaigns(
+        pageNo,
+        projectId,
+        searchValue,
+        20,
+        rangeStart(),
+        rangeEnd(),
+      );
       const apiData = res.data.results || res.data || [];
 
       if (!Array.isArray(apiData)) {
@@ -316,33 +343,7 @@ export default function ProjectDetails() {
         console.error("Failed to load campaign insights:", err);
       }
 
-      // Collect unique client IDs from this page's campaigns
-      const uniqueClientIds = [
-        ...new Set(
-          apiData
-            .map((item) => item.premium_metrics?.client_id)
-            .filter(Boolean),
-        ),
-      ];
-
-      // Fetch config history per unique client for this project — in parallel
-      const configHistoryMap = {};
-      await Promise.all(
-        uniqueClientIds.map(async (clientId) => {
-          try {
-            const res = await fetchConfigHistory(clientId, projectId);
-            const rows = Array.isArray(res?.data)
-              ? res.data
-              : (res?.data?.results ?? []);
-            configHistoryMap[clientId] = buildMarkupHistory(rows);
-          } catch {
-            configHistoryMap[clientId] = [];
-          }
-        }),
-      );
-
       const formatted = apiData.map((item, index) => {
-        const clientId = item.premium_metrics?.client_id;
         return {
           number: index + 1,
           id: item.id,
@@ -360,9 +361,10 @@ export default function ProjectDetails() {
           ad_account: item.ad_account_name || "-",
           status: item.status === "paused" ? "paused" : "Live",
           cpl: item.cpl || 0,
+          // Premium comes straight off the server-computed object (per-day
+          // markup already applied for the requested date range).
           premium_metrics: item.premium_metrics,
           insights: insightsMap[item.id] || [],
-          markupHistory: configHistoryMap[clientId] ?? [], // ← date-accurate history
         };
       });
 
@@ -381,19 +383,27 @@ export default function ProjectDetails() {
     }
   };
 
-  // Add this new function to load ALL campaigns for totals
-  const loadAllCampaignsForTotals = async () => {
-    if (allCampaignsLoaded() || loadingAllCampaigns()) return;
+  // Add this new function to load ALL campaigns for totals.
+  // `force` re-runs it when the date filter changes (premium is range-scoped).
+  const loadAllCampaignsForTotals = async (force = false) => {
+    if (loadingAllCampaigns()) return;
+    if (!force && allCampaignsLoaded()) return;
 
     setLoadingAllCampaigns(true);
-    const configHistoryMap = {};
     try {
       let currentPage = 1;
       let accumulated = [];
       let hasMorePages = true;
 
       while (hasMorePages) {
-        const res = await fetchCampaigns(currentPage, projectId, "", 1000);
+        const res = await fetchCampaigns(
+          currentPage,
+          projectId,
+          "",
+          1000,
+          rangeStart(),
+          rangeEnd(),
+        );
         const apiData = res.data.results || res.data || [];
 
         if (!Array.isArray(apiData) || apiData.length === 0) break;
@@ -415,33 +425,7 @@ export default function ProjectDetails() {
           console.error("Failed to load campaign insights:", err);
         }
 
-        // Collect unique client IDs from this batch
-        const uniqueClientIds = [
-          ...new Set(
-            apiData
-              .map((item) => item.premium_metrics?.client_id)
-              .filter(Boolean),
-          ),
-        ];
-
-        // Fetch config history per unique client — in parallel, cached per run
-        await Promise.all(
-          uniqueClientIds.map(async (clientId) => {
-            if (configHistoryMap[clientId]) return; // already fetched this run
-            try {
-              const res = await fetchConfigHistory(clientId, projectId);
-              const rows = Array.isArray(res?.data)
-                ? res.data
-                : (res?.data?.results ?? []);
-              configHistoryMap[clientId] = buildMarkupHistory(rows);
-            } catch {
-              configHistoryMap[clientId] = [];
-            }
-          }),
-        );
-
         const formatted = apiData.map((item) => {
-          const clientId = item.premium_metrics?.client_id;
           return {
             id: item.id,
             campaign_name: item.name
@@ -457,7 +441,6 @@ export default function ProjectDetails() {
             cpl: item.cpl || 0,
             premium_metrics: item.premium_metrics,
             insights: insightsMap[item.id] || [],
-            markupHistory: configHistoryMap[clientId] ?? [], // ← date-accurate
           };
         });
 
@@ -479,29 +462,17 @@ export default function ProjectDetails() {
 
   // Add this inside ProjectDetails component
   /**
-   * Aggregates insight rows within an optional date range.
-   * Applies markup per insight row based on which config was active
-   * on that row's date — using valid_from / valid_to windows.
+   * Aggregates RAW insight rows within an optional date range.
+   * (Premium/marked-up figures now come straight from the server-computed
+   * premium_metrics on each campaign — no client-side markup reconstruction.)
    *
-   * modifiedSpent and modifiedCpl are null if no config covers
-   * any of the filtered dates (pre-config period).
-   *
-   * @param {Array}  insights      - raw insight rows for one campaign
-   * @param {string} from          - "YYYY-MM-DD" or ""
-   * @param {string} to            - "YYYY-MM-DD" or ""
-   * @param {Array}  markupHistory - output of buildMarkupHistory()
+   * @param {Array}  insights - raw insight rows for one campaign
+   * @param {string} from     - "YYYY-MM-DD" or ""
+   * @param {string} to       - "YYYY-MM-DD" or ""
    */
-  const getInsightsInRange = (insights, from, to, markupHistory = []) => {
+  const getInsightsInRange = (insights, from, to) => {
     if (!insights?.length) {
-      return {
-        leads: 0,
-        clicks: 0,
-        reach: 0,
-        spent: 0,
-        modifiedSpent: null,
-        cpl: 0,
-        modifiedCpl: null,
-      };
+      return { leads: 0, clicks: 0, reach: 0, spent: 0, cpl: 0 };
     }
 
     const filtered =
@@ -518,51 +489,23 @@ export default function ProjectDetails() {
     let totalClicks = 0;
     let totalReach = 0;
     let totalSpent = 0;
-    let totalModifiedSpent = 0;
-    let anyModifiedSpendNull = false; // tracks if any day had no config
-    let allModifiedSpendNull = true; // tracks if every day had no config
 
     for (const d of filtered) {
-      const dateStr = d.date.includes("T") ? d.date.split("T")[0] : d.date;
-      const daySpend = parseFloat(d.spend || 0);
-      const markupPct = getMarkupPctForDate(markupHistory, dateStr);
-      const { modifiedSpend, isNull } = applyMarkup(daySpend, markupPct);
-
       totalLeads += d.leads || 0;
       totalClicks += d.clicks || 0;
       totalReach += d.impressions || 0;
-      totalSpent += daySpend;
-
-      if (isNull) {
-        anyModifiedSpendNull = true;
-      } else {
-        allModifiedSpendNull = false;
-        totalModifiedSpent += modifiedSpend;
-      }
+      totalSpent += parseFloat(d.spend || 0);
     }
 
     const cpl =
       totalLeads > 0 ? Number((totalSpent / totalLeads).toFixed(2)) : 0;
-
-    // If every insight in range predates all configs → fully null
-    // If some rows had configs and some didn't → use what we have
-    // (partial coverage: only markup-covered spend contributes to modifiedSpent)
-    const modifiedSpent = allModifiedSpendNull ? null : totalModifiedSpent;
-    const modifiedCpl =
-      modifiedSpent === null
-        ? null
-        : totalLeads > 0
-          ? Number((modifiedSpent / totalLeads).toFixed(2))
-          : 0;
 
     return {
       leads: totalLeads,
       clicks: totalClicks,
       reach: totalReach,
       spent: totalSpent,
-      modifiedSpent,
       cpl,
-      modifiedCpl,
     };
   };
 
@@ -598,13 +541,13 @@ export default function ProjectDetails() {
       const key = row.id;
 
       if (!map.has(key)) {
-        // Calculate from insights based on selected date range
-        const stats = getInsightsInRange(
-          row.insights,
-          fromDate(),
-          toDate(),
-          row.markupHistory ?? [], // ← date-accurate history
-        );
+        // Raw columns from insights (date-filtered client-side)
+        const stats = getInsightsInRange(row.insights, fromDate(), toDate());
+
+        // Premium straight off the server-computed object (already per-day
+        // marked up for the requested range). null when no premium attribution.
+        const pm = row.premium_metrics;
+        const premiumCpl = pm && pm.cpl != null ? Number(pm.cpl) : null;
 
         map.set(key, {
           ...row,
@@ -613,8 +556,7 @@ export default function ProjectDetails() {
           totalReach: stats.reach,
           totalSpent: stats.spent,
           totalCPL: stats.cpl,
-          modifiedCpl: stats.modifiedCpl, // null if pre-config period
-          modifiedSpent: stats.modifiedSpent, // null if pre-config period
+          premiumCpl,
         });
       }
     }
@@ -776,32 +718,30 @@ export default function ProjectDetails() {
     let totalClicks = 0;
     let totalReach = 0;
     let totalSpent = 0;
-    let totalModifiedSpent = 0;
+
+    // Premium CPL is AGGREGATED, never averaged: Σ premium spend ÷ Σ premium
+    // leads. Rows with no premium_metrics contribute nothing.
+    let premiumSpend = 0;
+    let premiumLeads = 0;
 
     for (const row of filtered) {
-      const stats = getInsightsInRange(
-        row.insights,
-        fromDate(),
-        toDate(),
-        row.markupHistory ?? [], // ← date-accurate history
-      );
+      const stats = getInsightsInRange(row.insights, fromDate(), toDate());
 
       totalLeads += stats.leads;
       totalClicks += stats.clicks;
       totalReach += stats.reach;
       totalSpent += stats.spent;
 
-      // Only add to modifiedSpent if this campaign had config coverage
-      // null means pre-config period — don't add 0, skip it
-      if (stats.modifiedSpent !== null) {
-        totalModifiedSpent += stats.modifiedSpent;
+      const pm = row.premium_metrics;
+      if (pm && pm.spend != null && pm.leads_count != null) {
+        premiumSpend += Number(pm.spend);
+        premiumLeads += Number(pm.leads_count);
       }
     }
 
     const avgCPL = totalLeads > 0 ? (totalSpent / totalLeads).toFixed(2) : 0;
 
-    const avgModifiedCPL =
-      totalLeads > 0 ? (totalModifiedSpent / totalLeads).toFixed(2) : 0;
+    const premiumCPL = premiumLeads > 0 ? premiumSpend / premiumLeads : null;
 
     return {
       totalLeads,
@@ -809,7 +749,7 @@ export default function ProjectDetails() {
       totalReach,
       totalSpent,
       avgCPL,
-      avgModifiedCPL,
+      premiumCPL,
     };
   });
 
@@ -1257,8 +1197,11 @@ export default function ProjectDetails() {
                   <td class="p-3">₹{(row.totalCPL ?? 0).toFixed(2)}</td>
                   {userRole() === "admin" && (
                     <td class="p-3">
-                      {row.modifiedCpl !== null && row.modifiedCpl !== undefined
-                        ? `₹${row.modifiedCpl}`
+                      {row.premiumCpl !== null && row.premiumCpl !== undefined
+                        ? `₹${row.premiumCpl.toLocaleString("en-IN", {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}`
                         : "—"}
                     </td>
                   )}
@@ -1323,7 +1266,12 @@ export default function ProjectDetails() {
 
               {userRole() === "admin" && (
                 <td class="text-purple-700 dark:text-purple-300 font-bold">
-                  ₹{footerTotals().avgModifiedCPL}
+                  {footerTotals().premiumCPL !== null
+                    ? `₹${footerTotals().premiumCPL.toLocaleString("en-IN", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}`
+                    : "—"}
                 </td>
               )}
             </tr>

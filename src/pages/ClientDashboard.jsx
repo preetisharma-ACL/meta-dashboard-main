@@ -50,12 +50,6 @@ import {
   isAllProjectsCacheStale,
 } from "../cacheStore/appStore";
 import useRole, { clientRole } from "./../hooks/useRole";
-import { fetchConfigHistory } from "./admin/services/projectDisplayConfig";
-import {
-  buildMarkupHistory,
-  getMarkupPctForDate,
-  applyMarkup,
-} from "../utils/markupUtils";
 
 // Guards against stale in-flight loads overwriting the cache after the
 // dashboard context switches (e.g. admin leaves a client dashboard and returns
@@ -89,6 +83,20 @@ export default function MainDashboard() {
   const [manualBatches, setManualBatches] = createSignal([]);
   const [currentPage, setCurrentPage] = createSignal(1);
   const allProjects = () => projectsCache.allProjects;
+
+  // ── Premium date range sent to the API (premium_metrics is server-computed
+  //    per window). Clamped: floor 2026-04-01, ceiling today — matches the
+  //    ProjectDetails ledger so the numbers line up. ──────────────────────────
+  const PREMIUM_FLOOR = "2026-04-01";
+  const premiumRangeStart = () => {
+    const f = fromDate();
+    return f && f > PREMIUM_FLOOR ? f : PREMIUM_FLOOR;
+  };
+  const premiumRangeEnd = () => {
+    const today = new Date().toISOString().split("T")[0];
+    const t = toDate();
+    return t && t < today ? t : today;
+  };
 
   // ── Read from global store via accessors ─────────────────────────────────────
   const projects = () => projectsCache.data;
@@ -507,7 +515,14 @@ export default function MainDashboard() {
           let hasMore = true;
 
           while (hasMore) {
-            const res = await fetchCampaigns(currentPage, project.id, "", 1000);
+            const res = await fetchCampaigns(
+              currentPage,
+              project.id,
+              "",
+              1000,
+              premiumRangeStart(),
+              premiumRangeEnd(),
+            );
             const batch = res.data?.results ?? res.data ?? [];
             if (!Array.isArray(batch) || batch.length === 0) break;
             allCampaigns = [...allCampaigns, ...batch];
@@ -614,67 +629,30 @@ export default function MainDashboard() {
           campaigns: (allCampaigns || []).map((c) => ({
             id: c.id,
             status: c.status,
+            // server-computed premium (marked-up) figures for this campaign
+            premium_metrics: c.premium_metrics,
           })),
           insights: [],
         };
       }),
     );
 
-    // ── Step 3: Fetch markup config history ──────────────────────────────────
-    // FIXED: fetch per (clientId, projectId) pair, not just per clientId
-    // Old code used one projectId per clientId which was wrong for clients
-    // that span multiple projects with different markup configs.
-
-    const configHistoryMap = {}; // key: `${clientId}_${projectId}`
-
-    // Collect all unique (clientId, projectId) pairs
-    const clientProjectPairs = [];
-    for (const project of projectList) {
-      for (const c of projectCampaigns[project.id] || []) {
-        const clientId = c.premium_metrics?.client_id;
-        if (!clientId) continue;
-        const key = `${clientId}_${project.id}`;
-        if (
-          !configHistoryMap[key] &&
-          !clientProjectPairs.find((p) => p.key === key)
-        ) {
-          clientProjectPairs.push({ key, clientId, projectId: project.id });
-        }
-      }
-    }
-
-    await Promise.all(
-      clientProjectPairs.map(async ({ key, clientId, projectId }) => {
-        try {
-          const res = await fetchConfigHistory(clientId, projectId);
-          const rows = Array.isArray(res?.data)
-            ? res.data
-            : (res?.data?.results ?? []);
-          configHistoryMap[key] = buildMarkupHistory(rows);
-        } catch {
-          configHistoryMap[key] = [];
-        }
-      }),
-    );
-
-    // ── Step 4: Build campaign lookup ────────────────────────────────────────
+    // ── Step 3: Build campaign lookup ────────────────────────────────────────
+    // (Premium CPL now comes straight off each campaign's server-computed
+    // premium_metrics — no markup-config history / reconstruction needed.)
     const campaignById = {};
     const allCampaignIds = [];
 
     for (const project of projectList) {
       for (const c of projectCampaigns[project.id] || []) {
-        const clientId = c.premium_metrics?.client_id;
-        const configKey = `${clientId}_${project.id}`; // ← FIXED key
-
         campaignById[String(c.id)] = {
           campaign: c,
           projectId: project.id,
-          markupHistory: configHistoryMap[configKey] ?? [], // ← uses correct config
         };
         allCampaignIds.push(c.id);
       }
     }
-    // 5. ONE bulk insights call for all campaigns
+    // 4. ONE bulk insights call for all campaigns (raw, date-filtered later)
     if (allCampaignIds.length > 0) {
       try {
         const bulk = await fetchBulkCampaignInsights(allCampaignIds);
@@ -684,11 +662,9 @@ export default function MainDashboard() {
           if (row.is_manual) continue;
           const entry = campaignById[String(row.campaign_id)];
           if (!entry) continue;
-          // Attach markupHistory onto each insight row so allProjectStats can use it
           result[entry.projectId].insights.push({
             ...row,
             campaignId: entry.campaign.id,
-            markupHistory: entry.markupHistory,
           });
         }
       } catch (err) {
@@ -699,6 +675,80 @@ export default function MainDashboard() {
     if (token !== activeLoadToken) return;
     setProjectsCache("insightsMap", result);
   };
+
+  // ── Date-reactive premium refetch ──────────────────────────────────────────
+  // premium_metrics is computed server-side per date range, so when the table
+  // date filter changes we re-pull each project's campaigns (range-scoped) and
+  // patch just their premium_metrics into the cache. Raw columns already
+  // re-scope client-side from insights, so we deliberately skip the heavy
+  // bulk-insights pass here.
+  const refreshPremiumForRange = async () => {
+    const token = activeLoadToken;
+    const projects = allProjects();
+    if (!projects.length) return;
+
+    const start = premiumRangeStart();
+    const end = premiumRangeEnd();
+
+    await Promise.all(
+      projects.map(async (project) => {
+        try {
+          let all = [];
+          let currentPage = 1;
+          let hasMore = true;
+          while (hasMore) {
+            const res = await fetchCampaigns(
+              currentPage,
+              project.id,
+              "",
+              1000,
+              start,
+              end,
+            );
+            const batch = res.data?.results ?? res.data ?? [];
+            if (!Array.isArray(batch) || batch.length === 0) break;
+            all = [...all, ...batch];
+            hasMore = res.meta?.pagination?.has_next ?? false;
+            currentPage++;
+          }
+
+          if (token !== activeLoadToken) return;
+
+          const camps = all.map((c) => ({
+            id: c.id,
+            status: c.status,
+            premium_metrics: c.premium_metrics,
+          }));
+
+          // Patch the project's campaigns in-place, preserving its insights.
+          setProjectsCache("insightsMap", (prev) => {
+            const existing = prev?.[project.id];
+            const insights =
+              existing && !Array.isArray(existing) ? existing.insights : [];
+            return { ...prev, [project.id]: { campaigns: camps, insights } };
+          });
+        } catch (err) {
+          console.error(
+            "Failed to refresh premium for project",
+            project.id,
+            err,
+          );
+        }
+      }),
+    );
+  };
+
+  // Re-run on date-filter change only (defer skips the initial load, which the
+  // mount pipeline already covers with the same clamped range).
+  createEffect(
+    on(
+      [fromDate, toDate],
+      () => {
+        refreshPremiumForRange();
+      },
+      { defer: true },
+    ),
+  );
 
   const normalizeLocalDate = (d) => {
     const date = new Date(d);
@@ -752,34 +802,25 @@ export default function MainDashboard() {
         totalLeads > 0 ? parseFloat(totalSpent / totalLeads).toFixed(2) : 0;
       const resolvedCpl = totalLeads > 0 ? Number(avgCPL) : 1500;
 
-      // ── Compute modifiedCpl from per-row markup history ──────────────────
-      let totalModifiedSpent = 0;
-      let allModifiedSpendNull = true;
+      // ── Premium CPL: aggregate from the server-computed premium_metrics ──
+      // Same formula as the ProjectDetails footer (Project Ledger):
+      //   Σ premium spend ÷ Σ premium leads  (never an average of per-campaign
+      //   CPLs). Campaigns without premium_metrics contribute nothing.
+      let premiumSpend = 0;
+      let premiumLeads = 0;
 
-      for (const d of filtered) {
-        const dateStr = d.date?.includes("T") ? d.date.split("T")[0] : d.date;
-        const daySpend = parseFloat(d.spend || 0);
-        const markupPct = getMarkupPctForDate(d.markupHistory ?? [], dateStr);
-        // Temporarily add inside allProjectStats loop
-        console.log(
-          "insight row markupHistory:",
-          d.markupHistory,
-          "date:",
-          d.date,
-        );
-        const { modifiedSpend, isNull } = applyMarkup(daySpend, markupPct);
-
-        if (!isNull) {
-          allModifiedSpendNull = false;
-          totalModifiedSpent += modifiedSpend;
+      for (const c of campaigns) {
+        const pm = c.premium_metrics;
+        if (pm && pm.spend != null && pm.leads_count != null) {
+          premiumSpend += Number(pm.spend);
+          premiumLeads += Number(pm.leads_count);
         }
       }
 
-      const modifiedCpl = allModifiedSpendNull
-        ? null
-        : totalLeads > 0
-          ? Number((totalModifiedSpent / totalLeads).toFixed(2))
-          : 0;
+      const modifiedCpl =
+        premiumLeads > 0
+          ? Number((premiumSpend / premiumLeads).toFixed(2))
+          : null;
       // ─────────────────────────────────────────────────────────────────────
 
       let activeCampaigns, pausedCampaigns;

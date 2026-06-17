@@ -17,14 +17,17 @@ export const fetchCampaigns = async (
   search = "",
   pageSize = 1000,
   fromDate = "2020-01-01",
+  toDate,
 ) => {
   const today = new Date().toISOString().split("T")[0];
+  const startDate = fromDate || "2020-01-01";
+  const endDate = toDate || today; // callers can scope the end; defaults to today
 
   let url =
     `/campaigns/?page=${page}` +
     `&page_size=${pageSize}` +
-    `&start_date=${fromDate}` +
-    `&end_date=${today}`;
+    `&start_date=${startDate}` +
+    `&end_date=${endDate}`;
 
   if (projectId) url += `&project=${projectId}`;
   if (search) url += `&search=${encodeURIComponent(search)}`;
