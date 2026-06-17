@@ -15,7 +15,7 @@ const PerformingProjects = () => {
   const [projects, setProjects] = createSignal([
     {
       name: "ABC Greens Villas",
-      image: "",
+      image: "/projectImages/gurgaon.jpg",
       city: "Gurugram",
       type: "Villa",
       rera: "RERA Approved",
@@ -33,7 +33,7 @@ const PerformingProjects = () => {
     },
     {
       name: "XYZ Heights",
-      image: "",
+      image: "/projectImages/noida.webp",
       city: "Noida",
       type: "High Rise",
       rera: "Without RERA",
@@ -51,7 +51,7 @@ const PerformingProjects = () => {
     },
     {
       name: "XYZ Corp",
-      image: "",
+      image: "/projectImages/delhi.webp",
       city: "Greater Noida",
       type: "High Rise",
       rera: "Without RERA",

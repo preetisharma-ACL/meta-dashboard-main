@@ -361,6 +361,11 @@ export default function ProjectDetails() {
           ad_account: item.ad_account_name || "-",
           status: item.status === "paused" ? "paused" : "Live",
           cpl: item.cpl || 0,
+          // Server-computed lead counts (scoped to the requested date range).
+          // extra_leads = manually-added leads; leads_count = own + extra.
+          own_leads: Number(item.own_leads ?? 0),
+          extra_leads: Number(item.extra_leads ?? 0),
+          leads_count: Number(item.leads_count ?? 0),
           // Premium comes straight off the server-computed object (per-day
           // markup already applied for the requested date range).
           premium_metrics: item.premium_metrics,
@@ -439,6 +444,9 @@ export default function ProjectDetails() {
             stop_date: item.stop_date || "No date",
             status: item.status === "paused" ? "paused" : "Live",
             cpl: item.cpl || 0,
+            own_leads: Number(item.own_leads ?? 0),
+            extra_leads: Number(item.extra_leads ?? 0),
+            leads_count: Number(item.leads_count ?? 0),
             premium_metrics: item.premium_metrics,
             insights: insightsMap[item.id] || [],
           };
@@ -549,13 +557,19 @@ export default function ProjectDetails() {
         const pm = row.premium_metrics;
         const premiumCpl = pm && pm.cpl != null ? Number(pm.cpl) : null;
 
+        // Total leads = own (from insights) + extra (manually-added, server-
+        // computed). CPL is recomputed against the combined lead count.
+        const totalLeads = stats.leads + Number(row.extra_leads || 0);
+        const totalCPL =
+          totalLeads > 0 ? Number((stats.spent / totalLeads).toFixed(2)) : 0;
+
         map.set(key, {
           ...row,
-          totalLeads: stats.leads,
+          totalLeads,
           totalClicks: stats.clicks,
           totalReach: stats.reach,
           totalSpent: stats.spent,
-          totalCPL: stats.cpl,
+          totalCPL,
           premiumCpl,
         });
       }
@@ -727,7 +741,7 @@ export default function ProjectDetails() {
     for (const row of filtered) {
       const stats = getInsightsInRange(row.insights, fromDate(), toDate());
 
-      totalLeads += stats.leads;
+      totalLeads += stats.leads + Number(row.extra_leads || 0);
       totalClicks += stats.clicks;
       totalReach += stats.reach;
       totalSpent += stats.spent;

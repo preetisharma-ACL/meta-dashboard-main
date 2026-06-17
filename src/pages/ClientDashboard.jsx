@@ -401,9 +401,10 @@ export default function MainDashboard() {
   // Falls back gracefully if the cache still holds the old flat-array shape.
   const getProjectInsightData = (projectId) => {
     const entry = projectInsightsMap()[projectId];
-    if (!entry) return { campaigns: [], insights: [] };
+    if (!entry) return { campaigns: [], insights: [], range: null };
     // Old flat-array shape (cache not yet refreshed)
-    if (Array.isArray(entry)) return { campaigns: [], insights: entry };
+    if (Array.isArray(entry))
+      return { campaigns: [], insights: entry, range: null };
     return entry;
   };
 
@@ -429,20 +430,30 @@ export default function MainDashboard() {
     const result = {};
 
     for (const project of allProjects()) {
-      const { campaigns, insights } = getProjectInsightData(project.id);
+      const { campaigns, insights, range } = getProjectInsightData(project.id);
 
-      const filtered = insights.filter((d) => {
-        if (!from || !to) return true;
-        if (!d.date) return false;
-        const date = new Date(d.date + "T00:00:00");
-        const start = new Date(from);
-        start.setHours(0, 0, 0, 0);
-        const end = new Date(to);
-        end.setHours(23, 59, 59, 999);
-        return date >= start && date <= end;
-      });
+      const inRange = (rows, rFrom, rTo) =>
+        rows.filter((d) => {
+          if (!rFrom || !rTo) return true;
+          if (!d.date) return false;
+          const date = new Date(d.date + "T00:00:00");
+          const start = new Date(rFrom);
+          start.setHours(0, 0, 0, 0);
+          const end = new Date(rTo);
+          end.setHours(23, 59, 59, 999);
+          return date >= start && date <= end;
+        });
 
-      const totalLeads = filtered.reduce((s, d) => s + (d.leads || 0), 0);
+      const filtered = inRange(insights, from, to);
+
+      // Real leads filtered by the stamped campaign range so they stay in
+      // lockstep with extra_leads (no flicker during a date-change refetch).
+      const leadsRange = range ?? { from, to };
+      const totalLeads = inRange(
+        insights,
+        leadsRange.from,
+        leadsRange.to,
+      ).reduce((s, d) => s + (d.leads || 0), 0);
       const extraLeads = getProjectExtraLeads(
         project.id,
         manualBatches(),
@@ -475,8 +486,16 @@ export default function MainDashboard() {
         ).length;
       }
 
+      // Same rule as the table (allProjectStats): clients fold synthetic leads
+      // into Total Leads via the client-accessible campaign.extra_leads field;
+      // admins keep real-only here (synthetic in the separate column).
+      const extraFromCampaigns = campaigns.reduce(
+        (s, c) => s + Number(c.extra_leads ?? 0),
+        0,
+      );
+
       result[project.id] = {
-        totalLeads,
+        totalLeads: isAdmin() ? totalLeads : totalLeads + extraFromCampaigns,
         extraLeads,
         totalSpent,
         avgCPL,
@@ -629,10 +648,17 @@ export default function MainDashboard() {
           campaigns: (allCampaigns || []).map((c) => ({
             id: c.id,
             status: c.status,
+            // Backend-computed synthetic/extra leads, client-accessible via the
+            // /api/campaigns/ endpoint (same field Project Details uses). Used to
+            // fold synthetic leads into the client's Total Leads.
+            extra_leads: Number(c.extra_leads ?? 0),
             // server-computed premium (marked-up) figures for this campaign
             premium_metrics: c.premium_metrics,
           })),
           insights: [],
+          // Date range these campaigns/extra_leads were fetched for. Real leads
+          // are filtered by this so they stay in lockstep with extra_leads.
+          range: { from: fromDate(), to: toDate() },
         };
       }),
     );
@@ -717,15 +743,28 @@ export default function MainDashboard() {
           const camps = all.map((c) => ({
             id: c.id,
             status: c.status,
+            // Preserve date-scoped synthetic leads so the client's Total Leads
+            // stays correct after a date-filter change (these campaigns replace
+            // the ones loaded at mount).
+            extra_leads: Number(c.extra_leads ?? 0),
             premium_metrics: c.premium_metrics,
           }));
 
           // Patch the project's campaigns in-place, preserving its insights.
+          // Stamp the range these campaigns belong to so real leads filter by
+          // the same window (campaigns + range update atomically here).
           setProjectsCache("insightsMap", (prev) => {
             const existing = prev?.[project.id];
             const insights =
               existing && !Array.isArray(existing) ? existing.insights : [];
-            return { ...prev, [project.id]: { campaigns: camps, insights } };
+            return {
+              ...prev,
+              [project.id]: {
+                campaigns: camps,
+                insights,
+                range: { from: fromDate(), to: toDate() },
+              },
+            };
           });
         } catch (err) {
           console.error(
@@ -772,22 +811,33 @@ export default function MainDashboard() {
     const result = {};
 
     for (const project of allProjects()) {
-      const { campaigns, insights } = getProjectInsightData(project.id);
+      const { campaigns, insights, range } = getProjectInsightData(project.id);
 
-      const filtered =
-        !from || !to
-          ? insights
-          : insights.filter((d) => {
+      const inRange = (rows, rFrom, rTo) =>
+        !rFrom || !rTo
+          ? rows
+          : rows.filter((d) => {
               if (!d.date) return false;
               const date = new Date(d.date + "T00:00:00");
-              const start = new Date(from);
+              const start = new Date(rFrom);
               start.setHours(0, 0, 0, 0);
-              const end = new Date(to);
+              const end = new Date(rTo);
               end.setHours(23, 59, 59, 999);
               return date >= start && date <= end;
             });
 
-      const totalLeads = filtered.reduce((s, d) => s + (d.leads || 0), 0);
+      const filtered = inRange(insights, from, to);
+
+      // Real leads are filtered by the range the loaded campaigns/extra_leads
+      // belong to (stamped in the cache), so the real (insights) and synthetic
+      // (extra_leads) halves of Total Leads always move together — no flicker
+      // while a date-change campaign refetch is in flight.
+      const leadsRange = range ?? { from, to };
+      const totalLeads = inRange(
+        insights,
+        leadsRange.from,
+        leadsRange.to,
+      ).reduce((s, d) => s + (d.leads || 0), 0);
       const extraLeads = getProjectExtraLeads(
         project.id,
         manualBatches(),
@@ -839,8 +889,19 @@ export default function MainDashboard() {
         ).length;
       }
 
+      // Synthetic/extra leads for the CLIENT total come from the backend-
+      // computed campaign.extra_leads (client-accessible, authoritative, matches
+      // billing) — NOT the admin-only manual-batches endpoint.
+      const extraFromCampaigns = campaigns.reduce(
+        (s, c) => s + Number(c.extra_leads ?? 0),
+        0,
+      );
+
       result[project.id] = {
-        totalLeads,
+        // Admin sees real leads here (synthetic in its own "Extra Leads"
+        // column, sourced from manualBatches). Clients have no such column, so
+        // synthetic leads are folded into Total Leads via campaign.extra_leads.
+        totalLeads: isAdmin() ? totalLeads : totalLeads + extraFromCampaigns,
         extraLeads,
         totalSpent,
         avgCPL,
