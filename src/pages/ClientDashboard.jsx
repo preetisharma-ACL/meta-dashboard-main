@@ -48,6 +48,8 @@ import {
   setProjectsCache,
   isCacheStale,
   isAllProjectsCacheStale,
+  dashboardFilter,
+  setDashboardFilter,
 } from "../cacheStore/appStore";
 import useRole, { clientRole } from "./../hooks/useRole";
 
@@ -75,11 +77,17 @@ export default function MainDashboard() {
   const [searchText, setSearchText] = createSignal("");
   const [selectedColumns, setSelectedColumns] = createSignal([]);
   const [sortType, setSortType] = createSignal("");
-  const [fromDate, setFromDate] = createSignal("");
-  const [toDate, setToDate] = createSignal("");
+  // Date filter is backed by a persisted store (survives page navigation) so the
+  // picker and the range-scoped data stay in sync until the user explicitly
+  // clears it. Same accessor/setter shape as a signal, so call sites are unchanged.
+  const fromDate = () => dashboardFilter.fromDate;
+  const toDate = () => dashboardFilter.toDate;
+  const setFromDate = (v) => setDashboardFilter("fromDate", v);
+  const setToDate = (v) => setDashboardFilter("toDate", v);
   const [viewType, setViewType] = createSignal("table");
   const [userRole, setUserRole] = createSignal("client");
-  const [cardRange, setCardRange] = createSignal(null);
+  const cardRange = () => dashboardFilter.cardRange;
+  const setCardRange = (v) => setDashboardFilter("cardRange", v);
   const [manualBatches, setManualBatches] = createSignal([]);
   const [currentPage, setCurrentPage] = createSignal(1);
   const allProjects = () => projectsCache.allProjects;
@@ -1468,16 +1476,38 @@ export default function MainDashboard() {
     const to = new Date(toDate());
     from.setHours(0, 0, 0, 0);
     to.setHours(0, 0, 0, 0);
+
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    const sameDay = (a, b) => a.getTime() === b.getTime();
     const diffDays = Math.floor((to.getTime() - from.getTime()) / 86400000) + 1;
-    if (diffDays === 1) {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      return from.getTime() === today.getTime() ? "Today" : "Yesterday";
+
+    // Only use a preset label when the range ACTUALLY matches that period —
+    // otherwise a custom selection (e.g. 13–14 Jun) wrongly read "Yesterday".
+    if (diffDays === 1 && sameDay(from, today)) return "Today";
+    if (diffDays === 1 && sameDay(from, yesterday)) return "Yesterday";
+    if (sameDay(to, yesterday)) {
+      if (diffDays === 3) return "Last 3 Days";
+      if (diffDays === 7) return "Last 7 Days";
     }
-    if (diffDays === 3) return "Last 3 Days";
-    if (diffDays === 7) return "Last 7 Days";
-    if (diffDays >= 28 && diffDays <= 31) return "Last Month";
-    return "Custom Range";
+    const firstOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const firstOfPrevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastOfPrevMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+    if (sameDay(from, firstOfThisMonth) && sameDay(to, today)) return "This Month";
+    if (sameDay(from, firstOfPrevMonth) && sameDay(to, lastOfPrevMonth))
+      return "Last Month";
+
+    // Custom selection → show the actual date(s).
+    const fmt = (d) =>
+      d.toLocaleDateString("en-IN", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      });
+    return sameDay(from, to) ? fmt(from) : `${fmt(from)} – ${fmt(to)}`;
   });
 
   const getColor = (name) => {

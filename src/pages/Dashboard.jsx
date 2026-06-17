@@ -205,14 +205,29 @@ export default function Dashboard() {
         // Normalize dates WITHOUT mutating originals
         const start = new Date(from.getFullYear(), from.getMonth(), from.getDate());
         const end = new Date(to.getFullYear(), to.getMonth(), to.getDate());
-        const diffDays =
-            Math.round((end - start) / 86400000) + 1;
 
-        if (diffDays === 1) return "Today";
-        if (diffDays === 2) return "Yesterday";
-        if (diffDays === 3) return "Last 3 Days";
-        if (diffDays === 7) return "Last 7 Days";
-        if (diffDays >= 28 && diffDays <= 31) return "Last Month";
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+
+        const sameDay = (a, b) => a.getTime() === b.getTime();
+        const diffDays = Math.round((end - start) / 86400000) + 1;
+
+        // Only use a preset label when the range ACTUALLY matches that period —
+        // otherwise a custom selection (e.g. 13–14 Jun) wrongly read "Yesterday".
+        if (diffDays === 1 && sameDay(start, today)) return "Today";
+        if (diffDays === 1 && sameDay(start, yesterday)) return "Yesterday";
+        if (sameDay(end, yesterday)) {
+            if (diffDays === 3) return "Last 3 Days";
+            if (diffDays === 7) return "Last 7 Days";
+        }
+        const firstOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const firstOfPrevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const lastOfPrevMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+        if (sameDay(start, firstOfThisMonth) && sameDay(end, today)) return "This Month";
+        if (sameDay(start, firstOfPrevMonth) && sameDay(end, lastOfPrevMonth)) return "Last Month";
+
         return `${start.toLocaleDateString()} – ${end.toLocaleDateString()}`;
     });
 

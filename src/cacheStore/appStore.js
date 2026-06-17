@@ -53,6 +53,35 @@ export const setProjectsCache = (keyOrPatch, value) => {
   queueMicrotask(() => persist("cache_projects", projectsCache));
 };
 
+// ─── Dashboard date filter (persists across page navigation) ─────────────────
+// Kept here (not in the component) so the selected range survives unmount and
+// stays in sync with the range-scoped data cache. Only an explicit Clear resets
+// it. No TTL — a filter the user set shouldn't silently expire mid-session.
+const dashboardFilterDefault = { fromDate: "", toDate: "", cardRange: null };
+
+const hydrateFilter = () => {
+  try {
+    const raw = sessionStorage.getItem("dashboard_filter");
+    return raw ? { ...dashboardFilterDefault, ...JSON.parse(raw) } : dashboardFilterDefault;
+  } catch {
+    return dashboardFilterDefault;
+  }
+};
+
+export const [dashboardFilter, setDashboardFilterRaw] = createStore(hydrateFilter());
+
+export const setDashboardFilter = (keyOrPatch, value) => {
+  if (typeof keyOrPatch === "string") {
+    setDashboardFilterRaw(keyOrPatch, value);
+  } else {
+    setDashboardFilterRaw(keyOrPatch);
+  }
+  queueMicrotask(() => persist("dashboard_filter", dashboardFilter));
+};
+
+export const resetDashboardFilter = () =>
+  setDashboardFilter({ fromDate: "", toDate: "", cardRange: null });
+
 // ─── Billing ──────────────────────────────────────────────────────────────────
 const billingDefault = {
   overview: {},
@@ -88,6 +117,9 @@ export const clearClientDashboardContext = () => {
   localStorage.removeItem("selectedClientNomen");
   localStorage.removeItem("selectedClientNomenId");
   localStorage.removeItem("selectedClientName");
+
+  // Switching context starts a fresh view — drop any persisted date filter.
+  resetDashboardFilter();
 
   setProjectsCache({
     data: [],
@@ -174,5 +206,6 @@ export const clearAllCache = () => {
     "cache_project_details",
     "cache_campaign_details",
     "cache_header",
+    "dashboard_filter",
   ].forEach((k) => sessionStorage.removeItem(k));
 };

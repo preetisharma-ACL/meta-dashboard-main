@@ -30,6 +30,8 @@ import useColumnSort from "../components/Columnsorting";
 import {
   projectDetailsCache,
   setProjectDetailsCache,
+  dashboardFilter,
+  setDashboardFilter,
 } from "../cacheStore/appStore";
 import Chart from "chart.js/auto";
 import Avatar from "../components/common/Avatar";
@@ -212,8 +214,13 @@ export default function ProjectDetails() {
 
   /* ================= FILTER STATES ================= */
 
-  const [fromDate, setFromDate] = createSignal("");
-  const [toDate, setToDate] = createSignal("");
+  // Shared with the dashboard via a persisted store, so the selected date range
+  // carries across navigation and stays in sync. Same accessor/setter shape as a
+  // signal — call sites unchanged.
+  const fromDate = () => dashboardFilter.fromDate;
+  const toDate = () => dashboardFilter.toDate;
+  const setFromDate = (v) => setDashboardFilter("fromDate", v);
+  const setToDate = (v) => setDashboardFilter("toDate", v);
   const [search, setSearch] = createSignal("");
   const [statusFilter, setStatusFilter] = createSignal("All");
   // const [page, setPage] = createSignal(1);
@@ -649,24 +656,37 @@ export default function ProjectDetails() {
     from.setHours(0, 0, 0, 0);
     to.setHours(0, 0, 0, 0);
 
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    const sameDay = (a, b) => a.getTime() === b.getTime();
     const diffDays = Math.floor((to.getTime() - from.getTime()) / 86400000) + 1;
 
-    // today check
-    if (diffDays === 1) {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      if (from.getTime() === today.getTime()) {
-        return "Today";
-      }
-      return "Yesterday";
+    // Only use a preset label when the range ACTUALLY matches that period —
+    // otherwise a custom selection (e.g. 13–14 Jun) wrongly read "Yesterday".
+    if (diffDays === 1 && sameDay(from, today)) return "Today";
+    if (diffDays === 1 && sameDay(from, yesterday)) return "Yesterday";
+    if (sameDay(to, yesterday)) {
+      if (diffDays === 3) return "Last 3 Days";
+      if (diffDays === 7) return "Last 7 Days";
     }
+    const firstOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const firstOfPrevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastOfPrevMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+    if (sameDay(from, firstOfThisMonth) && sameDay(to, today)) return "This Month";
+    if (sameDay(from, firstOfPrevMonth) && sameDay(to, lastOfPrevMonth))
+      return "Last Month";
 
-    if (diffDays === 3) return "Last 3 Days";
-    if (diffDays === 7) return "Last 7 Days";
-    if (diffDays >= 28 && diffDays <= 31) return "Last Month";
-
-    return "Custom Range";
+    // Custom selection → show the actual date(s).
+    const fmt = (d) =>
+      d.toLocaleDateString("en-IN", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      });
+    return sameDay(from, to) ? fmt(from) : `${fmt(from)} – ${fmt(to)}`;
   });
 
   const metricIcons = {
