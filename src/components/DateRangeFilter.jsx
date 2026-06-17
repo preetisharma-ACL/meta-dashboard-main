@@ -27,6 +27,7 @@ export function DateRangeFilter(props) {
     { label: "Yesterday", value: "yesterday" },
     { label: "Last 3 Days", value: "last3days" },
     { label: "Last 7 Days", value: "last7days" },
+    { label: "This Month", value: "thisMonth" },
     { label: "Last 1 Month", value: "lastMonth" },
   ];
 
@@ -207,6 +208,12 @@ export function DateRangeFilter(props) {
         start.setDate(start.getDate() - 6);
         from = startOfDay(start);
         to = endOfDay(end);
+        break;
+      }
+      case "thisMonth": {
+        const start = new Date(now.getFullYear(), now.getMonth(), 1);
+        from = startOfDay(start);
+        to = endOfDay(now);
         break;
       }
       case "lastMonth": {
