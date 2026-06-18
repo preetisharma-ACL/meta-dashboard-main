@@ -153,7 +153,6 @@ export default function MainDashboard() {
         localStorage.removeItem("selectedClientNomenId");
         localStorage.removeItem("selectedClientName");
 
-        
         // Only bust cache + reload if we were actually viewing a client,
         // otherwise leave the already-loaded admin dashboard untouched.
         if (wasViewingClient) {
@@ -1032,6 +1031,9 @@ export default function MainDashboard() {
     const serviceChargeSpent =
       totalSpent + totalSpent * serviceChargeRate.toFixed(2);
 
+    // Admin view: spend + 18% GST (client view uses serviceChargeSpent above)
+    const gstSpent = totalSpent + totalSpent * 0.18;
+
     const avgCPL = totalLeads > 0 ? (totalSpent / totalLeads).toFixed(2) : 0;
     // derive from statsMap (date-range aware)
     const activeCampaigns = all.reduce(
@@ -1047,6 +1049,7 @@ export default function MainDashboard() {
       totalLeads,
       totalSpent,
       serviceChargeSpent,
+      gstSpent,
       avgCPL,
       activeCampaigns,
       pausedCampaigns,
@@ -1496,7 +1499,8 @@ export default function MainDashboard() {
     const firstOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const firstOfPrevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const lastOfPrevMonth = new Date(now.getFullYear(), now.getMonth(), 0);
-    if (sameDay(from, firstOfThisMonth) && sameDay(to, today)) return "This Month";
+    if (sameDay(from, firstOfThisMonth) && sameDay(to, today))
+      return "This Month";
     if (sameDay(from, firstOfPrevMonth) && sameDay(to, lastOfPrevMonth))
       return "Last Month";
 
@@ -1876,20 +1880,36 @@ export default function MainDashboard() {
                 </p>
               </Show>
             </div>
-            <div class="py-3.5 border-b border-[#E2E8F1] dark:border-gray-700">
-              <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
-                Spend + {serviceChargePercent}% service charge
-              </p>
-              <p class="text-xl font-bold text-gray-700 dark:text-white mt-1">
-                {"₹"}
-                {overviewStatsCards().serviceChargeSpent.toLocaleString(
-                  "en-IN",
-                )}
-              </p>
-              <p class="text-xs text-[#54657E] dark:text-gray-400 mt-0.5">
-                (excluding GST)
-              </p>
-            </div>
+            <Show when={!isAdmin()}>
+              <div class="py-3.5 border-b border-[#E2E8F1] dark:border-gray-700">
+                <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
+                  Spend + {serviceChargePercent}% service charge
+                </p>
+                <p class="text-xl font-bold text-gray-700 dark:text-white mt-1">
+                  {"₹"}
+                  {overviewStatsCards().serviceChargeSpent.toLocaleString(
+                    "en-IN",
+                  )}
+                </p>
+                <p class="text-xs text-[#54657E] dark:text-gray-400 mt-0.5">
+                  (excluding GST)
+                </p>
+              </div>
+            </Show>
+            <Show when={isAdmin()}>
+              <div class="py-3.5 border-b border-[#E2E8F1] dark:border-gray-700">
+                <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
+                  Spend + 18% GST
+                </p>
+                <p class="text-xl font-bold text-gray-700 dark:text-white mt-1">
+                  {"₹"}
+                  {overviewStatsCards().gstSpent.toLocaleString("en-IN")}
+                </p>
+                <p class="text-xs text-[#54657E] dark:text-gray-400 mt-0.5">
+                  (including 18% GST)
+                </p>
+              </div>
+            </Show>
             <div class="py-3.5">
               <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
                 Campaigns

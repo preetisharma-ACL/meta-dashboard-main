@@ -1,6 +1,7 @@
 import { createSignal, createMemo, onMount, For, Show } from "solid-js";
 import { fetchClientNomen } from "../services/clientNomen";
 import Avatar from "../../../components/common/Avatar";
+import { useClientNomen } from "../../../hooks/useClientNomen";
 
 // ─── Format date ──────────────────────────────────────────────────────────────
 const formatDate = (iso) => {
@@ -16,7 +17,6 @@ const formatDate = (iso) => {
 export default function ClientNomen() {
   const [nomens, setNomens] = createSignal([]);
   const [allNomens, setAllNomens] = createSignal([]);
-  const [loading, setLoading] = createSignal(true);
   const [search, setSearch] = createSignal("");
   const [hasClientFilter, setHasClientFilter] = createSignal("All");
   const [sortKey, setSortKey] = createSignal("id");
@@ -25,9 +25,13 @@ export default function ClientNomen() {
   // Pagination — server-driven
   const [page, setPage] = createSignal(1);
   const [totalPages, setTotalPages] = createSignal(1);
-  const [total, setTotal] = createSignal(0);
   const [hasNext, setHasNext] = createSignal(false);
   const [hasPrev, setHasPrev] = createSignal(false);
+
+  const nomen = useClientNomen();
+
+  const loading = () => nomen.isLoading;
+  const total = () => (nomen.data ?? []).length;
 
   // ── Fetch one page from server ────────────────────────────────────────────
   const loadNomens = async () => {
@@ -84,7 +88,7 @@ export default function ClientNomen() {
 
   // ── Client-side filter + sort on current page data ────────────────────────
   const filtered = createMemo(() => {
-    let data = [...nomens()];
+     let data = [...(nomen.data ?? [])];
 
     // Search by name
     const q = search().trim().toLowerCase();

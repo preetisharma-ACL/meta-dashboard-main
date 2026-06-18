@@ -1,4 +1,5 @@
 import { render } from 'solid-js/web';
+import { QueryClient, QueryClientProvider } from '@tanstack/solid-query';
 import './index.css';
 import App from './App';
 
@@ -10,4 +11,13 @@ if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
     );
 }
 
-render(() => <App />, root);
+const queryClient = new QueryClient();
+
+render(
+    () => (
+        <QueryClientProvider client={queryClient}>
+            <App />
+        </QueryClientProvider>
+    ),
+    root,
+);
