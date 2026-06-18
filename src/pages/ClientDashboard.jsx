@@ -44,6 +44,7 @@ import { fetchCampaigns } from "../services/campaigns";
 import { fetchBulkCampaignInsights } from "../services/campaigns";
 import { fetchAllCampaigns } from "../services/campaigns";
 import Avatar from "../components/common/Avatar";
+import CountUp from "../components/CountUp";
 import {
   projectsCache,
   setProjectsCache,
@@ -129,11 +130,17 @@ export default function MainDashboard() {
     projectsCache.insightsMap &&
     Object.keys(projectsCache.insightsMap).length > 0;
 
+  // True while the ledger's spend/leads figures are still being swept in — i.e.
+  // projects exist but their campaign insights haven't populated yet. Drives the
+  // CountUp "rolling number" so the ledger never shows a static 0 during load.
+  const ledgerLoading = () =>
+    allProjects().length > 0 && !hasRenderedCampaignData();
+
   // Recompute on navigation so the "Viewing Client" badge clears when the
   // client context is removed on the Main Dashboard.
-  const selectedClientName = () => {
+  const selectedClientNomen = () => {
     location.pathname; // track route changes
-    return localStorage.getItem("selectedClientName");
+    return localStorage.getItem("selectedClientNomen");
   };
 
   const { isRetainer, iscpl, ishybrid, isAdmin } = clientRole();
@@ -1778,11 +1785,11 @@ export default function MainDashboard() {
                         + Add New Project
                     </A>
                 </div> */}
-        <Show when={userRole() === "admin" && selectedClientName()}>
+        <Show when={userRole() === "admin" && selectedClientNomen()}>
           <div class="inline-flex items-center gap-2.5 bg-[#14233A] text-white px-5 py-2.5 rounded-full mb-4 text-sm font-medium shadow-sm">
             <span class="w-2 h-2 rounded-full bg-[#3DD598]"></span>
             Viewing Client:
-            {selectedClientName()}
+            {selectedClientNomen()}
           </div>
         </Show>
       </div>
@@ -1857,7 +1864,10 @@ export default function MainDashboard() {
                 Leads generated
               </p>
               <p class="text-3xl font-bold text-[#14233A] dark:text-white mt-1.5">
-                {overviewStatsCards().totalLeads.toLocaleString("en-IN")}
+                <CountUp
+                  value={overviewStatsCards().totalLeads}
+                  loading={ledgerLoading()}
+                />
               </p>
               <Show
                 when={heroPacing().isMonthView && heroPacing().dayOfMonth > 0}
@@ -1923,7 +1933,10 @@ export default function MainDashboard() {
             </p>
             <h2 class="text-xl sm:text-2xl font-bold tracking-tight text-gray-700 dark:text-white">
               {"₹"}
-              {overviewStatsCards().totalSpent.toLocaleString("en-IN")}
+              <CountUp
+                value={overviewStatsCards().totalSpent}
+                loading={ledgerLoading()}
+              />
             </h2>
 
             <Show when={isAdmin() || ishybrid()}>
@@ -2020,7 +2033,10 @@ export default function MainDashboard() {
                 Leads generated
               </p>
               <p class="text-xl font-bold text-[#14233A] dark:text-white mt-1">
-                {overviewStatsCards().totalLeads.toLocaleString("en-IN")}
+                <CountUp
+                  value={overviewStatsCards().totalLeads}
+                  loading={ledgerLoading()}
+                />
               </p>
               <Show
                 when={heroPacing().isMonthView && heroPacing().dayOfMonth > 0}
@@ -2071,7 +2087,10 @@ export default function MainDashboard() {
                 </p>
                 <p class="text-xl font-bold text-gray-700 dark:text-white mt-1">
                   {"₹"}
-                  {overviewStatsCards().gstSpent.toLocaleString("en-IN")}
+                  <CountUp
+                    value={overviewStatsCards().gstSpent}
+                    loading={ledgerLoading()}
+                  />
                 </p>
                 <p class="text-xs text-[#54657E] dark:text-gray-400 mt-0.5">
                   (including 18% GST)
