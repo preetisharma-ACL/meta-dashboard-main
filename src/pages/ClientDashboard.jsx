@@ -119,6 +119,16 @@ export default function MainDashboard() {
   const hasPrev = () => projectsCache.meta?.has_prev ?? false;
   const insightsLoading = () => false; // handled inside loadAllProjectInsights
 
+  // True only when the store actually holds swept campaign/insight data to
+  // render. The persisted cache can carry a fresh `lastFetchedAll` timestamp but
+  // an EMPTY insightsMap — e.g. admin's map is too large for sessionStorage and
+  // the write silently fails (QuotaExceededError). In that case a reload must
+  // re-run the sweep even though the staleness gate thinks the cache is fresh,
+  // otherwise spend/leads/CPL render as ₹0 until the 5-min TTL expires.
+  const hasRenderedCampaignData = () =>
+    projectsCache.insightsMap &&
+    Object.keys(projectsCache.insightsMap).length > 0;
+
   // Recompute on navigation so the "Viewing Client" badge clears when the
   // client context is removed on the Main Dashboard.
   const selectedClientName = () => {
@@ -211,8 +221,11 @@ export default function MainDashboard() {
       loadManualBatches();
     }
 
-    // Now the cache is guaranteed stale if we just busted it above
-    if (isAllProjectsCacheStale()) {
+    // Fire the sweep when the cache is stale OR when there's nothing to render
+    // (fresh timestamp but empty insightsMap — see hasRenderedCampaignData).
+    // This guarantees data loads on every reload while still skipping the
+    // refetch when valid data is already present (cache benefit preserved).
+    if (isAllProjectsCacheStale() || !hasRenderedCampaignData()) {
       loadAllProjects();
     }
   });
