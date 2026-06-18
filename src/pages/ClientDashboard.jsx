@@ -42,6 +42,7 @@ import useColumnSort from "../components/Columnsorting";
 import { fetchProjects, fetchManualBatches } from "../services/dashboard";
 import { fetchCampaigns } from "../services/campaigns";
 import { fetchBulkCampaignInsights } from "../services/campaigns";
+import { fetchAllCampaigns } from "../services/campaigns";
 import Avatar from "../components/common/Avatar";
 import {
   projectsCache,
@@ -531,6 +532,76 @@ export default function MainDashboard() {
     projectList,
     token = activeLoadToken,
   ) => {
+    // ── Admin fast path ──────────────────────────────────────────────────────
+    // Admins load every client's projects (hundreds), so the per-project loop
+    // below turns into an N+1 storm (one /campaigns/?project=N request each).
+    // Instead fetch ALL campaigns in ONE date-scoped paginated sweep and group
+    // them by project_id locally — identical result, ~1 request instead of N.
+    // The client path below is left exactly as-is so its behaviour is unchanged.
+    if (isAdmin()) {
+      const campaignsByProject = {};
+      for (const project of projectList) campaignsByProject[project.id] = [];
+
+      let sweepOk = true;
+      try {
+        const allCampaigns = await fetchAllCampaigns(
+          10000,
+          premiumRangeStart(),
+          premiumRangeEnd(),
+        );
+        for (const c of allCampaigns) {
+          const pid = c.project_id;
+          if (pid == null) continue;
+          if (!campaignsByProject[pid]) campaignsByProject[pid] = [];
+          campaignsByProject[pid].push(c);
+        }
+      } catch (err) {
+        sweepOk = false;
+        console.warn("deriveProjectStatuses: bulk campaign sweep failed", err);
+      }
+
+      const statusUpdates = projectList.map((project) => {
+        const camps = campaignsByProject[project.id] || [];
+        // Sweep failed → mirror the old per-project catch branch: keep whatever
+        // the projects API already reported so the table isn't blanked.
+        if (!sweepOk) {
+          return {
+            id: project.id,
+            status: project.status,
+            activeCampaigns: project.activeCampaigns,
+            pausedCampaigns: project.pausedCampaigns,
+          };
+        }
+        const activeCampaigns = camps.filter(
+          (c) => c.status === "active",
+        ).length;
+        const pausedCampaigns = camps.filter(
+          (c) => c.status === "paused",
+        ).length;
+        return {
+          id: project.id,
+          status: activeCampaigns > 0 ? "active" : "paused",
+          activeCampaigns,
+          pausedCampaigns,
+        };
+      });
+
+      if (token !== activeLoadToken) return campaignsByProject;
+      setProjectsCache("data", (prev) =>
+        prev.map((p) => {
+          const update = statusUpdates.find((u) => u.id === p.id);
+          return update ? { ...p, ...update } : p;
+        }),
+      );
+      setProjectsCache("allProjects", (prev) =>
+        prev.map((p) => {
+          const update = statusUpdates.find((u) => u.id === p.id);
+          return update ? { ...p, ...update } : p;
+        }),
+      );
+      return campaignsByProject;
+    }
+
     const perProject = await Promise.all(
       projectList.map(async (project) => {
         try {
@@ -630,45 +701,81 @@ export default function MainDashboard() {
     const projectCampaigns = {};
 
     // 1. Resolve campaigns per project (reuse or fetch)
-    await Promise.all(
-      projectList.map(async (project) => {
-        let allCampaigns = campaignsByProject
-          ? campaignsByProject[project.id]
-          : undefined;
+    if (isAdmin() && !campaignsByProject) {
+      // Admin fast path: when called standalone (no precomputed campaigns),
+      // fetch ALL campaigns in ONE sweep and group by project_id locally,
+      // instead of one fetchCampaigns(project.id) per project (was 311 calls).
+      let allCampaigns = [];
+      try {
+        allCampaigns = await fetchAllCampaigns(10000, fromDate(), toDate());
+      } catch (err) {
+        console.error("loadAllProjectInsights: admin sweep failed", err);
+      }
+      const byProj = {};
+      for (const c of allCampaigns) {
+        const pid = c.project_id;
+        if (pid == null) continue;
+        if (!byProj[pid]) byProj[pid] = [];
+        byProj[pid].push(c);
+      }
+      for (const project of projectList) {
+        projectCampaigns[project.id] = byProj[project.id] || [];
+      }
+    } else {
+      // Client path / reuse path (unchanged): reuse precomputed campaigns, or
+      // fall back to a per-project fetch when none were supplied.
+      await Promise.all(
+        projectList.map(async (project) => {
+          let allCampaigns = campaignsByProject
+            ? campaignsByProject[project.id]
+            : undefined;
 
-        if (allCampaigns === undefined) {
-          let currentPage = 1;
-          allCampaigns = [];
-          let hasMore = true;
-          while (hasMore) {
-            const res = await fetchCampaigns(currentPage, project.id, "", 1000);
-            const campaigns = res.data?.results || res.data || [];
-            if (!Array.isArray(campaigns) || campaigns.length === 0) break;
-            allCampaigns = [...allCampaigns, ...campaigns];
-            hasMore = res.meta?.pagination?.has_next ?? false;
-            currentPage++;
+          if (allCampaigns === undefined) {
+            let currentPage = 1;
+            allCampaigns = [];
+            let hasMore = true;
+            while (hasMore) {
+              const res = await fetchCampaigns(
+                currentPage,
+                project.id,
+                "",
+                1000,
+              );
+              const campaigns = res.data?.results || res.data || [];
+              if (!Array.isArray(campaigns) || campaigns.length === 0) break;
+              allCampaigns = [...allCampaigns, ...campaigns];
+              hasMore = res.meta?.pagination?.has_next ?? false;
+              currentPage++;
+            }
           }
-        }
 
-        projectCampaigns[project.id] = allCampaigns || [];
-        result[project.id] = {
-          campaigns: (allCampaigns || []).map((c) => ({
-            id: c.id,
-            status: c.status,
-            // Backend-computed synthetic/extra leads, client-accessible via the
-            // /api/campaigns/ endpoint (same field Project Details uses). Used to
-            // fold synthetic leads into the client's Total Leads.
-            extra_leads: Number(c.extra_leads ?? 0),
-            // server-computed premium (marked-up) figures for this campaign
-            premium_metrics: c.premium_metrics,
-          })),
-          insights: [],
-          // Date range these campaigns/extra_leads were fetched for. Real leads
-          // are filtered by this so they stay in lockstep with extra_leads.
-          range: { from: fromDate(), to: toDate() },
-        };
-      }),
-    );
+          projectCampaigns[project.id] = allCampaigns || [];
+        }),
+      );
+    }
+
+    // Build the per-project result entry for every project (same shape as
+    // before): mapped campaigns + empty insights (filled by the bulk call) +
+    // the date range these campaigns/extra_leads belong to.
+    for (const project of projectList) {
+      const allCampaigns = projectCampaigns[project.id] || [];
+      result[project.id] = {
+        campaigns: allCampaigns.map((c) => ({
+          id: c.id,
+          status: c.status,
+          // Backend-computed synthetic/extra leads, client-accessible via the
+          // /api/campaigns/ endpoint (same field Project Details uses). Used to
+          // fold synthetic leads into the client's Total Leads.
+          extra_leads: Number(c.extra_leads ?? 0),
+          // server-computed premium (marked-up) figures for this campaign
+          premium_metrics: c.premium_metrics,
+        })),
+        insights: [],
+        // Date range these campaigns/extra_leads were fetched for. Real leads
+        // are filtered by this so they stay in lockstep with extra_leads.
+        range: { from: fromDate(), to: toDate() },
+      };
+    }
 
     // ── Step 3: Build campaign lookup ────────────────────────────────────────
     // (Premium CPL now comes straight off each campaign's server-computed
@@ -722,6 +829,54 @@ export default function MainDashboard() {
 
     const start = premiumRangeStart();
     const end = premiumRangeEnd();
+
+    // ── Admin fast path ──────────────────────────────────────────────────────
+    // This runs on every date-filter change. For admins (hundreds of projects)
+    // the per-project loop below is the main cause of the slow re-load. Replace
+    // it with ONE date-scoped sweep grouped by project_id locally. Client path
+    // (the Promise.all below) is left unchanged.
+    if (isAdmin()) {
+      let allCampaigns = [];
+      try {
+        allCampaigns = await fetchAllCampaigns(10000, start, end);
+      } catch (err) {
+        console.error("refreshPremiumForRange: bulk sweep failed", err);
+        return;
+      }
+
+      if (token !== activeLoadToken) return;
+
+      const campsByProject = {};
+      for (const c of allCampaigns) {
+        const pid = c.project_id;
+        if (pid == null) continue;
+        if (!campsByProject[pid]) campsByProject[pid] = [];
+        campsByProject[pid].push({
+          id: c.id,
+          status: c.status,
+          extra_leads: Number(c.extra_leads ?? 0),
+          premium_metrics: c.premium_metrics,
+        });
+      }
+
+      // Patch every project's campaigns in-place, preserving its insights and
+      // stamping the range these campaigns belong to (same as the client path).
+      setProjectsCache("insightsMap", (prev) => {
+        const next = { ...prev };
+        for (const project of projects) {
+          const existing = next?.[project.id];
+          const insights =
+            existing && !Array.isArray(existing) ? existing.insights : [];
+          next[project.id] = {
+            campaigns: campsByProject[project.id] || [],
+            insights,
+            range: { from: fromDate(), to: toDate() },
+          };
+        }
+        return next;
+      });
+      return;
+    }
 
     await Promise.all(
       projects.map(async (project) => {

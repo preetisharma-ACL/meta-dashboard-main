@@ -42,13 +42,15 @@ export const fetchCampaigns = async (
 // campaigns.js — fetch EVERY campaign for the current client in one paginated
 // sweep (no project filter), so callers can group by project_id locally instead
 // of firing one /campaigns/?project=N request per project.
-export const fetchAllCampaigns = async (pageSize = 1000) => {
+// fromDate/toDate are optional and scope the server-computed premium_metrics /
+// extra_leads to a date range (omitted → fetchCampaigns' defaults).
+export const fetchAllCampaigns = async (pageSize = 1000, fromDate, toDate) => {
   let page = 1;
   let all = [];
   let hasMore = true;
 
   while (hasMore) {
-    const res = await fetchCampaigns(page, undefined, "", pageSize);
+    const res = await fetchCampaigns(page, undefined, "", pageSize, fromDate, toDate);
     const batch = res?.data?.results || res?.data || [];
     if (!Array.isArray(batch) || batch.length === 0) break;
     all = [...all, ...batch];

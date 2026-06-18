@@ -212,7 +212,7 @@ export default function Login() {
             {!isLoggedIn() && (
               <form onSubmit={handleSubmit}>
                 <div class="input-group">
-                  <label class="input-label">Username</label>
+                  <label class="input-label">Email</label>
                   <input
                     type="email"
                     value={email()}
