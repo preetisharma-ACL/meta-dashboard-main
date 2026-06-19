@@ -24,6 +24,7 @@ import {
   isCampaignCacheStale,
 } from "../cacheStore/appStore";
 import useRole from "../hooks/useRole";
+import AIInsightButton from "../components/AIInsightButton";
 export default function CampaignDetails() {
   const { userRole, isAdmin, isClient } = useRole();
 
@@ -160,6 +161,9 @@ export default function CampaignDetails() {
           </li>
         </ul>
       </nav>
+
+      {/* AI Insight (admin + Tier 1 CM only) */}
+      <AIInsightButton campaignId={campaignId} />
 
       {/* Campaign Overview */}
       <div class="grid md:grid-cols-5 gap-6 mb-10">

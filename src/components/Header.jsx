@@ -11,6 +11,7 @@ import { useTheme } from "../context/ThemeContext";
 import { fetchUser } from "../services/userProfile";
 import { handleLogout } from "../pages/login/LoginForm";
 import { fetchAlerts } from "../services/alert-service";
+import SwitchModeDropdown from "./SwitchModeDropdown";
 import { useNavigate, useLocation } from "@solidjs/router";
 import {
   headerCache,
@@ -200,6 +201,9 @@ export default function Header() {
 
         {/* Right Section */}
         <div class="flex items-center gap-3">
+          {/* CM Tier-1 switch-mode dropdown (renders only for team leads) */}
+          <SwitchModeDropdown />
+
           {/* Theme Toggle */}
           <button
             onClick={toggleTheme}

@@ -6,6 +6,7 @@ import { useNavigate } from "@solidjs/router";
 import { onMount, onCleanup } from "solid-js";
 import Sidebar from "./components/Sidebar";
 import Header from "./components/Header";
+import CMBanner from "./components/CMBanner";
 import MainDashboard from "./pages/ClientDashboard";
 import AddProject from "./pages/AddProjects";
 import Billing from "./pages/Billing";
@@ -32,6 +33,23 @@ import ManualBatches from "./pages/admin/leads/FeededLeads";
 import Projects from "./pages/admin/projects/Projects";
 import AdminRoute from "./utils/AdminRoute";
 import CoordinationDashboard from "./pages/coordination/pages/CoordinationDashboard";
+import CMDashboard from "./pages/CMDashboard";
+import AlertsPanel from "./components/AlertsPanel";
+import { loadCurrentUser } from "./stores/currentUser";
+
+// The home route ("/") branches on role: Campaign Managers get the CM dashboard,
+// everyone else keeps the existing client/admin dashboard. Role is read from the
+// auth blob the login flow already stores, so this resolves synchronously.
+function RoleHome() {
+  const role = (() => {
+    try {
+      return JSON.parse(localStorage.getItem("auth") || "{}")?.role;
+    } catch {
+      return null;
+    }
+  })();
+  return role === "campaign_manager" ? <CMDashboard /> : <MainDashboard />;
+}
 
 //  Layout is a named component — SolidJS reuses the SAME instance across all
 //    child route navigations, so Header and Sidebar mount exactly ONCE
@@ -46,6 +64,7 @@ function Layout(props) {
         class={`transition-all duration-300 ${isCollapsed() ? "lg:ml-20" : "lg:ml-64"}`}
       >
         <Header />
+        <CMBanner />
         <main class="min-h-[calc(100vh-4rem)]">{props.children}</main>
       </div>
     </div>
@@ -73,6 +92,12 @@ function Root(props) {
 //  ProtectedLayout combines auth guard + layout in one reusable component
 //    so routes stay clean and Layout is never re-instantiated
 function ProtectedLayout(props) {
+  // Fetch the logged-in user's identity (role + cm_profile.tier) once per
+  // authenticated session. The CM UI gates on this.
+  onMount(() => {
+    loadCurrentUser();
+  });
+
   return (
     <ProtectedRoute>
       <Layout>{props.children}</Layout>
@@ -91,7 +116,8 @@ function App() {
           {/*  All protected routes share ONE Layout instance via nesting.
                Header and Sidebar mount once and never remount on navigation. */}
           <Route path="/" component={ProtectedLayout}>
-            <Route path="/" component={MainDashboard} />
+            <Route path="/" component={RoleHome} />
+            <Route path="/cm-alerts" component={AlertsPanel} />
             <Route path="/:client-nomen-name" component={MainDashboard} />
             <Route path="/add-project" component={AddProject} />
             <Route path="/billing" component={Billing} />

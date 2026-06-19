@@ -156,7 +156,25 @@ export async function api(endpoint, options = {}) {
         let data = null;
         try { data = await res.json(); } catch {}
 
-        if (!res.ok) throw new Error(data?.message || data?.detail || "API Error");
+        if (!res.ok) {
+            const err = new Error(data?.message || data?.detail || "API Error");
+            err.status = res.status;
+            err.code = data?.error?.code;
+            throw err;
+        }
+
+        // Envelope discipline: some endpoints return HTTP 200 with
+        // { success:false, message, error:{ detail } }. Surface that as an
+        // error so callers don't silently treat a failure as data. Bodies
+        // without a `success` field (e.g. /auth/refresh) are unaffected.
+        if (data && data.success === false) {
+            const err = new Error(
+                data.error?.detail || data.message || "Request failed",
+            );
+            err.code = data.error?.code;
+            err.fields = data.error?.fields;
+            throw err;
+        }
 
         return data;
 
