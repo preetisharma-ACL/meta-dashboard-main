@@ -108,6 +108,16 @@ function AnimatedCollapse(props) {
   );
 }
 
+// ── Nav item class sets (project theme) ───────────────────────────────────────
+const NAV_BASE =
+  "group flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 relative";
+
+const NAV_ACTIVE =
+  "bg-blue-50 dark:bg-blue-900/25 text-blue-600 dark:text-blue-400 shadow-sm";
+
+const NAV_INACTIVE =
+  "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100";
+
 // ── Main component ──────────────────────────────────────────────────────────
 
 export default function Sidebar() {
@@ -355,37 +365,59 @@ export default function Sidebar() {
 
       {/* Sidebar */}
       <aside
-        class={`fixed overflow-y-auto top-0 left-0 h-full bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700  z-50 transition-all duration-300  ${
+        class={`fixed overflow-hidden flex flex-col top-0 left-0 h-full z-50 transition-all duration-300
+          bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 ${
           isCollapsed() ? "w-20" : "w-64"
         } ${
           isMobileOpen() ? "translate-x-0" : "-translate-x-full"
         } lg:translate-x-0`}
       >
-        {/* Logo */}
-        <div class="h-16 flex items-center justify-between px-4 border-b border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800">
-          <div class="flex items-center gap-3">
-            <div class="w-9 h-9 bg-white rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm border border-gray-100 dark:border-gray-700">
+        {/* Logo — AAJneeti wordmark + gold "Reporting Dashboard" (all screens) */}
+        <div class="flex-shrink-0 px-4 py-5 border-b border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 flex items-center justify-center">
+          <Show
+            when={!isCollapsed()}
+            fallback={
+              <>
+                {/* Light theme */}
+                <img
+                  src="/logo.webp"
+                  alt="aajneeti"
+                  class="block dark:hidden w-9 h-9 object-contain"
+                />
+                {/* Dark theme */}
+                <img
+                  src="/V2-aajneeti-logo.png"
+                  alt="aajneeti"
+                  class="hidden dark:block w-9 h-9 object-contain"
+                />
+              </>
+            }
+          >
+            <div class="flex flex-col items-center justify-center gap-3 lg:gap-2">
+              {/* Light theme */}
               <img
-                src="/aajneeti-favicon.png"
-                alt="aajneeti"
-                class="w-7 h-7 object-contain"
+                src="/logo.webp"
+                alt="Aajneeti"
+                class="block dark:hidden h-14 w-auto object-contain"
               />
-            </div>
-            <Show when={!isCollapsed()}>
-              <div class="flex flex-col">
-                <span class="text-sm font-bold text-gray-900 dark:text-white ">
+              {/* Dark theme */}
+              <img
+                src="/V2-aajneeti-logo.png"
+                alt="Aajneeti"
+                class="hidden dark:block h-14 w-auto object-contain"
+              />
+              <div class="flex items-center gap-2 lg:gap-1.5">
+                <span class="h-px w-5 lg:w-3.5 bg-amber-500/80" />
+                <span class="text-[12px] lg:text-[10px] font-bold uppercase tracking-[0.2em] lg:tracking-[0.15em] text-amber-600 whitespace-nowrap">
                   Reporting Dashboard
                 </span>
-                <span class="text-xs text-red-800 font-semibold dark:text-red-400 ">
-                  Aajneeti Connect Ltd.
-                </span>
               </div>
-            </Show>
-          </div>
+            </div>
+          </Show>
         </div>
 
         {/* Navigation */}
-        <nav class="p-3 space-y-0.5 overflow-y-auto h-[calc(100vh-4rem-3.5rem)]">
+        <nav class="p-3 space-y-0.5 flex-1 min-h-0 overflow-y-auto">
           <For each={menuItems()}>
             {(item) => (
               <Show
@@ -394,12 +426,7 @@ export default function Sidebar() {
                   <A
                     href={item.path ?? "#"}
                     onClick={item.action ?? undefined}
-                    class={`group flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 relative
-                      ${
-                        isActive(item.path)
-                          ? "bg-blue-50 dark:bg-blue-900/25 text-blue-600 dark:text-blue-400 shadow-sm"
-                          : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100"
-                      }`}
+                    class={`${NAV_BASE} ${isActive(item.path) ? NAV_ACTIVE : NAV_INACTIVE}`}
                   >
                     {/* Active indicator bar */}
                     <Show when={isActive(item.path)}>
@@ -432,7 +459,7 @@ export default function Sidebar() {
                       ${
                         openMenu() === item.name
                           ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400"
-                          : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100"
+                          : NAV_INACTIVE
                       }`}
                     onClick={() =>
                       setOpenMenu(openMenu() === item.name ? null : item.name)
@@ -486,7 +513,7 @@ export default function Sidebar() {
 
         {/* Footer */}
         <div
-          class={`absolute bottom-0 left-0 right-0 px-4 py-3 border-t border-gray-100 dark:border-gray-800 bg-gray-50/80 dark:bg-gray-900/80 backdrop-blur-sm ${
+          class={`flex-shrink-0 px-4 py-3 border-t border-gray-100 dark:border-gray-800 bg-gray-50/80 dark:bg-gray-900/80 backdrop-blur-sm ${
             isCollapsed() ? "text-center" : ""
           }`}
         >
