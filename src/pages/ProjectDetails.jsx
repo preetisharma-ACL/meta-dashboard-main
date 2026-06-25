@@ -45,7 +45,7 @@ export default function ProjectDetails() {
 
   // ── Drive the analytics chart from the same filtered data ──────────────────────
   createEffect(() => {
-    const data = sortedCampaigns(); // already date-filtered + sorted
+    const data = displayedCampaigns(); // date-filtered + sorted (+ ad-account filter)
     const label = rangeLabel(); // "Today" / "Last 7 Days" / "Custom Range" etc.
 
     if (typeof window.__updateCampaignChart === "function") {
@@ -223,6 +223,8 @@ export default function ProjectDetails() {
   const setToDate = (v) => setDashboardFilter("toDate", v);
   const [search, setSearch] = createSignal("");
   const [statusFilter, setStatusFilter] = createSignal("All");
+  // Admin-only: filter the campaigns table by ad account (client-side, additive).
+  const [adAccountFilter, setAdAccountFilter] = createSignal("all");
   // const [page, setPage] = createSignal(1);
   // const [campaigns, setCampaigns] = createSignal([]);
   // const [pageSize, setPageSize] = createSignal(20);
@@ -295,7 +297,7 @@ export default function ProjectDetails() {
 
     // Re-build chart whenever the <html> dark class toggles (live theme switch)
     const darkObserver = new MutationObserver(() => {
-      const data = sortedCampaigns();
+      const data = displayedCampaigns();
       if (data.length) buildChart(data);
     });
     darkObserver.observe(document.documentElement, {
@@ -440,13 +442,20 @@ export default function ProjectDetails() {
         const formatted = apiData.map((item) => {
           return {
             id: item.id,
-            campaign_name: item.name
-              ? `${item.name
-                  .split("|")
-                  .slice(1, 2)
-                  .map((s) => s.trim())
-                  .join(" | ")} | ${item.start_date || "No Date"}`
-              : "No Name",
+            // Admin sees the full name (matches the paginated table); clients keep
+            // the trimmed label. ad_account added so the all-pages set can power
+            // the ad-account filter + dropdown.
+            campaign_name:
+              userRole() === "admin"
+                ? item.name || "No Name"
+                : item.name
+                  ? `${item.name
+                      .split("|")
+                      .slice(1, 2)
+                      .map((s) => s.trim())
+                      .join(" | ")} | ${item.start_date || "No Date"}`
+                  : "No Name",
+            ad_account: item.ad_account_name || "-",
             start_date: item.start_date || "No Date",
             stop_date: item.stop_date || "No date",
             status: item.status === "paused" ? "paused" : "Live",
@@ -589,6 +598,55 @@ export default function ProjectDetails() {
     return sortData(data);
   });
 
+  // ── Admin-only ad-account filter ───────────────────────────────────────────
+  // Dropdown lists EVERY ad account across all pages (from the all-pages set
+  // loaded for totals); falls back to the current page until that finishes.
+  const adAccountOptions = createMemo(() => {
+    const set = new Set();
+    const src = allCampaigns().length ? allCampaigns() : campaigns();
+    for (const c of src) {
+      if (c.ad_account && c.ad_account !== "-") set.add(c.ad_account);
+    }
+    return [...set].sort((a, b) => a.localeCompare(b));
+  });
+
+  // Aggregate a raw row into the display shape (same maths as sortedCampaigns).
+  const aggregateRow = (row) => {
+    const stats = getInsightsInRange(row.insights, fromDate(), toDate());
+    const pm = row.premium_metrics;
+    const premiumCpl = pm && pm.cpl != null ? Number(pm.cpl) : null;
+    const totalLeads = stats.leads + Number(row.extra_leads || 0);
+    const totalCPL =
+      totalLeads > 0 ? Number((stats.spent / totalLeads).toFixed(2)) : 0;
+    return {
+      ...row,
+      totalLeads,
+      totalClicks: stats.clicks,
+      totalReach: stats.reach,
+      totalSpent: stats.spent,
+      totalCPL,
+      premiumCpl,
+    };
+  };
+
+  // When an ad account is selected we ignore pagination and show every matching
+  // campaign across ALL pages (search + status still apply, client-side). When
+  // "all", behaviour is unchanged — the existing paginated page view.
+  const displayedCampaigns = createMemo(() => {
+    const acc = adAccountFilter();
+    if (acc === "all") return sortedCampaigns();
+
+    const q = search().trim().toLowerCase();
+    const status = statusFilter();
+    const rows = allCampaigns()
+      .filter((r) => (r.ad_account ?? "-") === acc)
+      .filter((r) => status === "All" || r.status === status)
+      .filter((r) => !q || (r.campaign_name ?? "").toLowerCase().includes(q))
+      .map(aggregateRow)
+      .sort((a, b) => new Date(b.start_date) - new Date(a.start_date));
+    return sortData(rows);
+  });
+
   const suggestions = createMemo(() => {
     const result = [];
 
@@ -640,6 +698,7 @@ export default function ProjectDetails() {
   const clearFilters = () => {
     setSearch("");
     setStatusFilter("All");
+    setAdAccountFilter("all");
     setFromDate("");
     setToDate("");
   };
@@ -1013,6 +1072,37 @@ export default function ProjectDetails() {
             </div>
           </div>
 
+          {/* Admin-only: Ad Account filter */}
+          {userRole() === "admin" && (
+            <div class="relative inline-block">
+              <select
+                value={adAccountFilter()}
+                onChange={(e) => setAdAccountFilter(e.target.value)}
+                class="px-3 py-2 border rounded-lg dark:bg-gray-800 appearance-none pr-9"
+              >
+                <option value="all">All Ad Accounts</option>
+                <For each={adAccountOptions()}>
+                  {(acc) => <option value={acc}>{acc}</option>}
+                </For>
+              </select>
+              <div class="pointer-events-none absolute inset-y-0 right-3 flex items-center">
+                <svg
+                  class="w-4 h-4 text-gray-500"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M19 9l-7 7-7-7"
+                  />
+                </svg>
+              </div>
+            </div>
+          )}
+
           <DateRangeFilter
             fromDate={fromDate}
             toDate={toDate}
@@ -1166,7 +1256,7 @@ export default function ProjectDetails() {
             </tr>
           </thead>
           <tbody>
-            <For each={sortedCampaigns()}>
+            <For each={displayedCampaigns()}>
               {(row, i) => (
                 <tr
                   class={`[&_td]:text-center [&_td:first-child]:text-left border-t    ${
@@ -1191,7 +1281,7 @@ export default function ProjectDetails() {
                         when={
                           row.totalLeads ===
                           Math.max(
-                            ...sortedCampaigns().map((c) => c.totalLeads),
+                            ...displayedCampaigns().map((c) => c.totalLeads),
                           )
                         }
                       >
@@ -1312,6 +1402,18 @@ export default function ProjectDetails() {
           </tfoot>
         </table>
       </div>
+      {/* Pagination — only when not filtering by ad account (that view spans all
+          pages, so paging would be misleading). */}
+      <Show
+        when={adAccountFilter() === "all"}
+        fallback={
+          <div class="mt-4 text-sm text-gray-500">
+            Showing all {displayedCampaigns().length} campaign
+            {displayedCampaigns().length === 1 ? "" : "s"} for the selected ad
+            account
+          </div>
+        }
+      >
       <div class="flex items-center justify-between mt-4 flex-wrap gap-3">
         <span class="text-sm text-gray-500">
           {total() === 0
@@ -1369,6 +1471,7 @@ export default function ProjectDetails() {
           </button>
         </div>
       </div>
+      </Show>
 
       {/* ================= ANALYTICS CHART ================= */}
       <div
@@ -1418,7 +1521,7 @@ export default function ProjectDetails() {
               Campaigns
             </p>
             <p class="text-xl font-semibold text-gray-800 dark:text-gray-100">
-              {sortedCampaigns().length}
+              {displayedCampaigns().length}
             </p>
           </div>
 
@@ -1462,7 +1565,7 @@ export default function ProjectDetails() {
               Top campaign
             </p>
             <p class="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
-              {sortedCampaigns()[0]?.campaign_name?.split("|")[0]?.trim() ??
+              {displayedCampaigns()[0]?.campaign_name?.split("|")[0]?.trim() ??
                 "—"}
             </p>
           </div>

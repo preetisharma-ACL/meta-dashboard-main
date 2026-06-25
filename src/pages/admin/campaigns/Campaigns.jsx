@@ -133,7 +133,7 @@ function SearchableSelect(props) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function Campaigns() {
-  const [campaigns, setCampaigns] = createSignal([]);
+  const [allCampaigns, setAllCampaigns] = createSignal([]);
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal(null);
 
@@ -150,87 +150,51 @@ export default function Campaigns() {
   const [sortKey, setSortKey] = createSignal("id");
   const [sortDir, setSortDir] = createSignal("desc");
 
-  // Pagination
+  // Pagination (client-side)
   const [page, setPage] = createSignal(1);
-  const [totalPages, setTotalPages] = createSignal(1);
-  const [total, setTotal] = createSignal(0);
 
-  // ── Core fetch ────────────────────────────────────────────────────────────
-  const loadCampaigns = async (pageNum = 1, overrides = {}) => {
+  // ── Load EVERY campaign once, then filter/sort/paginate client-side ────────
+  // The old version re-fetched per filter and relied on the server honouring
+  // each param (started_after / ad_account / client_nomen_id / status / search).
+  // The backend ignored those, so the filters did nothing. We now sweep all
+  // pages once (the page already did this to build the dropdowns) and apply
+  // every filter, the sort, and pagination locally so they always work.
+  const loadAll = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      // Resolve the preset key → actual YYYY-MM-DD dates
-      const preset = overrides.startDatePreset ?? startDatePreset();
-      const { from: startedFrom, to: startedTo } =
-        preset && preset !== "all"
-          ? resolveDateRange(preset)
-          : { from: "", to: "" };
-
-      const res = await fetchCampaigns({
-        page: pageNum,
-        search: overrides.search ?? search(),
-        status: overrides.status ?? statusFilter(),
-        startedFrom: overrides.startedFrom ?? startedFrom,
-        startedTo: overrides.startedTo ?? startedTo,
-        adAccountId: overrides.adAccountId ?? adAccountFilter(),
-        clientNomenId: overrides.clientNomenId ?? clientNomenFilter(),
-      });
-
-      const raw =
-        res.data?.results ?? (Array.isArray(res.data) ? res.data : []);
-      const pagination = res.data?.meta?.pagination ?? res.meta?.pagination;
-
-      setCampaigns(raw);
-      setPage(pageNum);
-      setTotalPages(pagination?.total_pages ?? 1);
-      setTotal(pagination?.total ?? raw.length);
-    } catch (err) {
-      console.error(err);
-      setError("Failed to load campaigns. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // ── Load all options for dropdowns ────────────────────────────────────────
-  const loadFilterOptions = async () => {
-    try {
-      const adSeen = new Map();
-      const clientSeen = new Map();
-
       const first = await fetchCampaigns({ page: 1 });
       const firstRaw =
         first.data?.results ?? (Array.isArray(first.data) ? first.data : []);
-      const total_pages =
+      const srvTotalPages =
         first.data?.meta?.pagination?.total_pages ??
         first.meta?.pagination?.total_pages ??
         1;
 
-      firstRaw.forEach((c) => {
+      let all = [...firstRaw];
+      for (let p = 2; p <= srvTotalPages; p += 10) {
+        const batch = [];
+        for (let b = p; b < p + 10 && b <= srvTotalPages; b++)
+          batch.push(fetchCampaigns({ page: b }));
+        const results = await Promise.all(batch);
+        results.forEach((r) => {
+          const raw = r.data?.results ?? (Array.isArray(r.data) ? r.data : []);
+          all = all.concat(raw);
+        });
+      }
+
+      setAllCampaigns(all);
+
+      // Build dropdown options from the full set
+      const adSeen = new Map();
+      const clientSeen = new Map();
+      all.forEach((c) => {
         if (c.ad_account_id && c.ad_account_name)
           adSeen.set(c.ad_account_id, c.ad_account_name);
         if (c.client_nomen && c.client_nomen_name)
           clientSeen.set(c.client_nomen, c.client_nomen_name);
       });
-
-      for (let p = 2; p <= total_pages; p += 10) {
-        const batch = [];
-        for (let b = p; b < p + 10 && b <= total_pages; b++)
-          batch.push(fetchCampaigns({ page: b }));
-        const results = await Promise.all(batch);
-        results.forEach((r) => {
-          const raw = r.data?.results ?? (Array.isArray(r.data) ? r.data : []);
-          raw.forEach((c) => {
-            if (c.ad_account_id && c.ad_account_name)
-              adSeen.set(c.ad_account_id, c.ad_account_name);
-            if (c.client_nomen && c.client_nomen_name)
-              clientSeen.set(c.client_nomen, c.client_nomen_name);
-          });
-        });
-      }
-
       setAllAdAccountOptions(
         [...adSeen.entries()]
           .map(([id, name]) => ({ id, name }))
@@ -242,19 +206,21 @@ export default function Campaigns() {
           .sort((a, b) => a.name.localeCompare(b.name)),
       );
     } catch (err) {
-      console.error("Failed to load filter options:", err);
+      console.error(err);
+      setError("Failed to load campaigns. Please try again.");
+    } finally {
+      setLoading(false);
     }
   };
 
   onMount(() => {
-    loadCampaigns(1);
-    loadFilterOptions();
+    loadAll();
   });
 
-  // ── Filter helpers ────────────────────────────────────────────────────────
-  const applyFilter = (setter, value, overrideKey) => {
+  // ── Filter helpers (client-side; just set the signal + reset to page 1) ────
+  const applyFilter = (setter, value) => {
     setter(value);
-    loadCampaigns(1, { [overrideKey]: value });
+    setPage(1);
   };
 
   const clearAllFilters = () => {
@@ -263,13 +229,7 @@ export default function Campaigns() {
     setStartDatePreset("all");
     setAdAccountFilter("all");
     setClientNomenFilter("all");
-    loadCampaigns(1, {
-      search: "",
-      status: "all",
-      startDatePreset: "all",
-      adAccountId: "all",
-      clientNomenId: "all",
-    });
+    setPage(1);
   };
 
   const activeFilterCount = createMemo(
@@ -290,6 +250,7 @@ export default function Campaigns() {
       setSortKey(key);
       setSortDir("desc");
     }
+    setPage(1);
   };
   const sortIcon = (key) => {
     if (sortKey() !== key) return <span class="text-gray-300 ml-1">⇅</span>;
@@ -299,6 +260,83 @@ export default function Campaigns() {
       </span>
     );
   };
+
+  // ── Derived: filter → sort → paginate (all client-side) ────────────────────
+  const NUMERIC_KEYS = new Set([
+    "id",
+    "cpl",
+    "spend",
+    "leads_count",
+    "premium_cpl",
+    "premium_spend",
+  ]);
+
+  const sortValue = (c, key) => {
+    switch (key) {
+      case "premium_cpl":
+        return parseFloat(c.premium_metrics?.cpl);
+      case "premium_spend":
+        return parseFloat(c.premium_metrics?.spend);
+      case "id":
+        return Number(c.id);
+      case "cpl":
+        return parseFloat(c.cpl);
+      case "spend":
+        return parseFloat(c.spend);
+      case "leads_count":
+        return Number(c.leads_count);
+      default:
+        return c[key];
+    }
+  };
+
+  const filtered = createMemo(() => {
+    const q = search().trim().toLowerCase();
+    const status = statusFilter();
+    const preset = startDatePreset();
+    const { from, to } =
+      preset && preset !== "all" ? resolveDateRange(preset) : { from: "", to: "" };
+    const adId = adAccountFilter();
+    const nomen = clientNomenFilter();
+
+    let rows = allCampaigns().filter((c) => {
+      if (q) {
+        const hay = `${c.name ?? ""} ${c.project_name ?? ""} ${c.client_nomen_name ?? ""} ${c.ad_account_name ?? ""}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      if (status && status !== "all" && c.status !== status) return false;
+      if (from && to) {
+        const sd = (c.start_date ?? "").slice(0, 10);
+        if (!sd || sd < from || sd > to) return false;
+      }
+      if (adId && adId !== "all" && c.ad_account_id !== adId) return false;
+      if (nomen && nomen !== "all" && c.client_nomen !== nomen) return false;
+      return true;
+    });
+
+    const key = sortKey();
+    const dir = sortDir() === "asc" ? 1 : -1;
+    rows = [...rows].sort((a, b) => {
+      let av = sortValue(a, key);
+      let bv = sortValue(b, key);
+      if (NUMERIC_KEYS.has(key)) {
+        av = isFinite(av) ? av : -Infinity;
+        bv = isFinite(bv) ? bv : -Infinity;
+        return (av - bv) * dir;
+      }
+      return String(av ?? "").localeCompare(String(bv ?? "")) * dir;
+    });
+
+    return rows;
+  });
+
+  const total = createMemo(() => filtered().length);
+  const totalPages = createMemo(() => Math.max(1, Math.ceil(total() / PAGE_SIZE)));
+  const campaigns = createMemo(() => {
+    const p = Math.min(page(), totalPages());
+    const start = (p - 1) * PAGE_SIZE;
+    return filtered().slice(start, start + PAGE_SIZE);
+  });
 
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
@@ -702,11 +740,7 @@ export default function Campaigns() {
         </span>
         <div class="flex items-center gap-2">
           <button
-            onClick={() => {
-              const p = page() - 1;
-              setPage(p);
-              loadCampaigns(p);
-            }}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page() <= 1 || loading()}
             class="flex items-center gap-1.5 px-4 h-9 text-sm rounded-lg border
                    border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900
@@ -728,11 +762,7 @@ export default function Campaigns() {
             Page {page()} of {totalPages()}
           </span>
           <button
-            onClick={() => {
-              const p = page() + 1;
-              setPage(p);
-              loadCampaigns(p);
-            }}
+            onClick={() => setPage((p) => Math.min(totalPages(), p + 1))}
             disabled={page() >= totalPages() || loading()}
             class="flex items-center gap-1.5 px-4 h-9 text-sm rounded-lg
                    bg-purple-600 border border-purple-600 text-white
