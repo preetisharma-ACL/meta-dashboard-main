@@ -799,12 +799,16 @@ export default function ProjectDetails() {
   // Replace your existing footerTotals createMemo with this
   const footerTotals = createMemo(() => {
     const source = allCampaignsLoaded() ? allCampaigns() : sortedCampaigns();
+    const acc = adAccountFilter();
 
     const filtered = source.filter((item) => {
       const matchesStatus =
         statusFilter() === "All" || item.status === statusFilter();
+      // Respect the admin ad-account filter so the footer totals match the
+      // filtered table.
+      const matchesAcc = acc === "all" || (item.ad_account ?? "-") === acc;
 
-      return matchesStatus;
+      return matchesStatus && matchesAcc;
     });
 
     let totalLeads = 0;
