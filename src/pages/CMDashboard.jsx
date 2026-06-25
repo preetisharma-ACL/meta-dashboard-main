@@ -6,6 +6,7 @@ import Avatar from "../components/common/Avatar";
 import { fetchAllCampaignsScoped } from "../services/cm";
 import { asTeamMemberId, clearScope } from "../stores/cmScope";
 import { currentUser, cmTier } from "../stores/currentUser";
+import CMHierarchy from "../components/CMHierarchy";
 
 // ─── Formatting helpers (match existing dashboards) ───────────────────────────
 const fmtMoney = (val) => {
@@ -46,6 +47,7 @@ export default function CMDashboard() {
   const [toDate, setToDate] = createSignal("");
   const [statusFilter, setStatusFilter] = createSignal("all");
   const [search, setSearch] = createSignal("");
+  const [view, setView] = createSignal("list"); // "list" | "hierarchy"
 
   // Resource source — refetch whenever the switch scope, dates, or status
   // change. Search is applied client-side (below) so typing doesn't refetch.
@@ -176,6 +178,31 @@ export default function CMDashboard() {
         </For>
       </div>
 
+      {/* View tabs */}
+      <div class="flex gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl w-fit mb-4">
+        <For each={[{ k: "list", label: "Campaigns" }, { k: "hierarchy", label: "Client → Project → Campaign" }]}>
+          {(t) => (
+            <button
+              onClick={() => setView(t.k)}
+              class={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                view() === t.k
+                  ? "bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm"
+                  : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+              }`}
+            >
+              {t.label}
+            </button>
+          )}
+        </For>
+      </div>
+
+      {/* ── Hierarchy drill-down view (raw vs client-facing + coverage) ── */}
+      <Show when={view() === "hierarchy"}>
+        <CMHierarchy startDate={fromDate() || undefined} endDate={toDate() || undefined} />
+      </Show>
+
+      {/* ── Flat campaigns list view ── */}
+      <Show when={view() === "list"}>
       {/* Filters */}
       <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-4 mb-4 flex flex-wrap items-center gap-3">
         <div class="relative flex-1 min-w-[220px]">
@@ -296,6 +323,7 @@ export default function CMDashboard() {
           </Show>
         </table>
       </div>
+      </Show>
     </div>
   );
 }

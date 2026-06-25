@@ -102,6 +102,55 @@ export const fetchTeamMembers = async () => {
   return await api(`/cm/team-members/`, { method: "GET" });
 };
 
+// ─── Hierarchy drill-down (clients → projects → campaigns) ────────────────────
+// Each level returns raw (actual Meta) + client_facing (billed) number sets and,
+// at client/project level, a coverage object. Server-scoped, switch-mode aware,
+// date-windowed (omit dates → last-14-days default).
+
+// L1 — clients sorted most-active-first (by raw spend).
+export const fetchHierarchyClients = async ({ startDate, endDate } = {}) => {
+  let url = `/cm/hierarchy/clients/?1=1`;
+  if (startDate) url += `&start_date=${startDate}`;
+  if (endDate) url += `&end_date=${endDate}`;
+  url += scopeQuery();
+
+  const res = await api(url, { method: "GET" });
+  applyMeta(res?.meta);
+  return res;
+};
+
+// L2 — projects under one client.
+export const fetchHierarchyProjects = async (
+  clientNomenId,
+  { startDate, endDate } = {},
+) => {
+  let url = `/cm/hierarchy/clients/${clientNomenId}/projects/?1=1`;
+  if (startDate) url += `&start_date=${startDate}`;
+  if (endDate) url += `&end_date=${endDate}`;
+  url += scopeQuery();
+
+  const res = await api(url, { method: "GET" });
+  applyMeta(res?.meta);
+  return res;
+};
+
+// L3 — campaigns under one project. Pass the parent client's nomen so the leaf
+// matches the parent node.
+export const fetchHierarchyCampaigns = async (
+  projectId,
+  clientNomenId,
+  { startDate, endDate } = {},
+) => {
+  let url = `/cm/hierarchy/projects/${projectId}/campaigns/?client_nomen_id=${clientNomenId}`;
+  if (startDate) url += `&start_date=${startDate}`;
+  if (endDate) url += `&end_date=${endDate}`;
+  url += scopeQuery();
+
+  const res = await api(url, { method: "GET" });
+  applyMeta(res?.meta);
+  return res;
+};
+
 // ─── I. AI campaign insight (admin + Tier 1 only) ─────────────────────────────
 // Live LLM call: 2–4s. Callers must render a loading state and never block.
 // Returns the envelope; data.insight may be null (AI unavailable) — that is NOT
