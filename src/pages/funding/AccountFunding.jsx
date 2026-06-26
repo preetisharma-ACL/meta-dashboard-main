@@ -67,6 +67,15 @@ const STATE_META = {
 
 const STATE_ORDER = ["needs", "funded", "card", "unknown"];
 
+// Client-type filter (v3): default CPL + Hybrid (the agency-funded view —
+// retainer accounts are client-funded, so the agency never loads them).
+const CLIENT_TYPES = [
+  { key: "cpl", label: "CPL" },
+  { key: "hybrid", label: "Hybrid" },
+  { key: "retainer", label: "Retainer" },
+];
+const DEFAULT_CLIENT_TYPES = ["cpl", "hybrid"];
+
 // Account name + avatar use the shared <Avatar> from ClientDashboard.
 
 // ─── To Load (24h) cell — the hero column ─────────────────────────────────────
@@ -165,12 +174,22 @@ export default function AccountFunding() {
   const [needsOnly, setNeedsOnly] = createSignal(false); // kept for compatibility
   const [stateFilter, setStateFilter] = createSignal("all"); // all | needs | funded | card | unknown
   const [statusFilter, setStatusFilter] = createSignal("all"); // all | active | inactive
+  const [clientTypes, setClientTypes] = createSignal(DEFAULT_CLIENT_TYPES); // v3 multi-select
 
-  // Refetch when the switch scope changes (UNCHANGED).
+  // Toggle a client-type chip; never allow an empty selection.
+  const toggleClientType = (key) => {
+    setClientTypes((prev) => {
+      const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key];
+      return next.length ? next : prev;
+    });
+  };
+
+  // Refetch when the switch scope OR the client-type filter changes — the
+  // backend re-scopes the dataset and recomputes all four summary tiles.
   const [data] = createResource(
-    () => ({ scope: asTeamMemberId() }),
-    async () => {
-      const res = await fetchFundingAccounts();
+    () => ({ scope: asTeamMemberId(), types: clientTypes() }),
+    async (s) => {
+      const res = await fetchFundingAccounts(s.types);
       return res ?? { data: [], meta: null };
     },
   );
@@ -385,6 +404,37 @@ export default function AccountFunding() {
           </span>
           Download report
         </button>
+      </div>
+
+      {/* ════ CLIENT-TYPE FILTER (v3) ════ */}
+      <div class="flex flex-wrap items-center gap-2 mb-5">
+        <span class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400 mr-1">Client type</span>
+        <For each={CLIENT_TYPES}>
+          {(t) => {
+            const on = () => clientTypes().includes(t.key);
+            return (
+              <button
+                onClick={() => toggleClientType(t.key)}
+                aria-pressed={on()}
+                class={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[13px] font-semibold border transition-colors ${
+                  on()
+                    ? "bg-[#14233A] text-white border-[#14233A]"
+                    : "bg-gray-50 dark:bg-gray-800 text-[#54657E] dark:text-gray-300 border-[#E2E8F1] dark:border-gray-700 hover:border-[#14233A]/40"
+                }`}
+              >
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <Show when={on()} fallback={<circle cx="12" cy="12" r="9" stroke-width="1.6" />}>
+                    <path d="M20 6L9 17l-5-5" />
+                  </Show>
+                </svg>
+                {t.label}
+              </button>
+            );
+          }}
+        </For>
+        <span class="text-xs text-[#8593A8] dark:text-gray-500 ml-1">
+          Retainer accounts are client-funded; excluded by default.
+        </span>
       </div>
 
       {/* ════ LIGHT SUMMARY BANNER ════ */}

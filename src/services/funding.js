@@ -6,10 +6,18 @@ import { scopeQuery, applyMeta } from "../stores/cmScope";
 // /api/cm/... maps to /cm/...). Returns every account in scope, ALREADY sorted
 // by shortfall descending (most urgent to fund first) — callers must preserve
 // that order. Switch-mode aware: threads ?as_team_member_id via scopeQuery().
-export const fetchFundingAccounts = async () => {
-  const res = await api(`/cm/funding/accounts/?1=1${scopeQuery()}`, {
-    method: "GET",
-  });
+//
+// clientTypes (optional) — array of "cpl" | "hybrid" | "retainer". Sent as
+// ?client_types=cpl,hybrid. Omitting it lets the backend default to cpl,hybrid
+// (the agency-funded view that excludes client-funded retainer accounts).
+export const fetchFundingAccounts = async (clientTypes) => {
+  let url = `/cm/funding/accounts/?1=1`;
+  if (Array.isArray(clientTypes) && clientTypes.length) {
+    url += `&client_types=${encodeURIComponent(clientTypes.join(","))}`;
+  }
+  url += scopeQuery();
+
+  const res = await api(url, { method: "GET" });
   applyMeta(res?.meta);
   return res;
 };
