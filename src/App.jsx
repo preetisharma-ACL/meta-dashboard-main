@@ -34,6 +34,10 @@ import Projects from "./pages/admin/projects/Projects";
 import AdminRoute from "./utils/AdminRoute";
 import CoordinationDashboard from "./pages/coordination/pages/CoordinationDashboard";
 import CMDashboard from "./pages/CMDashboard";
+import AccountFunding from "./pages/funding/AccountFunding";
+import SpendSegregation from "./pages/spend/SpendSegregation";
+import AllowedBudget from "./pages/budget/AllowedBudget";
+import ManagerPerformance from "./pages/performance/ManagerPerformance";
 import AlertsPanel from "./components/AlertsPanel";
 import { loadCurrentUser } from "./stores/currentUser";
 
@@ -118,6 +122,10 @@ function App() {
           <Route path="/" component={ProtectedLayout}>
             <Route path="/" component={RoleHome} />
             <Route path="/cm-alerts" component={AlertsPanel} />
+            <Route path="/account-funding" component={AccountFunding} />
+            <Route path="/spend-segregation" component={SpendSegregation} />
+            <Route path="/allowed-budget" component={AllowedBudget} />
+            <Route path="/manager-performance" component={ManagerPerformance} />
             <Route path="/:client-nomen-name" component={MainDashboard} />
             <Route path="/add-project" component={AddProject} />
             <Route path="/billing" component={Billing} />
