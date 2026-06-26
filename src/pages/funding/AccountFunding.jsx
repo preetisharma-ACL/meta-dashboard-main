@@ -1,4 +1,5 @@
 import { createSignal, createResource, createMemo, For, Show } from "solid-js";
+import * as XLSX from "xlsx";
 import { fetchFundingAccounts } from "../../services/funding";
 import { asTeamMemberId } from "../../stores/cmScope";
 
@@ -225,6 +226,74 @@ export default function AccountFunding() {
 
   const needsCount = createMemo(() => accounts().filter((a) => fundingState(a) === "needs").length);
 
+  // ─── Download report (.xlsx) ────────────────────────────────────────────────
+  // Exports exactly what's on screen (current search / needs-only filter) plus
+  // the summary band. Money goes out as numbers so Excel can sum/sort; the
+  // null-vs-zero distinction is preserved as labels (Card-funded / Not synced /
+  // N/A) so a card account never reads as ₹0.
+  const downloadReport = () => {
+    const data = rows();
+    if (!data.length) return;
+
+    const stateLabel = { needs: "Needs funding", funded: "Funded", card: "Card-funded", unknown: "Not synced" };
+    const numOrBlank = (v) => {
+      if (v == null) return "";
+      const n = parseFloat(v);
+      return isFinite(n) ? n : "";
+    };
+
+    const header = [
+      "Account", "Ad Account ID", "Clients", "Campaigns", "Base Daily", "GST",
+      "Total Required", "Available", "To Load (24h)", "Funding State", "Status", "Balance Synced",
+    ];
+
+    const body = data.map((a) => {
+      const st = fundingState(a);
+      const available = st === "card" ? "Card-funded" : st === "unknown" ? "Not synced" : numOrBlank(a.funds_available);
+      const toLoad = st === "needs" ? numOrBlank(a.additional_required_24h) : st === "funded" ? 0 : "N/A";
+      return [
+        a.name ?? "",
+        a.ad_account_id ?? "",
+        Array.isArray(a.clients) ? a.clients.join(", ") : "",
+        Number(a.campaign_count) || 0,
+        numOrBlank(a.base_daily_budget),
+        numOrBlank(a.gst),
+        numOrBlank(a.total_daily_required),
+        available,
+        toLoad,
+        stateLabel[st],
+        a.is_active && a.account_status === 1 ? "Active" : "Inactive",
+        a.balance_synced_at ? new Date(a.balance_synced_at).toLocaleString("en-IN") : "",
+      ];
+    });
+
+    const s = summary();
+    const meta = [
+      ["Account Funding Report"],
+      ["Generated", new Date().toLocaleString("en-IN")],
+      ...(needsOnly() || search().trim() ? [["Filter", `${needsOnly() ? "Needs funding only" : ""}${needsOnly() && search().trim() ? " · " : ""}${search().trim() ? `search: "${search().trim()}"` : ""}`]] : []),
+      ...(s
+        ? [
+            ["Total 24h Required", parseFloat(s.total_daily_required) || 0],
+            ["Total To Load (prepaid shortfalls)", parseFloat(s.total_additional_required_24h) || 0],
+            ["Accounts", Number(s.accounts) || 0],
+            ["Prepaid / Card", `${s.prepaid_accounts} / ${s.card_accounts}`],
+          ]
+        : []),
+      [],
+    ];
+
+    const ws = XLSX.utils.aoa_to_sheet([...meta, header, ...body]);
+    ws["!cols"] = [
+      { wch: 24 }, { wch: 22 }, { wch: 32 }, { wch: 11 }, { wch: 13 }, { wch: 11 },
+      { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 10 }, { wch: 20 },
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Account Funding");
+    const today = new Date().toISOString().split("T")[0];
+    XLSX.writeFile(wb, `account-funding-${today}.xlsx`);
+  };
+
   return (
     <div class="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 md:p-6 lg:p-8">
       {/* Header */}
@@ -237,12 +306,25 @@ export default function AccountFunding() {
             GST-inclusive 24-hour funding requirement per ad account — sorted by shortfall.
           </p>
         </div>
-        <Show when={!data.loading && needsCount() > 0}>
-          <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">
-            <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-            {needsCount()} account{needsCount() !== 1 ? "s" : ""} need funding
-          </span>
-        </Show>
+        <div class="flex items-center gap-3">
+          <Show when={!data.loading && needsCount() > 0}>
+            <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">
+              <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+              {needsCount()} account{needsCount() !== 1 ? "s" : ""} need funding
+            </span>
+          </Show>
+          <button
+            onClick={downloadReport}
+            disabled={data.loading || rows().length === 0}
+            title="Download the current table as an Excel report"
+            class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" />
+            </svg>
+            Download report
+          </button>
+        </div>
       </div>
 
       {/* Summary band */}
