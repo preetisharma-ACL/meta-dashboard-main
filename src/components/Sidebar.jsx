@@ -198,6 +198,14 @@ export default function Sidebar() {
         path: "/manager-performance",
       },
       {
+        name: "Campaign Managers",
+        roles: ["admin"],
+        icon: () => (
+          <Icon d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0h-6m6 0a3 3 0 01-5.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M9 7a4 4 0 11-8 0 4 4 0 018 0zm0 0a4 4 0 015.536 3.536M15.536 10.536A5.967 5.967 0 0121 16.941M16.536 10.536A5.973 5.973 0 0012 16c0 .132 0 .263.012.391M12 16a5.973 5.973 0 00-4.536-2.464" />
+        ),
+        path: "/campaign-managers",
+      },
+      {
         name: "Account Monitor",
         roles: ["admin"],
         icon: () => (

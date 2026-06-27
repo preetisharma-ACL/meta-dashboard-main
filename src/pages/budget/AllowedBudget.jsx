@@ -118,7 +118,7 @@ function BudgetMeter(props) {
   return (
     <div class="min-w-[210px]">
       <p class="text-[10px] font-bold uppercase tracking-wide text-[#8593A8] dark:text-gray-500 mb-1.5">
-        {props.label} · {props.usedLabel} vs ceiling
+        {props.label} · {props.usedLabel} vs budget
       </p>
 
       <Show
@@ -132,7 +132,7 @@ function BudgetMeter(props) {
               </span>
             </div>
             <div class="h-[7px] rounded-full" style="background:repeating-linear-gradient(90deg,#E3EAF3,#E3EAF3 6px,#EFF3F8 6px,#EFF3F8 12px)" />
-            <p class="text-[10.5px] font-bold text-[#3E6FB0] mt-1">No {props.label.toLowerCase()} ceiling</p>
+            <p class="text-[10.5px] font-bold text-[#3E6FB0] mt-1">No {props.label.toLowerCase()} budget</p>
           </>
         }
       >
@@ -180,34 +180,34 @@ function EditCeilingModal(props) {
         allowed_monthly_budget: monthly() === "" ? null : String(monthly()),
       };
       await setAllowedBudget(c().client_id, body);
-      toast("success", "Ceiling updated");
+      toast("success", "Budget updated");
       props.onSaved();
       props.onClose();
     } catch (err) {
-      toast("error", err?.message || "Failed to update ceiling");
+      toast("error", err?.message || "Failed to update budget");
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <ModalShell title="Edit ceiling" subtitle={c()?.name} onClose={props.onClose}>
+    <ModalShell title="Edit budget" subtitle={c()?.name} onClose={props.onClose}>
       <form onSubmit={submit} class="space-y-4">
         <div>
-          <label class="block text-sm font-semibold text-[#1A2B45] dark:text-gray-300 mb-1">Daily ceiling (₹)</label>
+          <label class="block text-sm font-semibold text-[#1A2B45] dark:text-gray-300 mb-1">Daily budget (₹)</label>
           <input type="number" min="0" step="0.01" value={daily()} onInput={(e) => setDaily(e.target.value)} placeholder="Leave blank to unset"
             class="w-full px-3 py-2 rounded-lg border border-[#E2E8F1] dark:border-gray-600 bg-gray-50 dark:bg-gray-800 dark:text-white focus:ring-2 focus:ring-[#AC2334]/25 focus:border-[#AC2334] outline-none" />
         </div>
         <div>
-          <label class="block text-sm font-semibold text-[#1A2B45] dark:text-gray-300 mb-1">Monthly ceiling (₹)</label>
+          <label class="block text-sm font-semibold text-[#1A2B45] dark:text-gray-300 mb-1">Monthly budget (₹)</label>
           <input type="number" min="0" step="0.01" value={monthly()} onInput={(e) => setMonthly(e.target.value)} placeholder="Leave blank to unset"
             class="w-full px-3 py-2 rounded-lg border border-[#E2E8F1] dark:border-gray-600 bg-gray-50 dark:bg-gray-800 dark:text-white focus:ring-2 focus:ring-[#AC2334]/25 focus:border-[#AC2334] outline-none" />
         </div>
-        <p class="text-xs text-[#8593A8] dark:text-gray-500">A blank field leaves that ceiling unset (no limit).</p>
+        <p class="text-xs text-[#8593A8] dark:text-gray-500">A blank field leaves that budget unset (no limit).</p>
         <div class="flex justify-end gap-2 pt-2">
           <button type="button" onClick={props.onClose} class="px-4 py-2 text-sm rounded-lg border border-[#E2E8F1] dark:border-gray-600 text-[#54657E] dark:text-gray-300 hover:bg-[#F8FAFC] dark:hover:bg-gray-800">Cancel</button>
           <button type="submit" disabled={saving()} class="px-4 py-2 text-sm rounded-lg bg-[#AC2334] text-white font-bold hover:bg-[#8E1C2B] disabled:opacity-60">
-            {saving() ? "Saving…" : "Save ceiling"}
+            {saving() ? "Saving…" : "Save budget"}
           </button>
         </div>
       </form>
@@ -249,7 +249,7 @@ function RequestModal(props) {
     <ModalShell title="Request increase" subtitle={c()?.name} onClose={props.onClose}>
       <form onSubmit={submit} class="space-y-4">
         <div>
-          <label class="block text-sm font-semibold text-[#1A2B45] dark:text-gray-300 mb-1.5">Ceiling type</label>
+          <label class="block text-sm font-semibold text-[#1A2B45] dark:text-gray-300 mb-1.5">Budget type</label>
           <div class="flex gap-2">
             <For each={[{ k: "daily", l: "Daily" }, { k: "monthly", l: "Monthly" }]}>
               {(o) => (
@@ -261,7 +261,7 @@ function RequestModal(props) {
             </For>
           </div>
           <p class="text-xs text-[#8593A8] dark:text-gray-500 mt-1">
-            Current {kind()} ceiling: {currentCeiling() == null ? "Not set" : money2(currentCeiling())}
+            Current {kind()} budget: {currentCeiling() == null ? "Not set" : money2(currentCeiling())}
           </p>
         </div>
         <div>
@@ -410,7 +410,7 @@ export default function AllowedBudget() {
     const { value: note, isConfirmed } = await Swal.fire({
       title: `${decision === "approve" ? "Approve" : "Reject"} request`,
       html: `<div style="text-align:left;font-size:13px;line-height:1.6">
-        <b>${req.name}</b> · ${req.budget_kind} ceiling<br/>
+        <b>${req.name}</b> · ${req.budget_kind} budget<br/>
         ${money2(req.current_value) ?? "Not set"} → <b>${money2(req.requested_value)}</b>
         ${req.reason ? `<br/><span style="color:#888">Reason: ${req.reason}</span>` : ""}
       </div>`,
@@ -423,7 +423,7 @@ export default function AllowedBudget() {
     if (!isConfirmed) return;
     try {
       await reviewBudgetRequest(req.id, { decision, review_note: note || "" });
-      toast("success", decision === "approve" ? "Approved — ceiling updated" : "Request rejected");
+      toast("success", decision === "approve" ? "Approved — budget updated" : "Request rejected");
       refreshAll();
     } catch (err) {
       toast(err?.status === 409 ? "info" : "error", err?.message || "Could not review request");
@@ -443,8 +443,8 @@ export default function AllowedBudget() {
         <p class="text-xs font-bold uppercase tracking-[0.12em] text-[#AC2334] mb-1.5">Coordination · Controls</p>
         <h1 class="text-2xl font-bold text-[#14233A] dark:text-white tracking-tight">Allowed Budget</h1>
         <p class="text-sm text-[#54657E] dark:text-gray-400 mt-1">
-          Per-client spending ceilings.{" "}
-          {admin() ? "Set ceilings directly and review increase requests." : "Request an increase when you need more delivery."}
+          Per-client spending budgets.{" "}
+          {admin() ? "Set budgets directly and review increase requests." : "Request an increase when you need more delivery."}
         </p>
       </div>
 
@@ -486,14 +486,14 @@ export default function AllowedBudget() {
                 </div>
                 <div>
                   <p class="text-[15px] font-extrabold text-[#14233A] dark:text-white">Need attention</p>
-                  <p class="text-xs text-[#54657E] dark:text-gray-400 max-w-[180px]">clients over or within 10% of their ceiling</p>
+                  <p class="text-xs text-[#54657E] dark:text-gray-400 max-w-[180px]">clients over or within 10% of their budget</p>
                 </div>
               </div>
 
               {/* minis */}
               <div class="flex gap-7">
                 <div>
-                  <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">Ceilings set</p>
+                  <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">Budgets set</p>
                   <p class="text-2xl font-extrabold text-[#14233A] dark:text-white mt-1 tabular-nums">{statusCounts().capped}</p>
                   <p class="text-xs text-[#54657E] dark:text-gray-400">{pct(statusCounts().capped)}% of {statusCounts().all} clients</p>
                 </div>
@@ -524,7 +524,7 @@ export default function AllowedBudget() {
             <div class="mt-5 pt-4 border-t border-[#E2E8F1] dark:border-gray-700">
               <div class="flex items-center justify-between mb-2.5">
                 <span class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
-                  All {statusCounts().all} clients by ceiling status
+                  All {statusCounts().all} clients by budget status
                 </span>
                 <span class="text-xs font-semibold text-[#54657E] dark:text-gray-400">tap a segment to filter</span>
               </div>
@@ -615,7 +615,7 @@ export default function AllowedBudget() {
           <Show when={!clients.loading && allClients().length === 0}>
             <div class="py-16 text-center">
               <p class="text-sm text-[#54657E] dark:text-gray-400">No clients to show.</p>
-              <Show when={admin()}><p class="text-xs text-[#8593A8] dark:text-gray-500 mt-1">Set a ceiling on a client to start governing spend.</p></Show>
+              <Show when={admin()}><p class="text-xs text-[#8593A8] dark:text-gray-500 mt-1">Set a budget on a client to start governing spend.</p></Show>
             </div>
           </Show>
 
@@ -641,7 +641,7 @@ export default function AllowedBudget() {
                           {/* ceiling status pill (replaces / includes the old "No ceiling set") */}
                           <span class={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${STATUS_META[st].chip}`}>
                             <span class="w-1.5 h-1.5 rounded-full" style={`background:${STATUS_META[st].color}`} />
-                            {st === "uncapped" ? "No ceiling set" : STATUS_META[st].label}
+                            {st === "uncapped" ? "No budget set" : STATUS_META[st].label}
                           </span>
                           <Show when={pendingCount(c) > 0}>
                             <span class="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#FBF3E2] text-[#B07A14] dark:bg-amber-900/30 dark:text-amber-300">
@@ -662,15 +662,15 @@ export default function AllowedBudget() {
                   {/* actions */}
                   <div class="flex-shrink-0 flex gap-2">
                     <Show when={admin()}>
-                      <button onClick={() => setEditClient(c)} title="Edit ceiling"
+                      <button onClick={() => setEditClient(c)} title="Edit budget"
                         class="inline-flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border border-[#D4DDE9] dark:border-gray-600 text-[#14233A] dark:text-gray-300 hover:bg-[#F8FAFC] dark:hover:bg-gray-800 hover:border-[#14233A] whitespace-nowrap font-semibold">
                         <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-                        Edit ceiling
+                        Edit budget
                       </button>
                     </Show>
                     <button onClick={() => setRequestClient(c)}
                       class="px-3 py-2 text-sm rounded-lg bg-[#AC2334] text-white font-bold hover:bg-[#8E1C2B] whitespace-nowrap">
-                      {st === "uncapped" && admin() ? "Set ceiling" : "Request increase"}
+                      {st === "uncapped" && admin() ? "Set budget" : "Request increase"}
                     </button>
                   </div>
                 </div>

@@ -38,6 +38,7 @@ import AccountFunding from "./pages/funding/AccountFunding";
 import SpendSegregation from "./pages/spend/SpendSegregation";
 import AllowedBudget from "./pages/budget/AllowedBudget";
 import ManagerPerformance from "./pages/performance/ManagerPerformance";
+import AdminCampaignManagers from "./pages/admin/cm/AdminCampaignManagers";
 import AccountMonitor from "./pages/monitor/AccountMonitor";
 import CplRules from "./pages/cpl/CplRules";
 import AlertsPanel from "./components/AlertsPanel";
@@ -128,6 +129,14 @@ function App() {
             <Route path="/spend-segregation" component={SpendSegregation} />
             <Route path="/allowed-budget" component={AllowedBudget} />
             <Route path="/manager-performance" component={ManagerPerformance} />
+            <Route
+              path="/campaign-managers"
+              component={() => (
+                <AdminRoute>
+                  <AdminCampaignManagers />
+                </AdminRoute>
+              )}
+            />
             <Route path="/account-monitor" component={AccountMonitor} />
             <Route path="/cpl-rules" component={CplRules} />
             <Route path="/:client-nomen-name" component={MainDashboard} />
