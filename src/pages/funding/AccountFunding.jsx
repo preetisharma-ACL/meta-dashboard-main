@@ -78,6 +78,63 @@ const DEFAULT_CLIENT_TYPES = ["cpl", "hybrid"];
 
 // Account name + avatar use the shared <Avatar> from ClientDashboard.
 
+// ─── Ad-account id pill (click to copy) ───────────────────────────────────────
+function AccountIdPill(props) {
+  const [copied, setCopied] = createSignal(false);
+  const copy = (e) => {
+    e.stopPropagation();
+    try {
+      navigator.clipboard?.writeText(props.id);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {}
+  };
+  return (
+    <button
+      onClick={copy}
+      title="Click to copy account ID"
+      class="group/id inline-flex items-center gap-1 mt-1 max-w-full pl-1.5 pr-2 py-0.5 rounded-md border border-[#E2E8F1] dark:border-gray-700 bg-[#EEF2F7] dark:bg-gray-800 hover:border-[#3E6FB0]/50 hover:bg-[#E7EEF7] dark:hover:bg-gray-700 transition-colors"
+    >
+      <Show
+        when={!copied()}
+        fallback={
+          <svg class="w-3 h-3 flex-none text-[#15966A]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+        }
+      >
+        <svg class="w-3 h-3 flex-none text-[#8593A8] group-hover/id:text-[#3E6FB0]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+        </svg>
+      </Show>
+      <span class="font-mono text-[11px] leading-none text-[#54657E] dark:text-gray-400 group-hover/id:text-[#3E6FB0] dark:group-hover/id:text-blue-300 truncate">
+        {copied() ? "Copied" : props.id}
+      </span>
+    </button>
+  );
+}
+
+// ─── "Synced X ago" freshness badge — dot colour signals how stale ────────────
+function SyncedBadge(props) {
+  const mins = () => {
+    const t = new Date(props.iso).getTime();
+    return isFinite(t) ? (Date.now() - t) / 60000 : null;
+  };
+  const dot = () => {
+    const m = mins();
+    if (m == null) return "#8593A8";
+    if (m <= 30) return "#15966A";   // fresh
+    if (m <= 360) return "#B07A14";  // a few hours
+    return "#AC2334";                // stale
+  };
+  return (
+    <Show when={relTime(props.iso)}>
+      <span class="inline-flex items-center gap-1 mt-0.5 text-[10px] font-medium text-[#8593A8] dark:text-gray-500">
+        <span class="w-1.5 h-1.5 rounded-full flex-none" style={`background:${dot()}`} />
+        synced {relTime(props.iso)}
+      </span>
+    </Show>
+  );
+}
+
 // ─── To Load (24h) cell — the hero column ─────────────────────────────────────
 function ToLoadCell(props) {
   const st = () => props.state;
@@ -114,7 +171,6 @@ function ToLoadCell(props) {
 function AvailableCell(props) {
   const st = () => props.state;
   const a = () => props.account;
-  const synced = () => relTime(a().balance_synced_at);
   return (
     <Show
       when={st() === "needs" || st() === "funded"}
@@ -124,12 +180,12 @@ function AvailableCell(props) {
         </Show>
       }
     >
-      <span
-        class="text-[#1A2B45] dark:text-gray-300 font-semibold "
-        title={synced() ? `Balance as of ${synced()}` : undefined}
-      >
-        {money2(a().funds_available) ?? "—"}
-      </span>
+      <div class="inline-flex flex-col items-end">
+        <span class="text-[#1A2B45] dark:text-gray-300 font-semibold">
+          {money2(a().funds_available) ?? "—"}
+        </span>
+        <SyncedBadge iso={a().balance_synced_at} />
+      </div>
     </Show>
   );
 }
@@ -452,24 +508,29 @@ export default function AccountFunding() {
           <div class="flex flex-wrap items-stretch gap-y-5">
             <div class="px-0 sm:pr-7 flex-1 min-w-[160px]">
               <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">Total to load · next 24h</p>
-              <p class="text-2xl sm:text-2xl font-bold text-[#AC2334] dark:text-red-400   mt-2 ">
+              <p class="text-xl sm:text-2xl font-bold text-[#AC2334] dark:text-red-400   mt-2 ">
                 {moneyWhole(summary().total_additional_required_24h)}
               </p>
               <p class="text-xs text-[#54657E] dark:text-gray-400 mt-2">prepaid shortfalls only</p>
             </div>
             <div class="px-5 sm:px-7 flex-1 min-w-[140px] border-l border-[#E2E8F1] dark:border-gray-700">
               <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">Total 24h required</p>
-              <p class="text-2xl font-bold text-gray-700 dark:text-white mt-2 ">{moneyWhole(summary().total_daily_required)}</p>
+              <p class="text-xl font-bold text-gray-700 dark:text-white mt-2 ">{moneyWhole(summary().total_daily_required)}</p>
               <p class="text-xs text-[#54657E] dark:text-gray-400 mt-2">base + GST</p>
             </div>
             <div class="px-5 sm:px-7 flex-1 min-w-[140px] border-l border-[#E2E8F1] dark:border-gray-700">
+              <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">Total base daily</p>
+              <p class="text-xl font-bold text-gray-700 dark:text-white mt-2 ">{moneyWhole(summary().total_base_daily_budget)}</p>
+              <p class="text-xs text-[#54657E] dark:text-gray-400 mt-2">before GST</p>
+            </div>
+            <div class="px-5 sm:px-7 flex-1 min-w-[140px] border-l border-[#E2E8F1] dark:border-gray-700">
               <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">Total GST (18%)</p>
-              <p class="text-2xl font-bold text-gray-700 dark:text-white  mt-2 ">{moneyWhole(summary().total_gst)}</p>
+              <p class="text-xl font-bold text-gray-700 dark:text-white  mt-2 ">{moneyWhole(summary().total_gst)}</p>
               <p class="text-xs text-[#54657E] dark:text-gray-400 mt-2">on base daily budget</p>
             </div>
             <div class="px-5 sm:pl-7 flex-1 min-w-[150px] border-l border-[#E2E8F1] dark:border-gray-700">
               <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">Accounts</p>
-              <p class="text-2xl font-bold text-[#14233A] dark:text-white  mt-2 ">{num(summary().accounts)}</p>
+              <p class="text-xl font-bold text-[#14233A] dark:text-white  mt-2 ">{num(summary().accounts)}</p>
               <p class="text-xs text-[#54657E] dark:text-gray-400 mt-2">
                 <b class="text-[#1A2B45] dark:text-gray-200 font-bold">{num(summary().prepaid_accounts)}</b> prepaid ·{" "}
                 <b class="text-[#1A2B45] dark:text-gray-200 font-bold">{num(summary().card_accounts)}</b> card
@@ -664,9 +725,14 @@ export default function AccountFunding() {
                       <td class="p-4 align-middle border-b border-[#E2E8F1] dark:border-gray-800">
                         <div class="flex items-center gap-4">
                           <Avatar name={a.name} />
-                          <span class="text-blue-900 dark:text-gray-100 font-semibold truncate" title={a.name}>
-                            {a.name}
-                          </span>
+                          <div class="min-w-0">
+                            <span class="block text-blue-900 dark:text-gray-100 font-semibold truncate" title={a.name}>
+                              {a.name}
+                            </span>
+                            <Show when={a.ad_account_id}>
+                              <AccountIdPill id={a.ad_account_id} />
+                            </Show>
+                          </div>
                         </div>
                       </td>
                       {/* Clients — vertical plain text */}
@@ -713,7 +779,12 @@ export default function AccountFunding() {
                   <div class="flex items-center gap-3">
                     <span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-[#FBEEF0] dark:bg-red-900/30 text-[#AC2334] dark:text-red-300 text-[11px] font-extrabold flex-none">{i() + 1}</span>
                     <Avatar name={a.name} size="w-9 h-9" />
-                    <span class="text-blue-900 dark:text-gray-100 font-semibold truncate">{a.name}</span>
+                    <div class="min-w-0">
+                      <span class="block text-blue-900 dark:text-gray-100 font-semibold truncate">{a.name}</span>
+                      <Show when={a.ad_account_id}>
+                        <AccountIdPill id={a.ad_account_id} />
+                      </Show>
+                    </div>
                   </div>
 
                   <div class="mt-3 pt-3 border-t border-[#E2E8F1] dark:border-gray-700 flex items-baseline justify-between">
