@@ -485,6 +485,24 @@ export default function AccountFunding() {
     return Math.round((needsCount() / t) * 100);
   });
 
+  // Totals for the sticky table footer — computed from the CURRENTLY VISIBLE
+  // rows so they always match the active search / state / status / type filters
+  // and the sort order.
+  const totals = createMemo(() => {
+    let campaigns = 0, base = 0, gst = 0, total = 0, avail = 0, toLoad = 0;
+    for (const a of rows()) {
+      campaigns += Number(a.campaign_count) || 0;
+      base += parseFloat(a.base_daily_budget) || 0;
+      gst += parseFloat(a.gst) || 0;
+      total += parseFloat(a.total_daily_required) || 0;
+      const fa = parseFloat(a.funds_available);
+      if (isFinite(fa)) avail += fa;
+      const tl = parseFloat(a.additional_required_24h);
+      if (isFinite(tl)) toLoad += tl;
+    }
+    return { campaigns, base, gst, total, avail, toLoad, count: rows().length };
+  });
+
   const anyFilter = () =>
     search().trim() ||
     stateFilter() !== "all" ||
@@ -1135,6 +1153,26 @@ export default function AccountFunding() {
                 </tr>
               </Show>
             </tbody>
+          </Show>
+
+          {/* Sticky totals footer — reflects the current filters + sort */}
+          <Show when={!data.loading && rows().length > 0}>
+            <tfoot>
+              <tr class="text-[13px]">
+                <td class="sticky bottom-0 z-20 bg-[#EEF2F7] dark:bg-gray-800 border-t-2 border-[#D4DDE9] dark:border-gray-700 px-4 py-3" />
+                <td class="sticky bottom-0 z-20 bg-[#EEF2F7] dark:bg-gray-800 border-t-2 border-[#D4DDE9] dark:border-gray-700 px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-[#54657E] dark:text-gray-300">
+                  Totals · {num(totals().count)} account{totals().count !== 1 ? "s" : ""}
+                </td>
+                <td class="sticky bottom-0 z-20 bg-[#EEF2F7] dark:bg-gray-800 border-t-2 border-[#D4DDE9] dark:border-gray-700 px-4 py-3" />
+                <td class="sticky bottom-0 z-20 bg-[#EEF2F7] dark:bg-gray-800 border-t-2 border-[#D4DDE9] dark:border-gray-700 px-4 py-3 text-right font-extrabold text-[#14233A] dark:text-gray-100 tabular-nums">{num(totals().campaigns)}</td>
+                <td class="sticky bottom-0 z-20 bg-[#EEF2F7] dark:bg-gray-800 border-t-2 border-[#D4DDE9] dark:border-gray-700 px-4 py-3 text-right font-extrabold text-[#14233A] dark:text-gray-100 tabular-nums whitespace-nowrap">{money2(String(totals().base))}</td>
+                <td class="sticky bottom-0 z-20 bg-[#EEF2F7] dark:bg-gray-800 border-t-2 border-[#D4DDE9] dark:border-gray-700 px-4 py-3 text-right font-extrabold text-[#14233A] dark:text-gray-100 tabular-nums whitespace-nowrap">{money2(String(totals().gst))}</td>
+                <td class="sticky bottom-0 z-20 bg-[#EEF2F7] dark:bg-gray-800 border-t-2 border-[#D4DDE9] dark:border-gray-700 px-4 py-3 text-right font-extrabold text-[#14233A] dark:text-gray-100 tabular-nums whitespace-nowrap">{money2(String(totals().total))}</td>
+                <td class="sticky bottom-0 z-20 bg-[#EEF2F7] dark:bg-gray-800 border-t-2 border-[#D4DDE9] dark:border-gray-700 px-4 py-3 text-right font-bold text-[#1A2B45] dark:text-gray-200 tabular-nums whitespace-nowrap">{money2(String(totals().avail))}</td>
+                <td class="sticky bottom-0 z-20 bg-[#EEF2F7] dark:bg-gray-800 border-t-2 border-[#D4DDE9] dark:border-gray-700 px-4 py-3 text-right font-extrabold text-[#AC2334] dark:text-red-300 tabular-nums whitespace-nowrap">{money2(String(totals().toLoad))}</td>
+                <td class="sticky bottom-0 z-20 bg-[#EEF2F7] dark:bg-gray-800 border-t-2 border-[#D4DDE9] dark:border-gray-700 px-4 py-3" />
+              </tr>
+            </tfoot>
           </Show>
         </table>
       </div>
