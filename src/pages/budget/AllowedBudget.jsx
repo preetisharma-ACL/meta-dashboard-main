@@ -45,6 +45,14 @@ const TYPE_CHIP = {
 };
 const TYPE_LABELS = { cpl: "CPL", hybrid: "Hybrid", retainer: "Retainer" };
 const TYPE_ORDER = ["cpl", "hybrid", "retainer"];
+// Client-type multi-select chips (same as Account Funding). CPL + Hybrid are
+// the default; Retainer is client-funded, so it's off by default.
+const CLIENT_TYPE_CHIPS = [
+  { key: "cpl", label: "CPL" },
+  { key: "hybrid", label: "Hybrid" },
+  { key: "retainer", label: "Retainer" },
+];
+const DEFAULT_CLIENT_TYPES = ["cpl", "hybrid"];
 const STATUS_CHIP = {
   pending: "bg-[#FBF3E2] text-[#B07A14] dark:bg-amber-900/30 dark:text-amber-300",
   approved: "bg-[#E9F7F1] text-[#15966A] dark:bg-green-900/30 dark:text-green-300",
@@ -315,7 +323,17 @@ export default function AllowedBudget() {
   // existing audit status filter — no fetch). ──
   const [search, setSearch] = createSignal("");
   const [statusFilter, setStatusFilter] = createSignal("all"); // all | over | near | capped | uncapped
-  const [typeFilter, setTypeFilter] = createSignal("all"); // all | cpl | hybrid | retainer | …
+  const [clientTypes, setClientTypes] = createSignal(DEFAULT_CLIENT_TYPES); // multi-select
+
+  const toggleClientType = (key) => {
+    setClientTypes((prev) => {
+      const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key];
+      return next.length ? next : prev; // never allow an empty selection
+    });
+  };
+  const typesAreDefault = () =>
+    clientTypes().length === DEFAULT_CLIENT_TYPES.length &&
+    DEFAULT_CLIENT_TYPES.every((k) => clientTypes().includes(k));
 
   // Source returns an object (always truthy) — UNCHANGED.
   const [clients, { refetch: refetchClients }] = createResource(
@@ -357,6 +375,13 @@ export default function AllowedBudget() {
   // ── Display-only summary derivations (read clients(), no fetch/write) ──
   const allClients = () => clients() ?? [];
 
+  // Client-type chip selection scopes the whole tab (summary + list), the same
+  // way Account Funding's chips do. Clients with no type always pass through.
+  const scopedClients = createMemo(() => {
+    const types = clientTypes();
+    return allClients().filter((c) => !c.client_type || types.includes(c.client_type));
+  });
+
   // "Set budget" = the client has a budget (daily or monthly allowed) AND an
   // allocation (daily allocated or monthly spent). "Not set" = anything else.
   const hasAllowed = (c) => c.allowed_daily_budget != null || c.allowed_monthly_budget != null;
@@ -365,7 +390,7 @@ export default function AllowedBudget() {
 
   const statusCounts = createMemo(() => {
     const c = { all: 0, over: 0, near: 0, healthy: 0, uncapped: 0, capped: 0, set: 0, notset: 0 };
-    for (const cl of allClients()) {
+    for (const cl of scopedClients()) {
       c.all++;
       const s = clientStatus(cl);
       c[s]++;
@@ -379,7 +404,7 @@ export default function AllowedBudget() {
   // Totals for the summary bar — Σ daily allowed (where set) and Σ daily allocated.
   const budgetTotals = createMemo(() => {
     let allowed = 0, allocated = 0;
-    for (const c of allClients()) {
+    for (const c of scopedClients()) {
       const a = parseFloat(c.allowed_daily_budget);
       if (isFinite(a)) allowed += a;
       const al = parseFloat(c.daily_allocated);
@@ -401,24 +426,13 @@ export default function AllowedBudget() {
     return STATUS_ORDER.map((k) => ({ key: k, count: c[k], color: STATUS_META[k].color, label: STATUS_META[k].label }));
   });
 
-  // Filtered client list (display only; preserves API order).
-  // Client types actually present in the data (so e.g. Retainer only appears as
-  // an option when retainer clients are in scope on this page).
-  const presentTypes = createMemo(() => {
-    const set = new Set();
-    for (const c of allClients()) if (c.client_type) set.add(c.client_type);
-    return [...set]
-      .sort((a, b) => ((TYPE_ORDER.indexOf(a) + 1 || 99) - (TYPE_ORDER.indexOf(b) + 1 || 99)))
-      .map((k) => ({ key: k, label: TYPE_LABELS[k] ?? k.charAt(0).toUpperCase() + k.slice(1) }));
-  });
-
+  // Filtered client list (display only; preserves API order). Type scoping is
+  // already applied via scopedClients(); search + status filter on top.
   const visibleClients = createMemo(() => {
     const q = search().trim().toLowerCase();
     const sf = statusFilter();
-    const tf = typeFilter();
-    return allClients().filter((c) => {
+    return scopedClients().filter((c) => {
       if (q && !c.name?.toLowerCase().includes(q)) return false;
-      if (tf !== "all" && c.client_type !== tf) return false;
       if (sf === "all") return true;
       if (sf === "set") return isBudgetSet(c);
       if (sf === "notset") return !isBudgetSet(c);
@@ -426,7 +440,7 @@ export default function AllowedBudget() {
       return clientStatus(c) === sf;
     });
   });
-  const anyFilter = () => search().trim() || statusFilter() !== "all" || typeFilter() !== "all";
+  const anyFilter = () => search().trim() || statusFilter() !== "all" || !typesAreDefault();
 
   const review = async (req, decision) => {
     const { value: note, isConfirmed } = await Swal.fire({
@@ -617,21 +631,36 @@ export default function AllowedBudget() {
                 <svg class="w-4 h-4 text-[#8593A8] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" /></svg>
               </div>
 
-              {/* Client-type dropdown — options limited to types present in scope */}
-              <Show when={presentTypes().length > 0}>
-                <div class="relative">
-                  <select value={typeFilter()} onChange={(e) => setTypeFilter(e.target.value)}
-                    class="appearance-none pl-3 pr-9 py-2.5 text-[13px] font-semibold rounded-lg border border-[#E2E8F1] dark:border-gray-700 bg-[#F8FAFC] dark:bg-gray-800 text-[#1A2B45] dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#AC2334]/25 focus:border-[#AC2334] cursor-pointer">
-                    <option value="all">All client types</option>
-                    <For each={presentTypes()}>{(t) => <option value={t.key}>{t.label}</option>}</For>
-                  </select>
-                  <svg class="w-4 h-4 text-[#8593A8] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" /></svg>
-                </div>
-              </Show>
+              {/* Client-type multi-select chips (CPL + Hybrid by default) */}
+              <div class="flex items-center gap-1.5">
+                <For each={CLIENT_TYPE_CHIPS}>
+                  {(t) => {
+                    const on = () => clientTypes().includes(t.key);
+                    return (
+                      <button
+                        onClick={() => toggleClientType(t.key)}
+                        aria-pressed={on()}
+                        class={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[13px] font-semibold border transition-colors ${
+                          on()
+                            ? "bg-[#14233A] text-white border-[#14233A]"
+                            : "bg-[#F8FAFC] dark:bg-gray-800 text-[#54657E] dark:text-gray-300 border-[#E2E8F1] dark:border-gray-700 hover:border-[#14233A]/40"
+                        }`}
+                      >
+                        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                          <Show when={on()} fallback={<circle cx="12" cy="12" r="9" stroke-width="1.6" />}>
+                            <path d="M20 6L9 17l-5-5" />
+                          </Show>
+                        </svg>
+                        {t.label}
+                      </button>
+                    );
+                  }}
+                </For>
+              </div>
             </div>
             <div class="flex items-center gap-3 ml-auto">
               <Show when={anyFilter()}>
-                <button onClick={() => { setSearch(""); setStatusFilter("all"); setTypeFilter("all"); }} class="text-[13px] font-semibold text-[#AC2334] hover:underline">Clear</button>
+                <button onClick={() => { setSearch(""); setStatusFilter("all"); setClientTypes(DEFAULT_CLIENT_TYPES); }} class="text-[13px] font-semibold text-[#AC2334] hover:underline">Clear</button>
               </Show>
               <span class="text-sm font-bold text-[#8593A8] dark:text-gray-500 whitespace-nowrap"><b class="text-[#14233A] dark:text-white">{visibleClients().length}</b> shown</span>
             </div>
