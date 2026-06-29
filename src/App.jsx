@@ -186,7 +186,7 @@ function App() {
               )}
             />
             <Route
-              path="/projects"
+              path="/projects-nomen"
               component={() => (
                 <AdminRoute>
                   <Projects />
