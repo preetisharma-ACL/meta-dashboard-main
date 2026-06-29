@@ -357,15 +357,35 @@ export default function AllowedBudget() {
   // ── Display-only summary derivations (read clients(), no fetch/write) ──
   const allClients = () => clients() ?? [];
 
+  // "Set budget" = the client has a budget (daily or monthly allowed) AND an
+  // allocation (daily allocated or monthly spent). "Not set" = anything else.
+  const hasAllowed = (c) => c.allowed_daily_budget != null || c.allowed_monthly_budget != null;
+  const hasAllocated = (c) => (parseFloat(c.daily_allocated) || 0) > 0 || (parseFloat(c.monthly_spent) || 0) > 0;
+  const isBudgetSet = (c) => hasAllowed(c) && hasAllocated(c);
+
   const statusCounts = createMemo(() => {
-    const c = { all: 0, over: 0, near: 0, healthy: 0, uncapped: 0, capped: 0 };
+    const c = { all: 0, over: 0, near: 0, healthy: 0, uncapped: 0, capped: 0, set: 0, notset: 0 };
     for (const cl of allClients()) {
       c.all++;
       const s = clientStatus(cl);
       c[s]++;
       if (s !== "uncapped") c.capped++;
+      if (isBudgetSet(cl)) c.set++;
+      else c.notset++;
     }
     return c;
+  });
+
+  // Totals for the summary bar — Σ daily allowed (where set) and Σ daily allocated.
+  const budgetTotals = createMemo(() => {
+    let allowed = 0, allocated = 0;
+    for (const c of allClients()) {
+      const a = parseFloat(c.allowed_daily_budget);
+      if (isFinite(a)) allowed += a;
+      const al = parseFloat(c.daily_allocated);
+      if (isFinite(al)) allocated += al;
+    }
+    return { allowed, allocated };
   });
   const attentionCount = createMemo(() => statusCounts().over + statusCounts().near);
   const pct = (n) => {
@@ -400,6 +420,8 @@ export default function AllowedBudget() {
       if (q && !c.name?.toLowerCase().includes(q)) return false;
       if (tf !== "all" && c.client_type !== tf) return false;
       if (sf === "all") return true;
+      if (sf === "set") return isBudgetSet(c);
+      if (sf === "notset") return !isBudgetSet(c);
       if (sf === "capped") return clientStatus(c) !== "uncapped";
       return clientStatus(c) === sf;
     });
@@ -491,16 +513,26 @@ export default function AllowedBudget() {
               </div>
 
               {/* minis */}
-              <div class="flex gap-7">
+              <div class="flex flex-wrap gap-x-7 gap-y-3">
                 <div>
                   <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">Budgets set</p>
-                  <p class="text-2xl font-extrabold text-[#14233A] dark:text-white mt-1 tabular-nums">{statusCounts().capped}</p>
+                  <p class="text-xl font-bold text-[#14233A] dark:text-white mt-1 ">{statusCounts().capped}</p>
                   <p class="text-xs text-[#54657E] dark:text-gray-400">{pct(statusCounts().capped)}% of {statusCounts().all} clients</p>
                 </div>
                 <div>
                   <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">Uncapped</p>
-                  <p class="text-2xl font-extrabold text-[#14233A] dark:text-white mt-1 tabular-nums">{statusCounts().uncapped}</p>
+                  <p class="text-xl font-bold text-[#14233A] dark:text-white mt-1 ">{statusCounts().uncapped}</p>
                   <p class="text-xs text-[#54657E] dark:text-gray-400">{pct(statusCounts().uncapped)}% spending open</p>
+                </div>
+                <div class="sm:pl-7 sm:border-l border-[#E2E8F1] dark:border-gray-700">
+                  <p class="text-[11px] font-bold uppercase  text-[#8593A8] dark:text-gray-400">Total Allowed</p>
+                  <p class="text-xl font-bold text-[#14233A] dark:text-white mt-1 ">{moneyWhole(budgetTotals().allowed)}</p>
+                  <p class="text-xs text-[#54657E] dark:text-gray-400">daily budgets set</p>
+                </div>
+                <div>
+                  <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">Total Allocated</p>
+                  <p class="text-xl font-bold text-[#14233A] dark:text-white mt-1 ">{moneyWhole(budgetTotals().allocated)}</p>
+                  <p class="text-xs text-[#54657E] dark:text-gray-400">Σ daily allocated</p>
                 </div>
               </div>
 
@@ -577,10 +609,10 @@ export default function AllowedBudget() {
                 <select value={statusFilter()} onChange={(e) => setStatusFilter(e.target.value)}
                   class="appearance-none pl-3 pr-9 py-2.5 text-[13px] font-semibold rounded-lg border border-[#E2E8F1] dark:border-gray-700 bg-[#F8FAFC] dark:bg-gray-800 text-[#1A2B45] dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#AC2334]/25 focus:border-[#AC2334] cursor-pointer">
                   <option value="all">All statuses ({statusCounts().all})</option>
+                  <option value="set">Budget set ({statusCounts().set})</option>
+                  <option value="notset">Budget not set ({statusCounts().notset})</option>
                   <option value="over">Over cap ({statusCounts().over})</option>
                   <option value="near">Near cap ({statusCounts().near})</option>
-                  <option value="capped">Capped ({statusCounts().capped})</option>
-                  <option value="uncapped">Uncapped ({statusCounts().uncapped})</option>
                 </select>
                 <svg class="w-4 h-4 text-[#8593A8] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" /></svg>
               </div>
