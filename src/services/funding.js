@@ -15,7 +15,7 @@ export const fetchFundingAccounts = async (clientTypes) => {
   if (Array.isArray(clientTypes) && clientTypes.length) {
     url += `&client_types=${encodeURIComponent(clientTypes.join(","))}`;
   }
-  url += scopeQuery();
+  url += scopeQuery({ supportsOwn: true });
 
   const res = await api(url, { method: "GET" });
   applyMeta(res?.meta);

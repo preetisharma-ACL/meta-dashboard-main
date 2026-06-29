@@ -1,7 +1,7 @@
 import { createSignal, createResource, createMemo, For, Show } from "solid-js";
 import * as XLSX from "xlsx";
 import { fetchFundingAccounts } from "../../services/funding";
-import { asTeamMemberId } from "../../stores/cmScope";
+import { scopeKey } from "../../stores/cmScope";
 import Avatar from "../../components/common/Avatar";
 import useColumnSort from "../../components/Columnsorting";
 
@@ -359,7 +359,7 @@ export default function AccountFunding() {
   // Refetch when the switch scope OR the client-type filter changes — the
   // backend re-scopes the dataset and recomputes all four summary tiles.
   const [data] = createResource(
-    () => ({ scope: asTeamMemberId(), types: clientTypes() }),
+    () => ({ scope: scopeKey(), types: clientTypes() }),
     async (s) => {
       const res = await fetchFundingAccounts(s.types);
       return res ?? { data: [], meta: null };

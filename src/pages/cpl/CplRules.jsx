@@ -1,7 +1,7 @@
 import { createSignal, createResource, createMemo, For, Show } from "solid-js";
 import Swal from "sweetalert2";
 import { fetchCplCampaigns, setCplTarget, fetchHighVolumeClients } from "../../services/cplRules";
-import { asTeamMemberId } from "../../stores/cmScope";
+import { scopeKey } from "../../stores/cmScope";
 import { isAdmin } from "../../stores/currentUser";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -113,7 +113,7 @@ export default function CplRules() {
   const [targetCampaign, setTargetCampaign] = createSignal(null);
 
   const [data, { refetch }] = createResource(
-    () => ({ scope: asTeamMemberId() }),
+    () => ({ scope: scopeKey() }),
     async () => {
       const res = await fetchCplCampaigns();
       return { rows: Array.isArray(res?.data) ? res.data : [], summary: res?.meta?.summary ?? null };
@@ -121,7 +121,7 @@ export default function CplRules() {
   );
 
   const [highVol] = createResource(
-    () => ({ scope: asTeamMemberId() }),
+    () => ({ scope: scopeKey() }),
     async () => {
       const res = await fetchHighVolumeClients();
       return { rows: Array.isArray(res?.data) ? res.data : [], meta: res?.meta ?? null };

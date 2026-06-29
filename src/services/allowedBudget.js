@@ -9,7 +9,7 @@ import { scopeQuery, applyMeta } from "../stores/cmScope";
 
 // 1. List clients with ceilings + consumption (CM: own; admin: all).
 export const fetchAllowedBudgetClients = async () => {
-  const res = await api(`/cm/allowed-budget/clients/?1=1${scopeQuery()}`, { method: "GET" });
+  const res = await api(`/cm/allowed-budget/clients/?1=1${scopeQuery({ supportsOwn: true })}`, { method: "GET" });
   applyMeta(res?.meta);
   return res;
 };

@@ -112,7 +112,7 @@ export const fetchHierarchyClients = async ({ startDate, endDate } = {}) => {
   let url = `/cm/hierarchy/clients/?1=1`;
   if (startDate) url += `&start_date=${startDate}`;
   if (endDate) url += `&end_date=${endDate}`;
-  url += scopeQuery();
+  url += scopeQuery({ supportsOwn: true });
 
   const res = await api(url, { method: "GET" });
   applyMeta(res?.meta);
@@ -127,6 +127,10 @@ export const fetchHierarchyProjects = async (
   let url = `/cm/hierarchy/clients/${clientNomenId}/projects/?1=1`;
   if (startDate) url += `&start_date=${startDate}`;
   if (endDate) url += `&end_date=${endDate}`;
+  // NOTE: no scope=own here. The clients list (above) is already narrowed by
+  // scope=own; this sub-call is keyed by the client id, so its projects are
+  // inherently in scope. Sending scope=own to the sub-endpoint errors it out
+  // ("Failed to load projects"). Member mode still threads as_team_member_id.
   url += scopeQuery();
 
   const res = await api(url, { method: "GET" });
@@ -144,6 +148,8 @@ export const fetchHierarchyCampaigns = async (
   let url = `/cm/hierarchy/projects/${projectId}/campaigns/?client_nomen_id=${clientNomenId}`;
   if (startDate) url += `&start_date=${startDate}`;
   if (endDate) url += `&end_date=${endDate}`;
+  // No scope=own here either — keyed by project + client_nomen_id, already in
+  // scope. (Same reasoning as the projects sub-call above.)
   url += scopeQuery();
 
   const res = await api(url, { method: "GET" });

@@ -8,7 +8,7 @@ import { scopeQuery, applyMeta } from "../stores/cmScope";
 
 // Campaigns ranked by expensiveness desc (most over-target first, untargeted last).
 export const fetchCplCampaigns = async () => {
-  const res = await api(`/cm/cpl-rules/campaigns/?1=1${scopeQuery()}`, { method: "GET" });
+  const res = await api(`/cm/cpl-rules/campaigns/?1=1${scopeQuery({ supportsOwn: true })}`, { method: "GET" });
   applyMeta(res?.meta);
   return res;
 };

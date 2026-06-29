@@ -5,7 +5,7 @@ import {
   fetchHierarchyProjects,
   fetchHierarchyCampaigns,
 } from "../services/cm";
-import { asTeamMemberId } from "../stores/cmScope";
+import { scopeKey } from "../stores/cmScope";
 
 // ─── Formatters ───────────────────────────────────────────────────────────────
 const money = (v) => {
@@ -143,7 +143,7 @@ export default function CMHierarchy(props) {
   // Reset and reload whenever the date window or switch scope changes.
   createEffect(
     on(
-      [() => props.startDate, () => props.endDate, asTeamMemberId],
+      [() => props.startDate, () => props.endDate, scopeKey],
       () => {
         setOpenClients({});
         setOpenProjects({});

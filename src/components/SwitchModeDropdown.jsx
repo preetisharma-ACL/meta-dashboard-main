@@ -1,15 +1,24 @@
-import { createSignal, createResource, For, Show } from "solid-js";
+import { createResource, For, Show } from "solid-js";
 import { canSwitch } from "../stores/currentUser";
 import {
   asTeamMemberId,
+  ownScope,
   setAsTeamMemberId,
+  setOwnScope,
+  setTeamScope,
 } from "../stores/cmScope";
 import { fetchTeamMembers } from "../services/cm";
 
-// Tier-1-only switcher. Lets a team lead "view as" one of their team members.
-// Selecting a member sets the global asTeamMemberId scope, which every CM data
-// fetch threads via withScope/scopeQuery — so all views refetch scoped to that
-// member. Tier 2 / non-CM never render this (gated by canSwitch()).
+// Tier-1-only scope selector. Three modes:
+//   • "Just me"            → as_team_member_id = the lead's OWN id (own clients only)
+//   • "My team (everyone)" → no scope param (own + all team members, merged)
+//   • a specific member    → as_team_member_id = that member's id
+// Selecting a mode sets the global asTeamMemberId scope, which every CM data
+// fetch threads via withScope/scopeQuery — so all views refetch accordingly.
+// Tier 2 / non-CM never render this (gated by canSwitch()).
+const ME = "__me__";
+const TEAM = "__team__";
+
 export default function SwitchModeDropdown() {
   // Only fetch team members when this user can actually switch.
   const [members] = createResource(
@@ -30,12 +39,14 @@ export default function SwitchModeDropdown() {
 
   const onChange = (e) => {
     const val = e.target.value;
-    setAsTeamMemberId(val === "__own__" ? null : Number(val));
+    if (val === TEAM) setTeamScope();
+    else if (val === ME) setOwnScope();
+    else setAsTeamMemberId(Number(val));
   };
 
   const currentValue = () => {
-    const id = asTeamMemberId();
-    return id == null ? "__own__" : String(id);
+    if (ownScope()) return ME;
+    return asTeamMemberId() == null ? TEAM : String(asTeamMemberId());
   };
 
   return (
@@ -53,16 +64,19 @@ export default function SwitchModeDropdown() {
                    focus:outline-none focus:ring-2 focus:ring-purple-400 cursor-pointer max-w-[220px]"
             title="Switch which CM's data you're viewing"
           >
-            <option value="__own__">My team (everyone)</option>
-            <Show when={!members.loading}>
-              <For each={members() ?? []}>
-                {(m) => (
-                  <option value={String(m.user_id)}>
-                    {m.email}
-                    {tierLabel(m.tier) ? ` · ${tierLabel(m.tier)}` : ""}
-                  </option>
-                )}
-              </For>
+            <option value={ME}>Just me</option>
+            <option value={TEAM}>My team (everyone)</option>
+            <Show when={!members.loading && (members() ?? []).length > 0}>
+              <optgroup label="Team members">
+                <For each={members() ?? []}>
+                  {(m) => (
+                    <option value={String(m.user_id)}>
+                      {m.email}
+                      {tierLabel(m.tier) ? ` · ${tierLabel(m.tier)}` : ""}
+                    </option>
+                  )}
+                </For>
+              </optgroup>
             </Show>
           </select>
           <svg

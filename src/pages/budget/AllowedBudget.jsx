@@ -7,7 +7,7 @@ import {
   reviewBudgetRequest,
   fetchBudgetRequests,
 } from "../../services/allowedBudget";
-import { asTeamMemberId } from "../../stores/cmScope";
+import { scopeKey } from "../../stores/cmScope";
 import { isAdmin } from "../../stores/currentUser";
 import Avatar from "../../components/common/Avatar";
 
@@ -337,7 +337,7 @@ export default function AllowedBudget() {
 
   // Source returns an object (always truthy) — UNCHANGED.
   const [clients, { refetch: refetchClients }] = createResource(
-    () => ({ scope: asTeamMemberId() }),
+    () => ({ scope: scopeKey() }),
     async () => {
       const res = await fetchAllowedBudgetClients();
       return Array.isArray(res?.data) ? res.data : [];
@@ -345,7 +345,7 @@ export default function AllowedBudget() {
   );
 
   // Pending queue + audit resources — UNCHANGED.
-  const queueSource = createMemo(() => ({ scope: asTeamMemberId(), status: "pending", tab: tab() }));
+  const queueSource = createMemo(() => ({ scope: scopeKey(), status: "pending", tab: tab() }));
   const [pending, { refetch: refetchPending }] = createResource(
     () => (tab() === "queue" ? queueSource() : null),
     async () => {
@@ -354,7 +354,7 @@ export default function AllowedBudget() {
     },
   );
 
-  const auditSource = createMemo(() => ({ scope: asTeamMemberId(), status: auditStatus(), tab: tab() }));
+  const auditSource = createMemo(() => ({ scope: scopeKey(), status: auditStatus(), tab: tab() }));
   const [audit, { refetch: refetchAudit }] = createResource(
     () => (tab() === "audit" ? auditSource() : null),
     async (s) => {
