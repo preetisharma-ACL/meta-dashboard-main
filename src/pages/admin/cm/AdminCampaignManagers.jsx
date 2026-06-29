@@ -244,14 +244,14 @@ export default function AdminCampaignManagers() {
         </Show>
 
         {/* Roster table */}
-        <div class="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-x-auto">
+        <div class="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-auto max-h-[70vh]">
           <table class="min-w-full text-sm">
             <thead>
-              <tr class="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400 uppercase text-xs tracking-wider">
-                <th class="p-3.5 text-left whitespace-nowrap min-w-[240px]">Manager</th>
-                <th class="p-3.5 text-right whitespace-nowrap">Clients</th>
-                <th class="p-3.5 text-right whitespace-nowrap">Allocated Budget</th>
-                <th class="p-3.5 text-right whitespace-nowrap" />
+              <tr class="text-[11px] font-bold uppercase tracking-[0.08em] text-[#54657E] dark:text-gray-300">
+                <th class="sticky top-0 z-20 bg-gradient-to-b from-[#F1F4F9] to-[#E9EEF5] dark:from-gray-800 dark:to-gray-800 border-b border-[#D4DDE9] dark:border-gray-700 shadow-[0_3px_6px_-3px_rgba(16,29,49,.18)] p-3.5 text-left whitespace-nowrap min-w-[240px]">Manager</th>
+                <th class="sticky top-0 z-20 bg-gradient-to-b from-[#F1F4F9] to-[#E9EEF5] dark:from-gray-800 dark:to-gray-800 border-b border-[#D4DDE9] dark:border-gray-700 shadow-[0_3px_6px_-3px_rgba(16,29,49,.18)] p-3.5 text-right whitespace-nowrap">Clients</th>
+                <th class="sticky top-0 z-20 bg-gradient-to-b from-[#F1F4F9] to-[#E9EEF5] dark:from-gray-800 dark:to-gray-800 border-b border-[#D4DDE9] dark:border-gray-700 shadow-[0_3px_6px_-3px_rgba(16,29,49,.18)] p-3.5 text-right whitespace-nowrap text-[#14233A] dark:text-gray-100">Allocated Budget</th>
+                <th class="sticky top-0 z-20 bg-gradient-to-b from-[#F1F4F9] to-[#E9EEF5] dark:from-gray-800 dark:to-gray-800 border-b border-[#D4DDE9] dark:border-gray-700 shadow-[0_3px_6px_-3px_rgba(16,29,49,.18)] p-3.5 text-right whitespace-nowrap" />
               </tr>
             </thead>
             <Show

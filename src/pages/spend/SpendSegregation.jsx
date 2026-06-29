@@ -27,6 +27,12 @@ const money2 = (v) => {
 };
 const num = (v) => (Number(v) || 0).toLocaleString("en-IN");
 
+// YYYY-MM-DD for `days` ago (local) — used to window the hierarchy endpoint.
+const ymdAgo = (days) => {
+  const d = new Date(Date.now() - days * 86400000);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
 // Business calls `cpl` "CP". CP + Hybrid = agency cost (own-pocket spend).
 // Colours drawn from the project palette.
 const BUCKETS = [
@@ -172,8 +178,8 @@ function ClientRow(props) {
         <span class="flex-1 min-w-0 font-semibold text-blue-900 dark:text-gray-100 truncate" title={c().name}>{c().name}</span>
         <span class="hidden sm:block text-right text-[13px] font-semibold text-[#54657E] dark:text-gray-300 w-24 tabular-nums">{money2(c().spend_today)}</span>
         <span class="hidden md:block text-right text-[13px] font-semibold text-[#54657E] dark:text-gray-300 w-24 tabular-nums">{money2(props.yesterday) ?? "—"}</span>
-        <span class="hidden md:block text-right text-[13px] font-semibold text-[#1A2B45] dark:text-gray-200 w-28 tabular-nums">{money2(c().spend_7d)}</span>
-        <span class="text-right text-sm font-extrabold text-[#14233A] dark:text-gray-100 w-32 tabular-nums">{money2(c().spend_30d)}</span>
+        <span class="hidden lg:block text-right text-[13px] font-semibold text-[#54657E] dark:text-gray-300 w-24 tabular-nums">{money2(props.last3) ?? "—"}</span>
+        <span class="text-right text-[13px] font-extrabold text-[#14233A] dark:text-gray-100 w-28 tabular-nums">{money2(c().spend_7d)}</span>
       </button>
 
       <Show when={open()}>
@@ -250,10 +256,24 @@ export default function SpendSegregation() {
   // yesterday) and key it by client_nomen_id. raw.spend = actual ad spend,
   // matching the segregation's spend semantics.
   const [yesterdayMap] = createResource(async () => {
-    const d = new Date(Date.now() - 86400000);
-    const ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const ymd = ymdAgo(1);
     try {
       const res = await fetchHierarchyClients({ startDate: ymd, endDate: ymd });
+      const map = {};
+      for (const cl of Array.isArray(res?.data) ? res.data : []) {
+        if (cl?.client_nomen_id != null) map[cl.client_nomen_id] = cl.raw?.spend ?? null;
+      }
+      return map;
+    } catch {
+      return {};
+    }
+  });
+
+  // Per-client LAST 3 DAYS spend — the previous three COMPLETE days, excluding
+  // today: window = (today-3) … (today-1). Same derivation as yesterday.
+  const [last3Map] = createResource(async () => {
+    try {
+      const res = await fetchHierarchyClients({ startDate: ymdAgo(3), endDate: ymdAgo(1) });
       const map = {};
       for (const cl of Array.isArray(res?.data) ? res.data : []) {
         if (cl?.client_nomen_id != null) map[cl.client_nomen_id] = cl.raw?.spend ?? null;
@@ -339,30 +359,33 @@ export default function SpendSegregation() {
                 <button onClick={() => setSelected(null)} class="text-xs font-semibold text-[#AC2334] hover:underline">Clear</button>
               </div>
 
-              {/* Column header */}
-              <div class="hidden sm:flex items-center gap-3 px-3 py-2 bg-[#F8FAFC] dark:bg-gray-800/60 text-[11px] font-bold uppercase tracking-wider text-[#54657E] dark:text-gray-400">
-                <span class="w-4" />
-                <span class="w-8" />
-                <span class="flex-1">Client</span>
-                <span class="text-right w-24">Today</span>
-                <span class="hidden md:block text-right w-24">Yesterday</span>
-                <span class="hidden md:block text-right w-28">7-day</span>
-                <span class="text-right w-32">30-day</span>
+              {/* Scrollable body — sticky column header pins to the top */}
+              <div class="overflow-auto max-h-[60vh]">
+                {/* Column header */}
+                <div class="hidden sm:flex items-center gap-3 px-3 py-2.5 sticky top-0 z-10 bg-gradient-to-b from-[#F1F4F9] to-[#E9EEF5] dark:from-gray-800 dark:to-gray-800 border-b border-[#D4DDE9] dark:border-gray-700 shadow-[0_3px_6px_-3px_rgba(16,29,49,.18)] text-[10.5px] font-bold uppercase tracking-[0.08em] text-[#54657E] dark:text-gray-300">
+                  <span class="w-4" />
+                  <span class="w-8" />
+                  <span class="flex-1">Client</span>
+                  <span class="text-right w-24">Today</span>
+                  <span class="hidden md:block text-right w-24">Yesterday</span>
+                  <span class="hidden lg:block text-right w-24">Last 3d</span>
+                  <span class="text-right w-28 text-[#14233A] dark:text-gray-100">7-day</span>
+                </div>
+
+                <Show when={clients.loading}>
+                  <div class="px-4 py-8 text-center text-sm text-[#8593A8] dark:text-gray-500">Loading clients…</div>
+                </Show>
+                <Show when={clients.error}>
+                  <div class="px-4 py-6 text-center text-sm text-[#AC2334]">Failed to load clients.</div>
+                </Show>
+                <Show when={clients() && !clients.loading && clients().length === 0}>
+                  <div class="px-4 py-10 text-center text-sm text-[#8593A8] dark:text-gray-500">No clients in this bucket.</div>
+                </Show>
+
+                <For each={clients() ?? []}>
+                  {(client) => <ClientRow client={client} yesterday={yesterdayMap()?.[client.client_nomen_id]} last3={last3Map()?.[client.client_nomen_id]} />}
+                </For>
               </div>
-
-              <Show when={clients.loading}>
-                <div class="px-4 py-8 text-center text-sm text-[#8593A8] dark:text-gray-500">Loading clients…</div>
-              </Show>
-              <Show when={clients.error}>
-                <div class="px-4 py-6 text-center text-sm text-[#AC2334]">Failed to load clients.</div>
-              </Show>
-              <Show when={clients() && !clients.loading && clients().length === 0}>
-                <div class="px-4 py-10 text-center text-sm text-[#8593A8] dark:text-gray-500">No clients in this bucket.</div>
-              </Show>
-
-              <For each={clients() ?? []}>
-                {(client) => <ClientRow client={client} yesterday={yesterdayMap()?.[client.client_nomen_id]} />}
-              </For>
             </div>
           </Show>
         </Show>
