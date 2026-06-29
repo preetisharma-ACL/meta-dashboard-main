@@ -9,10 +9,7 @@ import {
   Show,
 } from "solid-js";
 import { fetchManagerPerformance } from "../../../services/performance";
-import {
-  probeAdminSwitchMode,
-  fetchManagerAllocatedBudget,
-} from "../../../services/cmAdmin";
+import { probeAdminSwitchMode } from "../../../services/cmAdmin";
 import { setAsTeamMemberId, clearScope } from "../../../stores/cmScope";
 import Avatar from "../../../components/common/Avatar";
 import CMDashboard from "../../CMDashboard";
@@ -38,10 +35,14 @@ import AlertsPanel from "../../../components/AlertsPanel";
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ─── Formatters ───────────────────────────────────────────────────────────────
-const money0 = (v) => {
+// 2-decimal money — same null discipline as the rest of the app: null/blank →
+// "—", but a genuine "0.00" renders ₹0.00 (never blank). Used for the
+// allocated-budget figures which the roster serves as money strings.
+const money2 = (v) => {
+  if (v == null || v === "") return "—";
   const n = parseFloat(v);
   if (!isFinite(n)) return "—";
-  return `₹${n.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+  return `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 const num = (v) => (Number(v) || 0).toLocaleString("en-IN");
 
@@ -85,42 +86,6 @@ function ViewAsBlockedBanner(props) {
         </div>
       </div>
     </div>
-  );
-}
-
-// ─── Per-manager allocated-budget cell (lazy; only when switch-mode is on) ────
-function BudgetCell(props) {
-  // props: managerId, enabled (switch-mode allowed)
-  const [state, setState] = createSignal({ loading: false, value: null, basis: null, error: false });
-
-  createEffect(
-    on(
-      () => [props.managerId, props.enabled],
-      () => {
-        if (!props.enabled) {
-          setState({ loading: false, value: null, basis: null, error: false });
-          return;
-        }
-        setState({ loading: true, value: null, basis: null, error: false });
-        fetchManagerAllocatedBudget(props.managerId)
-          .then((b) => setState({ loading: false, value: b.total, basis: b.basis, error: false }))
-          .catch(() => setState({ loading: false, value: null, basis: null, error: true }));
-      },
-    ),
-  );
-
-  return (
-    <Show
-      when={props.enabled}
-      fallback={<span class="text-gray-400 dark:text-gray-500" title="Needs admin switch-mode (backend change pending)">—</span>}
-    >
-      <Show when={!state().loading} fallback={<span class="inline-block h-3 w-16 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />}>
-        <Show when={state().basis != null && !state().error} fallback={<span class="text-gray-400 dark:text-gray-500">—</span>}>
-          <span class="font-medium text-gray-800 dark:text-gray-100">{money0(state().value)}</span>
-          <span class="text-gray-400 dark:text-gray-500 text-xs">/day</span>
-        </Show>
-      </Show>
-    </Show>
   );
 }
 
@@ -188,18 +153,6 @@ export default function AdminCampaignManagers() {
   // Safety: never leak the "viewing as" scope to other admin pages.
   onCleanup(() => clearScope());
 
-  // Allocated-budget headline for the selected manager (only when allowed).
-  const [headlineBudget] = createResource(
-    () => (allowed() && selected() ? selected().manager_id : null),
-    async (mid) => {
-      try {
-        return await fetchManagerAllocatedBudget(mid);
-      } catch {
-        return null;
-      }
-    },
-  );
-
   return (
     <div class="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 md:p-6 lg:p-8">
       {/* ══════════════════ ROSTER VIEW ══════════════════ */}
@@ -244,6 +197,15 @@ export default function AdminCampaignManagers() {
                 {num(rows().reduce((s, r) => s + (Number(r.client_count) || 0), 0))}
               </p>
             </div>
+            {/* Grand total allocated budget — straight from the roster summary. */}
+            <Show when={summary().total_allocated_budget != null}>
+              <div class="px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+                <p class="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">Allocated budget</p>
+                <p class="text-xl font-bold text-gray-900 dark:text-white tabular-nums">
+                  {money2(summary().total_allocated_budget)}<span class="text-sm font-medium text-gray-400 dark:text-gray-500">/day</span>
+                </p>
+              </div>
+            </Show>
             <Show when={switchMode() === "checking"}>
               <div class="px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex items-center gap-2">
                 <span class="w-3.5 h-3.5 rounded-full border-2 border-gray-300 border-t-blue-500 animate-spin" />
@@ -324,7 +286,11 @@ export default function AdminCampaignManagers() {
                       </td>
                       <td class="p-3.5 text-right text-gray-700 dark:text-gray-300 tabular-nums">{num(r.client_count)}</td>
                       <td class="p-3.5 text-right tabular-nums">
-                        <BudgetCell managerId={r.manager_id} enabled={allowed()} />
+                        {/* Served directly on the roster — no per-manager fetch. */}
+                        <Show when={r.allocated_budget != null} fallback={<span class="text-gray-400 dark:text-gray-500">—</span>}>
+                          <span class="font-medium text-gray-800 dark:text-gray-100">{money2(r.allocated_budget)}</span>
+                          <span class="text-gray-400 dark:text-gray-500 text-xs">/day</span>
+                        </Show>
                       </td>
                       <td class="p-3.5 text-right">
                         <button
@@ -351,7 +317,7 @@ export default function AdminCampaignManagers() {
 
         <Show when={switchMode() === "denied" && rows().length > 0}>
           <p class="text-xs text-gray-400 dark:text-gray-500 mt-3">
-            Allocated-budget totals and per-manager dashboards appear here automatically once admin view-as is enabled on the backend.
+            Per-manager dashboards appear here automatically once admin view-as is enabled on the backend.
           </p>
         </Show>
       </Show>
@@ -377,23 +343,19 @@ export default function AdminCampaignManagers() {
             </div>
           </div>
 
-          {/* Allocated-budget headline card */}
-          <Show when={allowed()}>
-            <div class="px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-              <p class="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">Allocated budget</p>
-              <Show
-                when={!headlineBudget.loading}
-                fallback={<div class="h-6 w-28 mt-1 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />}
-              >
-                <Show when={headlineBudget()?.basis != null} fallback={<p class="text-xl font-bold text-gray-400 dark:text-gray-500 mt-0.5">—</p>}>
-                  <p class="text-xl font-bold text-gray-900 dark:text-white mt-0.5">
-                    {money0(headlineBudget().total)}<span class="text-sm font-medium text-gray-400 dark:text-gray-500">/day</span>
-                  </p>
-                </Show>
-              </Show>
-              <p class="text-xs text-gray-400 dark:text-gray-500">across {num(selected().client_count)} clients</p>
-            </div>
-          </Show>
+          {/* Allocated-budget headline card — read straight off the roster row. */}
+          <div class="px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+            <p class="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">Allocated budget</p>
+            <Show
+              when={selected().allocated_budget != null}
+              fallback={<p class="text-xl font-bold text-gray-400 dark:text-gray-500 mt-0.5">—</p>}
+            >
+              <p class="text-xl font-bold text-gray-900 dark:text-white mt-0.5">
+                {money2(selected().allocated_budget)}<span class="text-sm font-medium text-gray-400 dark:text-gray-500">/day</span>
+              </p>
+            </Show>
+            <p class="text-xs text-gray-400 dark:text-gray-500">across {num(selected().client_count)} clients</p>
+          </div>
         </div>
 
         {/* If admin switch-mode is disabled, the embedded dashboards can't load —

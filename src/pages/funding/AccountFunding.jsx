@@ -50,7 +50,8 @@ const relTime = (iso) => {
 
 // ─── Funding state machine (UNCHANGED) ────────────────────────────────────────
 const fundingState = (a) => {
-  if (a.is_prepay_account === false || a.funds_available === "card-funded") return "card";
+  if (a.is_prepay_account === false || a.funds_available === "card-funded")
+    return "card";
   if (a.is_prepay_account == null) return "unknown";
   if (a.additional_required_24h == null) return "unknown";
   const n = parseFloat(a.additional_required_24h);
@@ -76,6 +77,16 @@ const CLIENT_TYPES = [
 ];
 const DEFAULT_CLIENT_TYPES = ["cpl", "hybrid"];
 
+// Client-type chip (per-client breakdown rows) — project palette.
+const TYPE_CHIP = {
+  cpl: "bg-[#E9F7F1] text-[#15966A] dark:bg-teal-900/30 dark:text-teal-300",
+  hybrid: "bg-[#ECF2FA] text-[#3E6FB0] dark:bg-indigo-900/30 dark:text-indigo-300",
+  retainer: "bg-[#FBF3E2] text-[#B07A14] dark:bg-amber-900/30 dark:text-amber-300",
+};
+const TYPE_LABEL = { cpl: "CPL", hybrid: "Hybrid", retainer: "Retainer" };
+const sumMoney = (items, key) =>
+  items.reduce((s, b) => s + (parseFloat(b[key]) || 0), 0);
+
 // Account name + avatar use the shared <Avatar> from ClientDashboard.
 
 // ─── Ad-account id pill (click to copy) ───────────────────────────────────────
@@ -98,11 +109,30 @@ function AccountIdPill(props) {
       <Show
         when={!copied()}
         fallback={
-          <svg class="w-3 h-3 flex-none text-[#15966A]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+          <svg
+            class="w-3 h-3 flex-none text-[#15966A]"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.4"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M20 6L9 17l-5-5" />
+          </svg>
         }
       >
-        <svg class="w-3 h-3 flex-none text-[#8593A8] group-hover/id:text-[#3E6FB0]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+        <svg
+          class="w-3 h-3 flex-none text-[#8593A8] group-hover/id:text-[#3E6FB0]"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <rect x="9" y="9" width="13" height="13" rx="2" />
+          <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
         </svg>
       </Show>
       <span class="font-mono text-[11px] leading-none text-[#54657E] dark:text-gray-400 group-hover/id:text-[#3E6FB0] dark:group-hover/id:text-blue-300 truncate">
@@ -121,14 +151,17 @@ function SyncedBadge(props) {
   const dot = () => {
     const m = mins();
     if (m == null) return "#8593A8";
-    if (m <= 30) return "#15966A";   // fresh
-    if (m <= 360) return "#B07A14";  // a few hours
-    return "#AC2334";                // stale
+    if (m <= 30) return "#15966A"; // fresh
+    if (m <= 360) return "#B07A14"; // a few hours
+    return "#AC2334"; // stale
   };
   return (
     <Show when={relTime(props.iso)}>
       <span class="inline-flex items-center gap-1 mt-0.5 text-[10px] font-medium text-[#8593A8] dark:text-gray-500">
-        <span class="w-1.5 h-1.5 rounded-full flex-none" style={`background:${dot()}`} />
+        <span
+          class="w-1.5 h-1.5 rounded-full flex-none"
+          style={`background:${dot()}`}
+        />
         synced {relTime(props.iso)}
       </span>
     </Show>
@@ -152,7 +185,15 @@ function ToLoadCell(props) {
           }
         >
           <span class="inline-flex items-center gap-1 text-[#15966A] dark:text-green-400 font-bold text-xs">
-            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <svg
+              class="w-3.5 h-3.5"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
               <path d="M20 6L9 17l-5-5" />
             </svg>
             Covered
@@ -175,8 +216,13 @@ function AvailableCell(props) {
     <Show
       when={st() === "needs" || st() === "funded"}
       fallback={
-        <Show when={st() === "card"} fallback={<span class="text-[#8593A8] dark:text-gray-500">—</span>}>
-          <span class="text-[#54657E] dark:text-gray-400 text-xs">No wallet</span>
+        <Show
+          when={st() === "card"}
+          fallback={<span class="text-[#8593A8] dark:text-gray-500">—</span>}
+        >
+          <span class="text-[#54657E] dark:text-gray-400 text-xs">
+            No wallet
+          </span>
         </Show>
       }
     >
@@ -192,7 +238,8 @@ function AvailableCell(props) {
 
 // ─── Status badge (account health) ────────────────────────────────────────────
 function StatusBadge(props) {
-  const ok = () => props.account.is_active && props.account.account_status === 1;
+  const ok = () =>
+    props.account.is_active && props.account.account_status === 1;
   return (
     <span
       class={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide ${
@@ -201,7 +248,9 @@ function StatusBadge(props) {
           : "bg-[#FBF3E2] text-[#B07A14] dark:bg-amber-900/30 dark:text-amber-300"
       }`}
     >
-      <span class={`w-1.5 h-1.5 rounded-full inline-block ${ok() ? "bg-[#15966A]" : "bg-[#B07A14]"}`} />
+      <span
+        class={`w-1.5 h-1.5 rounded-full inline-block ${ok() ? "bg-[#15966A]" : "bg-[#B07A14]"}`}
+      />
       {ok() ? "Active" : "Inactive"}
     </span>
   );
@@ -211,7 +260,10 @@ function StatusBadge(props) {
 function Clients(props) {
   const list = () => (Array.isArray(props.clients) ? props.clients : []);
   return (
-    <Show when={list().length > 0} fallback={<span class="text-[#8593A8] dark:text-gray-500">—</span>}>
+    <Show
+      when={list().length > 0}
+      fallback={<span class="text-[#8593A8] dark:text-gray-500">—</span>}
+    >
       <div class="flex flex-col gap-0.5">
         <For each={list()}>
           {(c) => (
@@ -221,6 +273,68 @@ function Clients(props) {
           )}
         </For>
       </div>
+    </Show>
+  );
+}
+
+// ─── Per-client breakdown sub-table (expanded account row) ────────────────────
+// Renders a.client_breakdown — each client's slice of the account: active
+// campaigns + base daily / GST / total required. Rows sum back to the account.
+function ClientBreakdown(props) {
+  const list = () => (Array.isArray(props.items) ? props.items : []);
+  return (
+    <Show
+      when={list().length > 0}
+      fallback={
+        <p class="px-4 py-3 text-xs italic text-[#8593A8] dark:text-gray-500">
+          Per-client breakdown isn’t available for this account yet.
+        </p>
+      }
+    >
+      <table class="min-w-full text-[13px]">
+        <thead>
+          <tr class="text-[#8593A8] dark:text-gray-400 uppercase text-[10px] font-bold tracking-wider">
+            <th class="py-2 pl-4 pr-3 text-left">Client</th>
+            <th class="py-2 px-3 text-right whitespace-nowrap">Active campaigns</th>
+            <th class="py-2 px-3 text-right whitespace-nowrap">Base daily</th>
+            <th class="py-2 px-3 text-right whitespace-nowrap">GST</th>
+            <th class="py-2 pl-3 pr-4 text-right whitespace-nowrap">Total required</th>
+          </tr>
+        </thead>
+        <tbody>
+          <For each={list()}>
+            {(b) => (
+              <tr class="border-t border-[#E2E8F1] dark:border-gray-800">
+                <td class="py-2 pl-4 pr-3 text-left">
+                  <div class="flex items-center gap-2 min-w-0">
+                    <span class="w-1.5 h-1.5 rounded-full bg-[#3E6FB0] flex-none" />
+                    <span class="font-semibold text-[#1A2B45] dark:text-gray-200 truncate" title={b.client}>{b.client}</span>
+                    <Show when={b.client_type}>
+                      <span class={`flex-none text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase ${TYPE_CHIP[b.client_type] ?? TYPE_CHIP.retainer}`}>
+                        {TYPE_LABEL[b.client_type] ?? b.client_type}
+                      </span>
+                    </Show>
+                  </div>
+                </td>
+                <td class="py-2 px-3 text-right text-[#54657E] dark:text-gray-300 tabular-nums">{num(b.active_campaigns)}</td>
+                <td class="py-2 px-3 text-right text-[#1A2B45] dark:text-gray-300 tabular-nums whitespace-nowrap">{money2(b.base_daily_budget) ?? "—"}</td>
+                <td class="py-2 px-3 text-right text-[#54657E] dark:text-gray-400 tabular-nums whitespace-nowrap">{money2(b.gst) ?? "—"}</td>
+                <td class="py-2 pl-3 pr-4 text-right font-bold text-[#14233A] dark:text-gray-100 tabular-nums whitespace-nowrap">{money2(b.total_daily_required) ?? "—"}</td>
+              </tr>
+            )}
+          </For>
+        </tbody>
+        {/* Totals footer — reconciles to the account row above */}
+        <tfoot>
+          <tr class="border-t-2 border-[#D4DDE9] dark:border-gray-700 bg-white/60 dark:bg-gray-900/30">
+            <td class="py-2 pl-4 pr-3 text-left text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">All clients</td>
+            <td class="py-2 px-3 text-right font-bold text-[#14233A] dark:text-gray-100 tabular-nums">{num(list().reduce((s, b) => s + (Number(b.active_campaigns) || 0), 0))}</td>
+            <td class="py-2 px-3 text-right font-bold text-[#14233A] dark:text-gray-100 tabular-nums whitespace-nowrap">{money2(String(sumMoney(list(), "base_daily_budget")))}</td>
+            <td class="py-2 px-3 text-right font-bold text-[#14233A] dark:text-gray-100 tabular-nums whitespace-nowrap">{money2(String(sumMoney(list(), "gst")))}</td>
+            <td class="py-2 pl-3 pr-4 text-right font-extrabold text-[#AC2334] dark:text-red-300 tabular-nums whitespace-nowrap">{money2(String(sumMoney(list(), "total_daily_required")))}</td>
+          </tr>
+        </tfoot>
+      </table>
     </Show>
   );
 }
@@ -235,7 +349,9 @@ export default function AccountFunding() {
   // Toggle a client-type chip; never allow an empty selection.
   const toggleClientType = (key) => {
     setClientTypes((prev) => {
-      const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key];
+      const next = prev.includes(key)
+        ? prev.filter((k) => k !== key)
+        : [...prev, key];
       return next.length ? next : prev;
     });
   };
@@ -261,7 +377,9 @@ export default function AccountFunding() {
 
   // Sort arrow next to a header label: brand-red when active, slate when idle.
   const SortIcon = (props) => (
-    <span class={`ml-1 text-xs font-bold ${columnSort().key === props.col ? "text-[#AC2334] dark:text-red-400" : "text-[#8593A8] dark:text-gray-400"}`}>
+    <span
+      class={`ml-1 text-xs font-bold ${columnSort().key === props.col ? "text-[#AC2334] dark:text-red-400" : "text-[#8593A8] dark:text-gray-400"}`}
+    >
       {getSortIcon(props.col)}
     </span>
   );
@@ -270,9 +388,12 @@ export default function AccountFunding() {
   // / unsynced values resolve to null and are pushed to the bottom either way.
   const sortValue = (a, key) => {
     switch (key) {
-      case "name": return (a.name || "").toLowerCase();
-      case "clients": return Array.isArray(a.clients) ? a.clients.length : 0;
-      case "campaign_count": return Number(a.campaign_count) || 0;
+      case "name":
+        return (a.name || "").toLowerCase();
+      case "clients":
+        return Array.isArray(a.clients) ? a.clients.length : 0;
+      case "campaign_count":
+        return Number(a.campaign_count) || 0;
       case "base_daily_budget":
       case "gst":
       case "total_daily_required":
@@ -281,8 +402,10 @@ export default function AccountFunding() {
         const n = parseFloat(a[key]);
         return isFinite(n) ? n : null;
       }
-      case "status": return isActive(a) ? 1 : 0;
-      default: return null;
+      case "status":
+        return isActive(a) ? 1 : 0;
+      default:
+        return null;
     }
   };
 
@@ -292,11 +415,21 @@ export default function AccountFunding() {
     const sf = stateFilter();
     const statusF = statusFilter();
     const filtered = accounts().filter((a) => {
-      if (q && !a.name?.toLowerCase().includes(q)) return false;
+      if (q) {
+        const accountMatch = a.name?.toLowerCase().includes(q);
+
+        const clientMatch = Array.isArray(a.clients)
+          ? a.clients.some((client) => client?.toLowerCase().includes(q))
+          : false;
+
+        if (!accountMatch && !clientMatch) return false;
+      }
+
       if (needsOnly() && fundingState(a) !== "needs") return false;
       if (sf !== "all" && fundingState(a) !== sf) return false;
       if (statusF === "active" && !isActive(a)) return false;
       if (statusF === "inactive" && isActive(a)) return false;
+
       return true;
     });
 
@@ -314,8 +447,12 @@ export default function AccountFunding() {
         return direction === "asc" ? va - vb : vb - va;
       }
       return direction === "asc"
-        ? String(va).localeCompare(String(vb), undefined, { sensitivity: "base" })
-        : String(vb).localeCompare(String(va), undefined, { sensitivity: "base" });
+        ? String(va).localeCompare(String(vb), undefined, {
+            sensitivity: "base",
+          })
+        : String(vb).localeCompare(String(va), undefined, {
+            sensitivity: "base",
+          });
     });
   });
 
@@ -340,14 +477,19 @@ export default function AccountFunding() {
     }));
   });
 
-  const needsCount = createMemo(() => accounts().filter((a) => fundingState(a) === "needs").length);
+  const needsCount = createMemo(
+    () => accounts().filter((a) => fundingState(a) === "needs").length,
+  );
   const needsPct = createMemo(() => {
     const t = accounts().length || 1;
     return Math.round((needsCount() / t) * 100);
   });
 
   const anyFilter = () =>
-    search().trim() || stateFilter() !== "all" || statusFilter() !== "all" || needsOnly();
+    search().trim() ||
+    stateFilter() !== "all" ||
+    statusFilter() !== "all" ||
+    needsOnly();
 
   const clearFilters = () => {
     setSearch("");
@@ -372,14 +514,34 @@ export default function AccountFunding() {
     };
 
     const header = [
-      "Account", "Ad Account ID", "Clients", "Campaigns", "Base Daily", "GST",
-      "Total Required", "Available", "To Load (24h)", "Funding State", "Status", "Balance Synced",
+      "Account",
+      "Ad Account ID",
+      "Clients",
+      "Campaigns",
+      "Base Daily",
+      "GST",
+      "Total Required",
+      "Available",
+      "To Load (24h)",
+      "Funding State",
+      "Status",
+      "Balance Synced",
     ];
 
     const body = list.map((a) => {
       const st = fundingState(a);
-      const available = st === "card" ? "Card-funded" : st === "unknown" ? "Not synced" : numOrBlank(a.funds_available);
-      const toLoad = st === "needs" ? numOrBlank(a.additional_required_24h) : st === "funded" ? 0 : "N/A";
+      const available =
+        st === "card"
+          ? "Card-funded"
+          : st === "unknown"
+            ? "Not synced"
+            : numOrBlank(a.funds_available);
+      const toLoad =
+        st === "needs"
+          ? numOrBlank(a.additional_required_24h)
+          : st === "funded"
+            ? 0
+            : "N/A";
       return [
         a.name ?? "",
         a.ad_account_id ?? "",
@@ -392,13 +554,18 @@ export default function AccountFunding() {
         toLoad,
         STATE_META[st].label,
         a.is_active && a.account_status === 1 ? "Active" : "Inactive",
-        a.balance_synced_at ? new Date(a.balance_synced_at).toLocaleString("en-IN") : "",
+        a.balance_synced_at
+          ? new Date(a.balance_synced_at).toLocaleString("en-IN")
+          : "",
       ];
     });
 
     const filterBits = [];
     if (search().trim()) filterBits.push(`search: "${search().trim()}"`);
-    if (stateFilter() !== "all") filterBits.push(`state: ${STATE_META[stateFilter()]?.label ?? stateFilter()}`);
+    if (stateFilter() !== "all")
+      filterBits.push(
+        `state: ${STATE_META[stateFilter()]?.label ?? stateFilter()}`,
+      );
     if (statusFilter() !== "all") filterBits.push(`status: ${statusFilter()}`);
 
     const s = summary();
@@ -409,7 +576,10 @@ export default function AccountFunding() {
       ...(s
         ? [
             ["Total 24h Required", parseFloat(s.total_daily_required) || 0],
-            ["Total To Load (prepaid shortfalls)", parseFloat(s.total_additional_required_24h) || 0],
+            [
+              "Total To Load (prepaid shortfalls)",
+              parseFloat(s.total_additional_required_24h) || 0,
+            ],
             ["Accounts", Number(s.accounts) || 0],
             ["Prepaid / Card", `${s.prepaid_accounts} / ${s.card_accounts}`],
           ]
@@ -419,14 +589,35 @@ export default function AccountFunding() {
 
     const ws = XLSX.utils.aoa_to_sheet([...meta, header, ...body]);
     ws["!cols"] = [
-      { wch: 24 }, { wch: 22 }, { wch: 32 }, { wch: 11 }, { wch: 13 }, { wch: 11 },
-      { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 10 }, { wch: 20 },
+      { wch: 24 },
+      { wch: 22 },
+      { wch: 32 },
+      { wch: 11 },
+      { wch: 13 },
+      { wch: 11 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 10 },
+      { wch: 20 },
     ];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Account Funding");
     const today = new Date().toISOString().split("T")[0];
     XLSX.writeFile(wb, `account-funding-${today}.xlsx`);
   };
+
+  // ─── Per-client breakdown expand/collapse ───────────────────────────────────
+  // Reads a.client_breakdown (per-client base_daily_budget / gst /
+  // total_daily_required / active_campaigns that sum to the account totals).
+  // The affordance only appears when the backend returns that array, so the
+  // table is unchanged until the field ships.
+  const [openRows, setOpenRows] = createSignal({});
+  const rowId = (a) => a.ad_account_id ?? a.name;
+  const isOpen = (a) => !!openRows()[rowId(a)];
+  const toggleRow = (a) => setOpenRows((o) => ({ ...o, [rowId(a)]: !o[rowId(a)] }));
+  const hasBreakdown = (a) => Array.isArray(a.client_breakdown) && a.client_breakdown.length > 0;
 
   return (
     <div class="font-sans min-h-screen bg-gray-50 dark:bg-gray-900 p-4 md:p-6 lg:p-8">
@@ -440,7 +631,8 @@ export default function AccountFunding() {
             Account Funding
           </h1>
           <p class="text-sm text-[#54657E] dark:text-gray-400 mt-1">
-            GST-inclusive 24-hour funding requirement per ad account, sorted by shortfall.
+            GST-inclusive 24-hour funding requirement per ad account, sorted by
+            shortfall.
           </p>
         </div>
         <button
@@ -454,7 +646,15 @@ export default function AccountFunding() {
                  transition-all duration-200"
         >
           <span class="flex items-center justify-center w-6 h-6 rounded-lg bg-white/15 group-hover:bg-white/25 transition-colors">
-            <svg class="w-4 h-4 transition-transform duration-200 group-hover:translate-y-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <svg
+              class="w-4 h-4 transition-transform duration-200 group-hover:translate-y-0.5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              stroke-width="2.2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
               <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" />
             </svg>
           </span>
@@ -464,7 +664,9 @@ export default function AccountFunding() {
 
       {/* ════ CLIENT-TYPE FILTER (v3) ════ */}
       <div class="flex flex-wrap items-center gap-2 mb-5">
-        <span class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400 mr-1">Client type</span>
+        <span class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400 mr-1">
+          Client type
+        </span>
         <For each={CLIENT_TYPES}>
           {(t) => {
             const on = () => clientTypes().includes(t.key);
@@ -478,8 +680,21 @@ export default function AccountFunding() {
                     : "bg-gray-50 dark:bg-gray-800 text-[#54657E] dark:text-gray-300 border-[#E2E8F1] dark:border-gray-700 hover:border-[#14233A]/40"
                 }`}
               >
-                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                  <Show when={on()} fallback={<circle cx="12" cy="12" r="9" stroke-width="1.6" />}>
+                <svg
+                  class="w-3.5 h-3.5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <Show
+                    when={on()}
+                    fallback={
+                      <circle cx="12" cy="12" r="9" stroke-width="1.6" />
+                    }
+                  >
                     <path d="M20 6L9 17l-5-5" />
                   </Show>
                 </svg>
@@ -507,33 +722,65 @@ export default function AccountFunding() {
           {/* KPI strip */}
           <div class="flex flex-wrap items-stretch gap-y-5">
             <div class="px-0 sm:pr-7 flex-1 min-w-[160px]">
-              <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">Total to load · next 24h</p>
+              <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
+                Total to load · next 24h
+              </p>
               <p class="text-xl sm:text-2xl font-bold text-[#AC2334] dark:text-red-400   mt-2 ">
                 {moneyWhole(summary().total_additional_required_24h)}
               </p>
-              <p class="text-xs text-[#54657E] dark:text-gray-400 mt-2">prepaid shortfalls only</p>
+              <p class="text-xs text-[#54657E] dark:text-gray-400 mt-2">
+                prepaid shortfalls only
+              </p>
             </div>
             <div class="px-5 sm:px-7 flex-1 min-w-[140px] border-l border-[#E2E8F1] dark:border-gray-700">
-              <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">Total 24h required</p>
-              <p class="text-xl font-bold text-gray-700 dark:text-white mt-2 ">{moneyWhole(summary().total_daily_required)}</p>
-              <p class="text-xs text-[#54657E] dark:text-gray-400 mt-2">base + GST</p>
+              <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
+                Total 24h required
+              </p>
+              <p class="text-xl font-bold text-gray-700 dark:text-white mt-2 ">
+                {moneyWhole(summary().total_daily_required)}
+              </p>
+              <p class="text-xs text-[#54657E] dark:text-gray-400 mt-2">
+                base + GST
+              </p>
             </div>
             <div class="px-5 sm:px-7 flex-1 min-w-[140px] border-l border-[#E2E8F1] dark:border-gray-700">
-              <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">Total base daily</p>
-              <p class="text-xl font-bold text-gray-700 dark:text-white mt-2 ">{moneyWhole(summary().total_base_daily_budget)}</p>
-              <p class="text-xs text-[#54657E] dark:text-gray-400 mt-2">before GST</p>
+              <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
+                Total base daily
+              </p>
+              <p class="text-xl font-bold text-gray-700 dark:text-white mt-2 ">
+                {moneyWhole(summary().total_base_daily_budget)}
+              </p>
+              <p class="text-xs text-[#54657E] dark:text-gray-400 mt-2">
+                before GST
+              </p>
             </div>
             <div class="px-5 sm:px-7 flex-1 min-w-[140px] border-l border-[#E2E8F1] dark:border-gray-700">
-              <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">Total GST (18%)</p>
-              <p class="text-xl font-bold text-gray-700 dark:text-white  mt-2 ">{moneyWhole(summary().total_gst)}</p>
-              <p class="text-xs text-[#54657E] dark:text-gray-400 mt-2">on base daily budget</p>
+              <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
+                Total GST (18%)
+              </p>
+              <p class="text-xl font-bold text-gray-700 dark:text-white  mt-2 ">
+                {moneyWhole(summary().total_gst)}
+              </p>
+              <p class="text-xs text-[#54657E] dark:text-gray-400 mt-2">
+                on base daily budget
+              </p>
             </div>
             <div class="px-5 sm:pl-7 flex-1 min-w-[150px] border-l border-[#E2E8F1] dark:border-gray-700">
-              <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">Accounts</p>
-              <p class="text-xl font-bold text-[#14233A] dark:text-white  mt-2 ">{num(summary().accounts)}</p>
+              <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
+                Accounts
+              </p>
+              <p class="text-xl font-bold text-[#14233A] dark:text-white  mt-2 ">
+                {num(summary().accounts)}
+              </p>
               <p class="text-xs text-[#54657E] dark:text-gray-400 mt-2">
-                <b class="text-[#1A2B45] dark:text-gray-200 font-bold">{num(summary().prepaid_accounts)}</b> prepaid ·{" "}
-                <b class="text-[#1A2B45] dark:text-gray-200 font-bold">{num(summary().card_accounts)}</b> card
+                <b class="text-[#1A2B45] dark:text-gray-200 font-bold">
+                  {num(summary().prepaid_accounts)}
+                </b>{" "}
+                prepaid ·{" "}
+                <b class="text-[#1A2B45] dark:text-gray-200 font-bold">
+                  {num(summary().card_accounts)}
+                </b>{" "}
+                card
               </p>
             </div>
           </div>
@@ -544,13 +791,18 @@ export default function AccountFunding() {
               <span class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
                 Funding health across {num(accounts().length)} accounts
               </span>
-              <span class="text-xs font-semibold text-[#54657E] dark:text-gray-400">{needsPct()}% need funding</span>
+              <span class="text-xs font-semibold text-[#54657E] dark:text-gray-400">
+                {needsPct()}% need funding
+              </span>
             </div>
             <div class="flex h-2 rounded-full overflow-hidden bg-[#E2E8F1] dark:bg-gray-700">
               <For each={healthSegments()}>
                 {(seg) => (
                   <Show when={seg.pct > 0}>
-                    <div style={`width:${seg.pct}%;background:${seg.color}`} title={`${seg.label}: ${seg.count}`} />
+                    <div
+                      style={`width:${seg.pct}%;background:${seg.color}`}
+                      title={`${seg.label}: ${seg.count}`}
+                    />
                   </Show>
                 )}
               </For>
@@ -559,8 +811,14 @@ export default function AccountFunding() {
               <For each={healthSegments()}>
                 {(seg) => (
                   <span class="inline-flex items-center gap-2 text-xs font-medium text-[#54657E] dark:text-gray-400">
-                    <span class="w-2.5 h-2.5 rounded" style={`background:${seg.color}`} />
-                    {seg.label} <b class="text-[#14233A] dark:text-white font-extrabold tabular-nums">{num(seg.count)}</b>
+                    <span
+                      class="w-2.5 h-2.5 rounded"
+                      style={`background:${seg.color}`}
+                    />
+                    {seg.label}{" "}
+                    <b class="text-[#14233A] dark:text-white font-extrabold tabular-nums">
+                      {num(seg.count)}
+                    </b>
                   </span>
                 )}
               </For>
@@ -572,13 +830,19 @@ export default function AccountFunding() {
       {/* ════ FILTER TOOLBAR ════ */}
       <div class="bg-gray-50 dark:bg-gray-900 rounded-xl border border-[#E2E8F1] dark:border-gray-700 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] p-3.5 mb-4 flex flex-wrap items-center gap-3">
         <div class="relative flex-1 min-w-[220px]">
-          <svg class="w-4 h-4 text-[#8593A8] absolute left-3 top-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <svg
+            class="w-4 h-4 text-[#8593A8] absolute left-3 top-1/2 -translate-y-1/2"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            stroke-width="2"
+          >
             <circle cx="11" cy="11" r="8" />
             <path d="M21 21l-4.35-4.35" />
           </svg>
           <input
             type="text"
-            placeholder="Search by account name…"
+            placeholder="Search by account name or client..."
             value={search()}
             onInput={(e) => setSearch(e.target.value)}
             class="w-full pl-9 pr-3 py-2.5 text-sm rounded-lg border border-[#E2E8F1] dark:border-gray-700 bg-[#F8FAFC] dark:bg-gray-800 text-[#1A2B45] dark:text-white placeholder:text-[#8593A8] focus:outline-none focus:ring-2 focus:ring-[#AC2334]/25 focus:border-[#AC2334] focus:bg-gray-50"
@@ -587,7 +851,10 @@ export default function AccountFunding() {
 
         <div class="flex flex-wrap items-center gap-1.5">
           <button
-            onClick={() => { setStateFilter("all"); setNeedsOnly(false); }}
+            onClick={() => {
+              setStateFilter("all");
+              setNeedsOnly(false);
+            }}
             class={`inline-flex items-center gap-2 px-3.5 py-2 rounded-full text-[13px] font-semibold border transition-colors ${
               stateFilter() === "all"
                 ? "bg-[#14233A] text-white border-[#14233A]"
@@ -595,7 +862,9 @@ export default function AccountFunding() {
             }`}
           >
             All
-            <span class={`text-[11px] font-extrabold px-1.5 py-px rounded-full ${stateFilter() === "all" ? "bg-white/20 text-white" : "bg-[#F1F4F9] dark:bg-gray-700 text-[#8593A8]"}`}>
+            <span
+              class={`text-[11px] font-extrabold px-1.5 py-px rounded-full ${stateFilter() === "all" ? "bg-white/20 text-white" : "bg-[#F1F4F9] dark:bg-gray-700 text-[#8593A8]"}`}
+            >
               {stateCounts().all}
             </span>
           </button>
@@ -603,7 +872,10 @@ export default function AccountFunding() {
           <For each={STATE_ORDER}>
             {(key) => (
               <button
-                onClick={() => { setStateFilter(key); setNeedsOnly(false); }}
+                onClick={() => {
+                  setStateFilter(key);
+                  setNeedsOnly(false);
+                }}
                 class={`inline-flex items-center gap-2 px-3.5 py-2 rounded-full text-[13px] font-semibold border transition-colors ${
                   stateFilter() === key
                     ? key === "needs"
@@ -613,7 +885,9 @@ export default function AccountFunding() {
                 }`}
               >
                 {STATE_META[key].short}
-                <span class={`text-[11px] font-extrabold px-1.5 py-px rounded-full ${stateFilter() === key ? "bg-white/20 text-white" : "bg-[#F1F4F9] dark:bg-gray-700 text-[#8593A8]"}`}>
+                <span
+                  class={`text-[11px] font-extrabold px-1.5 py-px rounded-full ${stateFilter() === key ? "bg-white/20 text-white" : "bg-[#F1F4F9] dark:bg-gray-700 text-[#8593A8]"}`}
+                >
                   {stateCounts()[key]}
                 </span>
               </button>
@@ -631,14 +905,29 @@ export default function AccountFunding() {
             <option value="active">Active only</option>
             <option value="inactive">Inactive only</option>
           </select>
-          <svg class="w-4 h-4 text-[#8593A8] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+          <svg
+            class="w-4 h-4 text-[#8593A8] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M19 9l-7 7-7-7"
+            />
           </svg>
         </div>
 
         <div class="flex items-center gap-3 ml-auto">
           <Show when={anyFilter()}>
-            <button onClick={clearFilters} class="text-[13px] font-semibold text-[#AC2334] hover:underline">Clear</button>
+            <button
+              onClick={clearFilters}
+              class="text-[13px] font-semibold text-[#AC2334] hover:underline"
+            >
+              Clear
+            </button>
           </Show>
           <span class="text-sm font-bold text-[#8593A8] dark:text-gray-500 whitespace-nowrap">
             <b class="text-[#14233A] dark:text-white">{rows().length}</b> shown
@@ -654,37 +943,75 @@ export default function AccountFunding() {
       </Show>
 
       {/* ════ DESKTOP TABLE ════ */}
-      <div class="hidden md:block bg-gray-50 dark:bg-gray-900 rounded-2xl border border-[#E2E8F1] dark:border-gray-700 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] overflow-x-auto">
+      <div class="hidden md:block bg-gray-50 dark:bg-gray-900 rounded-2xl border border-[#E2E8F1] dark:border-gray-700 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] overflow-auto max-h-[calc(100vh-130px)]">
         <table class="min-w-full text-sm border-separate border-spacing-0">
           <thead>
             <tr class="bg-[#F8FAFC] dark:bg-gray-800 text-[#54657E] dark:text-gray-400 uppercase text-xs font-semibold tracking-wider">
-              <th class="p-4 text-center whitespace-nowrap w-16 border-b border-[#D4DDE9] dark:border-gray-700">S.No</th>
-              <th onClick={() => handleSort("name")} class="p-4 text-left whitespace-nowrap min-w-[220px] border-b border-[#D4DDE9] dark:border-gray-700 cursor-pointer select-none hover:text-[#14233A] dark:hover:text-gray-200 transition-colors">
-                Account<SortIcon col="name" />
+              <th class="p-4 text-center whitespace-nowrap w-16 sticky top-0 z-20 bg-[#F8FAFC] dark:bg-gray-800 border-b border-[#D4DDE9] dark:border-gray-700">
+                S.No
               </th>
-              <th onClick={() => handleSort("clients")} class="p-4 text-left whitespace-nowrap min-w-[200px] border-b border-[#D4DDE9] dark:border-gray-700 cursor-pointer select-none hover:text-[#14233A] dark:hover:text-gray-200 transition-colors">
-                Clients<SortIcon col="clients" />
+              <th
+                onClick={() => handleSort("name")}
+                class="p-4 text-left whitespace-nowrap min-w-[220px] sticky top-0 z-20 bg-[#F8FAFC] dark:bg-gray-800 border-b border-[#D4DDE9] dark:border-gray-700 cursor-pointer select-none hover:text-[#14233A] dark:hover:text-gray-200 transition-colors"
+              >
+                Account
+                <SortIcon col="name" />
               </th>
-              <th onClick={() => handleSort("campaign_count")} class="p-4 text-right whitespace-nowrap border-b border-[#D4DDE9] dark:border-gray-700 cursor-pointer select-none hover:text-[#14233A] dark:hover:text-gray-200 transition-colors">
-                Campaigns<SortIcon col="campaign_count" />
+              <th
+                onClick={() => handleSort("clients")}
+                class="p-4 text-left whitespace-nowrap min-w-[200px] sticky top-0 z-20 bg-[#F8FAFC] dark:bg-gray-800 border-b border-[#D4DDE9] dark:border-gray-700 cursor-pointer select-none hover:text-[#14233A] dark:hover:text-gray-200 transition-colors"
+              >
+                Clients
+                <SortIcon col="clients" />
               </th>
-              <th onClick={() => handleSort("base_daily_budget")} class="p-4 text-right whitespace-nowrap border-b border-[#D4DDE9] dark:border-gray-700 cursor-pointer select-none hover:text-[#14233A] dark:hover:text-gray-200 transition-colors">
-                Base Daily<SortIcon col="base_daily_budget" />
+              <th
+                onClick={() => handleSort("campaign_count")}
+                class="p-4 text-right whitespace-nowrap sticky top-0 z-20 bg-[#F8FAFC] dark:bg-gray-800 border-b border-[#D4DDE9] dark:border-gray-700 cursor-pointer select-none hover:text-[#14233A] dark:hover:text-gray-200 transition-colors"
+              >
+                Campaigns
+                <SortIcon col="campaign_count" />
               </th>
-              <th onClick={() => handleSort("gst")} class="p-4 text-right whitespace-nowrap border-b border-[#D4DDE9] dark:border-gray-700 cursor-pointer select-none hover:text-[#14233A] dark:hover:text-gray-200 transition-colors">
-                GST<SortIcon col="gst" />
+              <th
+                onClick={() => handleSort("base_daily_budget")}
+                class="p-4 text-right whitespace-nowrap sticky top-0 z-20 bg-[#F8FAFC] dark:bg-gray-800 border-b border-[#D4DDE9] dark:border-gray-700 cursor-pointer select-none hover:text-[#14233A] dark:hover:text-gray-200 transition-colors"
+              >
+                Base Daily
+                <SortIcon col="base_daily_budget" />
               </th>
-              <th onClick={() => handleSort("total_daily_required")} class="p-4 text-right whitespace-nowrap border-b border-[#D4DDE9] dark:border-gray-700 cursor-pointer select-none hover:text-[#14233A] dark:hover:text-gray-200 transition-colors">
-                Total Required<SortIcon col="total_daily_required" />
+              <th
+                onClick={() => handleSort("gst")}
+                class="p-4 text-right whitespace-nowrap sticky top-0 z-20 bg-[#F8FAFC] dark:bg-gray-800 border-b border-[#D4DDE9] dark:border-gray-700 cursor-pointer select-none hover:text-[#14233A] dark:hover:text-gray-200 transition-colors"
+              >
+                GST
+                <SortIcon col="gst" />
               </th>
-              <th onClick={() => handleSort("funds_available")} class="p-4 text-right whitespace-nowrap border-b border-[#D4DDE9] dark:border-gray-700 cursor-pointer select-none hover:text-[#14233A] dark:hover:text-gray-200 transition-colors">
-                Available<SortIcon col="funds_available" />
+              <th
+                onClick={() => handleSort("total_daily_required")}
+                class="p-4 text-right whitespace-nowrap sticky top-0 z-20 bg-[#F8FAFC] dark:bg-gray-800 border-b border-[#D4DDE9] dark:border-gray-700 cursor-pointer select-none hover:text-[#14233A] dark:hover:text-gray-200 transition-colors"
+              >
+                Total Required
+                <SortIcon col="total_daily_required" />
               </th>
-              <th onClick={() => handleSort("additional_required_24h")} class="p-4 text-right whitespace-nowrap border-b border-[#D4DDE9] dark:border-gray-700 cursor-pointer select-none hover:text-[#14233A] dark:hover:text-gray-200 transition-colors">
-                To Load (24h)<SortIcon col="additional_required_24h" />
+              <th
+                onClick={() => handleSort("funds_available")}
+                class="p-4 text-right whitespace-nowrap sticky top-0 z-20 bg-[#F8FAFC] dark:bg-gray-800 border-b border-[#D4DDE9] dark:border-gray-700 cursor-pointer select-none hover:text-[#14233A] dark:hover:text-gray-200 transition-colors"
+              >
+                Available
+                <SortIcon col="funds_available" />
               </th>
-              <th onClick={() => handleSort("status")} class="p-4 text-center whitespace-nowrap border-b border-[#D4DDE9] dark:border-gray-700 cursor-pointer select-none hover:text-[#14233A] dark:hover:text-gray-200 transition-colors">
-                Status<SortIcon col="status" />
+              <th
+                onClick={() => handleSort("additional_required_24h")}
+                class="p-4 text-right whitespace-nowrap sticky top-0 z-20 bg-[#F8FAFC] dark:bg-gray-800 border-b border-[#D4DDE9] dark:border-gray-700 cursor-pointer select-none hover:text-[#14233A] dark:hover:text-gray-200 transition-colors"
+              >
+                To Load (24h)
+                <SortIcon col="additional_required_24h" />
+              </th>
+              <th
+                onClick={() => handleSort("status")}
+                class="p-4 text-center whitespace-nowrap sticky top-0 z-20 bg-[#F8FAFC] dark:bg-gray-800 border-b border-[#D4DDE9] dark:border-gray-700 cursor-pointer select-none hover:text-[#14233A] dark:hover:text-gray-200 transition-colors"
+              >
+                Status
+                <SortIcon col="status" />
               </th>
             </tr>
           </thead>
@@ -699,7 +1026,9 @@ export default function AccountFunding() {
                       <For each={Array(10).fill(0)}>
                         {(_, idx) => (
                           <td class="p-4 border-b border-[#E2E8F1] dark:border-gray-800">
-                            <div class={`h-3 bg-gray-200 dark:bg-gray-700 rounded ${idx() === 1 ? "w-40" : idx() === 2 ? "w-32" : "w-16 ml-auto"}`} />
+                            <div
+                              class={`h-3 bg-gray-200 dark:bg-gray-700 rounded ${idx() === 1 ? "w-40" : idx() === 2 ? "w-32" : "w-16 ml-auto"}`}
+                            />
                           </td>
                         )}
                       </For>
@@ -713,20 +1042,37 @@ export default function AccountFunding() {
               <For each={rows()}>
                 {(a, i) => {
                   const st = fundingState(a);
+                  const expandable = hasBreakdown(a);
                   return (
-                    <tr class="group hover:bg-[#F6F9FC] dark:hover:bg-gray-800/40 transition-colors">
+                    <>
+                    <tr
+                      onClick={() => expandable && toggleRow(a)}
+                      class={`group transition-colors ${expandable ? "cursor-pointer select-none" : ""} ${isOpen(a) ? "bg-[#F6F9FC] dark:bg-gray-800/40" : "hover:bg-[#F6F9FC] dark:hover:bg-gray-800/40"}`}
+                    >
                       {/* S.No */}
-                      <td class="p-4 text-center align-middle border-b border-[#E2E8F1] dark:border-gray-800">
+                      <td class="px-4 py-2.5 text-center align-middle border-b border-[#E2E8F1] dark:border-gray-800">
                         <span class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-[#FBEEF0] dark:bg-red-900/30 text-[#AC2334] dark:text-red-300 text-xs font-extrabold">
                           {i() + 1}
                         </span>
                       </td>
                       {/* Account — Avatar + name (ClientDashboard style) */}
-                      <td class="p-4 align-middle border-b border-[#E2E8F1] dark:border-gray-800">
-                        <div class="flex items-center gap-4">
+                      <td class="px-4 py-2.5 align-middle border-b border-[#E2E8F1] dark:border-gray-800">
+                        <div class="flex items-center gap-3">
+                          <Show when={expandable} fallback={<span class="w-4 flex-none" />}>
+                            <svg
+                              class="w-4 h-4 flex-none text-[#8593A8] transition-transform"
+                              style={{ transform: isOpen(a) ? "rotate(90deg)" : "rotate(0deg)" }}
+                              fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
+                            >
+                              <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+                            </svg>
+                          </Show>
                           <Avatar name={a.name} />
                           <div class="min-w-0">
-                            <span class="block text-blue-900 dark:text-gray-100 font-semibold truncate" title={a.name}>
+                            <span
+                              class="block text-blue-900 dark:text-gray-100 font-semibold truncate"
+                              title={a.name}
+                            >
                               {a.name}
                             </span>
                             <Show when={a.ad_account_id}>
@@ -736,23 +1082,55 @@ export default function AccountFunding() {
                         </div>
                       </td>
                       {/* Clients — vertical plain text */}
-                      <td class="p-4 align-middle border-b border-[#E2E8F1] dark:border-gray-800"><Clients clients={a.clients} /></td>
-                      <td class="p-4 text-right align-middle text-[#54657E] dark:text-gray-300 font-semibold tabular-nums border-b border-[#E2E8F1] dark:border-gray-800">{num(a.campaign_count)}</td>
-                      <td class="p-4 text-right align-middle text-[#1A2B45] dark:text-gray-300 whitespace-nowrap  border-b border-[#E2E8F1] dark:border-gray-800">{money2(a.base_daily_budget) ?? "—"}</td>
-                      <td class="p-4 text-right align-middle text-[#54657E] dark:text-gray-400 whitespace-nowrap  border-b border-[#E2E8F1] dark:border-gray-800">{money2(a.gst) ?? "—"}</td>
-                      <td class="p-4 text-right align-middle text-[#14233A] dark:text-gray-100 font-semibold whitespace-nowrap  border-b border-[#E2E8F1] dark:border-gray-800">{money2(a.total_daily_required) ?? "—"}</td>
-                      <td class="p-4 text-right align-middle whitespace-nowrap border-b font-semibold border-[#E2E8F1] dark:border-gray-800"><AvailableCell account={a} state={st} /></td>
-                      <td class="p-4 text-right align-middle whitespace-nowrap border-b font-semibold border-[#E2E8F1] dark:border-gray-800"><ToLoadCell account={a} state={st} /></td>
-                      <td class="p-4 text-center align-middle border-b border-[#E2E8F1] dark:border-gray-800"><StatusBadge account={a} /></td>
+                      <td class="px-4 py-2.5 align-middle border-b border-[#E2E8F1] dark:border-gray-800">
+                        <Clients clients={a.clients} />
+                      </td>
+                      <td class="px-4 py-2.5 text-right align-middle text-[#54657E] dark:text-gray-300 font-semibold tabular-nums border-b border-[#E2E8F1] dark:border-gray-800">
+                        {num(a.campaign_count)}
+                      </td>
+                      <td class="px-4 py-2.5 text-right align-middle text-[#1A2B45] dark:text-gray-300 whitespace-nowrap  border-b border-[#E2E8F1] dark:border-gray-800">
+                        {money2(a.base_daily_budget) ?? "—"}
+                      </td>
+                      <td class="px-4 py-2.5 text-right align-middle text-[#54657E] dark:text-gray-400 whitespace-nowrap  border-b border-[#E2E8F1] dark:border-gray-800">
+                        {money2(a.gst) ?? "—"}
+                      </td>
+                      <td class="px-4 py-2.5 text-right align-middle text-[#14233A] dark:text-gray-100 font-semibold whitespace-nowrap  border-b border-[#E2E8F1] dark:border-gray-800">
+                        {money2(a.total_daily_required) ?? "—"}
+                      </td>
+                      <td class="px-4 py-2.5 text-right align-middle whitespace-nowrap border-b font-semibold border-[#E2E8F1] dark:border-gray-800">
+                        <AvailableCell account={a} state={st} />
+                      </td>
+                      <td class="px-4 py-2.5 text-right align-middle whitespace-nowrap border-b font-semibold border-[#E2E8F1] dark:border-gray-800">
+                        <ToLoadCell account={a} state={st} />
+                      </td>
+                      <td class="px-4 py-2.5 text-center align-middle border-b border-[#E2E8F1] dark:border-gray-800">
+                        <StatusBadge account={a} />
+                      </td>
                     </tr>
+                    <Show when={expandable && isOpen(a)}>
+                      <tr>
+                        <td colspan="10" class="p-0 bg-[#F8FAFC] dark:bg-gray-800/40 border-b border-[#E2E8F1] dark:border-gray-800">
+                          <div class="px-6 py-3">
+                            <p class="text-[10px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-500 mb-1 pl-4">Per-client allocation</p>
+                            <ClientBreakdown items={a.client_breakdown} />
+                          </div>
+                        </td>
+                      </tr>
+                    </Show>
+                    </>
                   );
                 }}
               </For>
 
               <Show when={rows().length === 0}>
                 <tr>
-                  <td colspan="10" class="py-16 text-center text-[#8593A8] dark:text-gray-500">
-                    {anyFilter() ? "No accounts match the current filters." : "No accounts to show."}
+                  <td
+                    colspan="10"
+                    class="py-16 text-center text-[#8593A8] dark:text-gray-500"
+                  >
+                    {anyFilter()
+                      ? "No accounts match the current filters."
+                      : "No accounts to show."}
                   </td>
                 </tr>
               </Show>
@@ -767,7 +1145,9 @@ export default function AccountFunding() {
           when={!data.loading}
           fallback={
             <For each={Array(5).fill(0)}>
-              {() => <div class="h-32 rounded-xl bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 animate-pulse" />}
+              {() => (
+                <div class="h-32 rounded-xl bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 animate-pulse" />
+              )}
             </For>
           }
         >
@@ -777,10 +1157,14 @@ export default function AccountFunding() {
               return (
                 <div class="rounded-xl border border-[#E2E8F1] dark:border-gray-700 bg-gray-50 dark:bg-gray-900 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] p-4">
                   <div class="flex items-center gap-3">
-                    <span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-[#FBEEF0] dark:bg-red-900/30 text-[#AC2334] dark:text-red-300 text-[11px] font-extrabold flex-none">{i() + 1}</span>
+                    <span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-[#FBEEF0] dark:bg-red-900/30 text-[#AC2334] dark:text-red-300 text-[11px] font-extrabold flex-none">
+                      {i() + 1}
+                    </span>
                     <Avatar name={a.name} size="w-9 h-9" />
                     <div class="min-w-0">
-                      <span class="block text-blue-900 dark:text-gray-100 font-semibold truncate">{a.name}</span>
+                      <span class="block text-blue-900 dark:text-gray-100 font-semibold truncate">
+                        {a.name}
+                      </span>
                       <Show when={a.ad_account_id}>
                         <AccountIdPill id={a.ad_account_id} />
                       </Show>
@@ -788,21 +1172,67 @@ export default function AccountFunding() {
                   </div>
 
                   <div class="mt-3 pt-3 border-t border-[#E2E8F1] dark:border-gray-700 flex items-baseline justify-between">
-                    <span class="text-xs font-semibold uppercase tracking-wide text-[#8593A8] dark:text-gray-400">To Load (24h)</span>
-                    <span class="text-base"><ToLoadCell account={a} state={st} /></span>
+                    <span class="text-xs font-semibold uppercase tracking-wide text-[#8593A8] dark:text-gray-400">
+                      To Load (24h)
+                    </span>
+                    <span class="text-base">
+                      <ToLoadCell account={a} state={st} />
+                    </span>
                   </div>
 
                   <div class="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
-                    <div class="flex justify-between"><span class="text-[#8593A8] dark:text-gray-500">Total Req.</span><span class="font-semibold text-[#1A2B45] dark:text-gray-300 tabular-nums">{money2(a.total_daily_required) ?? "—"}</span></div>
-                    <div class="flex justify-between"><span class="text-[#8593A8] dark:text-gray-500">Available</span><span><AvailableCell account={a} state={st} /></span></div>
-                    <div class="flex justify-between"><span class="text-[#8593A8] dark:text-gray-500">Base</span><span class="font-semibold text-[#1A2B45] dark:text-gray-300 tabular-nums">{money2(a.base_daily_budget) ?? "—"}</span></div>
-                    <div class="flex justify-between"><span class="text-[#8593A8] dark:text-gray-500">GST</span><span class="font-semibold text-[#1A2B45] dark:text-gray-300 tabular-nums">{money2(a.gst) ?? "—"}</span></div>
+                    <div class="flex justify-between">
+                      <span class="text-[#8593A8] dark:text-gray-500">
+                        Total Req.
+                      </span>
+                      <span class="font-semibold text-[#1A2B45] dark:text-gray-300 tabular-nums">
+                        {money2(a.total_daily_required) ?? "—"}
+                      </span>
+                    </div>
+                    <div class="flex justify-between">
+                      <span class="text-[#8593A8] dark:text-gray-500">
+                        Available
+                      </span>
+                      <span>
+                        <AvailableCell account={a} state={st} />
+                      </span>
+                    </div>
+                    <div class="flex justify-between">
+                      <span class="text-[#8593A8] dark:text-gray-500">
+                        Base
+                      </span>
+                      <span class="font-semibold text-[#1A2B45] dark:text-gray-300 tabular-nums">
+                        {money2(a.base_daily_budget) ?? "—"}
+                      </span>
+                    </div>
+                    <div class="flex justify-between">
+                      <span class="text-[#8593A8] dark:text-gray-500">GST</span>
+                      <span class="font-semibold text-[#1A2B45] dark:text-gray-300 tabular-nums">
+                        {money2(a.gst) ?? "—"}
+                      </span>
+                    </div>
                   </div>
 
                   <div class="mt-3 pt-3 border-t border-[#E2E8F1] dark:border-gray-700">
-                    <p class="text-[10px] font-bold uppercase tracking-wide text-[#8593A8] dark:text-gray-500 mb-1.5">Clients</p>
+                    <p class="text-[10px] font-bold uppercase tracking-wide text-[#8593A8] dark:text-gray-500 mb-1.5">
+                      Clients
+                    </p>
                     <Clients clients={a.clients} />
                   </div>
+
+                  <Show when={hasBreakdown(a)}>
+                    <div class="mt-3 pt-3 border-t border-[#E2E8F1] dark:border-gray-700">
+                      <button onClick={() => toggleRow(a)} class="flex items-center gap-1.5 text-xs font-bold text-[#3E6FB0] dark:text-blue-300">
+                        <svg class="w-3.5 h-3.5 transition-transform" style={{ transform: isOpen(a) ? "rotate(90deg)" : "rotate(0deg)" }} fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
+                        {isOpen(a) ? "Hide" : "Show"} per-client allocation
+                      </button>
+                      <Show when={isOpen(a)}>
+                        <div class="mt-2 -mx-4 overflow-x-auto border-t border-[#E2E8F1] dark:border-gray-700">
+                          <ClientBreakdown items={a.client_breakdown} />
+                        </div>
+                      </Show>
+                    </div>
+                  </Show>
 
                   <div class="mt-3 flex justify-end">
                     <StatusBadge account={a} />
@@ -813,7 +1243,9 @@ export default function AccountFunding() {
           </For>
           <Show when={rows().length === 0}>
             <div class="py-16 text-center text-[#8593A8] dark:text-gray-500">
-              {anyFilter() ? "No accounts match the current filters." : "No accounts to show."}
+              {anyFilter()
+                ? "No accounts match the current filters."
+                : "No accounts to show."}
             </div>
           </Show>
         </Show>

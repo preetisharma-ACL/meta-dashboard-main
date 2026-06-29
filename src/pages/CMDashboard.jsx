@@ -257,7 +257,7 @@ export default function CMDashboard() {
           </thead>
 
           <Show
-            when={!data.loading}
+            when={!data.loading} 
             fallback={
               <tbody>
                 <For each={Array(8).fill(0)}>
