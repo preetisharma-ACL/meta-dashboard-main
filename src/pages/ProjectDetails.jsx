@@ -273,6 +273,18 @@ export default function ProjectDetails() {
     return t && t < today ? t : today;
   };
 
+  const formatDateTime = (date) => {
+    if (!date) return "No Date";
+
+    return new Date(date).toLocaleString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
+  };
   // ── Re-scope to the selected date range. premium_metrics is server-computed
   //    per range, so changing the filter must re-fetch the list (raw columns
   //    stay reactive via their own client-side insight filtering). Tracks only
@@ -365,6 +377,7 @@ export default function ProjectDetails() {
                   .map((s) => s.trim())
                   .join(" | ") || "No Name",
           start_date: item.start_date || "No Date",
+          paused_date: formatDateTime(item.paused_at),
           stop_date: item.stop_date || "No date",
           location: item.project_name || "-",
           ad_account: item.ad_account_name || "-",
@@ -457,6 +470,7 @@ export default function ProjectDetails() {
                   : "No Name",
             ad_account: item.ad_account_name || "-",
             start_date: item.start_date || "No Date",
+            paused_date: formatDateTime(item.paused_at),
             stop_date: item.stop_date || "No date",
             status: item.status === "paused" ? "paused" : "Live",
             cpl: item.cpl || 0,
@@ -734,7 +748,8 @@ export default function ProjectDetails() {
     const firstOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const firstOfPrevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const lastOfPrevMonth = new Date(now.getFullYear(), now.getMonth(), 0);
-    if (sameDay(from, firstOfThisMonth) && sameDay(to, today)) return "This Month";
+    if (sameDay(from, firstOfThisMonth) && sameDay(to, today))
+      return "This Month";
     if (sameDay(from, firstOfPrevMonth) && sameDay(to, lastOfPrevMonth))
       return "Last Month";
 
@@ -1223,6 +1238,9 @@ export default function ProjectDetails() {
               <th class="p-3" onClick={() => handleSort("start_date")}>
                 Start Date {getSortIcon("start_date")}
               </th>
+              <th class="p-3" onClick={() => handleSort("paused_date")}>
+                Paused Date {getSortIcon("paused_date")}
+              </th>
               {userRole() === "admin" && (
                 <th class="p-3" onClick={() => handleSort("ad_account")}>
                   Ad Account {getSortIcon("ad_account")}
@@ -1296,6 +1314,7 @@ export default function ProjectDetails() {
                     </div>
                   </td>
                   <td class="p-3 ">{row.start_date || "No Date"}</td>
+                  <td class="p-3 ">{row.paused_date || "No Date"}</td>
                   {userRole() === "admin" && (
                     <td class="p-3 whitespace-nowrap ">{row.ad_account}</td>
                   )}
@@ -1319,8 +1338,10 @@ export default function ProjectDetails() {
                   {userRole() === "client" && (
                     <td class="p-3">{row.totalReach}</td>
                   )}
-                   <Show when={!iscpl()}>
-                  <td class="p-3">₹{row.totalSpent.toLocaleString("en-IN")}</td>
+                  <Show when={!iscpl()}>
+                    <td class="p-3">
+                      ₹{row.totalSpent.toLocaleString("en-IN")}
+                    </td>
                   </Show>
                   <td class="p-3">₹{(row.totalCPL ?? 0).toFixed(2)}</td>
                   {userRole() === "admin" && (
@@ -1418,63 +1439,63 @@ export default function ProjectDetails() {
           </div>
         }
       >
-      <div class="flex items-center justify-between mt-4 flex-wrap gap-3">
-        <span class="text-sm text-gray-500">
-          {total() === 0
-            ? "No results"
-            : `Showing ${(page() - 1) * pageSize() + 1}–${Math.min(page() * pageSize(), total())} of ${total()} results`}
-        </span>
-
-        <div class="flex items-center gap-2">
-          <button
-            onClick={() => {
-              if (hasPrev()) {
-                const newPage = page() - 1;
-                loadCampaigns(newPage, search());
-              }
-            }}
-            disabled={!hasPrev()}
-            class="flex items-center gap-1.5 px-4 h-9 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-35 disabled:cursor-default transition-colors"
-          >
-            <svg
-              class="w-3.5 h-3.5"
-              fill="none"
-              viewBox="0 0 16 16"
-              stroke="currentColor"
-              stroke-width="1.8"
-            >
-              <path d="M10 12L6 8l4-4" />
-            </svg>
-            Prev
-          </button>
-
-          <span class="text-sm text-gray-500 px-1">
-            Page {page()} of {totalPages()}
+        <div class="flex items-center justify-between mt-4 flex-wrap gap-3">
+          <span class="text-sm text-gray-500">
+            {total() === 0
+              ? "No results"
+              : `Showing ${(page() - 1) * pageSize() + 1}–${Math.min(page() * pageSize(), total())} of ${total()} results`}
           </span>
 
-          <button
-            onClick={() => {
-              if (hasNext()) {
-                const newPage = page() + 1;
-                loadCampaigns(newPage, search());
-              }
-            }}
-            disabled={!hasNext()}
-            class="flex items-center gap-1.5 px-4 h-9 text-sm rounded-lg bg-blue-600 border border-blue-600 text-white hover:bg-blue-700 disabled:opacity-35 disabled:cursor-default transition-colors"
-          >
-            Next
-            <svg
-              class="w-3.5 h-3.5"
-              fill="none"
-              viewBox="0 0 16 16"
-              stroke="currentColor"
-              stroke-width="1.8"
+          <div class="flex items-center gap-2">
+            <button
+              onClick={() => {
+                if (hasPrev()) {
+                  const newPage = page() - 1;
+                  loadCampaigns(newPage, search());
+                }
+              }}
+              disabled={!hasPrev()}
+              class="flex items-center gap-1.5 px-4 h-9 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-35 disabled:cursor-default transition-colors"
             >
-              <path d="M6 4l4 4-4 4" />
-            </svg>
-          </button>
+              <svg
+                class="w-3.5 h-3.5"
+                fill="none"
+                viewBox="0 0 16 16"
+                stroke="currentColor"
+                stroke-width="1.8"
+              >
+                <path d="M10 12L6 8l4-4" />
+              </svg>
+              Prev
+            </button>
+
+            <span class="text-sm text-gray-500 px-1">
+              Page {page()} of {totalPages()}
+            </span>
+
+            <button
+              onClick={() => {
+                if (hasNext()) {
+                  const newPage = page() + 1;
+                  loadCampaigns(newPage, search());
+                }
+              }}
+              disabled={!hasNext()}
+              class="flex items-center gap-1.5 px-4 h-9 text-sm rounded-lg bg-blue-600 border border-blue-600 text-white hover:bg-blue-700 disabled:opacity-35 disabled:cursor-default transition-colors"
+            >
+              Next
+              <svg
+                class="w-3.5 h-3.5"
+                fill="none"
+                viewBox="0 0 16 16"
+                stroke="currentColor"
+                stroke-width="1.8"
+              >
+                <path d="M6 4l4 4-4 4" />
+              </svg>
+            </button>
+          </div>
         </div>
-      </div>
       </Show>
 
       {/* ================= ANALYTICS CHART ================= */}
@@ -1544,19 +1565,19 @@ export default function ProjectDetails() {
           </div>
 
           {/* Total spent */}
-           <Show when={!iscpl()}>
-          <div
-            class="rounded-lg p-3
+          <Show when={!iscpl()}>
+            <div
+              class="rounded-lg p-3
             bg-orange-50     dark:bg-orange-900/20
             border border-orange-100 dark:border-orange-700/30"
-          >
-            <p class="text-xs text-orange-500 dark:text-orange-400 mb-1">
-              Total spent
-            </p>
-            <p class="text-xl font-semibold text-orange-500 dark:text-orange-300">
-              ₹{footerTotals().totalSpent.toLocaleString("en-IN")}
-            </p>
-          </div>
+            >
+              <p class="text-xs text-orange-500 dark:text-orange-400 mb-1">
+                Total spent
+              </p>
+              <p class="text-xl font-semibold text-orange-500 dark:text-orange-300">
+                ₹{footerTotals().totalSpent.toLocaleString("en-IN")}
+              </p>
+            </div>
           </Show>
 
           {/* Top campaign */}
