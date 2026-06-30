@@ -484,6 +484,34 @@ export default function AllowedBudget() {
         </p>
       </div>
 
+      {/* Client-type filter — moved above the tabs so it's always visible */}
+      <div class="flex flex-wrap items-center gap-1.5 mb-4">
+        <span class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400 mr-1">Client type</span>
+        <For each={CLIENT_TYPE_CHIPS}>
+          {(t) => {
+            const on = () => clientTypes().includes(t.key);
+            return (
+              <button
+                onClick={() => toggleClientType(t.key)}
+                aria-pressed={on()}
+                class={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[13px] font-semibold border transition-colors ${
+                  on()
+                    ? "bg-[#14233A] text-white border-[#14233A]"
+                    : "bg-[#F8FAFC] dark:bg-gray-800 text-[#54657E] dark:text-gray-300 border-[#E2E8F1] dark:border-gray-700 hover:border-[#14233A]/40"
+                }`}
+              >
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <Show when={on()} fallback={<circle cx="12" cy="12" r="9" stroke-width="1.6" />}>
+                    <path d="M20 6L9 17l-5-5" />
+                  </Show>
+                </svg>
+                {t.label}
+              </button>
+            );
+          }}
+        </For>
+      </div>
+
       {/* Tabs */}
       <div class="inline-flex gap-1 p-1 bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] mb-5">
         <For each={tabs()}>
@@ -629,33 +657,6 @@ export default function AllowedBudget() {
                   <option value="near">Near cap ({statusCounts().near})</option>
                 </select>
                 <svg class="w-4 h-4 text-[#8593A8] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" /></svg>
-              </div>
-
-              {/* Client-type multi-select chips (CPL + Hybrid by default) */}
-              <div class="flex items-center gap-1.5">
-                <For each={CLIENT_TYPE_CHIPS}>
-                  {(t) => {
-                    const on = () => clientTypes().includes(t.key);
-                    return (
-                      <button
-                        onClick={() => toggleClientType(t.key)}
-                        aria-pressed={on()}
-                        class={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[13px] font-semibold border transition-colors ${
-                          on()
-                            ? "bg-[#14233A] text-white border-[#14233A]"
-                            : "bg-[#F8FAFC] dark:bg-gray-800 text-[#54657E] dark:text-gray-300 border-[#E2E8F1] dark:border-gray-700 hover:border-[#14233A]/40"
-                        }`}
-                      >
-                        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                          <Show when={on()} fallback={<circle cx="12" cy="12" r="9" stroke-width="1.6" />}>
-                            <path d="M20 6L9 17l-5-5" />
-                          </Show>
-                        </svg>
-                        {t.label}
-                      </button>
-                    );
-                  }}
-                </For>
               </div>
             </div>
             <div class="flex items-center gap-3 ml-auto">
