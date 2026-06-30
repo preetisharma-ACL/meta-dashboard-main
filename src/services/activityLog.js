@@ -1,0 +1,94 @@
+import { api } from "../api/api";
+
+// ─── Activity log API ─────────────────────────────────────────────────────────
+// Append-only audit trail, backed by the live backend endpoints:
+//
+//   POST /api/activity/   — append one entry (server stamps id/timestamp/actor)
+//   GET  /api/activity/   — newest-first, paginated, server-side filtered
+//
+// There is intentionally no update/delete — entries are immutable. Reads are
+// role-scoped server-side (admins/coordination/accounts see all; CMs see only
+// their own), so the frontend just renders whatever the call returns.
+//
+// Note: campaign pause/resume is auto-logged by the backend on its own endpoints,
+// so the frontend does NOT call recordActivity for those. Call recordActivity
+// only for other actions you want logged that aren't auto-logged server-side.
+
+// Map a server entry (snake_case) → the camelCase shape the UI uses.
+const normalize = (e = {}) => ({
+  id: e.id,
+  timestamp: e.timestamp,
+  actor: e.actor ?? null,
+  actorRole: e.actor_role ?? null,
+  actorId: e.actor_id ?? null,
+  category: e.category ?? "general",
+  action: e.action ?? "unknown",
+  target: e.target ?? null,
+  targetId: e.target_id ?? null,
+  details: e.details ?? null,
+  result: e.result ?? "info",
+});
+
+// ── Append (fire-and-forget) ──────────────────────────────────────────────────
+// A logging failure must NEVER break the underlying user action, so this always
+// resolves — it returns the created entry on success, or null on any failure.
+//   entry = { category, action, target, targetId, details, result, eventKey }
+export const recordActivity = async (entry = {}) => {
+  try {
+    const body = {
+      category: entry.category,
+      action: entry.action,
+      target: entry.target,
+      target_id: entry.targetId ?? entry.target_id,
+      details: entry.details,
+      result: entry.result,
+      event_key: entry.eventKey ?? entry.event_key,
+    };
+    // Only send what the caller provided; the server owns/ignores the rest.
+    Object.keys(body).forEach((k) => body[k] === undefined && delete body[k]);
+
+    const res = await api(`/activity/`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    return res?.data ? normalize(res.data) : null;
+  } catch (err) {
+    console.error("[activityLog] Failed to record activity:", err);
+    return null;
+  }
+};
+
+// ── List (read-only, paginated, server-filtered) ──────────────────────────────
+// Returns { entries: [...camelCase], pagination }.
+//   opts = { page, pageSize, filters: { search, action, category, result, actor,
+//                                        startDate, endDate } }
+export const getActivities = async ({ page = 1, pageSize = 50, filters = {} } = {}) => {
+  const params = new URLSearchParams();
+  params.append("page", page);
+  params.append("page_size", pageSize);
+
+  const add = (key, val) => {
+    if (val != null && val !== "" && val !== "all") params.append(key, val);
+  };
+  add("search", filters.search);
+  add("action", filters.action);
+  add("category", filters.category);
+  add("result", filters.result);
+  add("actor", filters.actor);
+  add("start_date", filters.startDate);
+  add("end_date", filters.endDate);
+
+  const res = await api(`/activity/?${params.toString()}`, { method: "GET" });
+
+  // Backend returns data as the entries array; tolerate a { results } shape too.
+  const rows = Array.isArray(res?.data)
+    ? res.data
+    : Array.isArray(res?.data?.results)
+      ? res.data.results
+      : [];
+
+  return {
+    entries: rows.map(normalize),
+    pagination: res?.meta?.pagination ?? null,
+  };
+};

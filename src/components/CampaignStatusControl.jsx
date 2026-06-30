@@ -7,6 +7,9 @@ import {
 } from "../services/campaignStatus";
 import { canWriteCampaigns } from "../stores/currentUser";
 
+// Note: campaign pause/resume is logged to the activity trail automatically by
+// the backend on its status endpoint — no frontend recordActivity call needed.
+
 // ─── Campaign Pause / Resume control ──────────────────────────────────────────
 // The single, reusable button for the first write feature. Drop it next to any
 // campaign row/header. It owns the entire safe-write flow so callers don't have

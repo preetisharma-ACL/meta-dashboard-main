@@ -16,6 +16,7 @@ import Settings from "./pages/Settings";
 import Notifications from "./pages/Alert";
 import ProjectDetails from "./pages/ProjectDetails";
 import CampaignDetails from "./pages/CampaignDetails";
+import Activity from "./pages/Activity";
 import Login from "./pages/login/LoginForm";
 import ProtectedRoute from "./routes/ProtectedRoute";
 import LeadsPage from "./pages/LeadPerformance";
@@ -140,6 +141,7 @@ function App() {
             />
             <Route path="/account-monitor" component={AccountMonitor} />
             <Route path="/cpl-rules" component={CplRules} />
+            <Route path="/activity" component={Activity} />
             <Route path="/:client-nomen-name" component={MainDashboard} />
             <Route path="/add-project" component={AddProject} />
             <Route path="/billing" component={Billing} />

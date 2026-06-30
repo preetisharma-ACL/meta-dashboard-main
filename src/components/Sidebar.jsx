@@ -222,6 +222,14 @@ export default function Sidebar() {
         path: "/cpl-rules",
       },
       {
+        name: "Activity Log",
+        roles: ["admin", "campaign_manager"],
+        icon: () => (
+          <Icon d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+        ),
+        path: "/activity",
+      },
+      {
         name: "Clients",
         roles: ["admin"],
         icon: () => (
