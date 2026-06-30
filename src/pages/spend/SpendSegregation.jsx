@@ -65,6 +65,38 @@ function Delta(props) {
   );
 }
 
+// ─── Decorative "click a category" sparkle hint ──────────────────────────────
+// Showcase-only cue (no action of its own) telling the user to click a donut
+// category / legend row below to reveal that bucket's client table.
+function TwinkleStar(props) {
+  return (
+    <svg
+      class={`ss-twinkle ${props.class ?? ""}`}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path d="M12 0l2.7 8.3L23 11l-8.3 2.7L12 22l-2.7-8.3L1 11l8.3-2.7z" />
+    </svg>
+  );
+}
+function ClickHint() {
+  return (
+    <div class="flex justify-center mb-2" aria-hidden="true">
+      <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#FBF3E2]/70 dark:bg-amber-900/15 border border-[#E0823C]/30 dark:border-amber-700/40">
+        <TwinkleStar class="w-2.5 h-2.5 text-[#E0823C]" />
+        <span class="ss-hint-text text-[9px] font-extrabold uppercase tracking-wide whitespace-nowrap">
+          Click a category to see clients
+        </span>
+        <TwinkleStar class="w-2.5 h-2.5 text-[#AC2334] ss-twinkle-2" />
+        <svg class="ss-bob w-3 h-3 text-[#AC2334]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 5v14M19 12l-7 7-7-7" />
+        </svg>
+      </span>
+    </div>
+  );
+}
+
 // ─── A single period panel (Today / Yesterday) ────────────────────────────────
 function PeriodPanel(props) {
   const period = () => props.data ?? {};
@@ -106,6 +138,8 @@ function PeriodPanel(props) {
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
         <SpendDonut buckets={buckets()} total={parseFloat(period().total) || 0} onSelect={props.onSelect} />
         <div class="space-y-1">
+          {/* Showcase cue → click a category below to reveal its client table */}
+          <ClickHint />
           <For each={buckets()}>
             {(b) => (
               <button

@@ -102,6 +102,37 @@
   @apply w-full px-3 py-2.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-md hover:shadow-lg duration-200 text-gray-800 dark:text-gray-200 focus:ring-1 focus:ring-green-500 focus:border-green-500 focus:outline-none;
 }
 
+/* ── "Click a category" sparkle hint (Spend Segregation) ─────────────────────
+   Decorative cue telling users to click a donut category to reveal its client
+   table. Pure CSS so there's no gif asset to host. */
+@keyframes ss-twinkle {
+  0%, 100% { transform: scale(0.55) rotate(0deg);  opacity: 0.3; }
+  50%      { transform: scale(1.15) rotate(90deg);  opacity: 1;   }
+}
+@keyframes ss-bob {
+  0%, 100% { transform: translateY(0);    }
+  50%      { transform: translateY(3px);  }
+}
+@keyframes ss-shimmer {
+  0%   { background-position: 200% center;  }
+  100% { background-position: -200% center; }
+}
+.ss-twinkle { animation: ss-twinkle 1.6s ease-in-out infinite; transform-origin: center; }
+.ss-twinkle-2 { animation-delay: 0.55s; }
+.ss-bob { animation: ss-bob 1.35s ease-in-out infinite; }
+.ss-hint-text {
+  background: linear-gradient(90deg, #AC2334 0%, #E0823C 25%, #AC2334 50%, #E0823C 75%, #AC2334 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: ss-shimmer 2.6s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ss-twinkle, .ss-bob, .ss-hint-text { animation: none; }
+  .ss-hint-text { -webkit-text-fill-color: #AC2334; }
+}
+
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&family=DM+Serif+Display:ital@0;1&display=swap');
 
 .login-root {
