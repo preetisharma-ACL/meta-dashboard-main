@@ -6,6 +6,7 @@ import {
   CalendarDays,
   CalendarClock,
   Activity,
+  Wallet,
 } from "lucide-solid";
 import {
   Eye,
@@ -15,7 +16,7 @@ import {
   TrendingUp,
 } from "lucide-solid";
 import { User, MapPin, Crosshair } from "lucide-solid";
-import { createSignal, onMount } from "solid-js";
+import { createSignal, createMemo, onMount, Show } from "solid-js";
 import { fetchCampaignDetails } from "../services/campaignDetails-service";
 import { fetchCampaignInsights } from "../services/campaigns"; // ← same service used in ProjectDetails
 import {
@@ -25,6 +26,8 @@ import {
 } from "../cacheStore/appStore";
 import useRole from "../hooks/useRole";
 import AIInsightButton from "../components/AIInsightButton";
+import CampaignStatusControl from "../components/CampaignStatusControl";
+import { DateRangeFilter } from "../components/DateRangeFilter";
 export default function CampaignDetails() {
   const { userRole, isAdmin, isClient } = useRole();
 
@@ -37,6 +40,59 @@ export default function CampaignDetails() {
 
   // ── Insights (date-wise breakdown for the chart) ─────────────────────────
   const [insights, setInsights] = createSignal([]);
+
+  // ── Date-range filter for the overview KPIs ──────────────────────────────
+  const [fromDate, setFromDate] = createSignal("");
+  const [toDate, setToDate] = createSignal("");
+  const isFiltered = () => Boolean(fromDate() && toDate());
+  const resetRange = () => {
+    setFromDate("");
+    setToDate("");
+  };
+
+  // Aggregate KPIs come from campaign() by default; when a date range is set,
+  // recompute leads / impressions / reach / spend / cpl from the date-wise
+  // insights so the cards + Performance table reflect the selected window.
+  const metrics = createMemo(() => {
+    const c = campaign();
+    const base = {
+      leads: c?.leads_count ?? 0,
+      impressions: c?.impressions ?? 0,
+      reach: c?.reach ?? 0,
+      spend: c?.spend ?? 0,
+      cpl: c?.cpl ?? 0,
+      roas: c?.roas ?? 0,
+    };
+
+    if (!isFiltered()) return base;
+
+    const from = fromDate();
+    const to = toDate();
+    const rows = (insights() ?? []).filter((d) => {
+      if (!d?.date) return false;
+      const ds = d.date.includes("T") ? d.date.split("T")[0] : d.date;
+      return ds >= from && ds <= to;
+    });
+
+    let leads = 0;
+    let impressions = 0;
+    let reach = 0;
+    let spend = 0;
+    for (const d of rows) {
+      leads += d.leads || 0;
+      impressions += d.impressions || 0;
+      reach += d.reach || 0;
+      spend += parseFloat(d.spend || 0);
+    }
+    // Per-day reach isn't always present; mirror the app-wide impressions proxy.
+    if (!reach) reach = impressions;
+
+    const cpl = leads > 0 ? Number((spend / leads).toFixed(2)) : 0;
+    const spendRounded = Number(spend.toFixed(2));
+
+    // ROAS isn't derivable from date-wise insights → keep the campaign value.
+    return { leads, impressions, reach, spend: spendRounded, cpl, roas: base.roas };
+  });
 
   // ── Write helper ─────────────────────────────────────────────────────────
   const setCampaignCache = (patch) =>
@@ -88,9 +144,27 @@ export default function CampaignDetails() {
           </h1>
         </div>
 
-        <span class="px-4 py-1 text-sm rounded-full w-20 bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
-          {campaign()?.status_label}
-        </span>
+        <div class="flex items-center gap-3 flex-wrap">
+          <span class="px-4 py-1 text-sm rounded-full bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
+            {campaign()?.status_label}
+          </span>
+          <Show when={campaign()}>
+            <CampaignStatusControl
+              campaignId={campaignId}
+              campaignName={campaign()?.name}
+              status={campaign()?.status}
+              onChanged={(s) =>
+                setCampaignCache({
+                  data: {
+                    ...campaign(),
+                    status: s,
+                    status_label: s === "active" ? "Active" : "Paused",
+                  },
+                })
+              }
+            />
+          </Show>
+        </div>
       </div>
 
       <nav>
@@ -165,6 +239,24 @@ export default function CampaignDetails() {
       {/* AI Insight (admin + Tier 1 CM only) */}
       <AIInsightButton campaignId={campaignId} />
 
+      {/* Date-range filter for the overview KPIs */}
+      <div class="flex flex-wrap items-center justify-end gap-3 mb-6">
+        <DateRangeFilter
+          fromDate={fromDate}
+          toDate={toDate}
+          setFromDate={setFromDate}
+          setToDate={setToDate}
+        />
+        <Show when={isFiltered()}>
+          <button
+            onClick={resetRange}
+            class="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+          >
+            Reset
+          </button>
+        </Show>
+      </div>
+
       {/* Campaign Overview */}
       <div class="grid md:grid-cols-5 gap-6 mb-10">
         <div class="bg-red-50 dark:bg-gray-800 px-5 py-9 rounded-xl shadow hover:shadow-lg border border-red-200 dark:border-gray-600">
@@ -172,7 +264,7 @@ export default function CampaignDetails() {
             <div>
               <p class="text-lg text-red-800 dark:text-gray-400">Leads</p>
               <h3 class="text-xl font-semibold mt-2 dark:text-white">
-                {campaign()?.leads_count || "0"}
+                {metrics().leads || "0"}
               </h3>
             </div>
             <div class="flex bg-red-100 dark:bg-purple-500 p-3 rounded items-center gap-1 mt-2 text-sm text-gray-500 dark:text-gray-400">
@@ -190,7 +282,7 @@ export default function CampaignDetails() {
                 Impressions
               </p>
               <h3 class="text-xl font-semibold mt-2 dark:text-white">
-                {campaign()?.impressions}
+                {metrics().impressions}
               </h3>
             </div>
             <div class="flex bg-blue-100 dark:bg-blue-500 p-3 rounded items-center gap-1 mt-2 text-sm text-gray-500 dark:text-gray-400">
@@ -206,7 +298,7 @@ export default function CampaignDetails() {
             <div>
               <p class="text-lg text-red-800 dark:text-gray-400">Reach</p>
               <h3 class="text-xl font-semibold mt-2 dark:text-white">
-                {campaign()?.reach}
+                {metrics().reach}
               </h3>
             </div>
             <div class="flex bg-red-100 dark:bg-purple-500 p-3 rounded items-center gap-1 mt-2 text-sm text-gray-500 dark:text-gray-400">
@@ -222,7 +314,7 @@ export default function CampaignDetails() {
             <div>
               <p class="text-lg text-green-800 dark:text-gray-400">Spend</p>
               <h3 class="text-xl font-semibold mt-2 dark:text-white">
-                ₹{campaign()?.spend}
+                ₹{metrics().spend}
               </h3>
             </div>
             <div class="flex bg-green-100 dark:bg-green-500 p-3 rounded items-center gap-1 mt-2 text-sm text-gray-500 dark:text-gray-400">
@@ -270,6 +362,14 @@ export default function CampaignDetails() {
                     ?.name?.split("|")
                     ?.filter((_, i) => i < 2)
                     ?.join(" | ")}
+                </td>
+              </tr>
+              <tr class="border-b dark:border-gray-700">
+                <td class="p-4 text-gray-500 dark:text-gray-400 flex items-center gap-2">
+                  <Wallet size={16} /> Ad Account
+                </td>
+                <td class="p-4 md:font-medium text-sm dark:text-white">
+                  {campaign()?.ad_account_name || "—"}
                 </td>
               </tr>
               <tr class="border-b dark:border-gray-700">
@@ -325,7 +425,7 @@ export default function CampaignDetails() {
                   Impressions
                 </td>
                 <td class="p-4 font-medium dark:text-white">
-                  {campaign()?.impressions}
+                  {metrics().impressions}
                 </td>
               </tr>
               <tr class="border-b dark:border-gray-700">
@@ -334,7 +434,7 @@ export default function CampaignDetails() {
                   Reach
                 </td>
                 <td class="p-4 font-medium dark:text-white">
-                  {campaign()?.reach}
+                  {metrics().reach}
                 </td>
               </tr>
               <tr class="border-b dark:border-gray-700">
@@ -342,7 +442,7 @@ export default function CampaignDetails() {
                   <IndianRupee size={16} class="text-green-500" /> Spend
                 </td>
                 <td class="p-4 font-medium dark:text-white">
-                  ₹{campaign()?.spend}
+                  ₹{metrics().spend}
                 </td>
               </tr>
               <tr class="border-b dark:border-gray-700">
@@ -351,7 +451,7 @@ export default function CampaignDetails() {
                   Result
                 </td>
                 <td class="p-4 font-medium dark:text-white">
-                  {campaign()?.cpl || "0"}
+                  {metrics().cpl || "0"}
                 </td>
               </tr>
               <tr>

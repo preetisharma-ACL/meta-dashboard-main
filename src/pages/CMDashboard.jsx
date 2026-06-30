@@ -5,8 +5,9 @@ import { DateRangeFilter } from "../components/DateRangeFilter";
 import Avatar from "../components/common/Avatar";
 import { fetchAllCampaignsScoped, fetchHierarchyClients } from "../services/cm";
 import { asTeamMemberId, ownScope, clearScope } from "../stores/cmScope";
-import { currentUser, cmTier } from "../stores/currentUser";
+import { currentUser, cmTier, canWriteCampaigns } from "../stores/currentUser";
 import CMHierarchy from "../components/CMHierarchy";
+import CampaignStatusControl from "../components/CampaignStatusControl";
 
 // ─── Formatting helpers (match existing dashboards) ───────────────────────────
 const fmtMoney = (val) => {
@@ -145,6 +146,14 @@ export default function CMDashboard() {
 
   const allCampaigns = () => data() ?? [];
 
+  // Local status overrides for campaigns paused/resumed in this session. The
+  // flat list comes from a cached resource we don't want to refetch on every
+  // write, so we layer the confirmed new status on top until the next reload.
+  // id → "active" | "paused". Only ever set on a confirmed success.
+  const [statusOverrides, setStatusOverrides] = createSignal({});
+  const applyStatusOverride = (id, newStatus) =>
+    setStatusOverrides((m) => ({ ...m, [id]: newStatus }));
+
   // "Just me" narrowing for the flat campaigns list.
   // /api/campaigns/ is NOT scope=own-aware on the backend yet, so in "Just me"
   // mode it returns the full team set. We narrow it client-side to the lead's
@@ -178,6 +187,17 @@ export default function CMDashboard() {
   // (the lead is authorized to see all); they never widen visibility.
   const campaigns = createMemo(() => {
     let rows = allCampaigns();
+
+    // Layer in any session pause/resume so the row, the badge, and the derived
+    // counts all reflect the confirmed new status without a refetch.
+    const ov = statusOverrides();
+    if (Object.keys(ov).length) {
+      rows = rows.map((c) => {
+        const next = ov[c.id];
+        if (!next || next === c.status) return c;
+        return { ...c, status: next, status_label: next === "active" ? "Active" : "Paused" };
+      });
+    }
 
     if (ownScope()) {
       const own = ownClients();
@@ -835,6 +855,9 @@ export default function CMDashboard() {
                 <th class="p-3 text-right">Leads</th>
                 <th class="p-3 text-right">CPL</th>
                 <th class="p-3 text-center">Performance</th>
+                <Show when={canWriteCampaigns()}>
+                  <th class="p-3 text-center">Actions</th>
+                </Show>
               </tr>
             </thead>
 
@@ -949,6 +972,19 @@ export default function CMDashboard() {
                           </span>
                         </Show>
                       </td>
+
+                      {/* Actions — pause/resume (writers only) */}
+                      <Show when={canWriteCampaigns()}>
+                        <td class="px-4 py-3 text-center whitespace-nowrap">
+                          <CampaignStatusControl
+                            campaignId={c.id}
+                            campaignName={c.name}
+                            status={c.status}
+                            size="sm"
+                            onChanged={(s) => applyStatusOverride(c.id, s)}
+                          />
+                        </td>
+                      </Show>
                     </tr>
                   )}
                 </For>
@@ -956,7 +992,7 @@ export default function CMDashboard() {
                 <Show when={campaigns().length === 0}>
                   <tr>
                     <td
-                      colspan="9"
+                      colspan={canWriteCampaigns() ? 10 : 9}
                       class="py-16 text-center text-[#8593A8] dark:text-gray-500"
                     >
                       No campaigns to show.
@@ -987,6 +1023,9 @@ export default function CMDashboard() {
                       {summary().leads > 0 ? fmtCPL(summary().cpl) : "—"}
                     </td>
                     <td></td>
+                    <Show when={canWriteCampaigns()}>
+                      <td></td>
+                    </Show>
                   </tr>
                 </tfoot>
               </Show>

@@ -1,14 +1,22 @@
 import { createSignal, createMemo, onMount, For, Show } from "solid-js";
+import { useNavigate } from "@solidjs/router";
 import { fetchAdAccounts } from "../services/adAccount";
+import { fetchAllAdminCampaigns } from "../services/campaigns";
 import Avatar from "../../../components/common/Avatar";
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function AdAccounts() {
+  const navigate = useNavigate();
+
   const [allAccounts, setAllAccounts] = createSignal([]);
   const [loading, setLoading]         = createSignal(true);
   const [search, setSearch]           = createSignal("");
   const [sortKey, setSortKey]         = createSignal("id");
   const [sortDir, setSortDir]         = createSignal("asc");
+
+  // Campaign counts per account (loaded in the background; non-blocking)
+  const [countsByKey, setCountsByKey]   = createSignal(new Map());
+  const [countsLoading, setCountsLoading] = createSignal(true);
 
   // ── Fetch all ad accounts ─────────────────────────────────────────────────
   const loadAccounts = async () => {
@@ -34,7 +42,48 @@ export default function AdAccounts() {
     }
   };
 
-  onMount(() => loadAccounts());
+  // ── Campaign counts per account ────────────────────────────────────────────
+  // Sweep all campaigns once (cached + large pages) and tally per ad-account
+  // identifier. Runs independently so the accounts table renders immediately.
+  const loadCounts = async () => {
+    setCountsLoading(true);
+    try {
+      const all = await fetchAllAdminCampaigns();
+      // Tally under both the id and name keys; campaignCount() reads whichever
+      // identifier matches the account, so each lookup returns one correct count.
+      const map = new Map();
+      const bump = (key) => {
+        if (key == null || key === "") return;
+        const k = String(key);
+        map.set(k, (map.get(k) ?? 0) + 1);
+      };
+      for (const c of all) {
+        bump(c.ad_account_id);
+        bump(c.ad_account_name);
+      }
+      setCountsByKey(map);
+    } catch (err) {
+      console.error("Failed to load campaign counts:", err);
+    } finally {
+      setCountsLoading(false);
+    }
+  };
+
+  onMount(() => {
+    loadAccounts();
+    loadCounts();
+  });
+
+  const campaignCount = (account) => {
+    const map = countsByKey();
+    for (const key of [account.id, account.meta_account_id, account.name]) {
+      if (key != null && map.has(String(key))) return map.get(String(key));
+    }
+    return 0;
+  };
+
+  // Open the dedicated page listing every campaign on this ad account
+  const openAccount = (account) => navigate(`/ad-accounts/${account.id}`);
 
   // ── Sort toggle ───────────────────────────────────────────────────────────
   const toggleSort = (key) => {
@@ -101,7 +150,7 @@ export default function AdAccounts() {
           Ad Accounts
         </h1>
         <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-          {allAccounts().length} total · click column headers to sort
+          {allAccounts().length} total · click a row to see its campaigns
         </p>
       </div>
 
@@ -174,6 +223,8 @@ export default function AdAccounts() {
               >
                 Meta Account ID {sortIcon("meta_account_id")}
               </th>
+              <th class="p-3 text-left whitespace-nowrap">Campaigns</th>
+              <th class="p-3 text-right whitespace-nowrap" />
             </tr>
           </thead>
 
@@ -194,6 +245,12 @@ export default function AdAccounts() {
                       <td class="p-3">
                         <div class="h-3 w-44 bg-gray-200 dark:bg-gray-700 rounded" />
                       </td>
+                      <td class="p-3">
+                        <div class="h-3 w-8 bg-gray-200 dark:bg-gray-700 rounded" />
+                      </td>
+                      <td class="p-3">
+                        <div class="h-3 w-6 bg-gray-200 dark:bg-gray-700 rounded ml-auto" />
+                      </td>
                     </tr>
                   )}
                 </For>
@@ -204,8 +261,9 @@ export default function AdAccounts() {
               <For each={filtered()}>
                 {(account, i) => (
                   <tr
+                    onClick={() => openAccount(account)}
                     class={`border-b border-gray-100 dark:border-gray-800
-                            hover:bg-purple-50/60 transition-colors
+                            hover:bg-purple-50/60 dark:hover:bg-gray-800/60 cursor-pointer transition-colors
                             ${i() % 2 === 0
                               ? "bg-white dark:bg-gray-900"
                               : "bg-gray-50/60 dark:bg-gray-800/30"}`}
@@ -229,6 +287,28 @@ export default function AdAccounts() {
                     <td class="p-3 font-medium text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
                       {account.meta_account_id}
                     </td>
+
+                    {/* Campaign count */}
+                    <td class="p-3 whitespace-nowrap">
+                      <span class="inline-flex items-center justify-center min-w-[1.75rem] px-2 py-0.5 rounded-full text-xs font-semibold bg-purple-100 text-purple-700 dark:bg-gray-700 dark:text-gray-200">
+                        <Show when={!countsLoading()} fallback={"…"}>
+                          {campaignCount(account)}
+                        </Show>
+                      </span>
+                    </td>
+
+                    {/* View campaigns chevron */}
+                    <td class="p-3 text-right whitespace-nowrap">
+                      <span class="inline-flex items-center gap-1 text-sm text-purple-600 dark:text-purple-300">
+                        View campaigns
+                        <svg
+                          class="w-4 h-4" fill="none" viewBox="0 0 24 24"
+                          stroke="currentColor" stroke-width="2"
+                        >
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+                        </svg>
+                      </span>
+                    </td>
                   </tr>
                 )}
               </For>
@@ -236,7 +316,7 @@ export default function AdAccounts() {
               {/* Empty State */}
               <Show when={filtered().length === 0}>
                 <tr>
-                  <td colspan="3" class="py-16 text-center text-gray-400 dark:text-gray-500">
+                  <td colspan="5" class="py-16 text-center text-gray-400 dark:text-gray-500">
                     <svg
                       class="w-10 h-10 mx-auto mb-3 opacity-30"
                       fill="none" viewBox="0 0 24 24" stroke="currentColor"
@@ -256,7 +336,7 @@ export default function AdAccounts() {
           {/* Table Footer */}
           <tfoot>
             <tr class="border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60">
-              <td colspan="3" class="px-4 py-2.5 text-xs text-gray-500 dark:text-gray-400">
+              <td colspan="5" class="px-4 py-2.5 text-xs text-gray-500 dark:text-gray-400">
                 {filtered().length} result{filtered().length !== 1 ? "s" : ""}
               </td>
             </tr>

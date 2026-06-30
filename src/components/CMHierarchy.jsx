@@ -7,6 +7,8 @@ import {
 } from "../services/cm";
 import { scopeKey, ownScope } from "../stores/cmScope";
 import { lookupManager, managerColor } from "../stores/cmManagerMap";
+import { canWriteCampaigns } from "../stores/currentUser";
+import CampaignStatusControl from "./CampaignStatusControl";
 
 // ─── Formatters ───────────────────────────────────────────────────────────────
 const money = (v) => {
@@ -183,6 +185,22 @@ export default function CMHierarchy(props) {
     }
   };
 
+  // Reflect a confirmed pause/resume on the campaign leaf without a refetch.
+  const updateCampaignStatus = (projectId, campaignId, newStatus) =>
+    setCampaignsByProject((p) => {
+      const entry = p[projectId];
+      if (!entry) return p;
+      return {
+        ...p,
+        [projectId]: {
+          ...entry,
+          data: entry.data.map((c) =>
+            c.campaign_id === campaignId ? { ...c, status: newStatus } : c,
+          ),
+        },
+      };
+    });
+
   const toggleClient = (client) => {
     const id = client.client_nomen_id;
     const isOpen = !!openClients()[id];
@@ -347,6 +365,15 @@ export default function CMHierarchy(props) {
                                               {c.campaign_name}
                                             </A>
                                           </div>
+                                          <Show when={canWriteCampaigns()}>
+                                            <CampaignStatusControl
+                                              campaignId={c.campaign_id}
+                                              campaignName={c.campaign_name}
+                                              status={c.status}
+                                              size="sm"
+                                              onChanged={(s) => updateCampaignStatus(pid, c.campaign_id, s)}
+                                            />
+                                          </Show>
                                           <TwoNumbers raw={c.raw} billed={c.client_facing} />
                                         </div>
                                       )}

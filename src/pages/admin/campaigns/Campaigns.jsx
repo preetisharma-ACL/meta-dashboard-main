@@ -1,6 +1,8 @@
 import { createSignal, createMemo, onMount, For, Show } from "solid-js";
 import { fetchCampaigns, resolveDateRange } from "../services/campaigns";
 import Avatar from "../../../components/common/Avatar";
+import CampaignStatusControl from "../../../components/CampaignStatusControl";
+import { canWriteCampaigns } from "../../../stores/currentUser";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const formatDate = (iso) => {
@@ -216,6 +218,16 @@ export default function Campaigns() {
   onMount(() => {
     loadAll();
   });
+
+  // Reflect a confirmed pause/resume on the row without a full refetch.
+  const applyStatusChange = (id, newStatus) =>
+    setAllCampaigns((rows) =>
+      rows.map((c) =>
+        c.id === id
+          ? { ...c, status: newStatus, status_label: newStatus === "active" ? "Active" : "Paused" }
+          : c,
+      ),
+    );
 
   // ── Filter helpers (client-side; just set the signal + reset to page 1) ────
   const applyFilter = (setter, value) => {
@@ -570,6 +582,9 @@ export default function Campaigns() {
               >
                 Leads {sortIcon("leads_count")}
               </th>
+              <Show when={canWriteCampaigns()}>
+                <th class="p-3 text-center whitespace-nowrap">Actions</th>
+              </Show>
             </tr>
           </thead>
 
@@ -580,7 +595,7 @@ export default function Campaigns() {
                 <For each={Array(8).fill(0)}>
                   {() => (
                     <tr class="border-b border-gray-100 dark:border-gray-800 animate-pulse">
-                      {Array(14)
+                      {Array(canWriteCampaigns() ? 15 : 14)
                         .fill(0)
                         .map((_, idx) => (
                           <td class="p-3">
@@ -680,6 +695,17 @@ export default function Campaigns() {
                       <td class="p-3 text-right text-gray-700 dark:text-gray-300 whitespace-nowrap">
                         {c.leads_count ?? 0}
                       </td>
+                      <Show when={canWriteCampaigns()}>
+                        <td class="p-3 text-center whitespace-nowrap">
+                          <CampaignStatusControl
+                            campaignId={c.id}
+                            campaignName={c.name}
+                            status={c.status}
+                            size="sm"
+                            onChanged={(s) => applyStatusChange(c.id, s)}
+                          />
+                        </td>
+                      </Show>
                     </tr>
                   );
                 }}
@@ -688,7 +714,7 @@ export default function Campaigns() {
               <Show when={campaigns().length === 0}>
                 <tr>
                   <td
-                    colspan="14"
+                    colspan={canWriteCampaigns() ? 15 : 14}
                     class="py-16 text-center text-gray-400 dark:text-gray-500"
                   >
                     <svg
@@ -720,7 +746,7 @@ export default function Campaigns() {
           <tfoot>
             <tr class="border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60">
               <td
-                colspan="14"
+                colspan={canWriteCampaigns() ? 15 : 14}
                 class="px-4 py-2.5 text-xs text-gray-500 dark:text-gray-400"
               >
                 {campaigns().length} campaign
