@@ -5,7 +5,8 @@ import {
   fetchHierarchyProjects,
   fetchHierarchyCampaigns,
 } from "../services/cm";
-import { scopeKey } from "../stores/cmScope";
+import { scopeKey, ownScope } from "../stores/cmScope";
+import { lookupManager, managerColor } from "../stores/cmManagerMap";
 
 // ─── Formatters ───────────────────────────────────────────────────────────────
 const money = (v) => {
@@ -242,6 +243,19 @@ export default function CMHierarchy(props) {
                     <div class="min-w-0">
                       <div class="flex items-center gap-2 flex-wrap">
                         <span class="font-semibold text-gray-800 dark:text-gray-100 truncate">{client.client_name}</span>
+                        {/* Owning campaign manager — shown in the admin Full-team
+                            view so clients from different CMs are distinguishable. */}
+                        <Show when={!ownScope() && lookupManager(client.client_nomen_id)} keyed>
+                          {(mgr) => (
+                            <span
+                              class={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${managerColor(mgr.id)}`}
+                              title={`Campaign Manager: ${mgr.label}`}
+                            >
+                              <svg class="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
+                              {mgr.label}
+                            </span>
+                          )}
+                        </Show>
                         <Show when={client.client_type}>
                           <span class={`text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize ${TYPE_CHIP[client.client_type] ?? TYPE_CHIP.retainer}`}>
                             {client.client_type}

@@ -46,3 +46,20 @@ export const probeAdminSwitchMode = async (managerId) => {
     };
   }
 };
+
+// Fetch ONE manager's directly-assigned (own) clients — the explicit-scope
+// hierarchy call (does not touch the global cmScope signal). Used to assemble a
+// client-nomen → owning-CM map so the hierarchy can tag each client with its CM
+// in the admin "Full team" view (the hierarchy response itself carries no owner
+// field). Returns [] on any error so a single failed manager can't break the map.
+export const fetchManagerOwnClients = async (managerId) => {
+  try {
+    const res = await api(
+      `/cm/hierarchy/clients/?1=1&as_team_member_id=${managerId}&scope=own`,
+      { method: "GET" },
+    );
+    return Array.isArray(res?.data) ? res.data : [];
+  } catch {
+    return [];
+  }
+};

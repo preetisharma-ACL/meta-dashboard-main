@@ -1,18 +1,22 @@
 import { Show } from "solid-js";
-import { isSwitched, viewingAs, clearScope, ownScope } from "../stores/cmScope";
-import { canSwitch } from "../stores/currentUser";
+import { asTeamMemberId, viewingAs, clearScope } from "../stores/cmScope";
+import { canSwitch, isAdmin } from "../stores/currentUser";
 
-// Persistent banner shown whenever a Tier 1 is viewing as a team member.
-// Email/tier come from meta.viewing_as captured on the latest scoped response.
-// "Return to my view" clears the scope and lets pages refetch their own data.
-// Suppressed in "Just me" mode (scope=own) — that's the lead's own perspective,
-// not "viewing as someone else", so no banner.
+// Persistent banner shown whenever a Tier 1 is viewing as a team member, OR an
+// admin is "viewing as" a campaign manager from the Campaign Managers screen.
+// Email/tier come from meta.viewing_as captured on the latest scoped response
+// (the admin screen also primes it on select). "Return to my view" clears the
+// scope and lets pages refetch their own data.
+//
+// Keyed on a specific member being selected (asTeamMemberId != null), so it's
+// naturally suppressed in the Tier-1 "Just me" mode (scope=own with no member —
+// the lead's own perspective) and on the default team view.
 export default function CMBanner() {
   const tierLabel = (t) =>
     t === "tier_1" ? "Tier 1" : t === "tier_2" ? "Tier 2" : t;
 
   return (
-    <Show when={canSwitch() && isSwitched() && !ownScope()}>
+    <Show when={(canSwitch() || isAdmin()) && asTeamMemberId() != null}>
       <div class="bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800/60">
         <div class="px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap">
           <div class="flex items-center gap-2 text-sm text-amber-800 dark:text-amber-300">

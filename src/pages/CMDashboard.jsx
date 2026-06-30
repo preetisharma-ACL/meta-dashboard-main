@@ -3,8 +3,8 @@ import { A } from "@solidjs/router";
 import Swal from "sweetalert2";
 import { DateRangeFilter } from "../components/DateRangeFilter";
 import Avatar from "../components/common/Avatar";
-import { fetchAllCampaignsScoped } from "../services/cm";
-import { asTeamMemberId, clearScope } from "../stores/cmScope";
+import { fetchAllCampaignsScoped, fetchHierarchyClients } from "../services/cm";
+import { asTeamMemberId, ownScope, clearScope } from "../stores/cmScope";
 import { currentUser, cmTier } from "../stores/currentUser";
 import CMHierarchy from "../components/CMHierarchy";
 
@@ -145,17 +145,60 @@ export default function CMDashboard() {
 
   const allCampaigns = () => data() ?? [];
 
-  // Client-side search over the scoped rows (search is a display filter, not an
-  // authorization filter — the server already scoped which rows we can see).
+  // "Just me" narrowing for the flat campaigns list.
+  // /api/campaigns/ is NOT scope=own-aware on the backend yet, so in "Just me"
+  // mode it returns the full team set. We narrow it client-side to the lead's
+  // OWN clients — the id set comes from the hierarchy clients endpoint, which IS
+  // scope=own-aware. Safe: a Tier 1 is already authorized to see everything;
+  // this is a focus filter, not an authorization gate. Member/team modes are
+  // untouched (member uses as_team_member_id server-side; team is the full set).
+  const [ownClients] = createResource(
+    () =>
+      ownScope()
+        ? { startDate: fromDate() || undefined, endDate: toDate() || undefined }
+        : null,
+    async (args) => {
+      try {
+        const res = await fetchHierarchyClients(args);
+        const list = res?.data ?? [];
+        return {
+          ids: new Set(list.map((c) => String(c.client_nomen_id))),
+          names: new Set(
+            list.map((c) => (c.client_name ?? "").trim().toLowerCase()),
+          ),
+        };
+      } catch (err) {
+        console.error("[CMDashboard] own-client set failed:", err);
+        return { ids: new Set(), names: new Set() };
+      }
+    },
+  );
+
+  // Client-side filters: "Just me" narrowing + search. Both are display filters
+  // (the lead is authorized to see all); they never widen visibility.
   const campaigns = createMemo(() => {
+    let rows = allCampaigns();
+
+    if (ownScope()) {
+      const own = ownClients();
+      if (!own) return []; // own-client set still loading — don't flash team rows
+      rows = rows.filter(
+        (c) =>
+          own.ids.has(String(c.client_nomen)) ||
+          own.names.has((c.client_nomen_name ?? "").trim().toLowerCase()),
+      );
+    }
+
     const q = search().trim().toLowerCase();
-    if (!q) return allCampaigns();
-    return allCampaigns().filter(
-      (c) =>
-        c.name?.toLowerCase().includes(q) ||
-        c.project_name?.toLowerCase().includes(q) ||
-        c.client_nomen_name?.toLowerCase().includes(q),
-    );
+    if (q) {
+      rows = rows.filter(
+        (c) =>
+          c.name?.toLowerCase().includes(q) ||
+          c.project_name?.toLowerCase().includes(q) ||
+          c.client_nomen_name?.toLowerCase().includes(q),
+      );
+    }
+    return rows;
   });
 
   // ─── Scoped summary (aggregated from the rows the server returned) ──────────
@@ -188,7 +231,11 @@ export default function CMDashboard() {
 
   // True only on the very first load (no rows yet). Lets date-change refetches
   // keep the previous rows on screen instead of flashing skeletons.
-  const firstLoad = () => data.loading && allCampaigns().length === 0;
+  const firstLoad = () =>
+    (data.loading && allCampaigns().length === 0) ||
+    // In "Just me", keep skeletons up until the own-client set has resolved, so
+    // we never flash the full team list before narrowing.
+    (ownScope() && !ownClients());
 
   // Budget + status counts across the scoped rows (display only).
   const ledgerStats = createMemo(() => {

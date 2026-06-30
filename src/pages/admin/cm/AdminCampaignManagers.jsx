@@ -4,13 +4,19 @@ import {
   createMemo,
   createEffect,
   on,
-  onCleanup,
+  onMount,
   For,
   Show,
 } from "solid-js";
 import { fetchManagerPerformance } from "../../../services/performance";
-import { probeAdminSwitchMode } from "../../../services/cmAdmin";
-import { setAsTeamMemberId, clearScope } from "../../../stores/cmScope";
+import { probeAdminSwitchMode, fetchManagerOwnClients } from "../../../services/cmAdmin";
+import {
+  setManagerScope,
+  clearScope,
+  ownScope,
+  setViewingAs,
+} from "../../../stores/cmScope";
+import { clientManagerMap, setClientManagerMap } from "../../../stores/cmManagerMap";
 import Avatar from "../../../components/common/Avatar";
 import CMDashboard from "../../CMDashboard";
 import AlertsPanel from "../../../components/AlertsPanel";
@@ -131,18 +137,63 @@ export default function AdminCampaignManagers() {
 
   const allowed = () => switchMode() === "allowed";
 
-  // ── Selected-manager scope wiring: set the global CM scope so the embedded
-  // CMDashboard / AlertsPanel render as that manager; clear it when we leave. ──
+  // ── Client → owning-CM map (for the Full-team hierarchy tags) ──
+  // The hierarchy response carries no owner field, so we assemble the map by
+  // unioning every manager's scope=own client list (one explicit-scope call per
+  // manager, NOT via the global signal). Built lazily the first time the admin
+  // looks at a Full-team view, then cached in the module-level store for the
+  // session. CMHierarchy reads it to tag each client with its CM.
+  const labelFromEmail = (email) => {
+    const local = String(email ?? "").split("@")[0] || "—";
+    return local.charAt(0).toUpperCase() + local.slice(1);
+  };
+  const [mapBuilt, setMapBuilt] = createSignal(false);
+
+  const buildManagerMap = async (managers) => {
+    const lists = await Promise.all(
+      managers.map(async (m) => {
+        const clients = await fetchManagerOwnClients(m.manager_id);
+        const label = labelFromEmail(m.manager_email);
+        return clients.map((c) => [String(c.client_nomen_id), { label, id: m.manager_id }]);
+      }),
+    );
+    const map = {};
+    for (const list of lists) for (const [k, v] of list) map[k] = v;
+    setClientManagerMap(map);
+  };
+
+  createEffect(() => {
+    if (!allowed() || mapBuilt()) return;
+    // Only needed in a Full-team view (own view is a single CM — no ambiguity).
+    if (!selected() || ownScope()) return;
+    if (!rows().length) return;
+    setMapBuilt(true);
+    if (Object.keys(clientManagerMap()).length) return; // already built this session
+    buildManagerMap(rows());
+  });
+
+  // ── Selected-manager scope wiring ──
+  // Selecting a manager defaults to that manager's OWN clients
+  // (as_team_member_id=<id>&scope=own). The own/team toggle flips scope=own on
+  // and off for the SAME manager. The embedded CMDashboard / CMHierarchy react to
+  // the global cmScope signal (CMHierarchy keys on scopeKey, so the toggle and a
+  // manager change both re-key it). viewingAs is primed so the global CM banner
+  // reads the manager's email immediately.
+  const applyManagerScope = (m, own) => {
+    setManagerScope(m.manager_id, own);
+    setViewingAs({ user_id: m.manager_id, email: m.manager_email, tier: null });
+  };
+
   const openManager = (m) => {
-    if (!allowed()) {
-      // Still record the selection so the page can show the "not enabled" body.
-      setSelected(m);
-      setTab("dashboard");
-      return;
-    }
     setSelected(m);
     setTab("dashboard");
-    setAsTeamMemberId(m.manager_id);
+    if (allowed()) applyManagerScope(m, true); // default: Own clients
+  };
+
+  // Toggle the selected manager's own/team view.
+  const setMemberView = (own) => {
+    const m = selected();
+    if (m && allowed()) applyManagerScope(m, own);
   };
 
   const backToRoster = () => {
@@ -150,8 +201,11 @@ export default function AdminCampaignManagers() {
     setSelected(null);
   };
 
-  // Safety: never leak the "viewing as" scope to other admin pages.
-  onCleanup(() => clearScope());
+  // Entering the screen always starts at the clean roster — no manager scope
+  // lingering from an earlier visit. While "viewing as" a manager, the scope is
+  // intentionally NOT cleared on navigation, so the manager's Funding / CPL /
+  // Allowed-Budget pages stay scoped too; the global CM banner offers "Return".
+  onMount(() => clearScope());
 
   return (
     <div class="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 md:p-6 lg:p-8">
@@ -342,6 +396,30 @@ export default function AdminCampaignManagers() {
               </div>
             </div>
           </div>
+
+          {/* Own/team toggle — scopes THIS manager's view to their own clients or
+              their full team. Defaults to Own clients on select. */}
+          <Show when={allowed()}>
+            <div class="flex items-center gap-2 self-center">
+              <span class="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">Clients</span>
+              <div class="inline-flex p-1 bg-gray-100 dark:bg-gray-800 rounded-xl" role="group" aria-label={`${selected().manager_email} client scope`}>
+                <For each={[{ own: true, label: "Own clients" }, { own: false, label: "Full team" }]}>
+                  {(o) => (
+                    <button
+                      onClick={() => setMemberView(o.own)}
+                      class={`px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                        ownScope() === o.own
+                          ? "bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm"
+                          : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                      }`}
+                    >
+                      {o.label}
+                    </button>
+                  )}
+                </For>
+              </div>
+            </div>
+          </Show>
 
           {/* Allocated-budget headline card — read straight off the roster row. */}
           <div class="px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
