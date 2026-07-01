@@ -170,15 +170,28 @@ export default function CMDashboard() {
       try {
         const res = await fetchHierarchyClients(args);
         const list = res?.data ?? [];
+        // Server-scoped raw totals for this "Just me" view. Used as the
+        // authoritative source for the hero KPIs, because the flat /campaigns/
+        // list can't be scope=own filtered on the backend and its client-side
+        // narrowing under-counts (see summary()).
+        let rawLeads = 0;
+        let rawSpend = 0;
+        for (const c of list) {
+          rawLeads += Number(c?.raw?.leads) || 0;
+          rawSpend += parseFloat(c?.raw?.spend) || 0;
+        }
         return {
           ids: new Set(list.map((c) => String(c.client_nomen_id))),
           names: new Set(
             list.map((c) => (c.client_name ?? "").trim().toLowerCase()),
           ),
+          rawLeads,
+          rawSpend,
+          hasTotals: list.length > 0,
         };
       } catch (err) {
         console.error("[CMDashboard] own-client set failed:", err);
-        return { ids: new Set(), names: new Set() };
+        return { ids: new Set(), names: new Set(), rawLeads: 0, rawSpend: 0, hasTotals: false };
       }
     },
   );
@@ -232,6 +245,19 @@ export default function CMDashboard() {
       leads += Number(c.leads_count) || 0;
       if (c.status === "active") active += 1;
     }
+
+    // In "Just me" scope the flat /campaigns/ list is narrowed client-side
+    // (that endpoint isn't scope=own-aware on the backend), which under-counts
+    // leads/spend whenever a campaign's client_nomen doesn't match the own-client
+    // set. Prefer the server-scoped hierarchy raw totals — the same numbers the
+    // hierarchy view shows — so the headline KPIs are authoritative. Campaign
+    // counts (total/active) still come from the rows we could match.
+    const own = ownScope() ? ownClients() : null;
+    if (own?.hasTotals) {
+      leads = own.rawLeads;
+      spend = own.rawSpend;
+    }
+
     return {
       spend,
       leads,

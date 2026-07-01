@@ -71,28 +71,11 @@ const bumpLoadToken = () => ++activeLoadToken;
 // uses. Flip to false to hide them entirely.
 const SHOW_PROPOSED_SECTIONS = true;
 
-// ── Client-type filter (projects grouped by their client's funding type) ──────
-// Same three types used across the app (Clients / Account Funding / AllowedBudget).
-const CLIENT_TYPES = [
-  { key: "cpl", label: "CPL" },
-  { key: "hybrid", label: "Hybrid" },
-  { key: "retainer", label: "Retainer" },
-];
-const ALL_CLIENT_TYPE_KEYS = CLIENT_TYPES.map((t) => t.key);
-
 // Display thresholds for the "Needs attention" rules (presentation only).
 const HOT_CPL_RATIO = 1.4; // CPL > 140% of portfolio average → "running hot"
 
 export default function MainDashboard() {
   const [statusFilter, setStatusFilter] = createSignal("all");
-  // Client-type filter — all types shown by default (nothing hidden until the
-  // user narrows it). Most useful in the admin view where projects span clients
-  // of different funding types.
-  const [clientTypes, setClientTypes] = createSignal([...ALL_CLIENT_TYPE_KEYS]);
-  const toggleClientType = (key) =>
-    setClientTypes((prev) =>
-      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
-    );
   const [searchText, setSearchText] = createSignal("");
   const [selectedColumns, setSelectedColumns] = createSignal([]);
   const [sortType, setSortType] = createSignal("");
@@ -316,9 +299,6 @@ export default function MainDashboard() {
         modifiedCpl: item.modified_cpl ?? null,
         spent: parseFloat(item.total_spend) || 0,
         leadsByDate: item.leads_by_date ?? {},
-        clientType: item.client_type
-          ? String(item.client_type).toLowerCase()
-          : null,
       }));
 
       setProjectsCache({
@@ -376,9 +356,6 @@ export default function MainDashboard() {
           modifiedCpl: item.modified_cpl ?? null,
           spent: parseFloat(item.total_spend) || 0,
           leadsByDate: item.leads_by_date ?? {},
-          clientType: item.client_type
-            ? String(item.client_type).toLowerCase()
-            : null,
         }));
 
         allData = [...allData, ...mappedProjects];
@@ -1146,13 +1123,6 @@ export default function MainDashboard() {
       data = data.filter((p) => p.status === statusFilter());
     }
 
-    // Client-type filter. Only applied when the user narrows the selection;
-    // untyped projects stay visible (same convention as the Allowed Budget page).
-    const types = clientTypes();
-    if (types.length < ALL_CLIENT_TYPE_KEYS.length) {
-      data = data.filter((p) => !p.clientType || types.includes(p.clientType));
-    }
-
     if (searchText().trim()) {
       const query = searchText().toLowerCase().trim();
 
@@ -1677,7 +1647,6 @@ export default function MainDashboard() {
 
   const handleClearFilters = () => {
     setStatusFilter("all");
-    setClientTypes([...ALL_CLIENT_TYPE_KEYS]);
     setSearchText("");
     resetSort();
     setSelectedColumns([]);
@@ -2240,50 +2209,6 @@ export default function MainDashboard() {
           setFromDate={setFromDate}
           setToDate={setToDate}
         />
-
-        {/* Client-type filter — admin view spans clients of different types */}
-        <Show when={isAdmin()}>
-          <div class="flex items-center gap-1.5">
-            <span class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400 mr-0.5">
-              Client type
-            </span>
-            <For each={CLIENT_TYPES}>
-              {(t) => {
-                const on = () => clientTypes().includes(t.key);
-                return (
-                  <button
-                    type="button"
-                    onClick={() => toggleClientType(t.key)}
-                    aria-pressed={on()}
-                    class={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-semibold border transition-colors ${
-                      on()
-                        ? "bg-[#14233A] text-white border-[#14233A]"
-                        : "bg-gray-50 dark:bg-gray-800 text-[#54657E] dark:text-gray-300 border-[#E2E8F1] dark:border-gray-700 hover:border-[#14233A]/40"
-                    }`}
-                  >
-                    <svg
-                      class="w-3.5 h-3.5"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2.5"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    >
-                      <Show
-                        when={on()}
-                        fallback={<circle cx="12" cy="12" r="9" stroke-width="1.6" />}
-                      >
-                        <path d="M20 6L9 17l-5-5" />
-                      </Show>
-                    </svg>
-                    {t.label}
-                  </button>
-                );
-              }}
-            </For>
-          </div>
-        </Show>
 
         <button
           onClick={handleClearFilters}

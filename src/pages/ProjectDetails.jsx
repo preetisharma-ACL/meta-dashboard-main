@@ -1381,6 +1381,7 @@ export default function ProjectDetails() {
               {userRole() === "admin" && <td></td>}
               <td></td>
               <td></td>
+              <td></td>
 
               {/* Leads */}
               <td class="text-green-700 dark:text-green-300 font-bold">
