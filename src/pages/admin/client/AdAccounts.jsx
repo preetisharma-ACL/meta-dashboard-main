@@ -1,7 +1,7 @@
 import { createSignal, createMemo, onMount, For, Show } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { fetchAdAccounts } from "../services/adAccount";
-import { fetchAllAdminCampaigns } from "../services/campaigns";
+import { fetchAllAdminCampaigns, normAccountId } from "../services/campaigns";
 import Avatar from "../../../components/common/Avatar";
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -14,8 +14,10 @@ export default function AdAccounts() {
   const [sortKey, setSortKey]         = createSignal("id");
   const [sortDir, setSortDir]         = createSignal("asc");
 
-  // Campaign counts per account (loaded in the background; non-blocking)
-  const [countsByKey, setCountsByKey]   = createSignal(new Map());
+  // Campaign counts per account (loaded in the background; non-blocking).
+  // Tallied by Meta id first (names aren't unique), name only as a fallback —
+  // mirrors campaignMatchesAccount().
+  const [countsByKey, setCountsByKey]   = createSignal({ byId: new Map(), byName: new Map() });
   const [countsLoading, setCountsLoading] = createSignal(true);
 
   // ── Fetch all ad accounts ─────────────────────────────────────────────────
@@ -49,19 +51,22 @@ export default function AdAccounts() {
     setCountsLoading(true);
     try {
       const all = await fetchAllAdminCampaigns();
-      // Tally under both the id and name keys; campaignCount() reads whichever
-      // identifier matches the account, so each lookup returns one correct count.
-      const map = new Map();
-      const bump = (key) => {
+      // Mirror campaignMatchesAccount(): a campaign with a Meta id is tallied by
+      // (normalised) id only; id-less campaigns fall back to a name tally. This
+      // keeps two same-named accounts with different ids on separate counts.
+      const byId = new Map();
+      const byName = new Map();
+      const bump = (map, key) => {
         if (key == null || key === "") return;
         const k = String(key);
         map.set(k, (map.get(k) ?? 0) + 1);
       };
       for (const c of all) {
-        bump(c.ad_account_id);
-        bump(c.ad_account_name);
+        const cId = normAccountId(c.ad_account_id);
+        if (cId != null) bump(byId, cId);
+        else bump(byName, c.ad_account_name);
       }
-      setCountsByKey(map);
+      setCountsByKey({ byId, byName });
     } catch (err) {
       console.error("Failed to load campaign counts:", err);
     } finally {
@@ -75,10 +80,15 @@ export default function AdAccounts() {
   });
 
   const campaignCount = (account) => {
-    const map = countsByKey();
-    for (const key of [account.id, account.meta_account_id, account.name]) {
-      if (key != null && map.has(String(key))) return map.get(String(key));
-    }
+    const { byId, byName } = countsByKey();
+    // Campaign ad_account_id may be the internal row id or the Meta id — check
+    // both, mirroring campaignMatchesAccount().
+    const accRowId = account.id != null ? String(account.id) : null;
+    const accMetaId = normAccountId(account.meta_account_id);
+    if (accRowId != null && byId.has(accRowId)) return byId.get(accRowId);
+    if (accMetaId != null && byId.has(accMetaId)) return byId.get(accMetaId);
+    if (account.name != null && byName.has(String(account.name)))
+      return byName.get(String(account.name));
     return 0;
   };
 

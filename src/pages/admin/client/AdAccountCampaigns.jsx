@@ -1,7 +1,7 @@
 import { createSignal, createMemo, onMount, For, Show } from "solid-js";
 import { A, useParams, useNavigate } from "@solidjs/router";
 import { fetchAdAccounts } from "../services/adAccount";
-import { fetchAllAdminCampaigns } from "../services/campaigns";
+import { fetchAllAdminCampaigns, campaignMatchesAccount } from "../services/campaigns";
 import Avatar from "../../../components/common/Avatar";
 
 // Campaigns running on a single ad account.
@@ -15,18 +15,6 @@ export default function AdAccountCampaigns() {
   const [loading, setLoading]   = createSignal(true);
   const [search, setSearch]     = createSignal("");
   const [statusFilter, setStatusFilter] = createSignal("all");
-
-  // Match a campaign to this account using whichever identifier lines up
-  // (the ad-accounts endpoint and campaign rows don't share one obvious key).
-  const matchesAccount = (c, acc) => {
-    const keys = [acc.id, acc.meta_account_id, acc.name]
-      .filter((v) => v != null)
-      .map(String);
-    return (
-      keys.includes(String(c.ad_account_id)) ||
-      keys.includes(String(c.ad_account_name))
-    );
-  };
 
   const loadAll = async () => {
     setLoading(true);
@@ -43,7 +31,7 @@ export default function AdAccountCampaigns() {
       const acc = accRaw.find((a) => String(a.id) === String(params.id)) ?? null;
       setAccount(acc);
 
-      setCampaigns(acc ? all.filter((c) => matchesAccount(c, acc)) : []);
+      setCampaigns(acc ? all.filter((c) => campaignMatchesAccount(c, acc)) : []);
     } catch (err) {
       console.error("Failed to load ad account campaigns:", err);
     } finally {

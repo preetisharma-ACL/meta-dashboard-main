@@ -114,3 +114,40 @@ export const invalidateAllAdminCampaigns = () => {
   _allCampaigns = null;
   _allCampaignsAt = 0;
 };
+
+// Normalise a Meta account id for comparison: drop the "act_" prefix and any
+// surrounding whitespace so "act_10024221334300895" and "10024221334300895"
+// compare equal. Returns null for empty/missing values.
+export const normAccountId = (v) => {
+  if (v == null) return null;
+  const s = String(v).trim().replace(/^act_/i, "");
+  return s === "" ? null : s;
+};
+
+// ── Match a campaign row to an ad-account row ────────────────────────────────
+// Match by id, NOT by name — display names are NOT unique (two ad accounts can
+// share a name, e.g. "Akhil Patyal"), so name matching pulled the same campaigns
+// into every same-named account (the duplicate-list bug).
+//
+// The catch: the campaign's ad_account_id isn't guaranteed to be the Meta id —
+// depending on the endpoint it may be the internal ad-account row id instead. So
+// we accept a match against EITHER the internal id (acc.id) or the Meta id
+// (acc.meta_account_id). Both are unique per account, so there's no duplication
+// and no cross-account collision (row ids are small ints, Meta ids are 16-digit).
+// Name is used only as a last resort for campaign rows that carry no id at all.
+export const campaignMatchesAccount = (c, acc) => {
+  const cId = normAccountId(c.ad_account_id);
+
+  if (cId != null) {
+    const accRowId = acc.id != null ? String(acc.id) : null;
+    const accMetaId = normAccountId(acc.meta_account_id);
+    return cId === accRowId || cId === accMetaId;
+  }
+
+  // Campaign has no id → last-resort exact name match.
+  return (
+    acc.name != null &&
+    c.ad_account_name != null &&
+    String(acc.name) === String(c.ad_account_name)
+  );
+};

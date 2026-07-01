@@ -5,6 +5,7 @@ import {
   updateProjectDisplayConfig,
   fetchClients,
   previewClientCpl, // ← NEW: CPL preview
+  resolveConfigRule, // ← NEW: server-side rule resolution
   // ← CHANGED: removed fetchProjects, added this
 } from "../services/projectDisplayConfig";
 import Avatar from "../../../components/common/Avatar";
@@ -54,6 +55,27 @@ export default function ProjectDisplayConfig() {
   const [clientSearch, setClientSearch] = createSignal("");
   const [showClientDropdown, setShowClientDropdown] = createSignal(false);
   const [editingConfig, setEditingConfig] = createSignal(null);
+  // Where the auto-filled Rule Type came from:
+  //   "existing" | "inherited_from_client" | "default_by_client_type" | null
+  const [ruleSource, setRuleSource] = createSignal(null);
+  // Resolved client_type ("cpl" | "hybrid" | "retainer" | null) — gates whether
+  // Rule Type is a fixed read-only value (cpl), an editable dropdown (hybrid),
+  // or N/A (retainer). Rule Value unit ("percent" | "amount" | null) labels the
+  // value field. Both come from the server /resolve/ call.
+  const [resolvedClientType, setResolvedClientType] = createSignal(null);
+  const [resolvedUnit, setResolvedUnit] = createSignal(null);
+  const [ruleResolving, setRuleResolving] = createSignal(false);
+
+  const HYBRID_RULE_OPTIONS = [
+    { value: "cpl_markup_pct", label: "cpl_markup_pct (% markup)" },
+    { value: "cpl_markup_flat", label: "cpl_markup_flat (₹ flat markup)" },
+    { value: "target_cpl", label: "target_cpl (flat ₹, ignores raw)" },
+  ];
+
+  // Retainer clients bill on raw passthrough — no per-lead display rule applies,
+  // and the backend rejects a config for them. Used to disable the rule section
+  // and block the save.
+  const isRetainer = createMemo(() => resolvedClientType() === "retainer");
 
   // ── NEW: CPL preview state ──────────────────────────────────────────────
   const [previewLoading, setPreviewLoading] = createSignal(false);
@@ -137,7 +159,17 @@ export default function ProjectDisplayConfig() {
     setProjects([]);
     setProjectSearch("");
     setShowProjectDropdown(false);
-    handleInputChange("project_id", "");
+    // Reset the pair-derived fields — a new client means no project chosen yet.
+    setFormData((prev) => ({
+      ...prev,
+      project_id: "",
+      rule_type: "cpl_markup_pct",
+      rule_value: "",
+    }));
+    setRuleSource(null);
+    setResolvedClientType(null);
+    setResolvedUnit(null);
+    clearPreview();
     setProjectsLoading(true);
 
     try {
@@ -148,6 +180,40 @@ export default function ProjectDisplayConfig() {
       setProjects([]);
     } finally {
       setProjectsLoading(false);
+    }
+  };
+
+  // ── Resolve Rule Type (+ Rule Value) for a client+project pair ────────────
+  // The backend /resolve/ endpoint owns the whole resolution (existing →
+  // inherited → default, gated by client_type) so it's correct even when the
+  // config list paginates and for brand-new clients. Populates the form fields
+  // and the client_type/unit signals that drive the Rule Type control.
+  const resolveRuleForPair = async (clientId, projectId) => {
+    setRuleResolving(true);
+    try {
+      const resolved = await resolveConfigRule(clientId, projectId);
+      if (!resolved) return;
+
+      setFormData((prev) => ({
+        ...prev,
+        project_id: projectId,
+        // Fall back to the hybrid default only when the server returns null
+        // (retainer → null; UI disables the rule section anyway).
+        rule_type: resolved.rule_type ?? "",
+        // Value is only pre-filled for an existing exact-pair config; inherited
+        // and default sources leave it blank for a fresh entry.
+        rule_value:
+          resolved.source === "existing"
+            ? String(resolved.rule_value ?? "")
+            : "",
+      }));
+      setRuleSource(resolved.source ?? null);
+      setResolvedClientType(resolved.client_type ?? null);
+      setResolvedUnit(resolved.rule_value_unit ?? null);
+    } catch (err) {
+      console.error("Failed to resolve config rule:", err);
+    } finally {
+      setRuleResolving(false);
     }
   };
 
@@ -256,6 +322,10 @@ export default function ProjectDisplayConfig() {
     });
     setClientSearch(cfg.client_email);
     setProjectSearch(cfg.project_name ?? "");
+    setRuleSource("existing");
+    setResolvedClientType(cfg.client_type ?? null);
+    // The list row doesn't carry a unit — derive it from the rule type.
+    setResolvedUnit(cfg.rule_type === "cpl_markup_pct" ? "percent" : "amount");
 
     // Pre-load the projects for this client so the dropdown works immediately
     setProjectsLoading(true);
@@ -285,6 +355,9 @@ export default function ProjectDisplayConfig() {
     setShowProjectDropdown(false);
     setShowClientDropdown(false);
     setEditingConfig(null);
+    setRuleSource(null);
+    setResolvedClientType(null);
+    setResolvedUnit(null);
     clearPreview(); // ← NEW: drop any stale CPL preview
     setPreviewLoading(false);
 
@@ -309,6 +382,15 @@ export default function ProjectDisplayConfig() {
   };
 
   const handleSubmitConfig = async () => {
+    // Retainer clients bill on raw passthrough — the backend rejects a config
+    // for them (422), so don't attempt a save.
+    if (isRetainer()) {
+      showToast(
+        "Retainer clients use raw passthrough — no display config to save.",
+        "Not applicable",
+      );
+      return;
+    }
     try {
       setSubmitting(true);
       const payload = {
@@ -319,8 +401,11 @@ export default function ProjectDisplayConfig() {
         notes: formData().notes,
       };
 
-      // Capture for the toast before the sidebar reset wipes them
+      // Capture for the toast before the sidebar reset wipes them. Show the
+      // value with the correct unit (₹ for amount rules, % for markup pct).
       const ruleValue = formData().rule_value;
+      const ruleValueLabel =
+        resolvedUnit() === "amount" ? `₹${ruleValue}` : `${ruleValue}%`;
       const projectName =
         projects().find((p) => p.id === Number(formData().project_id))?.name ||
         projectSearch();
@@ -338,8 +423,8 @@ export default function ProjectDisplayConfig() {
 
       showToast(
         wasEdit
-          ? `Successfully updated "${ruleValue}%" configuration for the "${projectName}" project.`
-          : `Successfully added "${ruleValue}%" configuration to the "${projectName}" project.`,
+          ? `Successfully updated "${ruleValueLabel}" configuration for the "${projectName}" project.`
+          : `Successfully added "${ruleValueLabel}" configuration to the "${projectName}" project.`,
         "Configuration saved",
       );
     } catch (err) {
@@ -935,10 +1020,16 @@ export default function ProjectDisplayConfig() {
                           {(project) => (
                             <button
                               type="button"
-                              onClick={() => {
-                                handleInputChange("project_id", project.id);
+                              onClick={async () => {
                                 setProjectSearch(project.name);
                                 setShowProjectDropdown(false);
+                                clearPreview();
+                                // Ask the server what rule to pre-fill for this
+                                // client+project pair (sets form + client_type).
+                                await resolveRuleForPair(
+                                  formData().client_id,
+                                  project.id,
+                                );
                               }}
                               class="w-full text-left px-3 py-2 text-sm hover:bg-purple-50 dark:hover:bg-gray-800 transition-colors"
                             >
@@ -952,32 +1043,97 @@ export default function ProjectDisplayConfig() {
                 </div>
               </div>
 
-              {/* Rule Type — unchanged */}
+              {/* Rule Type — read-only for CPL, dropdown for Hybrid, N/A for Retainer */}
               <div>
                 <label class="block text-sm font-medium mb-1.5">
                   Rule Type
+                  <Show when={ruleResolving()}>
+                    <span class="ml-2 text-xs text-purple-500 font-normal animate-pulse">
+                      Resolving…
+                    </span>
+                  </Show>
                 </label>
-                <input
-                  type="text"
-                  value={formData().rule_type}
-                  readonly
-                  class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 cursor-not-allowed outline-none"
-                />
+
+                <Show
+                  when={resolvedClientType() === "hybrid"}
+                  fallback={
+                    <input
+                      type="text"
+                      value={
+                        isRetainer()
+                          ? "N/A — retainer (raw passthrough)"
+                          : formData().rule_type || "—"
+                      }
+                      readonly
+                      class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 cursor-not-allowed outline-none"
+                    />
+                  }
+                >
+                  <select
+                    value={formData().rule_type}
+                    onChange={(e) => {
+                      handleInputChange("rule_type", e.target.value);
+                      setResolvedUnit(
+                        e.target.value === "cpl_markup_pct" ? "percent" : "amount",
+                      );
+                    }}
+                    class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-purple-500 outline-none"
+                  >
+                    <For each={HYBRID_RULE_OPTIONS}>
+                      {(opt) => <option value={opt.value}>{opt.label}</option>}
+                    </For>
+                  </select>
+                </Show>
+
+                <Show when={isRetainer()}>
+                  <p class="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                    Retainer clients use raw passthrough — no display rule needed.
+                  </p>
+                </Show>
+                <Show when={!isRetainer() && ruleSource() === "existing"}>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    From this project's existing configuration.
+                  </p>
+                </Show>
+                <Show when={!isRetainer() && ruleSource() === "inherited_from_client"}>
+                  <p class="mt-1 text-xs text-blue-600 dark:text-blue-400">
+                    New project — inherited from this client's other projects.
+                  </p>
+                </Show>
+                <Show when={!isRetainer() && ruleSource() === "default_by_client_type"}>
+                  <p class="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                    No existing rule for this client — using the default for this
+                    client type.
+                  </p>
+                </Show>
               </div>
 
-              {/* Rule Value — unchanged */}
+              {/* Rule Value — unit-aware label; disabled for retainer */}
               <div>
                 <label class="block text-sm font-medium mb-1.5">
                   Rule Value
+                  <Show when={resolvedUnit() === "percent"}>
+                    <span class="text-gray-400 font-normal"> (%)</span>
+                  </Show>
+                  <Show when={resolvedUnit() === "amount"}>
+                    <span class="text-gray-400 font-normal"> (₹)</span>
+                  </Show>
                 </label>
                 <input
                   type="number"
                   value={formData().rule_value}
+                  disabled={isRetainer()}
                   onInput={(e) =>
                     handleInputChange("rule_value", e.target.value)
                   }
-                  placeholder="Enter markup percentage"
-                  class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-purple-500 outline-none"
+                  placeholder={
+                    isRetainer()
+                      ? "Not applicable for retainer"
+                      : resolvedUnit() === "amount"
+                        ? "Enter amount (₹)"
+                        : "Enter markup %"
+                  }
+                  class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-purple-500 outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                 />
               </div>
 
@@ -1092,8 +1248,8 @@ export default function ProjectDisplayConfig() {
               </button>
               <button
                 onClick={handleSubmitConfig}
-                disabled={submitting()}
-                class="flex-1 px-4 py-2.5 rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50 transition"
+                disabled={submitting() || isRetainer() || ruleResolving()}
+                class="flex-1 px-4 py-2.5 rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
               >
                 {submitting()
                   ? isEditMode()

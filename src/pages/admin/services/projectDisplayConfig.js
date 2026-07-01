@@ -61,6 +61,29 @@ export const previewClientCpl = async ({
   });
 };
 
+/**
+ * Resolve the billing rule the config form should pre-fill for a client+project
+ * pair. The backend owns the whole resolution (existing → inherited → default),
+ * gated by client_type. Returns:
+ *   { rule_type, rule_value, rule_value_unit, source, client_type, is_active }
+ *   • rule_type: fixed_cpl | cpl_markup_pct | cpl_markup_flat | target_cpl | null
+ *   • rule_value: string, or null for inherited/default (enter fresh)
+ *   • rule_value_unit: "percent" | "amount" | null
+ *   • source: "existing" | "inherited_from_client" | "default_by_client_type"
+ *   • client_type: cpl | hybrid | retainer
+ */
+export const resolveConfigRule = async (clientId, projectId) => {
+  const params = new URLSearchParams({
+    client_id: clientId,
+    project_id: projectId,
+  });
+  const res = await api(
+    `/clients/admin/configs/resolve/?${params.toString()}`,
+    { method: "GET" },
+  );
+  return res?.data ?? null;
+};
+
 export const fetchClients = async (page = 1, pageSize = 20) => {
   return await api(
     `/clients/admin/clients?page=${page}&page_size=${pageSize}`,
