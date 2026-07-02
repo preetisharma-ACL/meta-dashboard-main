@@ -24,6 +24,50 @@ const isPointsMethod = (m) =>
   String(m || "")
     .toLowerCase()
     .includes("point");
+// Wallet-method rows represent the auto-carried opening balance, not real money
+// received this period — kept in Payment History but excluded from "Total Received".
+const isWalletMethod = (m) =>
+  String(m || "")
+    .toLowerCase()
+    .includes("wallet");
+
+// Classify a payment-history row so the client can tell at a glance what each
+// entry is: a carried-over opening balance, a points credit, or real funds.
+// `iconClass` colour-codes the leading avatar to match the category tag.
+const paymentCategory = (pay) => {
+  if (pay.isWallet)
+    return {
+      label: "Opening Balance",
+      variant: "gray",
+      icon: "↻",
+      iconClass:
+        "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 ring-1 ring-inset ring-gray-200 dark:ring-gray-700",
+    };
+  if (pay.isPoints)
+    return {
+      label: "Points Added",
+      variant: "blue",
+      icon: "★",
+      iconClass:
+        "bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400 ring-1 ring-inset ring-blue-200 dark:ring-blue-900",
+    };
+  return {
+    label: "Funds Added",
+    variant: "green",
+    icon: "✓",
+    iconClass:
+      "bg-green-100 dark:bg-green-950 text-green-600 dark:text-green-400 ring-1 ring-inset ring-green-200 dark:ring-green-900",
+  };
+};
+
+// Status shown as a quiet dot + label in the meta line (keeps the category tag
+// as the single prominent pill).
+const statusDotClass = (status) =>
+  status === "succeeded"
+    ? "bg-green-500 dark:bg-green-400"
+    : status === "pending"
+      ? "bg-amber-500 dark:bg-amber-400"
+      : "bg-red-500 dark:bg-red-400";
 
 // TODO: replace with the API field once the backend exposes the contracted
 // per-lead rate (e.g. budget.fixed_cpl). Hardcoded for now per requirement.
@@ -272,90 +316,98 @@ function PaymentHistory(props) {
       >
         <div class="space-y-3">
           <For each={props.payments}>
-            {(pay) => (
-              <div
-                class={`rounded-xl border p-4 space-y-2 ${
-                  pay.credit
-                    ? "border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30"
-                    : "border-gray-200 dark:border-gray-800 bg-white/60 dark:bg-gray-800/20"
-                }`}
-              >
-                <div class="flex items-start justify-between gap-3 flex-wrap">
-                  <div class="flex items-center gap-3">
-                    <div
-                      class={`w-9 h-9 rounded-full flex items-center justify-center text-sm flex-shrink-0 ${
-                        pay.credit
-                          ? "bg-gray-100 dark:bg-gray-800 text-gray-500"
-                          : "bg-gray-800 dark:bg-gray-100 text-white dark:text-gray-900"
-                      }`}
-                    >
-                      {pay.credit ? "📋" : "✓"}
-                    </div>
-
-                    <div>
-                      <div class="flex items-center gap-2 flex-wrap">
-                        <span class="font-semibold text-gray-900 dark:text-gray-100">
-                          {pay.isPoints
-                            ? `${fmtPoints(pay.amount)} `
-                            : fmt(pay.amount)}
-                        </span>
-
-                        <Show
-                          when={pay.credit}
-                          fallback={
-                            <Tag
-                              variant={
-                                pay.status === "succeeded"
-                                  ? "green"
-                                  : pay.status === "pending"
-                                    ? "amber"
-                                    : "red"
-                              }
-                            >
-                              {pay.status_label || pay.status?.toUpperCase()}
-                            </Tag>
-                          }
-                        >
-                          <Tag variant="gray">CREDITED by {pay.creditedBy}</Tag>
-                        </Show>
-
-                        <Show when={pay.gstFiled}>
-                          <Tag variant="blue">GST Filed</Tag>
-                        </Show>
+            {(pay) => {
+              const cat = paymentCategory(pay);
+              return (
+                <div class="group rounded-xl border border-gray-200 dark:border-gray-800 bg-white/60 dark:bg-gray-800/20 p-4 transition-colors hover:border-gray-300 dark:hover:border-gray-700 hover:bg-white dark:hover:bg-gray-800/40">
+                  <div class="flex items-start justify-between gap-3 flex-wrap">
+                    <div class="flex items-center gap-3.5">
+                      <div
+                        class={`w-10 h-10 rounded-full flex items-center justify-center text-base flex-shrink-0 ${
+                          pay.credit
+                            ? "bg-gray-100 dark:bg-gray-800 text-gray-500"
+                            : cat.iconClass
+                        }`}
+                      >
+                        {pay.credit ? "📋" : cat.icon}
                       </div>
 
-                      <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-                        {pay.credit
-                          ? `Credited on ${pay.creditDate} by ${pay.creditedBy}`
-                          : `${pay.date} · via ${pay.method} · ${pay.id}`}
-                      </p>
-                    </div>
-                  </div>
+                      <div class="min-w-0">
+                        <div class="flex items-center gap-2 flex-wrap">
+                          <span class="text-lg font-bold tracking-tight tabular-nums text-gray-900 dark:text-gray-100">
+                            {pay.isPoints
+                              ? `${fmtPoints(pay.amount)} pts`
+                              : fmt(pay.amount)}
+                          </span>
 
-                  <Show when={!pay.credit}>
-                    <button
-                      onClick={() => props.onViewInvoice(pay)}
-                      class="flex items-center gap-1.5 text-sm font-semibold text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5 transition-colors"
-                    >
-                      <svg
-                        class="w-3.5 h-3.5"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
+                          <Show
+                            when={pay.credit}
+                            fallback={
+                              <Tag variant={cat.variant}>{cat.label}</Tag>
+                            }
+                          >
+                            <Tag variant="gray">
+                              CREDITED by {pay.creditedBy}
+                            </Tag>
+                          </Show>
+
+                          <Show when={pay.gstFiled}>
+                            <Tag variant="blue">GST Filed</Tag>
+                          </Show>
+                        </div>
+
+                        <div class="mt-1 flex items-center gap-2 flex-wrap text-sm text-gray-500 dark:text-gray-400">
+                          <span>
+                            {pay.credit
+                              ? `Credited on ${pay.creditDate} by ${pay.creditedBy}`
+                              : `${pay.date} · via ${pay.method} · ${pay.id}`}
+                          </span>
+                          <Show when={!pay.credit}>
+                            <span class="text-gray-300 dark:text-gray-600">
+                              ·
+                            </span>
+                            <span class="inline-flex items-center gap-1.5">
+                              <span
+                                class={`h-1.5 w-1.5 rounded-full ${statusDotClass(pay.status)}`}
+                              />
+                              <span class="font-medium text-gray-600 dark:text-gray-300">
+                                {pay.statusLabel ||
+                                  (pay.status
+                                    ? pay.status.charAt(0).toUpperCase() +
+                                      pay.status.slice(1)
+                                    : "—")}
+                              </span>
+                            </span>
+                          </Show>
+                        </div>
+                      </div>
+                    </div>
+
+                    <Show when={!pay.credit}>
+                      <button
+                        onClick={() => props.onViewInvoice(pay)}
+                        class="flex items-center gap-1.5 text-sm font-semibold text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5 transition-colors group-hover:border-gray-300 dark:group-hover:border-gray-600"
                       >
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          stroke-width="2"
-                          d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                        />
-                      </svg>
-                      Receipt
-                    </button>
-                  </Show>
+                        <svg
+                          class="w-3.5 h-3.5"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                          />
+                        </svg>
+                        Receipt
+                      </button>
+                    </Show>
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            }}
           </For>
         </div>
       </Show>
@@ -660,6 +712,8 @@ export default function Billing() {
       paidAt: item.paid_at, // raw date, needed for monthly points filter
       isPoints:
         isPointsMethod(item.method) || isPointsMethod(item.method_label),
+      isWallet:
+        isWalletMethod(item.method) || isWalletMethod(item.method_label),
       date: new Date(item.paid_at).toLocaleDateString("en-IN", {
         day: "2-digit",
         month: "short",
@@ -852,11 +906,17 @@ export default function Billing() {
 
   // Payments-tab totals — all-time, summed from the payments list (independent
   // of the monthly overview above).
+  // Total Received = genuine receipts only. Wallet rows are the auto-carried
+  // opening balance, so they're summed into neither total.
   const totalReceived = createMemo(() =>
-    payments().reduce((s, p) => s + (p.amount || 0), 0),
+    payments()
+      .filter((p) => !p.isWallet)
+      .reduce((s, p) => s + (p.amount || 0), 0),
   );
   const totalReceivedExGST = createMemo(() =>
-    payments().reduce((s, p) => s + (p.baseAmount || 0), 0),
+    payments()
+      .filter((p) => !p.isWallet)
+      .reduce((s, p) => s + (p.baseAmount || 0), 0),
   );
 
   const tabs = [
