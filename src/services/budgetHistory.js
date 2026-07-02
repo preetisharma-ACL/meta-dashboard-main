@@ -1,0 +1,38 @@
+import { api } from "../api/api";
+
+// ─── Budget History service (admin / global-read only) ────────────────────────
+// GET /cm/budget-history/ — allocated budget + spend for a specific date or date
+// range. (BASE_URL already includes /api → the spec's /api/cm/... maps to /cm/…)
+//
+// The honest limitation this endpoint encodes: SPEND is backfilled and available
+// for any past date, but ALLOCATED BUDGET is only captured going forward from the
+// day forward-capture deployed. So for pre-tracking dates the endpoint returns
+// spend with null allocated values and sets meta.allocated_budget_available_for_range
+// = false + a human note. Callers must render the note, NOT ₹0 (see BudgetHistory).
+//
+// Params (all optional, but pass either `date` OR start+end):
+//   date       "YYYY-MM-DD"  single day
+//   startDate  "YYYY-MM-DD"  range start (with endDate; values aggregate across it)
+//   endDate    "YYYY-MM-DD"  range end
+//   groupBy    "client" (default) | "manager" | "overall"
+//   managerId  optional filter to one manager
+//
+// Returns the raw envelope { data, meta } — data is an array for client/manager
+// grouping and a single object for group_by=overall.
+export const fetchBudgetHistory = async ({
+  date,
+  startDate,
+  endDate,
+  groupBy,
+  managerId,
+} = {}) => {
+  let url = `/cm/budget-history/?1=1`;
+  if (date) url += `&date=${encodeURIComponent(date)}`;
+  if (startDate) url += `&start_date=${encodeURIComponent(startDate)}`;
+  if (endDate) url += `&end_date=${encodeURIComponent(endDate)}`;
+  if (groupBy) url += `&group_by=${encodeURIComponent(groupBy)}`;
+  if (managerId != null && managerId !== "")
+    url += `&manager_id=${encodeURIComponent(managerId)}`;
+
+  return await api(url, { method: "GET" });
+};

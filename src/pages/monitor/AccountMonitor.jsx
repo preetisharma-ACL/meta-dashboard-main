@@ -55,7 +55,26 @@ const flagsOf = (a) => {
 };
 const isNoData = (a) => (a.status?.under_delivery == null) && a.has_yesterday_data === false;
 const isFlagged = (a) => flagsOf(a).length > 0;
+// Positive status: no flags and not a "No data yet" account (matches the green "Healthy" chip).
+const isHealthy = (a) => !isFlagged(a) && !isNoData(a);
 const isCard = (a) => a.is_prepay_account === false || a.balance === "card-funded";
+const isActive = (a) => Boolean(a.is_active) && a.account_status === 1;
+
+// Sortable value for a given column key. Non-numeric / unsynced values sink.
+const sortValue = (a, key) => {
+  switch (key) {
+    case "name": return (a.name || "").toLowerCase();
+    case "campaign_count": return Number(a.campaign_count) || 0;
+    case "balance":
+    case "daily_budget":
+    case "spent_yesterday":
+    case "spent_today": {
+      const n = parseFloat(a[key]);
+      return isFinite(n) ? n : -Infinity;
+    }
+    default: return 0;
+  }
+};
 
 function StatusCell(props) {
   const a = () => props.account;
@@ -103,6 +122,41 @@ function BalanceCell(props) {
 export default function AccountMonitor() {
   const [search, setSearch] = createSignal("");
   const [flaggedOnly, setFlaggedOnly] = createSignal(false);
+  const [healthyOnly, setHealthyOnly] = createSignal(false);
+  const [statusFilter, setStatusFilter] = createSignal("active"); // active | inactive | all
+
+  // Flagged and Healthy are opposite views — enabling one clears the other.
+  const toggleFlagged = () => { const next = !flaggedOnly(); setFlaggedOnly(next); if (next) setHealthyOnly(false); };
+  const toggleHealthy = () => { const next = !healthyOnly(); setHealthyOnly(next); if (next) setFlaggedOnly(false); };
+  const [sortKey, setSortKey] = createSignal(null); // null → preserve API urgency order
+  const [sortDir, setSortDir] = createSignal("asc");
+
+  const toggleSort = (key) => {
+    if (sortKey() === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortKey(key); setSortDir("asc"); }
+  };
+
+  // Clickable sortable header cell.
+  const Th = (props) => {
+    const active = () => sortKey() === props.sortKey;
+    const alignCls = props.align === "left" ? "text-left" : props.align === "center" ? "text-center" : "text-right";
+    return (
+      <th
+        class={`p-4 whitespace-nowrap border-b border-[#D4DDE9] dark:border-gray-700 ${alignCls} ${props.class || ""} ${props.sortKey ? "cursor-pointer select-none hover:text-[#AC2334] transition-colors" : ""}`}
+        onClick={props.sortKey ? () => toggleSort(props.sortKey) : undefined}
+        aria-sort={props.sortKey ? (active() ? (sortDir() === "asc" ? "ascending" : "descending") : "none") : undefined}
+      >
+        <span class={`inline-flex items-center gap-1 ${props.align === "right" ? "flex-row-reverse" : ""}`}>
+          {props.children}
+          <Show when={props.sortKey}>
+            <span class={`text-[10px] leading-none ${active() ? "text-[#AC2334]" : "text-[#C3CDDB] dark:text-gray-600"}`}>
+              {active() ? (sortDir() === "asc" ? "▲" : "▼") : "⇅"}
+            </span>
+          </Show>
+        </span>
+      </th>
+    );
+  };
 
   const [data] = createResource(async () => {
     try {
@@ -121,14 +175,30 @@ export default function AccountMonitor() {
 
   const rows = createMemo(() => {
     const q = search().trim().toLowerCase();
-    return accounts().filter((a) => {
+    const sf = statusFilter();
+    const filtered = accounts().filter((a) => {
       if (q && !a.name?.toLowerCase().includes(q)) return false;
       if (flaggedOnly() && !isFlagged(a)) return false;
+      if (healthyOnly() && !isHealthy(a)) return false;
+      if (sf === "active" && !isActive(a)) return false;
+      if (sf === "inactive" && isActive(a)) return false;
       return true;
+    });
+    const key = sortKey();
+    if (!key) return filtered;
+    const dir = sortDir() === "asc" ? 1 : -1;
+    return [...filtered].sort((a, b) => {
+      const va = sortValue(a, key), vb = sortValue(b, key);
+      if (va < vb) return -dir;
+      if (va > vb) return dir;
+      return 0;
     });
   });
 
   const flaggedCount = createMemo(() => accounts().filter(isFlagged).length);
+  const healthyCount = createMemo(() => accounts().filter(isHealthy).length);
+  const activeCount = createMemo(() => accounts().filter(isActive).length);
+  const inactiveCount = createMemo(() => accounts().filter((a) => !isActive(a)).length);
 
   return (
     <div class="font-sans min-h-screen bg-[#F4F6FA] dark:bg-gray-900 p-4 md:p-6 lg:p-8">
@@ -187,10 +257,27 @@ export default function AccountMonitor() {
             <input type="text" placeholder="Search by account name…" value={search()} onInput={(e) => setSearch(e.target.value)}
               class="w-full pl-9 pr-3 py-2.5 text-sm rounded-lg border border-[#E2E8F1] dark:border-gray-700 bg-[#F8FAFC] dark:bg-gray-800 text-[#1A2B45] dark:text-white placeholder:text-[#8593A8] focus:outline-none focus:ring-2 focus:ring-[#AC2334]/25 focus:border-[#AC2334]" />
           </div>
-          <button onClick={() => setFlaggedOnly((v) => !v)}
+          {/* Active / Inactive / All filter */}
+          <div class="inline-flex items-center rounded-full border border-[#E2E8F1] dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-0.5">
+            <For each={[["active", "Active", activeCount], ["inactive", "Inactive", inactiveCount], ["all", "All", () => accounts().length]]}>
+              {([val, label, count]) => (
+                <button onClick={() => setStatusFilter(val)}
+                  class={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-semibold transition-colors ${statusFilter() === val ? "bg-[#AC2334] text-white" : "text-[#54657E] dark:text-gray-300 hover:text-[#AC2334]"}`}>
+                  {label}
+                  <span class={`text-[11px] font-extrabold px-1.5 py-px rounded-full ${statusFilter() === val ? "bg-white/20 text-white" : "bg-[#F1F4F9] dark:bg-gray-700 text-[#8593A8]"}`}>{count()}</span>
+                </button>
+              )}
+            </For>
+          </div>
+          <button onClick={toggleFlagged}
             class={`inline-flex items-center gap-2 px-3.5 py-2 rounded-full text-[13px] font-semibold border transition-colors ${flaggedOnly() ? "bg-[#AC2334] text-white border-[#AC2334]" : "bg-gray-50 dark:bg-gray-800 text-[#54657E] dark:text-gray-300 border-[#E2E8F1] dark:border-gray-700 hover:border-[#AC2334]/40"}`}>
             Flagged only
             <span class={`text-[11px] font-extrabold px-1.5 py-px rounded-full ${flaggedOnly() ? "bg-white/20 text-white" : "bg-[#F1F4F9] dark:bg-gray-700 text-[#8593A8]"}`}>{flaggedCount()}</span>
+          </button>
+          <button onClick={toggleHealthy}
+            class={`inline-flex items-center gap-2 px-3.5 py-2 rounded-full text-[13px] font-semibold border transition-colors ${healthyOnly() ? "bg-[#15966A] text-white border-[#15966A]" : "bg-gray-50 dark:bg-gray-800 text-[#54657E] dark:text-gray-300 border-[#E2E8F1] dark:border-gray-700 hover:border-[#15966A]/40"}`}>
+            Healthy only
+            <span class={`text-[11px] font-extrabold px-1.5 py-px rounded-full ${healthyOnly() ? "bg-white/20 text-white" : "bg-[#F1F4F9] dark:bg-gray-700 text-[#8593A8]"}`}>{healthyCount()}</span>
           </button>
           <span class="ml-auto text-sm font-bold text-[#8593A8] dark:text-gray-500 whitespace-nowrap"><b class="text-[#14233A] dark:text-white">{rows().length}</b> shown</span>
         </div>
@@ -205,12 +292,12 @@ export default function AccountMonitor() {
             <thead>
               <tr class="bg-[#F8FAFC] dark:bg-gray-800 text-[#54657E] dark:text-gray-400 uppercase text-xs font-bold tracking-wider">
                 <th class="p-4 text-center whitespace-nowrap w-16 border-b border-[#D4DDE9] dark:border-gray-700">S.No</th>
-                <th class="p-4 text-left whitespace-nowrap min-w-[220px] border-b border-[#D4DDE9] dark:border-gray-700">Account</th>
-                <th class="p-4 text-right whitespace-nowrap border-b border-[#D4DDE9] dark:border-gray-700">Balance</th>
-                <th class="p-4 text-right whitespace-nowrap border-b border-[#D4DDE9] dark:border-gray-700">Campaigns</th>
-                <th class="p-4 text-right whitespace-nowrap border-b border-[#D4DDE9] dark:border-gray-700">Daily Budget</th>
-                <th class="p-4 text-right whitespace-nowrap border-b border-[#D4DDE9] dark:border-gray-700">Spent Yesterday</th>
-                <th class="p-4 text-right whitespace-nowrap border-b border-[#D4DDE9] dark:border-gray-700">Spent Today</th>
+                <Th align="left" class="min-w-[220px]" sortKey="name">Account</Th>
+                <Th align="right" sortKey="balance">Balance</Th>
+                <Th align="right" sortKey="campaign_count">Campaigns</Th>
+                <Th align="right" sortKey="daily_budget">Daily Budget</Th>
+                <Th align="right" sortKey="spent_yesterday">Spent Yesterday</Th>
+                <Th align="right" sortKey="spent_today">Spent Today</Th>
                 <th class="p-4 text-right whitespace-nowrap border-b border-[#D4DDE9] dark:border-gray-700">Status</th>
               </tr>
             </thead>
@@ -252,7 +339,7 @@ export default function AccountMonitor() {
                   )}
                 </For>
                 <Show when={rows().length === 0}>
-                  <tr><td colspan="8" class="py-16 text-center text-[#8593A8] dark:text-gray-500">{search().trim() || flaggedOnly() ? "No accounts match the current filters." : "No accounts to show."}</td></tr>
+                  <tr><td colspan="8" class="py-16 text-center text-[#8593A8] dark:text-gray-500">{search().trim() || flaggedOnly() || healthyOnly() || statusFilter() !== "all" ? "No accounts match the current filters." : "No accounts to show."}</td></tr>
                 </Show>
               </tbody>
             </Show>
@@ -285,7 +372,7 @@ export default function AccountMonitor() {
               )}
             </For>
             <Show when={rows().length === 0}>
-              <div class="py-16 text-center text-[#8593A8] dark:text-gray-500">{search().trim() || flaggedOnly() ? "No accounts match the current filters." : "No accounts to show."}</div>
+              <div class="py-16 text-center text-[#8593A8] dark:text-gray-500">{search().trim() || flaggedOnly() || healthyOnly() || statusFilter() !== "all" ? "No accounts match the current filters." : "No accounts to show."}</div>
             </Show>
           </Show>
         </div>

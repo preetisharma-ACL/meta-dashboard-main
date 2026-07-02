@@ -41,7 +41,10 @@ import SpendSegregation from "./pages/spend/SpendSegregation";
 import AllowedBudget from "./pages/budget/AllowedBudget";
 import ManagerPerformance from "./pages/performance/ManagerPerformance";
 import AdminCampaignManagers from "./pages/admin/cm/AdminCampaignManagers";
+import CampaignManagerClients from "./pages/admin/cm/CampaignManagerClients";
 import AccountMonitor from "./pages/monitor/AccountMonitor";
+import MyWork from "./pages/worklog/MyWork";
+import ClientWorkspace from "./pages/worklog/ClientWorkspace";
 import CplRules from "./pages/cpl/CplRules";
 import AlertsPanel from "./components/AlertsPanel";
 import { loadCurrentUser } from "./stores/currentUser";
@@ -139,7 +142,17 @@ function App() {
                 </AdminRoute>
               )}
             />
+            <Route
+              path="/campaign-manager-clients"
+              component={() => (
+                <AdminRoute>
+                  <CampaignManagerClients />
+                </AdminRoute>
+              )}
+            />
             <Route path="/account-monitor" component={AccountMonitor} />
+            <Route path="/my-work" component={MyWork} />
+            <Route path="/client-workspace/:nomenId" component={ClientWorkspace} />
             <Route path="/cpl-rules" component={CplRules} />
             <Route path="/activity" component={Activity} />
             <Route path="/:client-nomen-name" component={MainDashboard} />

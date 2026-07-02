@@ -52,6 +52,13 @@ const money2 = (v) => {
 };
 const num = (v) => (Number(v) || 0).toLocaleString("en-IN");
 
+// Roster client count. `assigned_client_count` is the true roster figure (all
+// CPL+Hybrid clients assigned to the manager); `client_count` is the active
+// subset (clients with spend this month). Prefer assigned, fall back to the
+// active count for older backends that don't serve it yet.
+const assignedCount = (r) =>
+  r?.assigned_client_count != null ? Number(r.assigned_client_count) : Number(r?.client_count) || 0;
+
 const monthOptions = () => {
   const now = new Date();
   const opts = [];
@@ -248,7 +255,7 @@ export default function AdminCampaignManagers() {
             <div class="px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
               <p class="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">Total clients</p>
               <p class="text-xl font-bold text-gray-900 dark:text-white tabular-nums">
-                {num(rows().reduce((s, r) => s + (Number(r.client_count) || 0), 0))}
+                {num(rows().reduce((s, r) => s + assignedCount(r), 0))}
               </p>
             </div>
             {/* Grand total allocated budget — straight from the roster summary. */}
@@ -338,7 +345,12 @@ export default function AdminCampaignManagers() {
                           <span class="font-medium text-gray-800 dark:text-gray-100">{r.manager_email}</span>
                         </div>
                       </td>
-                      <td class="p-3.5 text-right text-gray-700 dark:text-gray-300 tabular-nums">{num(r.client_count)}</td>
+                      <td class="p-3.5 text-right text-gray-700 dark:text-gray-300 tabular-nums">
+                        <span class="font-medium">{num(assignedCount(r))}</span>
+                        <Show when={r.client_count != null}>
+                          <span class="text-gray-400 dark:text-gray-500 text-xs">{" · "}{num(r.client_count)} active</span>
+                        </Show>
+                      </td>
                       <td class="p-3.5 text-right tabular-nums">
                         {/* Served directly on the roster — no per-manager fetch. */}
                         <Show when={r.allocated_budget != null} fallback={<span class="text-gray-400 dark:text-gray-500">—</span>}>
@@ -432,7 +444,10 @@ export default function AdminCampaignManagers() {
                 {money2(selected().allocated_budget)}<span class="text-sm font-medium text-gray-400 dark:text-gray-500">/day</span>
               </p>
             </Show>
-            <p class="text-xs text-gray-400 dark:text-gray-500">across {num(selected().client_count)} clients</p>
+            <p class="text-xs text-gray-400 dark:text-gray-500">
+              across {num(assignedCount(selected()))} clients
+              <Show when={selected().client_count != null}>{" "}({num(selected().client_count)} active)</Show>
+            </p>
           </div>
         </div>
 

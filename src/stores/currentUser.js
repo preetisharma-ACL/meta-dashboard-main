@@ -33,6 +33,23 @@ export const isTier2 = () => cmTier() === "tier_2";
 export const canSwitch = () => isTier1();
 export const canUseAI = () => isAdmin() || isTier1();
 
+// ─── GLOBAL_READ gate ─────────────────────────────────────────────────────────
+// admin + coordination + accounts read across the whole org (all managers /
+// clients). Cross-org admin views (e.g. Manager Performance, Budget History) are
+// available to these roles. The backend is the real authority; this just decides
+// whether to SHOW the control so other roles don't see one that always 403s.
+const GLOBAL_READ_ROLES = new Set(["admin", "coordination", "accounts"]);
+export const isGlobalRead = () => {
+  if (currentUser.loaded) return GLOBAL_READ_ROLES.has(currentUser.role);
+  // Fallback before /auth/me resolves: read the role mirrored into localStorage.
+  try {
+    const auth = JSON.parse(localStorage.getItem("auth") || "null");
+    return auth ? GLOBAL_READ_ROLES.has(auth.role) : false;
+  } catch {
+    return false;
+  }
+};
+
 // ─── Campaign write gate (pause/resume) ───────────────────────────────────────
 // Who may write a campaign's status: admins + the other GLOBAL_READ roles
 // (coordination, accounts), and Tier-1 campaign managers. Tier-2 CMs, clients,

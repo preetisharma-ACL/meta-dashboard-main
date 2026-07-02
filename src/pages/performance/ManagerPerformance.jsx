@@ -23,6 +23,11 @@ const pct = (v) => {
   return `${n.toFixed(1)}%`;
 };
 const num = (v) => (Number(v) || 0).toLocaleString("en-IN");
+// Roster client count. `assigned_client_count` = all CPL+Hybrid clients assigned
+// to the manager (true roster); `client_count` = active subset with spend this
+// month. Prefer assigned, fall back to active for backends without the field.
+const assignedCount = (r) =>
+  r?.assigned_client_count != null ? Number(r.assigned_client_count) : Number(r?.client_count) || 0;
 const profitTone = (v) => {
   const n = parseFloat(v);
   if (!isFinite(n)) return "text-gray-500 dark:text-gray-400";
@@ -225,7 +230,12 @@ export default function ManagerPerformance() {
                           </Show>
                         </div>
                       </td>
-                      <td class="p-3 text-right text-gray-700 dark:text-gray-300">{num(r.client_count)}</td>
+                      <td class="p-3 text-right text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                        <span class="font-medium">{num(assignedCount(r))}</span>
+                        <Show when={r.client_count != null}>
+                          <span class="text-gray-400 dark:text-gray-500 text-xs">{" · "}{num(r.client_count)} active</span>
+                        </Show>
+                      </td>
                       <td class="p-3 text-right text-gray-700 dark:text-gray-300 whitespace-nowrap">{money0(r.net_billable)}</td>
                       <td class="p-3 text-right text-gray-500 dark:text-gray-400 whitespace-nowrap">{money0(r.actual_spend)}</td>
                       <td class={`p-3 text-right font-bold whitespace-nowrap ${profitTone(r.profit)}`}>{money0(r.profit)}</td>

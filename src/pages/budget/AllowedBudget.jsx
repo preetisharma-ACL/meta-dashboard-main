@@ -8,8 +8,9 @@ import {
   fetchBudgetRequests,
 } from "../../services/allowedBudget";
 import { scopeKey } from "../../stores/cmScope";
-import { isAdmin } from "../../stores/currentUser";
+import { isAdmin, isGlobalRead } from "../../stores/currentUser";
 import Avatar from "../../components/common/Avatar";
+import BudgetHistory from "./BudgetHistory";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DESIGN REFRESH — v4 system. Every signal, createResource (with its object
@@ -467,11 +468,13 @@ export default function AllowedBudget() {
     }
   };
 
-  const tabs = createMemo(() =>
-    admin()
+  const tabs = createMemo(() => {
+    const base = admin()
       ? [{ k: "clients", l: "Clients" }, { k: "queue", l: "Approval Queue" }, { k: "audit", l: "Requests" }]
-      : [{ k: "clients", l: "My Clients" }, { k: "audit", l: "My Requests" }],
-  );
+      : [{ k: "clients", l: "My Clients" }, { k: "audit", l: "My Requests" }];
+    // Budget History reads across the whole org — admin / global-read only.
+    return isGlobalRead() ? [...base, { k: "history", l: "Budget History" }] : base;
+  });
 
   return (
     <div class="font-sans min-h-screen bg-gray-50 dark:bg-gray-900 p-4 md:p-6 lg:p-8">
@@ -828,6 +831,11 @@ export default function AllowedBudget() {
             </Show>
           </table>
         </div>
+      </Show>
+
+      {/* ── BUDGET HISTORY TAB (admin / global-read) ── */}
+      <Show when={tab() === "history" && isGlobalRead()}>
+        <BudgetHistory />
       </Show>
 
       {/* Modals */}

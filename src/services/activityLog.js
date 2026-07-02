@@ -46,7 +46,6 @@ export const recordActivity = async (entry = {}) => {
     };
     // Only send what the caller provided; the server owns/ignores the rest.
     Object.keys(body).forEach((k) => body[k] === undefined && delete body[k]);
-
     const res = await api(`/activity/`, {
       method: "POST",
       body: JSON.stringify(body),
