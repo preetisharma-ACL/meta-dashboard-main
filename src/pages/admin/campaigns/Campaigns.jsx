@@ -155,61 +155,82 @@ export default function Campaigns() {
   // Pagination (client-side)
   const [page, setPage] = createSignal(1);
 
-  // ── Load EVERY campaign once, then filter/sort/paginate client-side ────────
-  // The old version re-fetched per filter and relied on the server honouring
-  // each param (started_after / ad_account / client_nomen_id / status / search).
-  // The backend ignored those, so the filters did nothing. We now sweep all
-  // pages once (the page already did this to build the dropdowns) and apply
-  // every filter, the sort, and pagination locally so they always work.
+  // Pull the row array out of a response, tolerating both the flat envelope
+  // ({ data: [...] }) and the older nested one ({ data: { results: [...] } }).
+  // Guards against a null/undefined response (api() returns undefined on an
+  // auth-refresh bail) so one bad page can't throw the whole load.
+  const rawRows = (r) =>
+    r?.data?.results ?? (Array.isArray(r?.data) ? r.data : []);
+
+  // Rebuild the Ad-Account / Client-Nomen dropdown options from whatever rows
+  // we have so far (called again as more pages stream in).
+  const rebuildOptions = (rows) => {
+    const adSeen = new Map();
+    const clientSeen = new Map();
+    rows.forEach((c) => {
+      if (c.ad_account_id && c.ad_account_name)
+        adSeen.set(c.ad_account_id, c.ad_account_name);
+      if (c.client_nomen && c.client_nomen_name)
+        clientSeen.set(c.client_nomen, c.client_nomen_name);
+    });
+    setAllAdAccountOptions(
+      [...adSeen.entries()]
+        .map(([id, name]) => ({ id, name }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    );
+    setAllClientNomenOptions(
+      [...clientSeen.entries()]
+        .map(([id, name]) => ({ id, name }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    );
+  };
+
+  // ── Render the FIRST page immediately, then stream the rest in the background.
+  // The old version awaited a full sweep of every page (6,590 rows / 330 pages
+  // at the default 20-per-page, since it never passed page_size) BEFORE clearing
+  // the loading flag — so the table sat on skeleton rows and "0 results" for the
+  // whole multi-minute sweep. We now show page 1 the moment it arrives and append
+  // the remaining pages as they load. A large page_size (already used by the
+  // Ad-Accounts sweep against this same endpoint) collapses the round-trips when
+  // the backend honours it, and falls back safely to 20/page if it doesn't —
+  // either way the UI is unblocked after the first request. Filtering/sorting/
+  // pagination stay client-side (they work once the rows are in memory).
   const loadAll = async () => {
     try {
-      setLoading(true);
       setError(null);
+      setLoading(true);
 
-      const first = await fetchCampaigns({ page: 1 });
-      const firstRaw =
-        first.data?.results ?? (Array.isArray(first.data) ? first.data : []);
+      const first = await fetchCampaigns({ page: 1, pageSize: 1000 });
+      const firstRaw = rawRows(first);
       const srvTotalPages =
-        first.data?.meta?.pagination?.total_pages ??
-        first.meta?.pagination?.total_pages ??
+        first?.data?.meta?.pagination?.total_pages ??
+        first?.meta?.pagination?.total_pages ??
         1;
 
-      let all = [...firstRaw];
+      setAllCampaigns(firstRaw);
+      rebuildOptions(firstRaw);
+      setLoading(false); // unblock the UI as soon as the first page is in
+
+      // Stream the remaining pages in the background — this does NOT gate render.
       for (let p = 2; p <= srvTotalPages; p += 10) {
         const batch = [];
         for (let b = p; b < p + 10 && b <= srvTotalPages; b++)
-          batch.push(fetchCampaigns({ page: b }));
-        const results = await Promise.all(batch);
-        results.forEach((r) => {
-          const raw = r.data?.results ?? (Array.isArray(r.data) ? r.data : []);
-          all = all.concat(raw);
-        });
+          batch.push(fetchCampaigns({ page: b, pageSize: 1000 }));
+        const more = (await Promise.all(batch)).flatMap(rawRows);
+        if (more.length) {
+          setAllCampaigns((prev) => {
+            const merged = prev.concat(more);
+            rebuildOptions(merged);
+            return merged;
+          });
+        }
       }
-
-      setAllCampaigns(all);
-
-      // Build dropdown options from the full set
-      const adSeen = new Map();
-      const clientSeen = new Map();
-      all.forEach((c) => {
-        if (c.ad_account_id && c.ad_account_name)
-          adSeen.set(c.ad_account_id, c.ad_account_name);
-        if (c.client_nomen && c.client_nomen_name)
-          clientSeen.set(c.client_nomen, c.client_nomen_name);
-      });
-      setAllAdAccountOptions(
-        [...adSeen.entries()]
-          .map(([id, name]) => ({ id, name }))
-          .sort((a, b) => a.name.localeCompare(b.name)),
-      );
-      setAllClientNomenOptions(
-        [...clientSeen.entries()]
-          .map(([id, name]) => ({ id, name }))
-          .sort((a, b) => a.name.localeCompare(b.name)),
-      );
     } catch (err) {
       console.error(err);
-      setError("Failed to load campaigns. Please try again.");
+      // Only surface a blocking error if we have nothing to show; a failure
+      // part-way through the background stream shouldn't wipe rendered rows.
+      if (allCampaigns().length === 0)
+        setError("Failed to load campaigns. Please try again.");
     } finally {
       setLoading(false);
     }
