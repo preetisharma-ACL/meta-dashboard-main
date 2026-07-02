@@ -62,20 +62,30 @@ function AllocatedValue(props) {
   );
 }
 
-export default function BudgetHistory() {
+export default function BudgetHistory(props) {
   const [mode, setMode] = createSignal("single"); // single | range
   const [date, setDate] = createSignal(todayISO());
   const [startDate, setStartDate] = createSignal(todayISO());
   const [endDate, setEndDate] = createSignal(todayISO());
   const [groupBy, setGroupBy] = createSignal("client");
 
+  // The page-level CLIENT TYPE chips (CPL / Hybrid / Retainer, CPL+Hybrid by
+  // default) scope this tab too — the parent passes the current selection. The
+  // backend defaults to cpl,hybrid so the allocated totals reconcile with the
+  // Allowed Budget page; toggling Retainer on adds the client-funded budgets.
+  const clientTypes = () =>
+    Array.isArray(props.clientTypes) ? props.clientTypes : [];
+
   // Reactive param set — a new object only when a control actually changes, so
-  // the resource refetches exactly once per change.
-  const params = createMemo(() =>
-    mode() === "range"
-      ? { start_date: startDate(), end_date: endDate(), groupBy: groupBy() }
-      : { date: date(), groupBy: groupBy() },
-  );
+  // the resource refetches exactly once per change. Toggling a client-type chip
+  // changes props.clientTypes, which refetches the re-scoped dataset.
+  const params = createMemo(() => ({
+    ...(mode() === "range"
+      ? { start_date: startDate(), end_date: endDate() }
+      : { date: date() }),
+    groupBy: groupBy(),
+    clientTypes: clientTypes(),
+  }));
 
   const [res] = createResource(params, async (p) =>
     fetchBudgetHistory({
@@ -83,6 +93,7 @@ export default function BudgetHistory() {
       startDate: p.start_date,
       endDate: p.end_date,
       groupBy: p.groupBy,
+      clientTypes: p.clientTypes,
     }),
   );
 

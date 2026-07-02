@@ -16,6 +16,14 @@ import { api } from "../api/api";
 //   endDate    "YYYY-MM-DD"  range end
 //   groupBy    "client" (default) | "manager" | "overall"
 //   managerId  optional filter to one manager
+//   clientTypes  optional array of "cpl" | "hybrid" | "retainer" — sent as
+//                ?client_type=cpl,hybrid. Omitting it lets the backend default
+//                to cpl,hybrid (retainers are client-funded → excluded by
+//                convention, so the totals reconcile with the Allowed Budget
+//                page). The CPL/Hybrid/Retainer chips only ever send those three
+//                keys, which excludes unclassified clients (the backend's `all`
+//                value would include them, matching Account Funding's behaviour).
+//                meta.client_type_filter echoes back the applied filter.
 //
 // Returns the raw envelope { data, meta } — data is an array for client/manager
 // grouping and a single object for group_by=overall.
@@ -25,6 +33,7 @@ export const fetchBudgetHistory = async ({
   endDate,
   groupBy,
   managerId,
+  clientTypes,
 } = {}) => {
   let url = `/cm/budget-history/?1=1`;
   if (date) url += `&date=${encodeURIComponent(date)}`;
@@ -33,6 +42,8 @@ export const fetchBudgetHistory = async ({
   if (groupBy) url += `&group_by=${encodeURIComponent(groupBy)}`;
   if (managerId != null && managerId !== "")
     url += `&manager_id=${encodeURIComponent(managerId)}`;
+  if (Array.isArray(clientTypes) && clientTypes.length)
+    url += `&client_type=${encodeURIComponent(clientTypes.join(","))}`;
 
   return await api(url, { method: "GET" });
 };

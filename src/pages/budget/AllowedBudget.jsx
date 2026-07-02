@@ -835,7 +835,7 @@ export default function AllowedBudget() {
 
       {/* ── BUDGET HISTORY TAB (admin / global-read) ── */}
       <Show when={tab() === "history" && isGlobalRead()}>
-        <BudgetHistory />
+        <BudgetHistory clientTypes={clientTypes()} />
       </Show>
 
       {/* Modals */}
