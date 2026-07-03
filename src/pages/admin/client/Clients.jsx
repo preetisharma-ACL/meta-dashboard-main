@@ -1,6 +1,20 @@
-import { createSignal, createMemo, onMount, For, Show } from "solid-js";
+import {
+  createSignal,
+  createMemo,
+  createResource,
+  createEffect,
+  on,
+  onMount,
+  For,
+  Show,
+} from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { fetchClients } from "../services/fetchClients";
+import { fetchManagerPerformance } from "../../../services/performance";
+import {
+  probeAdminSwitchMode,
+  fetchManagerOwnClients,
+} from "../../../services/cmAdmin";
 import { setProjectsCache } from "../../../cacheStore/appStore";
 import Avatar from "../../../components/common/Avatar";
 
@@ -16,6 +30,34 @@ const fmtType = (t) =>
   String(t ?? "")
     .charAt(0)
     .toUpperCase() + String(t ?? "").slice(1);
+
+// Client-type multi-select chips (same pattern as Allowed Budget / Account
+// Funding). CPL + Hybrid are on by default; Retainer is off by default.
+const CLIENT_TYPE_CHIPS = [
+  { key: "cpl", label: "CPL" },
+  { key: "hybrid", label: "Hybrid" },
+  { key: "retainer", label: "Retainer" },
+];
+const DEFAULT_CLIENT_TYPES = ["cpl", "hybrid"];
+
+// Assignment (has a campaign manager) filter options.
+const ASSIGN_OPTIONS = [
+  { value: "all", label: "All Assignment" },
+  { value: "assigned", label: "Assigned" },
+  { value: "unassigned", label: "Not assigned yet" },
+];
+
+// Current month key (YYYY-MM) — the manager roster is month-scoped.
+const currentMonthKey = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+};
+
+// Friendly manager name from their email local-part.
+const labelFromEmail = (email) => {
+  const local = String(email ?? "").split("@")[0] || "—";
+  return local.charAt(0).toUpperCase() + local.slice(1);
+};
 
 const fmt = (iso) => {
   if (!iso) return "—";
@@ -35,8 +77,71 @@ export default function Clients() {
   const [clients, setClients] = createSignal([]);
   const [loading, setLoading] = createSignal(true);
   const [search, setSearch] = createSignal("");
-  const [typeFilter, setTypeFilter] = createSignal("all");
+  const [clientTypes, setClientTypes] = createSignal(DEFAULT_CLIENT_TYPES); // multi-select
+  const [assignFilter, setAssignFilter] = createSignal("all"); // all | assigned | unassigned
   const [activeFilter, setActiveFilter] = createSignal("All");
+
+  // Toggle a client-type chip; never allow an empty selection.
+  const toggleClientType = (key) => {
+    setClientTypes((prev) => {
+      const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key];
+      return next.length ? next : prev;
+    });
+  };
+
+  // ── Campaign-manager map (client_nomen → owning CM) ────────────────────────
+  // The admin clients endpoint carries no owner, so we assemble it the same way
+  // the "Campaign Manager's Clients" screen does: roster → switch-mode probe →
+  // per-manager own-client lists, joined on the client nomen id.
+  const [rosterRes] = createResource(currentMonthKey, async (m) => {
+    const res = await fetchManagerPerformance(m);
+    return Array.isArray(res?.data) ? res.data : [];
+  });
+  const managers = () => rosterRes() ?? [];
+
+  const [switchMode, setSwitchMode] = createSignal("unknown");
+  createEffect(
+    on(managers, (list) => {
+      if (switchMode() !== "unknown") return;
+      if (!list || list.length === 0) return;
+      setSwitchMode("checking");
+      probeAdminSwitchMode(list[0].manager_id)
+        .then((r) => setSwitchMode(r.allowed ? "allowed" : "denied"))
+        .catch(() => setSwitchMode("denied"));
+    }),
+  );
+  const cmAllowed = () => switchMode() === "allowed";
+
+  const [ownLists] = createResource(
+    () => (cmAllowed() && managers().length ? managers() : null),
+    async (list) => {
+      const entries = await Promise.all(
+        list.map(async (m) => [
+          m.manager_id,
+          await fetchManagerOwnClients(m.manager_id),
+        ]),
+      );
+      return Object.fromEntries(entries);
+    },
+  );
+
+  // nomen (as string) → { email, name } of the first manager that owns it.
+  const cmByNomen = createMemo(() => {
+    const own = ownLists() ?? {};
+    const map = {};
+    for (const m of managers()) {
+      for (const c of own[m.manager_id] ?? []) {
+        const key = String(c.client_nomen_id);
+        if (!(key in map)) {
+          map[key] = { email: m.manager_email, name: labelFromEmail(m.manager_email) };
+        }
+      }
+    }
+    return map;
+  });
+  const cmForClient = (c) => cmByNomen()[String(c.client_nomen)] ?? null;
+  // Map is trustworthy only once the probe allowed it AND the lists resolved.
+  const cmReady = () => cmAllowed() && !ownLists.loading && !!ownLists();
   const [sortKey, setSortKey] = createSignal("created_at");
   const [sortDir, setSortDir] = createSignal("desc");
   const [selected, setSelected] = createSignal(new Set());
@@ -135,8 +240,15 @@ export default function Clients() {
       );
     }
  
-    if (typeFilter() !== "all")
-      data = data.filter((c) => c.client_type === typeFilter());
+    // Multi-select client-type filter. Clients with no type always pass through.
+    const types = clientTypes();
+    data = data.filter((c) => !c.client_type || types.includes(c.client_type));
+
+    // Assignment filter — only applied once the CM map is trustworthy.
+    if (cmReady() && assignFilter() !== "all") {
+      const wantAssigned = assignFilter() === "assigned";
+      data = data.filter((c) => Boolean(cmForClient(c)) === wantAssigned);
+    }
 
     if (activeFilter() === "Yes") data = data.filter((c) => c.is_active);
     else if (activeFilter() === "No") data = data.filter((c) => !c.is_active);
@@ -242,6 +354,37 @@ export default function Clients() {
         </div>
       </div>
 
+      {/* ── Client-type toggle chips ── */}
+      <div class="flex flex-wrap items-center gap-1.5 mb-4">
+        <span class="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mr-1">
+          Client type
+        </span>
+        <For each={CLIENT_TYPE_CHIPS}>
+          {(t) => {
+            const on = () => clientTypes().includes(t.key);
+            return (
+              <button
+                type="button"
+                onClick={() => toggleClientType(t.key)}
+                aria-pressed={on()}
+                class={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[13px] font-semibold border transition-colors ${
+                  on()
+                    ? "bg-[#14233A] text-white border-[#14233A]"
+                    : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-[#14233A]/40"
+                }`}
+              >
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <Show when={on()} fallback={<circle cx="12" cy="12" r="9" stroke-width="1.6" />}>
+                    <path d="M20 6L9 17l-5-5" />
+                  </Show>
+                </svg>
+                {t.label}
+              </button>
+            );
+          }}
+        </For>
+      </div>
+
       {/* ── Filters ── */}
       <div
         class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200
@@ -270,21 +413,6 @@ export default function Clients() {
           />
         </div>
 
-        {/* Type filter */}
-        {/* Type Filter Dropdown */}
-        <select
-          value={typeFilter()}
-          onChange={(e) => setTypeFilter(e.target.value)}
-          class="px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700
-         bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300
-         focus:outline-none focus:ring-1 focus:ring-purple-400 dark:focus:ring-gray-600 cursor-pointer"
-        >
-          <option value="all">All Types</option>
-          <option value="hybrid">Hybrid</option>
-          <option value="cpl">CPL</option>
-          <option value="retainer">Retainer</option>
-        </select>
-
         {/* Active filter */}
         {/* Active Status Dropdown */}
         <select
@@ -298,11 +426,35 @@ export default function Clients() {
           <option value="Yes">Active</option>
           <option value="No">Inactive</option>
         </select>
+
+        {/* Assignment filter — rectangle pills */}
+        <div class="inline-flex items-center gap-1 p-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+          <For each={ASSIGN_OPTIONS}>
+            {(o) => {
+              const on = () => assignFilter() === o.value;
+              return (
+                <button
+                  type="button"
+                  onClick={() => setAssignFilter(o.value)}
+                  aria-pressed={on()}
+                  class={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap ${
+                    on()
+                      ? "bg-blue-900 text-white shadow-sm"
+                      : "text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-700"
+                  }`}
+                >
+                  {o.label}
+                </button>
+              );
+            }}
+          </For>
+        </div>
         {/* Clear All Filters Button */}
         <button
           onClick={() => {
             setSearch("");
-            setTypeFilter("all");
+            setClientTypes(DEFAULT_CLIENT_TYPES);
+            setAssignFilter("all");
             setActiveFilter("All");
             setSortKey("created_at");
             setSortDir("desc");
@@ -317,7 +469,7 @@ export default function Clients() {
         </button>
 
         <span class="ml-auto text-sm text-gray-400 dark:text-gray-500 whitespace-nowrap">
-          {filtered().length} on this page
+          {filtered().length} results
         </span>
       </div>
 
@@ -349,6 +501,9 @@ export default function Clients() {
                 onClick={() => toggleSort("client_nomen_name")}
               >
                 Client Nomen {sortIcon("client_nomen_name")}
+              </th>
+              <th class="p-3 text-left whitespace-nowrap">
+                Campaign Manager
               </th>
               <th
                 class="p-3 text-left cursor-pointer hover:text-blue-900 whitespace-nowrap"
@@ -451,6 +606,35 @@ export default function Clients() {
                     {/* client_nomen_name */}
                     <td class="p-3 text-gray-700 dark:text-gray-300 font-medium">
                       {client.client_nomen_name}
+                    </td>
+
+                    {/* Assigned campaign manager */}
+                    <td class="p-3" onClick={(e) => e.stopPropagation()}>
+                      <Show
+                        when={cmReady()}
+                        fallback={
+                          <span class="text-gray-300 dark:text-gray-600">—</span>
+                        }
+                      >
+                        <Show
+                          when={cmForClient(client)}
+                          fallback={
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700 ring-1 ring-amber-200 dark:bg-amber-900/20 dark:text-amber-300">
+                              Not assigned
+                            </span>
+                          }
+                        >
+                          <div class="flex items-center gap-2">
+                            <Avatar name={cmForClient(client).email} size="w-7 h-7" />
+                            <span
+                              class="text-gray-700 dark:text-gray-300 font-medium truncate max-w-[160px]"
+                              title={cmForClient(client).email}
+                            >
+                              {cmForClient(client).name}
+                            </span>
+                          </div>
+                        </Show>
+                      </Show>
                     </td>
 
                     {/* organization_name */}
