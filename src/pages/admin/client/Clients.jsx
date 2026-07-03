@@ -79,6 +79,7 @@ export default function Clients() {
   const [search, setSearch] = createSignal("");
   const [clientTypes, setClientTypes] = createSignal(DEFAULT_CLIENT_TYPES); // multi-select
   const [assignFilter, setAssignFilter] = createSignal("all"); // all | assigned | unassigned
+  const [cmFilter, setCmFilter] = createSignal("all"); // "all" | manager_email
   const [activeFilter, setActiveFilter] = createSignal("All");
 
   // Toggle a client-type chip; never allow an empty selection.
@@ -142,6 +143,14 @@ export default function Clients() {
   const cmForClient = (c) => cmByNomen()[String(c.client_nomen)] ?? null;
   // Map is trustworthy only once the probe allowed it AND the lists resolved.
   const cmReady = () => cmAllowed() && !ownLists.loading && !!ownLists();
+
+  // Every manager from the roster, A→Z, for the CM filter dropdown.
+  const managerOptions = createMemo(() =>
+    managers()
+      .map((m) => ({ email: m.manager_email, name: labelFromEmail(m.manager_email) }))
+      .filter((m) => m.email)
+      .sort((a, b) => a.name.localeCompare(b.name)),
+  );
   const [sortKey, setSortKey] = createSignal("created_at");
   const [sortDir, setSortDir] = createSignal("desc");
   const [selected, setSelected] = createSignal(new Set());
@@ -248,6 +257,11 @@ export default function Clients() {
     if (cmReady() && assignFilter() !== "all") {
       const wantAssigned = assignFilter() === "assigned";
       data = data.filter((c) => Boolean(cmForClient(c)) === wantAssigned);
+    }
+
+    // Campaign-manager filter — clients owned by the selected manager.
+    if (cmReady() && cmFilter() !== "all") {
+      data = data.filter((c) => cmForClient(c)?.email === cmFilter());
     }
 
     if (activeFilter() === "Yes") data = data.filter((c) => c.is_active);
@@ -391,7 +405,7 @@ export default function Clients() {
                         dark:border-gray-700 p-4 mb-4 flex flex-wrap items-center gap-3"
       >
         {/* Search */}
-        <div class="relative flex w-[500px]">
+        <div class="relative flex w-[360px]">
           <svg
             class="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2"
             fill="none"
@@ -449,12 +463,32 @@ export default function Clients() {
             }}
           </For>
         </div>
+
+        {/* Campaign-manager filter */}
+        {/* Campaign Manager Dropdown — lists every manager; select to see their clients */}
+        <select
+          value={cmFilter()}
+          onChange={(e) => setCmFilter(e.target.value)}
+          disabled={!cmReady() || managerOptions().length === 0}
+          class="px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700
+         bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300
+         focus:outline-none focus:ring-1 focus:ring-purple-400 dark:focus:ring-gray-600 cursor-pointer
+         disabled:opacity-60 disabled:cursor-not-allowed"
+        >
+          <option value="all">
+            {cmReady() ? "All Campaign Managers" : "Loading managers…"}
+          </option>
+          <For each={managerOptions()}>
+            {(m) => <option value={m.email}>{m.name}</option>}
+          </For>
+        </select>
         {/* Clear All Filters Button */}
         <button
           onClick={() => {
             setSearch("");
             setClientTypes(DEFAULT_CLIENT_TYPES);
             setAssignFilter("all");
+            setCmFilter("all");
             setActiveFilter("All");
             setSortKey("created_at");
             setSortDir("desc");
