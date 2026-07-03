@@ -115,12 +115,18 @@ const prune = (obj) => {
 // ═══════════════════════════════════════════════════════════════════════════
 // 1. My Work — unified task+complaint queue (pre-sorted, most urgent first)
 // ═══════════════════════════════════════════════════════════════════════════
-// view: "own" (default) | "all". Returns:
+// view: "own" (default) | "all" | "assigned_by_me". Returns:
 //   { items: [...camelCase], meta: { view, total, taskCount, complaintCount,
 //                                     overdueCount } }
 // The backend already sorts by urgency — callers MUST NOT re-sort.
+//   • own            — items assigned to / owned by me.
+//   • all            — the whole team's open items (senior roles only).
+//   • assigned_by_me — tasks I created for someone else (I'm assigned_by, not the
+//                      assignee). REQUIRES backend support for this view value;
+//                      an unknown value falls back to the backend's own default.
+const MY_WORK_VIEWS = new Set(["own", "all", "assigned_by_me"]);
 export const fetchMyWork = async ({ view = "own" } = {}) => {
-  const v = view === "all" ? "all" : "own";
+  const v = MY_WORK_VIEWS.has(view) ? view : "own";
   const res = await api(`/worklog/my-work/?view=${v}`, { method: "GET" });
   applyMeta(res?.meta);
   const m = res?.meta ?? {};
@@ -237,6 +243,27 @@ export const resolveComplaint = async (id, resolution) => {
     body: JSON.stringify({ resolution }),
   });
   return res?.data ? normalizeComplaint(res.data) : null;
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 2d. Assignable users (Assign-task "Assign to" dropdown)
+// ═══════════════════════════════════════════════════════════════════════════
+// GET /worklog/assignable-users/ → all active campaign managers plus the
+// requesting user (is_self:true, so "assign to me" always works). The value the
+// task submit needs is user_id (Task.assigned_to expects the integer FK); name
+// falls back to email when no display name is set.
+export const fetchAssignableUsers = async () => {
+  const res = await api(`/worklog/assignable-users/`, { method: "GET" });
+  const rows = Array.isArray(res?.data) ? res.data : [];
+  return rows
+    .map((u) => ({
+      userId: u.user_id ?? null,
+      email: u.email ?? "",
+      name: u.name || u.email || (u.user_id != null ? `User #${u.user_id}` : ""),
+      role: u.role ?? null,
+      isSelf: !!u.is_self,
+    }))
+    .filter((u) => u.userId != null);
 };
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -188,20 +188,45 @@ export default function Sidebar() {
         path: "/cm-alerts",
       },
       {
-        name: "Account Funding",
+        name: "Accounts & Funding",
         roles: ["admin", "campaign_manager"],
         icon: () => (
           <Icon d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
         ),
-        path: "/account-funding",
-      },
-      {
-        name: "Spend Segregation",
-        roles: ["admin"],
-        icon: () => (
-          <Icon d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" d2="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
-        ),
-        path: "/spend-segregation",
+        subMenus: [
+          {
+            name: "Account Funding",
+            path: "/account-funding",
+            roles: ["admin", "campaign_manager"],
+            icon: () => (
+              <SmallIcon d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+            ),
+          },
+          {
+            name: "Meta Ad Accounts",
+            path: "/ad-accounts",
+            roles: ["admin"],
+            icon: () => (
+              <SmallIcon d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+            ),
+          },
+          {
+            name: "Spend Segregation",
+            path: "/spend-segregation",
+            roles: ["admin"],
+            icon: () => (
+              <SmallIcon d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
+            ),
+          },
+          {
+            name: "Account Monitor",
+            path: "/account-monitor",
+            roles: ["admin"],
+            icon: () => (
+              <SmallIcon d="M3 12l2-2 4 4 6-6 4 4 2-2" />
+            ),
+          },
+        ],
       },
       {
         name: "Allowed Budget",
@@ -234,14 +259,6 @@ export default function Sidebar() {
           <Icon d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
         ),
         path: "/campaign-manager-clients",
-      },
-      {
-        name: "Account Monitor",
-        roles: ["admin"],
-        icon: () => (
-          <Icon d="M3 12l2-2 4 4 6-6 4 4 2-2" d2="M3 18h18" />
-        ),
-        path: "/account-monitor",
       },
       {
         name: "CPL Rules & Alerts",
@@ -292,13 +309,6 @@ export default function Sidebar() {
             path: "/feeded-leads",
             icon: () => (
               <SmallIcon d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            ),
-          },
-          {
-            name: "Meta Ad Accounts",
-            path: "/ad-accounts",
-            icon: () => (
-              <SmallIcon d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
             ),
           },
         ],
@@ -581,7 +591,7 @@ export default function Sidebar() {
                   {/* Animated submenu */}
                   <AnimatedCollapse open={openMenu() === item.name}>
                     <div class="mt-1 ml-3 pl-3 border-l-2 border-blue-100 dark:border-blue-900/50 space-y-0.5 pb-1">
-                      <For each={item.subMenus}>
+                      <For each={item.subMenus.filter((sub) => !sub.roles || sub.roles.includes(userRole()))}>
                         {(sub) => (
                           <A
                             href={sub.path}

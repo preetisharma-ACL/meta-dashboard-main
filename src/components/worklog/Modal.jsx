@@ -1,8 +1,10 @@
 import { Show, onMount, onCleanup } from "solid-js";
 
 // ─── Worklog modal shell ──────────────────────────────────────────────────────
-// Matches the AllowedBudget modal look. Closes on backdrop click + Escape.
-// Props: title, subtitle?, onClose, maxWidth? ("max-w-md" default), children.
+// Forest/gold/clay design system (client-workspace prototype). Self-contained in
+// its own `.wl` scope so it renders the approved paper theme wherever it's used.
+// Closes on backdrop click + Escape.
+// Props: title, subtitle?, onClose, children.
 export default function Modal(props) {
   onMount(() => {
     const onKey = (e) => {
@@ -13,53 +15,38 @@ export default function Modal(props) {
   });
 
   return (
-    <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div
-        class="fixed inset-0 bg-[#101D31]/40 backdrop-blur-sm"
-        onClick={props.onClose}
-      />
-      <div
-        class={`relative z-10 w-full ${props.maxWidth ?? "max-w-md"} max-h-[90vh] overflow-y-auto bg-gray-50 dark:bg-gray-900 rounded-2xl border border-[#E2E8F1] dark:border-gray-700 shadow-2xl`}
-      >
-        <div class="flex items-center justify-between px-5 py-4 border-b border-[#E2E8F1] dark:border-gray-800 sticky top-0 bg-gray-50 dark:bg-gray-900 z-10">
-          <div>
-            <h2 class="text-base font-bold text-[#14233A] dark:text-white">
-              {props.title}
-            </h2>
-            <Show when={props.subtitle}>
-              <p class="text-xs text-[#54657E] dark:text-gray-400">
-                {props.subtitle}
-              </p>
-            </Show>
-          </div>
-          <button
-            onClick={props.onClose}
-            class="w-8 h-8 rounded-full flex items-center justify-center text-[#8593A8] hover:bg-[#F1F4F9] dark:hover:bg-gray-800"
-            aria-label="Close"
-          >
-            ✕
-          </button>
-        </div>
-        <div class="px-5 py-5">{props.children}</div>
+    <div class="wl">
+      <div class="overlay" onClick={props.onClose} />
+      <div class="modal" role="dialog" aria-modal="true">
+        <button class="xbtn" onClick={props.onClose} aria-label="Close" style="position:absolute;top:16px;right:16px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
+        </button>
+        <h3>{props.title}</h3>
+        <Show when={props.subtitle}>
+          <p class="sub">{props.subtitle}</p>
+        </Show>
+        {props.children}
       </div>
     </div>
   );
 }
 
-// Shared field primitives so every modal's inputs look identical.
-export const fieldClass =
-  "w-full px-3 py-2 text-sm rounded-lg border border-[#E2E8F1] dark:border-gray-600 bg-white dark:bg-gray-800 text-[#1A2B45] dark:text-gray-100 placeholder:text-[#8593A8] focus:outline-none focus:ring-2 focus:ring-[#AC2334]/25 focus:border-[#AC2334]";
+// Fields are styled by the scoped `.wl .field` rules; inputs get `.wl input/select`
+// styling automatically, so no per-input class is needed.
+export const fieldClass = "";
 
 export function Field(props) {
   return (
-    <label class="block mb-4">
-      <span class="block text-xs font-bold uppercase tracking-wider text-[#54657E] dark:text-gray-400 mb-1.5">
+    <div class="field">
+      <label>
         {props.label}
         <Show when={props.required}>
-          <span class="text-[#AC2334]"> *</span>
+          <span style="color:var(--clay)"> *</span>
         </Show>
-      </span>
+      </label>
       {props.children}
-    </label>
+    </div>
   );
 }

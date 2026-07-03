@@ -80,6 +80,7 @@ export const PRIORITY_OPTIONS = [
 export const COMPLAINT_STATUS_OPTIONS = [
   { value: "open", label: "Open" },
   { value: "in_progress", label: "In progress" },
+  { value: "awaiting", label: "Awaiting client" },
   { value: "resolved", label: "Resolved" },
   { value: "closed", label: "Closed" },
 ];
@@ -108,6 +109,51 @@ export const fmtDateTime = (iso) =>
         hour: "2-digit",
         minute: "2-digit",
       });
+
+// ── Forest/gold/clay design-system class helpers (scoped .wl stylesheet) ──────
+// Backend activity node → prototype node class: green = Meta/campaign change
+// (default forest), gold = team task/comment (.human), clay = complaint (.complaint).
+export const nodeClassOf = (node) =>
+  node === "clay" ? "complaint" : node === "gold" ? "human" : "";
+
+// Priority/severity → .pill.prio|sev modifier (empty for high/urgent/critical =
+// the base red).
+export const levelClassOf = (level) => {
+  const l = String(level ?? "").toLowerCase();
+  if (l === "low") return "low";
+  if (l === "medium" || l === "med") return "med";
+  return "high"; // high | urgent | critical → base red
+};
+
+// Complaint/task status → .pill status modifier class.
+export const statusClassOf = (status) => {
+  const s = String(status ?? "").toLowerCase();
+  if (s === "in_progress" || s === "progress") return "in_progress";
+  if (s === "resolved" || s === "done") return "resolved";
+  if (s === "closed" || s === "cancelled") return "closed";
+  if (s === "awaiting" || s === "awaiting_client") return "awaiting";
+  return "open";
+};
+
+// Deterministic avatar background from a seed (forest/gold/clay/blue/slate).
+const AVATAR_COLORS = ["#1F4D3A", "#9A7B2E", "#B05A43", "#3E6B8A", "#52606D"];
+export const avatarColor = (seed) => {
+  const s = String(seed ?? "");
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) & 0xffff;
+  return AVATAR_COLORS[h % AVATAR_COLORS.length];
+};
+
+// 1–2 char initials from a name/email.
+export const initialsOf = (label) => {
+  const s = String(label ?? "").trim();
+  if (!s) return "?";
+  const at = s.indexOf("@");
+  const base = at > 0 ? s.slice(0, at) : s;
+  const parts = base.split(/[\s._-]+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return base.slice(0, 2).toUpperCase();
+};
 
 // Relative "3d ago" style stamp for the timeline; falls back to a date.
 export const fmtRelative = (iso) => {

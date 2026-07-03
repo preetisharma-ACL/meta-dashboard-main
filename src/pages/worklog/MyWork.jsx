@@ -2,52 +2,79 @@ import { createSignal, createResource, createMemo, For, Show } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { fetchMyWork } from "../../services/worklog";
 import { currentUser } from "../../stores/currentUser";
+import LogComplaintModal from "../../components/worklog/LogComplaintModal";
+import AssignTaskModal from "../../components/worklog/AssignTaskModal";
 import {
-  kindNode,
-  NODE_DOT,
-  LEVEL_CHIP,
   CATEGORY_LABEL,
   humanize,
   fmtDate,
+  levelClassOf,
+  statusClassOf,
+  avatarColor,
+  initialsOf,
 } from "../../components/worklog/worklogTokens";
 
 // ─── My Work — unified task + complaint queue ─────────────────────────────────
 // Renders GET /worklog/my-work/?view=own|all exactly as the backend sorts it
-// (most urgent first — we never re-sort). The Type filter narrows client-side on
-// item.kind; the queue already carries both kinds so it needs no re-fetch.
-//
-// view=all ("everyone's open items") only works for senior roles
-// (admin/coordination/accounts); a regular CM always sees their own, so the
-// segment's "All clients" option is only offered to those roles.
+// (most urgent first — we never re-sort). Styled to Alok's approved
+// forest/gold/clay prototype (scoped .wl theme).
 
-// Senior roles that may view the whole team's queue.
 const SENIOR_ROLES = new Set(["admin", "coordination", "accounts"]);
+
+const PlusIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+    <path d="M12 5v14M5 12h14" />
+  </svg>
+);
 
 export default function MyWork() {
   const navigate = useNavigate();
   const canSeeAll = () => SENIOR_ROLES.has(currentUser.role);
 
-  const [view, setView] = createSignal("own"); // "own" | "all"
+  const [view, setView] = createSignal("own"); // "own" | "assigned_by_me" | "all"
   const [typeFilter, setTypeFilter] = createSignal("all"); // all | task | complaint
+  const [statusFilter, setStatusFilter] = createSignal("all"); // all | open | in_progress | overdue | resolved
 
-  const [data] = createResource(view, (v) => fetchMyWork({ view: v }));
+  const [data, { refetch }] = createResource(view, (v) => fetchMyWork({ view: v }));
+
+  // Create actions — the modals carry their own client picker (no client is in
+  // scope here). One overlay signal → only one modal open at a time.
+  const [overlay, setOverlay] = createSignal(null); // null | "log" | "assign"
+  const closeOverlay = () => setOverlay(null);
 
   const items = () => data()?.items ?? [];
-  const meta = () => data()?.meta ?? { total: 0, taskCount: 0, complaintCount: 0, overdueCount: 0 };
+  const meta = () =>
+    data()?.meta ?? { total: 0, taskCount: 0, complaintCount: 0, overdueCount: 0 };
 
-  // Client-side Type filter — order preserved (backend already sorted).
+  // Status buckets for the summary tiles (computed from the queue itself).
+  const bucketOf = (it) => {
+    if (it.overdue) return "overdue";
+    const s = String(it.status ?? "").toLowerCase();
+    if (s === "in_progress" || s === "progress") return "in_progress";
+    if (s === "done" || s === "resolved" || s === "closed") return "resolved";
+    return "open";
+  };
+  const counts = createMemo(() => {
+    const c = { open: 0, in_progress: 0, overdue: 0, resolved: 0 };
+    for (const it of items()) c[bucketOf(it)]++;
+    return c;
+  });
+
+  // Type + status filters (client-side; backend order preserved).
   const visible = createMemo(() => {
     const t = typeFilter();
-    if (t === "all") return items();
-    return items().filter((it) => it.kind === t);
+    const s = statusFilter();
+    return items().filter((it) => {
+      if (t !== "all" && it.kind !== t) return false;
+      if (s !== "all" && bucketOf(it) !== s) return false;
+      return true;
+    });
   });
 
   const openItem = (it) => {
     if (it.clientNomen == null) return;
     const params = new URLSearchParams();
     if (it.clientNomenName) params.set("name", it.clientNomenName);
-    // A complaint opens its own record; a task opens the complaint it resolves
-    // (if any), otherwise the client's activity timeline.
     if (it.kind === "complaint") {
       params.set("tab", "complaints");
       params.set("complaint", String(it.id));
@@ -60,186 +87,197 @@ export default function MyWork() {
     navigate(`/client-workspace/${it.clientNomen}?${params.toString()}`);
   };
 
-  const TypeTab = (props) => (
+  const SegBtn = (props) => (
     <button
+      class={typeFilter() === props.value ? "on" : ""}
       onClick={() => setTypeFilter(props.value)}
-      class={`px-4 py-1.5 rounded-lg text-sm font-bold transition-all ${
-        typeFilter() === props.value
-          ? "bg-white dark:bg-gray-700 text-[#14233A] dark:text-gray-100 shadow-sm"
-          : "text-[#54657E] dark:text-gray-400 hover:text-[#AC2334] dark:hover:text-gray-200"
-      }`}
     >
       {props.label}
-      <Show when={props.count != null}>
-        <span class="ml-1.5 text-xs font-bold text-[#8593A8]">{props.count}</span>
-      </Show>
     </button>
   );
 
   return (
-    <section class="w-full px-4 py-6 bg-gray-50 dark:bg-gray-900 min-h-screen">
-      {/* ════════ HEADER ════════ */}
-      <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-6">
-        <div>
-          <p class="text-xs font-bold uppercase tracking-[0.12em] text-[#AC2334] mb-1.5">
-            Client workspace · My Work
-          </p>
-          <h1 class="text-2xl font-bold text-[#14233A] dark:text-white mb-1 flex items-center gap-3">
-            My Work
-            <span class="inline-flex items-center justify-center min-w-[2rem] px-2.5 h-7 rounded-full bg-[#FBEEF0] dark:bg-red-900/30 text-[#AC2334] dark:text-red-300 text-sm font-bold tabular-nums">
-              {meta().total}
-            </span>
-          </h1>
-          <p class="text-sm text-[#54657E] dark:text-gray-400">
-            {view() === "all" ? "Everyone's open items" : currentUser.email || "Your open items"}
-          </p>
+    <section class="wl">
+      <div class="content">
+        {/* ════════ LEAD ════════ */}
+        <div class="lead">
+          <div>
+            <h2>My work</h2>
+            <p>
+              Every task and complaint across your clients in one queue, most
+              urgent first.
+            </p>
+          </div>
+          <div class="actions">
+            <button class="btn-soft" onClick={() => setOverlay("log")}>
+              <PlusIcon />
+              Log complaint
+            </button>
+            <button class="btn-primary" onClick={() => setOverlay("assign")}>
+              <PlusIcon />
+              Assign task
+            </button>
+          </div>
         </div>
 
-        {/* View segment — Mine vs All clients (senior only) */}
-        <Show when={canSeeAll()}>
-          <div class="inline-flex gap-1 p-1 bg-[#EEF2F7] dark:bg-gray-800 rounded-xl border border-[#E2E8F1] dark:border-gray-700 self-start">
-            <button
-              onClick={() => setView("own")}
-              class={`px-4 py-1.5 rounded-lg text-sm font-bold transition-all ${
-                view() === "own"
-                  ? "bg-white dark:bg-gray-700 text-[#14233A] dark:text-gray-100 shadow-sm"
-                  : "text-[#54657E] dark:text-gray-400 hover:text-[#AC2334]"
-              }`}
-            >
+        {/* View segment — Mine · By me (tasks I delegated) · All clients (senior only) */}
+        <div style="margin-top:12px">
+          <div class="seg">
+            <button class={view() === "own" ? "on" : ""} onClick={() => setView("own")}>
               Mine
             </button>
             <button
-              onClick={() => setView("all")}
-              class={`px-4 py-1.5 rounded-lg text-sm font-bold transition-all ${
-                view() === "all"
-                  ? "bg-white dark:bg-gray-700 text-[#14233A] dark:text-gray-100 shadow-sm"
-                  : "text-[#54657E] dark:text-gray-400 hover:text-[#AC2334]"
-              }`}
+              class={view() === "assigned_by_me" ? "on" : ""}
+              onClick={() => setView("assigned_by_me")}
+              title="Tasks you created for someone else"
             >
-              All clients
+              By me
             </button>
+            <Show when={canSeeAll()}>
+              <button class={view() === "all" ? "on" : ""} onClick={() => setView("all")}>
+                All clients
+              </button>
+            </Show>
+          </div>
+        </div>
+
+        {/* ════════ SUMMARY TILES ════════ */}
+        <div class="summary">
+          <div class="tile">
+            <div class="n">{counts().open}</div>
+            <div class="l"><i style="background:var(--slate)" />To do</div>
+          </div>
+          <div class="tile">
+            <div class="n">{counts().in_progress}</div>
+            <div class="l"><i style="background:var(--warn)" />In progress</div>
+          </div>
+          <div class="tile">
+            <div class="n">{counts().overdue}</div>
+            <div class="l"><i style="background:var(--clay)" />Overdue</div>
+          </div>
+          <div class="tile">
+            <div class="n">{counts().resolved}</div>
+            <div class="l"><i style="background:var(--ok)" />Resolved</div>
+          </div>
+        </div>
+
+        {/* ════════ FILTERS ════════ */}
+        <div class="filters">
+          <div class="fgroup">
+            <label>Type</label>
+            <div class="seg">
+              <SegBtn value="all" label={`All${meta().total ? " · " + meta().total : ""}`} />
+              <SegBtn value="task" label="Tasks" />
+              <SegBtn value="complaint" label="Complaints" />
+            </div>
+          </div>
+          <div class="fgroup">
+            <label>Status</label>
+            <select value={statusFilter()} onChange={(e) => setStatusFilter(e.target.value)}>
+              <option value="all">All statuses</option>
+              <option value="open">To do</option>
+              <option value="in_progress">In progress</option>
+              <option value="overdue">Overdue</option>
+              <option value="resolved">Resolved</option>
+            </select>
+          </div>
+        </div>
+
+        {/* ════════ FEED ════════ */}
+        <Show when={data.error}>
+          <div class="empty">
+            <b>Couldn't load your work queue</b>
+            Please try again in a moment.
           </div>
         </Show>
-      </div>
 
-      {/* ════════ TYPE FILTER + OVERDUE ════════ */}
-      <div class="flex flex-wrap items-center gap-3 mb-4">
-        <div class="inline-flex gap-1 p-1 bg-[#EEF2F7] dark:bg-gray-800 rounded-xl border border-[#E2E8F1] dark:border-gray-700">
-          <TypeTab value="all" label="All" count={meta().total} />
-          <TypeTab value="task" label="Tasks" count={meta().taskCount} />
-          <TypeTab value="complaint" label="Complaints" count={meta().complaintCount} />
-        </div>
-        <Show when={meta().overdueCount > 0}>
-          <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-bold bg-red-50 text-red-700 border border-red-200 dark:bg-red-900/20 dark:text-red-300 dark:border-red-800">
-            <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-            {meta().overdueCount} overdue
-          </span>
-        </Show>
-      </div>
-
-      {/* ════════ ERROR ════════ */}
-      <Show when={data.error}>
-        <div class="bg-[#FBEEF0] dark:bg-red-900/20 border border-[#AC2334]/25 dark:border-red-800 rounded-xl p-4 mb-4 text-sm font-medium text-[#AC2334] dark:text-red-400">
-          Failed to load your work queue. Please try again.
-        </div>
-      </Show>
-
-      {/* ════════ QUEUE ════════ */}
-      <Show
-        when={!data.loading}
-        fallback={
-          <div class="space-y-2">
-            <For each={Array(6).fill(0)}>
-              {() => (
-                <div class="h-16 rounded-xl border border-[#E2E8F1] dark:border-gray-700 bg-white dark:bg-gray-800 animate-pulse" />
-              )}
-            </For>
-          </div>
-        }
-      >
         <Show
-          when={visible().length > 0}
+          when={!data.loading}
           fallback={
-            <div class="bg-white dark:bg-gray-900 rounded-2xl border border-[#E2E8F1] dark:border-gray-700 p-10 text-center text-sm text-[#8593A8] dark:text-gray-500">
-              Nothing in your queue{typeFilter() !== "all" ? " for this filter" : ""}. 🎉
+            <div class="clist">
+              <For each={Array(5).fill(0)}>{() => <div class="skel" />}</For>
             </div>
           }
         >
-          <ul class="space-y-2">
-            <For each={visible()}>
-              {(it) => {
-                const node = kindNode(it.kind);
-                return (
-                  <li>
-                    <button
-                      onClick={() => openItem(it)}
-                      class={`w-full text-left flex items-center gap-3 px-4 py-3 rounded-xl border bg-white dark:bg-gray-800 hover:shadow-sm transition-all ${
-                        it.overdue
-                          ? "border-red-300 dark:border-red-800 ring-1 ring-red-200 dark:ring-red-900/40"
-                          : "border-[#E2E8F1] dark:border-gray-700 hover:border-[#AC2334]/30"
-                      }`}
-                    >
-                      {/* Node colour by kind */}
-                      <span
-                        class={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${NODE_DOT[node]}`}
-                        title={it.kind}
-                      />
-
-                      <div class="min-w-0 flex-1">
-                        <div class="flex items-center gap-2 flex-wrap">
-                          <span class="font-semibold text-[#14233A] dark:text-gray-100 truncate">
-                            {it.title}
+          <Show
+            when={visible().length > 0}
+            fallback={
+              <div class="empty">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+                  <path d="M20 6 9 17l-5-5" />
+                </svg>
+                <b>{view() === "assigned_by_me" ? "No tasks delegated" : "Nothing in your queue"}</b>
+                {typeFilter() !== "all" || statusFilter() !== "all"
+                  ? "No items match these filters."
+                  : view() === "assigned_by_me"
+                    ? "You haven't assigned any open tasks to others."
+                    : "You're all caught up. 🎉"}
+              </div>
+            }
+          >
+            <div class="clist">
+              <For each={visible()}>
+                {(it) => {
+                  const name = it.clientNomenName ?? `Client #${it.clientNomen ?? "—"}`;
+                  const bucket = bucketOf(it);
+                  return (
+                    <div class="card clickable" onClick={() => openItem(it)}>
+                      <div class="card-top">
+                        <span class="actor">
+                          <span class="av" style={`background:${avatarColor(name)}`}>
+                            {initialsOf(name)}
                           </span>
-                          <span class="text-[10px] font-bold uppercase tracking-wide text-[#8593A8] dark:text-gray-500">
-                            {it.kind}
-                          </span>
-                          <Show when={it.overdue}>
-                            <span class="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">
-                              Overdue
-                            </span>
-                          </Show>
-                        </div>
-                        <p class="text-xs text-[#54657E] dark:text-gray-400 mt-0.5 truncate">
-                          {it.clientNomenName ?? `Client #${it.clientNomen ?? "—"}`}
+                          <b>{name}</b>
+                        </span>
+                        <span class="rolechip">{it.kind}</span>
+                        <span class="time">{it.dueDate ? fmtDate(it.dueDate) : "—"}</span>
+                      </div>
+                      <div class="title">{it.title}</div>
+                      <Show when={it.category || it.assigneeEmail}>
+                        <div class="desc">
                           <Show when={it.category}>
-                            {" · "}
                             {CATEGORY_LABEL[it.category] ?? humanize(it.category)}
                           </Show>
-                          <Show when={it.assigneeEmail}>
-                            {" · "}
-                            {it.assigneeEmail}
-                          </Show>
-                        </p>
-                      </div>
-
-                      {/* Level chip */}
-                      <Show when={it.level}>
-                        <span
-                          class={`flex-shrink-0 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${
-                            LEVEL_CHIP[it.level] ?? LEVEL_CHIP.low
-                          }`}
-                        >
-                          {it.level}
-                        </span>
+                          <Show when={it.category && it.assigneeEmail}>{" · "}</Show>
+                          <Show when={it.assigneeEmail}>{it.assigneeEmail}</Show>
+                        </div>
                       </Show>
-
-                      {/* Due date */}
-                      <span
-                        class={`flex-shrink-0 text-xs font-medium whitespace-nowrap ${
-                          it.overdue
-                            ? "text-red-600 dark:text-red-400"
-                            : "text-[#8593A8] dark:text-gray-500"
-                        }`}
-                      >
-                        {it.dueDate ? fmtDate(it.dueDate) : "—"}
-                      </span>
-                    </button>
-                  </li>
-                );
-              }}
-            </For>
-          </ul>
+                      <div class="badges">
+                        <Show when={bucket === "overdue"}>
+                          <span class="pill overdue">Overdue</span>
+                        </Show>
+                        <Show when={it.status}>
+                          <span class={`pill ${statusClassOf(it.status)}`}>
+                            {humanize(it.status)}
+                          </span>
+                        </Show>
+                        <Show when={it.level}>
+                          <span class={`pill ${it.kind === "complaint" ? "sev" : "prio"} ${levelClassOf(it.level)}`}>
+                            {humanize(it.level)}
+                          </span>
+                        </Show>
+                        <span class="openhint">
+                          Open
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="m9 18 6-6-6-6" />
+                          </svg>
+                        </span>
+                      </div>
+                    </div>
+                  );
+                }}
+              </For>
+            </div>
+          </Show>
         </Show>
+      </div>
+
+      {/* ════════ CREATE OVERLAYS ════════ */}
+      <Show when={overlay() === "log"}>
+        <LogComplaintModal onClose={closeOverlay} onCreated={() => refetch()} />
+      </Show>
+      <Show when={overlay() === "assign"}>
+        <AssignTaskModal onClose={closeOverlay} onCreated={() => refetch()} />
       </Show>
     </section>
   );

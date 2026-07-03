@@ -15,30 +15,30 @@ import {
   fetchComplaint,
 } from "../../services/worklog";
 import { scopeKey } from "../../stores/cmScope";
-import Avatar from "../../components/common/Avatar";
 import LogComplaintModal from "../../components/worklog/LogComplaintModal";
 import AssignTaskModal from "../../components/worklog/AssignTaskModal";
 import ResolveComplaintModal from "../../components/worklog/ResolveComplaintModal";
 import ComplaintDetailModal from "../../components/worklog/ComplaintDetailModal";
 import {
-  NODE_DOT,
-  NODE_TEXT,
-  STATUS_CHIP,
-  LEVEL_CHIP,
   CATEGORY_LABEL,
+  CATEGORY_OPTIONS,
   humanize,
   fmtRelative,
   fmtDateTime,
+  nodeClassOf,
+  levelClassOf,
+  statusClassOf,
+  avatarColor,
+  initialsOf,
 } from "../../components/worklog/worklogTokens";
 
 // ─── Client Workspace — per-client Activity + Complaints ──────────────────────
 // Route: /client-workspace/:nomenId  (?tab=activity|complaints&complaint=<id>&name=<label>)
-// Two tabs from the mock: the merged Activity timeline (green = Meta/campaign
-// change, gold = team task, clay = complaint milestone) and per-client Complaint
-// management (list + Log/Resolve/assign-task flows). A single `overlay` signal
-// guarantees only one modal is ever open.
+// Styled to Alok's approved forest/gold/clay prototype (scoped .wl theme). The
+// merged Activity timeline uses the semantic node scheme (green = Meta/campaign
+// change, gold = team task, clay = complaint milestone).
 
-// Activity Type filter → node colour (the mock's All/Tasks/Changes/Complaints).
+// Activity Type filter → node colour.
 const ACTIVITY_FILTERS = [
   { key: "all", label: "All", node: null },
   { key: "task", label: "Tasks", node: "gold" },
@@ -46,16 +46,69 @@ const ACTIVITY_FILTERS = [
   { key: "complaint", label: "Complaints", node: "clay" },
 ];
 
+// Timeline node icon by semantic colour.
+const NodeIcon = (props) => (
+  <Show
+    when={props.node === "clay"}
+    fallback={
+      <Show
+        when={props.node === "gold"}
+        fallback={
+          // green (default) — Meta / campaign change
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M23 4v6h-6M1 20v-6h6" />
+            <path d="M3.5 9a9 9 0 0 1 14.8-3.4L23 10M1 14l4.6 4.4A9 9 0 0 0 20.5 15" />
+          </svg>
+        }
+      >
+        {/* gold — task / comment */}
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="8" y="2" width="8" height="4" rx="1" />
+          <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+          <path d="M9 12h6M9 16h4" />
+        </svg>
+      </Show>
+    }
+  >
+    {/* clay — complaint */}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="m10.3 3.9-8 13.9A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3.1l-8-14a2 2 0 0 0-3.4 0Z" />
+      <path d="M12 9v4" />
+      <path d="M12 17h.01" />
+    </svg>
+  </Show>
+);
+
+// Day grouping for the timeline.
+const startOfDay = (t) => {
+  const d = new Date(t);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+};
+const dayLabel = (iso) => {
+  const t = new Date(iso).getTime();
+  if (!isFinite(t)) return ["Undated", ""];
+  const day = startOfDay(t);
+  const today = startOfDay(Date.now());
+  const diff = Math.round((today - day) / 86400000);
+  const full = new Date(t).toLocaleDateString("en-IN", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  if (diff === 0) return ["Today", full];
+  if (diff === 1) return ["Yesterday", full];
+  const dow = new Date(t).toLocaleDateString("en-IN", { weekday: "long" });
+  return [full, dow];
+};
+
 export default function ClientWorkspace() {
   const params = useParams();
   const [search] = useSearchParams();
   const nomenId = () => params.nomenId;
 
-  // The workspace + worklog endpoints require the INTEGER nomen_id. The app only
-  // ever routes the integer here (My Work → client_nomen), but a hand-typed,
-  // shared, or stale URL can carry a client name/slug — which 404s activity and
-  // 500s complaints. Guard: expose the id only when it's numeric; otherwise skip
-  // the fetches and show a clear message instead of firing broken requests.
+  // The workspace + worklog endpoints require the INTEGER nomen_id. Guard against
+  // a hand-typed/stale URL carrying a client name/slug — skip the fetches (which
+  // would 404 activity / 500 complaints) and show a clear message instead.
   const validNomenId = () =>
     /^\d+$/.test(String(params.nomenId ?? "").trim()) ? params.nomenId : null;
 
@@ -63,6 +116,8 @@ export default function ClientWorkspace() {
     search.tab === "complaints" ? "complaints" : "activity",
   );
   const [activityFilter, setActivityFilter] = createSignal("all");
+  const [cStatus, setCStatus] = createSignal("all");
+  const [cCategory, setCCategory] = createSignal("all");
 
   // Refresh nonces — bumped after mutations to re-pull the affected surface.
   const [activityNonce, setActivityNonce] = createSignal(0);
@@ -70,12 +125,11 @@ export default function ClientWorkspace() {
   const bumpActivity = () => setActivityNonce((n) => n + 1);
   const bumpComplaints = () => setComplaintsNonce((n) => n + 1);
 
-  // Inline complaint edits (status/severity/owner/resolve) layer over the list
-  // without a refetch; a full refetch (create) clears them (fresh data wins).
+  // Inline complaint edits layer over the list without a refetch.
   const [patches, setPatches] = createSignal({});
   const applyPatch = (c) => c && setPatches((p) => ({ ...p, [c.id]: c }));
 
-  // ── Resources ──
+  // ── Resources (guarded on a numeric nomen) ──
   const [activity] = createResource(
     () => (validNomenId() ? { id: validNomenId(), n: activityNonce() } : null),
     ({ id }) => fetchClientActivity(id),
@@ -89,10 +143,7 @@ export default function ClientWorkspace() {
     ({ id }) => fetchComplaints({ clientNomen: id }),
   );
 
-  // A fresh complaints pull supersedes any inline patches.
-  createEffect(
-    on(complaintsRes, () => setPatches({}), { defer: true }),
-  );
+  createEffect(on(complaintsRes, () => setPatches({}), { defer: true }));
 
   const complaints = createMemo(() => {
     const list = complaintsRes()?.complaints ?? [];
@@ -101,7 +152,31 @@ export default function ClientWorkspace() {
   });
 
   const openComplaintCount = () =>
-    complaints().filter((c) => c.status !== "resolved" && c.status !== "closed").length;
+    complaints().filter((c) => c.status !== "resolved" && c.status !== "closed")
+      .length;
+
+  const cCounts = createMemo(() => {
+    const c = { open: 0, in_progress: 0, awaiting: 0, resolved: 0, closed: 0 };
+    for (const x of complaints()) {
+      const s = statusClassOf(x.status);
+      if (s === "in_progress") c.in_progress++;
+      else if (s === "awaiting") c.awaiting++;
+      else if (s === "resolved") c.resolved++;
+      else if (s === "closed") c.closed++;
+      else c.open++;
+    }
+    return c;
+  });
+
+  const visibleComplaints = createMemo(() => {
+    const st = cStatus();
+    const cat = cCategory();
+    return complaints().filter((c) => {
+      if (st !== "all" && statusClassOf(c.status) !== st) return false;
+      if (cat !== "all" && c.category !== cat) return false;
+      return true;
+    });
+  });
 
   const clientName = () =>
     search.name ||
@@ -114,7 +189,6 @@ export default function ClientWorkspace() {
   const close = () => setOverlay(null);
 
   const openComplaintById = async (id) => {
-    // Prefer the row we already have; otherwise fetch it.
     const existing = complaints().find((c) => String(c.id) === String(id));
     if (existing) {
       setOverlay({ type: "detail", complaint: existing });
@@ -128,275 +202,394 @@ export default function ClientWorkspace() {
     }
   };
 
-  // Deep-link: ?complaint=<id> opens that complaint on load.
   onMount(() => {
     if (search.complaint) openComplaintById(search.complaint);
   });
 
-  // ── Timeline ──
+  // ── Timeline (filtered → day-grouped) ──
   const timeline = createMemo(() => {
     const node = ACTIVITY_FILTERS.find((f) => f.key === activityFilter())?.node;
     const entries = activity()?.entries ?? [];
     return node ? entries.filter((e) => e.node === node) : entries;
   });
 
-  const aMeta = () => activity()?.meta ?? { greenCount: 0, goldCount: 0, clayCount: 0, total: 0 };
+  const grouped = createMemo(() => {
+    const groups = [];
+    let cur = null;
+    for (const e of timeline()) {
+      const key = startOfDay(new Date(e.timestamp).getTime());
+      if (!cur || cur.key !== key) {
+        cur = { key, label: dayLabel(e.timestamp), items: [] };
+        groups.push(cur);
+      }
+      cur.items.push(e);
+    }
+    return groups;
+  });
+
+  const initials = () => initialsOf(clientName());
 
   return (
-    <section class="w-full px-4 py-6 bg-gray-50 dark:bg-gray-900 min-h-screen">
-      {/* ════════ HEADER ════════ */}
-      <A
-        href="/my-work"
-        class="inline-flex items-center gap-1.5 text-xs font-semibold text-[#8593A8] dark:text-gray-500 hover:text-[#AC2334] mb-3"
-      >
-        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5" /><path d="M12 19l-7-7 7-7" /></svg>
-        My Work
-      </A>
-
-      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
-        <div class="flex items-center gap-3 min-w-0">
-          <Avatar name={clientName()} size="w-11 h-11" textSize="text-sm" />
-          <div class="min-w-0">
-            <p class="text-xs font-bold uppercase tracking-[0.12em] text-[#AC2334] mb-0.5">
-              Client workspace
-            </p>
-            <h1 class="text-2xl font-bold text-[#14233A] dark:text-white truncate">
-              {clientName()}
-            </h1>
-          </div>
+    <section class="wl">
+      {/* ════════ CLIENT HEAD ════════ */}
+      <div class="client-head">
+        <div style="max-width:960px;margin:0 auto">
+          <A href="/my-work" class="back-link">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4">
+              <path d="M19 12H5" />
+              <path d="M12 19l-7-7 7-7" />
+            </svg>
+            My work
+          </A>
         </div>
-        <div class="flex items-center gap-2 flex-shrink-0">
+        <div class="ch-top">
+          <div class="ch-logo">{initials()}</div>
+          <div style="min-width:0">
+            <h1 class="ch-name">{clientName()}</h1>
+            <div class="ch-meta">
+              <span class="mono">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="4" width="18" height="16" rx="2" />
+                  <path d="M3 9h18" />
+                </svg>
+                nomen_{nomenId()}
+              </span>
+            </div>
+          </div>
+          <div class="ch-status"><i />Active</div>
+        </div>
+        <div class="tabs">
           <button
-            onClick={() => setOverlay({ type: "assign" })}
-            class="px-4 py-2 text-sm font-bold rounded-lg border border-[#3E6FB0]/40 text-[#3E6FB0] dark:text-blue-300 hover:bg-[#ECF2FA] dark:hover:bg-blue-900/20"
+            class={tab() === "activity" ? "active" : ""}
+            onClick={() => setTab("activity")}
           >
-            Assign task
+            Activity
           </button>
           <button
-            onClick={() => setOverlay({ type: "log" })}
-            class="px-4 py-2 text-sm font-bold rounded-lg bg-[#AC2334] text-white hover:bg-[#951d2c]"
+            class={tab() === "complaints" ? "active" : ""}
+            onClick={() => setTab("complaints")}
           >
-            Log complaint
+            Complaints
+            <Show when={openComplaintCount() > 0}>
+              <span class="tab-badge">{openComplaintCount()}</span>
+            </Show>
           </button>
         </div>
       </div>
 
-      {/* ════════ INVALID-NOMEN GUARD ════════ */}
-      {/* Reached only via a bad URL — the app always routes the integer id. */}
-      <Show when={!validNomenId()}>
-        <div class="bg-[#FBEEF0] dark:bg-red-900/20 border border-[#AC2334]/25 dark:border-red-800 rounded-xl p-4 mb-6 text-sm font-medium text-[#AC2334] dark:text-red-400">
-          This workspace link is invalid — it must reference a numeric client id
-          (got “{String(nomenId() ?? "")}”). Open a client from{" "}
-          <A href="/my-work" class="underline font-bold">My Work</A> instead.
-        </div>
-      </Show>
-
-      {/* ════════ TABS ════════ */}
-      <div class="inline-flex gap-1 p-1 bg-[#EEF2F7] dark:bg-gray-800 rounded-xl border border-[#E2E8F1] dark:border-gray-700 mb-6">
-        <button
-          onClick={() => setTab("activity")}
-          class={`px-4 py-1.5 rounded-lg text-sm font-bold transition-all ${
-            tab() === "activity"
-              ? "bg-white dark:bg-gray-700 text-[#14233A] dark:text-gray-100 shadow-sm"
-              : "text-[#54657E] dark:text-gray-400 hover:text-[#AC2334]"
-          }`}
-        >
-          Activity
-        </button>
-        <button
-          onClick={() => setTab("complaints")}
-          class={`px-4 py-1.5 rounded-lg text-sm font-bold transition-all flex items-center gap-1.5 ${
-            tab() === "complaints"
-              ? "bg-white dark:bg-gray-700 text-[#14233A] dark:text-gray-100 shadow-sm"
-              : "text-[#54657E] dark:text-gray-400 hover:text-[#AC2334]"
-          }`}
-        >
-          Complaints
-          <Show when={openComplaintCount() > 0}>
-            <span class="inline-flex items-center justify-center min-w-[1.25rem] px-1.5 h-5 rounded-full bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300 text-xs font-bold">
-              {openComplaintCount()}
-            </span>
-          </Show>
-        </button>
-      </div>
-
-      {/* ════════ ACTIVITY TAB ════════ */}
-      <Show when={tab() === "activity"}>
-        {/* Type filter → node colour */}
-        <div class="inline-flex gap-1 p-1 bg-[#EEF2F7] dark:bg-gray-800 rounded-xl border border-[#E2E8F1] dark:border-gray-700 mb-5">
-          <For each={ACTIVITY_FILTERS}>
-            {(f) => (
-              <button
-                onClick={() => setActivityFilter(f.key)}
-                class={`px-3.5 py-1.5 rounded-lg text-sm font-bold transition-all flex items-center gap-1.5 ${
-                  activityFilter() === f.key
-                    ? "bg-white dark:bg-gray-700 text-[#14233A] dark:text-gray-100 shadow-sm"
-                    : "text-[#54657E] dark:text-gray-400 hover:text-[#AC2334]"
-                }`}
-              >
-                <Show when={f.node}>
-                  <span class={`w-2 h-2 rounded-full ${NODE_DOT[f.node]}`} />
-                </Show>
-                {f.label}
-              </button>
-            )}
-          </For>
-        </div>
-
-        <Show when={activity.error}>
-          <div class="bg-[#FBEEF0] dark:bg-red-900/20 border border-[#AC2334]/25 dark:border-red-800 rounded-xl p-4 mb-4 text-sm font-medium text-[#AC2334] dark:text-red-400">
-            Failed to load the activity timeline.
+      <div class="content">
+        {/* ════════ INVALID-NOMEN GUARD ════════ */}
+        <Show when={!validNomenId()}>
+          <div class="empty">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 8v4M12 16h.01" />
+            </svg>
+            <b>This workspace link is invalid</b>
+            It must reference a numeric client id (got “{String(nomenId() ?? "")}”).
+            Open a client from <A href="/my-work" style="color:var(--forest);font-weight:600">My work</A>.
           </div>
         </Show>
 
-        <Show
-          when={!activity.loading}
-          fallback={
-            <div class="space-y-3">
-              <For each={Array(5).fill(0)}>
-                {() => <div class="h-14 rounded-xl bg-white dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 animate-pulse" />}
-              </For>
+        {/* ════════ ACTIVITY PANEL ════════ */}
+        <Show when={tab() === "activity" && validNomenId()}>
+          <div class="lead">
+            <div>
+              <h2>Activity</h2>
+              <p>
+                One history: changes synced from Meta, tasks from your team, and
+                complaints raised and resolved.
+              </p>
             </div>
-          }
-        >
-          <Show
-            when={timeline().length > 0}
-            fallback={
-              <div class="bg-white dark:bg-gray-900 rounded-2xl border border-[#E2E8F1] dark:border-gray-700 p-10 text-center text-sm text-[#8593A8] dark:text-gray-500">
-                No activity{activityFilter() !== "all" ? " for this filter" : " yet"}.
-              </div>
-            }
-          >
-            {/* Vertical timeline */}
-            <div class="relative pl-6">
-              <span class="absolute left-[7px] top-1 bottom-1 w-px bg-[#E2E8F1] dark:bg-gray-700" />
-              <ul class="space-y-4">
-                <For each={timeline()}>
-                  {(e) => {
-                    const clickable = e.refType === "complaint" && e.refId != null;
-                    return (
-                      <li class="relative">
-                        <span
-                          class={`absolute -left-[22px] top-1.5 w-3.5 h-3.5 rounded-full ring-4 ring-gray-50 dark:ring-gray-900 ${NODE_DOT[e.node] ?? "bg-gray-400"}`}
-                        />
-                        <div
-                          onClick={clickable ? () => openComplaintById(e.refId) : undefined}
-                          class={`rounded-xl border bg-white dark:bg-gray-800 border-[#E2E8F1] dark:border-gray-700 px-4 py-3 ${
-                            clickable ? "cursor-pointer hover:border-orange-300 hover:shadow-sm transition-all" : ""
-                          }`}
-                        >
-                          <div class="flex items-start justify-between gap-3">
-                            <div class="min-w-0">
-                              <p class="text-sm font-semibold text-[#14233A] dark:text-gray-100">
-                                {e.title}
-                              </p>
-                              <p class="text-xs text-[#8593A8] dark:text-gray-500 mt-0.5">
-                                <span class={`font-bold uppercase tracking-wide ${NODE_TEXT[e.node] ?? "text-gray-400"}`}>
-                                  {humanize(e.kind)}
-                                </span>
-                                <Show when={e.actor}>
-                                  {" · "}
-                                  {e.actor}
-                                </Show>
-                              </p>
-                            </div>
-                            <span
-                              class="text-xs text-[#8593A8] dark:text-gray-500 whitespace-nowrap flex-shrink-0"
-                              title={fmtDateTime(e.timestamp)}
-                            >
-                              {fmtRelative(e.timestamp)}
-                            </span>
-                          </div>
-                        </div>
-                      </li>
-                    );
-                  }}
-                </For>
-              </ul>
-            </div>
-          </Show>
-        </Show>
-      </Show>
-
-      {/* ════════ COMPLAINTS TAB ════════ */}
-      <Show when={tab() === "complaints"}>
-        <Show when={complaintsRes.error}>
-          <div class="bg-[#FBEEF0] dark:bg-red-900/20 border border-[#AC2334]/25 dark:border-red-800 rounded-xl p-4 mb-4 text-sm font-medium text-[#AC2334] dark:text-red-400">
-            Failed to load complaints.
           </div>
-        </Show>
 
-        <Show
-          when={!complaintsRes.loading}
-          fallback={
-            <div class="space-y-2">
-              <For each={Array(4).fill(0)}>
-                {() => <div class="h-20 rounded-xl bg-white dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 animate-pulse" />}
-              </For>
-            </div>
-          }
-        >
-          <Show
-            when={complaints().length > 0}
-            fallback={
-              <div class="bg-white dark:bg-gray-900 rounded-2xl border border-[#E2E8F1] dark:border-gray-700 p-10 text-center">
-                <p class="text-sm text-[#8593A8] dark:text-gray-500 mb-3">
-                  No complaints logged for this client.
-                </p>
-                <button
-                  onClick={() => setOverlay({ type: "log" })}
-                  class="px-4 py-2 text-sm font-bold rounded-lg bg-[#AC2334] text-white hover:bg-[#951d2c]"
-                >
-                  Log complaint
-                </button>
-              </div>
-            }
-          >
-            <ul class="space-y-2">
-              <For each={complaints()}>
-                {(c) => (
-                  <li>
+          <div class="filters">
+            <div class="fgroup">
+              <label>Type</label>
+              <div class="seg">
+                <For each={ACTIVITY_FILTERS}>
+                  {(f) => (
                     <button
-                      onClick={() => setOverlay({ type: "detail", complaint: c })}
-                      class="w-full text-left flex items-start gap-3 px-4 py-3 rounded-xl border border-[#E2E8F1] dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-orange-300 hover:shadow-sm transition-all"
+                      class={activityFilter() === f.key ? "on" : ""}
+                      onClick={() => setActivityFilter(f.key)}
                     >
-                      <span class={`mt-1 w-2.5 h-2.5 rounded-full flex-shrink-0 ${NODE_DOT.clay}`} />
-                      <div class="min-w-0 flex-1">
-                        <p class="font-semibold text-[#14233A] dark:text-gray-100 truncate">
-                          {c.title}
-                        </p>
-                        <div class="flex items-center gap-2 flex-wrap mt-1">
-                          <span class={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${STATUS_CHIP[c.status] ?? STATUS_CHIP.open}`}>
+                      {f.label}
+                    </button>
+                  )}
+                </For>
+              </div>
+            </div>
+            <div class="ftext">
+              <button class="btn-primary" onClick={() => setOverlay({ type: "assign" })}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+                Assign task
+              </button>
+            </div>
+          </div>
+
+          <Show when={activity.error}>
+            <div class="empty"><b>Couldn't load the activity timeline</b>Please try again.</div>
+          </Show>
+
+          <Show
+            when={!activity.loading}
+            fallback={
+              <div class="feed">
+                <For each={Array(4).fill(0)}>{() => <div class="skel" />}</For>
+              </div>
+            }
+          >
+            <Show
+              when={timeline().length > 0}
+              fallback={
+                <div class="empty">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+                    <circle cx="11" cy="11" r="8" />
+                    <path d="m21 21-4.3-4.3" />
+                  </svg>
+                  <b>No activity here</b>
+                  {activityFilter() !== "all" ? "Try a different type filter." : "Nothing has happened yet."}
+                </div>
+              }
+            >
+              <div class="feed">
+                <For each={grouped()}>
+                  {(g) => (
+                    <div class="daygroup">
+                      <div class="dayhead">
+                        <b>{g.label[0]}</b>
+                        <span class="d">{g.label[1]}</span>
+                        <span class="rule" />
+                      </div>
+                      <For each={g.items}>
+                        {(e) => {
+                          const clickable = e.refType === "complaint" && e.refId != null;
+                          return (
+                            <div class="row">
+                              <div class="spine">
+                                <div class={`node ${nodeClassOf(e.node)}`}>
+                                  <NodeIcon node={e.node} />
+                                </div>
+                              </div>
+                              <div
+                                class={`card ${clickable ? "clickable" : ""}`}
+                                onClick={clickable ? () => openComplaintById(e.refId) : undefined}
+                              >
+                                <div class="card-top">
+                                  <Show when={e.actor}>
+                                    <span class="actor">
+                                      <span class="av" style={`background:${avatarColor(e.actor)}`}>
+                                        {initialsOf(e.actor)}
+                                      </span>
+                                      <b>{e.actor}</b>
+                                    </span>
+                                  </Show>
+                                  <span class="time mono" title={fmtDateTime(e.timestamp)}>
+                                    {fmtRelative(e.timestamp)}
+                                  </span>
+                                </div>
+                                <div class="title">{e.title}</div>
+                                <Show when={e.kind}>
+                                  <div class="badges">
+                                    <span class={`pill ${e.node === "clay" ? "cat" : e.node === "gold" ? "camp" : "auto"}`}>
+                                      {humanize(e.kind)}
+                                    </span>
+                                    <Show when={clickable}>
+                                      <span class="openhint">
+                                        View complaint
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                          <path d="m9 18 6-6-6-6" />
+                                        </svg>
+                                      </span>
+                                    </Show>
+                                  </div>
+                                </Show>
+                              </div>
+                            </div>
+                          );
+                        }}
+                      </For>
+                    </div>
+                  )}
+                </For>
+              </div>
+            </Show>
+          </Show>
+        </Show>
+
+        {/* ════════ COMPLAINTS PANEL ════════ */}
+        <Show when={tab() === "complaints" && validNomenId()}>
+          <div class="lead">
+            <div>
+              <h2>Complaints</h2>
+              <p>
+                Issues the client has raised, with owner, status, and resolution.
+                Raised and resolved also show on the Activity history.
+              </p>
+            </div>
+          </div>
+
+          <div class="summary">
+            <div class="tile">
+              <div class="n">{cCounts().open}</div>
+              <div class="l"><i style="background:var(--slate)" />Open</div>
+            </div>
+            <div class="tile">
+              <div class="n">{cCounts().in_progress}</div>
+              <div class="l"><i style="background:var(--warn)" />In progress</div>
+            </div>
+            <div class="tile">
+              <div class="n">{cCounts().awaiting}</div>
+              <div class="l"><i style="background:var(--blue)" />Awaiting client</div>
+            </div>
+            <div class="tile">
+              <div class="n">{cCounts().resolved}</div>
+              <div class="l"><i style="background:var(--ok)" />Resolved</div>
+            </div>
+          </div>
+
+          <div class="filters">
+            <div class="fgroup">
+              <label>Status</label>
+              <div class="seg">
+                <For
+                  each={[
+                    { k: "all", l: "All" },
+                    { k: "open", l: "Open" },
+                    { k: "in_progress", l: "In progress" },
+                    { k: "awaiting", l: "Awaiting" },
+                    { k: "resolved", l: "Resolved" },
+                    { k: "closed", l: "Closed" },
+                  ]}
+                >
+                  {(o) => (
+                    <button class={cStatus() === o.k ? "on" : ""} onClick={() => setCStatus(o.k)}>
+                      {o.l}
+                    </button>
+                  )}
+                </For>
+              </div>
+            </div>
+            <div class="fgroup">
+              <label>Category</label>
+              <select value={cCategory()} onChange={(e) => setCCategory(e.target.value)}>
+                <option value="all">All categories</option>
+                <For each={CATEGORY_OPTIONS}>
+                  {(o) => <option value={o.value}>{o.label}</option>}
+                </For>
+              </select>
+            </div>
+            <div class="ftext">
+              <button class="btn-primary" onClick={() => setOverlay({ type: "log" })}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+                Log complaint
+              </button>
+            </div>
+          </div>
+
+          <Show when={complaintsRes.error}>
+            <div class="empty"><b>Couldn't load complaints</b>Please try again.</div>
+          </Show>
+
+          <Show
+            when={!complaintsRes.loading}
+            fallback={
+              <div class="clist">
+                <For each={Array(3).fill(0)}>{() => <div class="skel" />}</For>
+              </div>
+            }
+          >
+            <Show
+              when={visibleComplaints().length > 0}
+              fallback={
+                <div class="empty">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                  </svg>
+                  <b>{complaints().length ? "Nothing here" : "No complaints logged"}</b>
+                  {complaints().length
+                    ? "No complaints match this filter."
+                    : "Nothing has been raised for this client."}
+                  <div style="margin-top:14px">
+                    <button class="btn-primary" onClick={() => setOverlay({ type: "log" })}>
+                      Log complaint
+                    </button>
+                  </div>
+                </div>
+              }
+            >
+              <div class="clist">
+                <For each={visibleComplaints()}>
+                  {(c) => {
+                    const sev = levelClassOf(c.severity);
+                    return (
+                      <div
+                        class={`ccard sev-${sev}`}
+                        onClick={() => setOverlay({ type: "detail", complaint: c })}
+                      >
+                        <div class="ctop">
+                          <div class="ctitle">{c.title}</div>
+                          <span class={`status pill ${statusClassOf(c.status)}`}>
                             {humanize(c.status)}
                           </span>
-                          <Show when={c.severity}>
-                            <span class={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${LEVEL_CHIP[c.severity] ?? LEVEL_CHIP.low}`}>
-                              {c.severity}
-                            </span>
-                          </Show>
+                        </div>
+                        <div class="cmeta">
                           <Show when={c.category}>
-                            <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                            <span class="pill cat">
                               {CATEGORY_LABEL[c.category] ?? humanize(c.category)}
                             </span>
                           </Show>
+                          <Show when={c.severity}>
+                            <span class={`pill sev ${sev}`}>{humanize(c.severity)}</span>
+                          </Show>
                           <Show when={c.openTaskCount > 0}>
-                            <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                            <span class="pill camp">
                               {c.openTaskCount} task{c.openTaskCount !== 1 ? "s" : ""}
                             </span>
                           </Show>
+                          {/* SLA kind — awaiting client is a distinct, non-breaching state (blue). */}
+                          <Show when={statusClassOf(c.status) === "awaiting"}>
+                            <span class="pill awaiting">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="8" r="4" />
+                                <path d="M6 21v-1a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v1" />
+                              </svg>
+                              Waiting on client
+                            </span>
+                          </Show>
+                        </div>
+                        <Show when={c.description}>
+                          <div class="desc">{c.description}</div>
+                        </Show>
+                        <div class="cfoot">
+                          <Show when={c.raisedBy}>
+                            <span class="who">
+                              <span class="av" style={`background:${avatarColor(c.raisedBy)}`}>
+                                {initialsOf(c.raisedBy)}
+                              </span>
+                              {c.raisedBy}
+                            </span>
+                            <span class="dotsep" />
+                          </Show>
+                          <span>Raised {fmtRelative(c.createdAt)}</span>
+                          <Show when={c.owner}>
+                            <span class="dotsep" />
+                            <span>Owner: {c.owner}</span>
+                          </Show>
                         </div>
                       </div>
-                      <span class="text-xs text-[#8593A8] dark:text-gray-500 whitespace-nowrap flex-shrink-0">
-                        {fmtRelative(c.createdAt)}
-                      </span>
-                    </button>
-                  </li>
-                )}
-              </For>
-            </ul>
+                    );
+                  }}
+                </For>
+              </div>
+            </Show>
           </Show>
         </Show>
-      </Show>
+      </div>
 
       {/* ════════ OVERLAYS ════════ */}
       <Show when={overlay()?.type === "log"}>

@@ -1,16 +1,17 @@
-import { createSignal, createResource, For, Show } from "solid-js";
+import { createSignal, createResource, createMemo, For, Show } from "solid-js";
 import Swal from "sweetalert2";
 import Modal, { Field, fieldClass } from "./Modal";
-import { createTask } from "../../services/worklog";
-import { fetchTeamMembers } from "../../services/cm";
+import { createTask, fetchAssignableUsers } from "../../services/worklog";
 import { currentUser } from "../../stores/currentUser";
 import { PRIORITY_OPTIONS } from "./worklogTokens";
+import ClientPicker from "./ClientPicker";
 
 // ─── Assign task modal ────────────────────────────────────────────────────────
 // The mock's "assign task" flow. assigned_by is stamped server-side. When
 // sourceComplaint is set the task links back to the complaint it resolves
-// ("resolving a complaint is a task").
-// Props: clientNomen, clientName?, sourceComplaint?, defaultTitle?, onClose,
+// ("resolving a complaint is a task"). When opened outside a client workspace
+// (no clientNomen prop — e.g. from My Work), a client picker is shown.
+// Props: clientNomen?, clientName?, sourceComplaint?, defaultTitle?, onClose,
 //        onCreated(task).
 export default function AssignTaskModal(props) {
   const [title, setTitle] = createSignal(props.defaultTitle ?? "");
@@ -25,38 +26,65 @@ export default function AssignTaskModal(props) {
   const [saving, setSaving] = createSignal(false);
   const [error, setError] = createSignal(null);
 
-  // Assignee suggestions — team members if this user can list them. Non-blocking;
-  // the field is a free-text email so a failed/empty fetch never blocks assigning.
-  const [members] = createResource(async () => {
+  // Client picker — only when the modal isn't already scoped to a client.
+  const needsClientPicker = () => props.clientNomen == null;
+  const [pickedClient, setPickedClient] = createSignal("");
+  const effectiveClientNomen = () =>
+    props.clientNomen != null
+      ? props.clientNomen
+      : pickedClient()
+        ? Number(pickedClient())
+        : null;
+
+  // Assignable users — every active CM plus the requesting user (is_self). Value
+  // is user_id (Task.assigned_to). Non-blocking: a failed/empty fetch still lets
+  // the user assign to themselves.
+  const [users] = createResource(async () => {
     try {
-      const res = await fetchTeamMembers();
-      return Array.isArray(res?.data) ? res.data : [];
+      return await fetchAssignableUsers();
     } catch {
       return [];
     }
   });
 
-  // Assignable people: { id: "<user_id>", label: "<email>" }. Current user first
-  // (so "me" is always available even when team-members can't be listed).
-  const assignees = () => {
+  // { id: "<user_id>", label }. Self pinned to the top and rendered "Me · email";
+  // current user is always present even if the endpoint omitted them.
+  const assignees = createMemo(() => {
     const seen = new Set();
     const out = [];
-    const add = (id, label) => {
+    const add = (id, label, isSelf) => {
       if (id == null) return;
       const key = String(id);
       if (seen.has(key)) return;
       seen.add(key);
-      out.push({ id: key, label: label || `User #${key}` });
+      out.push({ id: key, label: label || `User #${key}`, isSelf: !!isSelf });
     };
-    add(currentUser.id, currentUser.email ? `Me · ${currentUser.email}` : "Me");
-    for (const m of members() ?? []) add(m.user_id, m.email);
+    for (const u of users() ?? []) {
+      add(
+        u.userId,
+        u.isSelf ? `Me · ${u.email || u.name}` : u.name || u.email,
+        u.isSelf,
+      );
+    }
+    if (currentUser.id != null) {
+      add(
+        currentUser.id,
+        currentUser.email ? `Me · ${currentUser.email}` : "Me",
+        true,
+      );
+    }
+    out.sort((a, b) => (a.isSelf === b.isSelf ? 0 : a.isSelf ? -1 : 1));
     return out;
-  };
+  });
 
   const submit = async (e) => {
     e.preventDefault();
     if (!title().trim()) {
       setError("A title is required.");
+      return;
+    }
+    if (needsClientPicker() && !effectiveClientNomen()) {
+      setError("Choose a client for this task.");
       return;
     }
     if (!assignedTo()) {
@@ -67,7 +95,7 @@ export default function AssignTaskModal(props) {
     setError(null);
     try {
       const created = await createTask({
-        clientNomen: props.clientNomen,
+        clientNomen: effectiveClientNomen(),
         title: title().trim(),
         description: description().trim() || undefined,
         assignedTo: Number(assignedTo()), // user_id (FK), not email
@@ -106,100 +134,96 @@ export default function AssignTaskModal(props) {
       onClose={props.onClose}
     >
       <form onSubmit={submit}>
-        <Field label="Title" required>
-          <input
-            type="text"
-            class={fieldClass}
-            placeholder="What needs doing"
-            value={title()}
-            onInput={(e) => setTitle(e.target.value)}
-            autofocus
-          />
-        </Field>
+        <div class="form">
+          <Show when={needsClientPicker()}>
+            <Field label="Client" required>
+              <ClientPicker value={pickedClient()} onChange={setPickedClient} />
+            </Field>
+          </Show>
 
-        <Field label="Description">
-          <textarea
-            rows={3}
-            class={fieldClass}
-            placeholder="Any detail the assignee needs"
-            value={description()}
-            onInput={(e) => setDescription(e.target.value)}
-          />
-        </Field>
+          <Field label="Task title" required>
+            <input
+              type="text"
+              placeholder="e.g. Refresh the audience on the lead campaign"
+              value={title()}
+              onInput={(e) => setTitle(e.target.value)}
+              autofocus
+            />
+          </Field>
 
-        <Field label="Assign to" required>
-          <select
-            class={fieldClass}
-            value={assignedTo()}
-            onChange={(e) => setAssignedTo(e.target.value)}
-          >
-            <Show when={assignees().length === 0}>
-              <option value="">Loading…</option>
-            </Show>
-            <For each={assignees()}>
-              {(a) => <option value={a.id}>{a.label}</option>}
-            </For>
-          </select>
+          <Field label="Details">
+            <textarea
+              rows={3}
+              placeholder="What needs to be done, and any context"
+              value={description()}
+              onInput={(e) => setDescription(e.target.value)}
+            />
+          </Field>
+
+          <div class="grid2">
+            <Field label="Assign to" required>
+              <select
+                value={assignedTo()}
+                onChange={(e) => setAssignedTo(e.target.value)}
+              >
+                <Show when={assignees().length === 0}>
+                  <option value="">{users.loading ? "Loading…" : "No one to assign"}</option>
+                </Show>
+                <For each={assignees()}>
+                  {(a) => <option value={a.id}>{a.label}</option>}
+                </For>
+              </select>
+            </Field>
+            <Field label="Priority">
+              <select
+                value={priority()}
+                onChange={(e) => setPriority(e.target.value)}
+              >
+                <For each={PRIORITY_OPTIONS}>
+                  {(o) => <option value={o.value}>{o.label}</option>}
+                </For>
+              </select>
+            </Field>
+          </div>
+
+          <div class="grid2">
+            <Field label="Due date">
+              <input
+                type="date"
+                value={dueDate()}
+                onInput={(e) => setDueDate(e.target.value)}
+              />
+            </Field>
+            <Field label="Project (optional)">
+              <input
+                type="text"
+                placeholder="Project id"
+                value={project()}
+                onInput={(e) => setProject(e.target.value)}
+              />
+            </Field>
+          </div>
+
           <Show when={currentUser.id != null}>
             <button
               type="button"
               onClick={() => setAssignedTo(String(currentUser.id))}
-              class="mt-1.5 text-xs font-semibold text-[#3E6FB0] dark:text-blue-300 hover:underline"
+              style="background:none;border:none;padding:0;color:var(--blue);font-size:12px;font-weight:600"
             >
               Assign to me
             </button>
           </Show>
-        </Field>
 
-        <div class="grid grid-cols-2 gap-3">
-          <Field label="Priority">
-            <select
-              class={fieldClass}
-              value={priority()}
-              onChange={(e) => setPriority(e.target.value)}
-            >
-              <For each={PRIORITY_OPTIONS}>
-                {(o) => <option value={o.value}>{o.label}</option>}
-              </For>
-            </select>
-          </Field>
-          <Field label="Due date (optional)">
-            <input
-              type="date"
-              class={fieldClass}
-              value={dueDate()}
-              onInput={(e) => setDueDate(e.target.value)}
-            />
-          </Field>
+          <Show when={error()}>
+            <p class="form-error">{error()}</p>
+          </Show>
         </div>
 
-        <Field label="Project (optional)">
-          <input
-            type="text"
-            class={fieldClass}
-            placeholder="Project id"
-            value={project()}
-            onInput={(e) => setProject(e.target.value)}
-          />
-        </Field>
-
-        <Show when={error()}>
-          <p class="text-sm text-[#AC2334] dark:text-red-400 mb-3">{error()}</p>
-        </Show>
-
-        <div class="flex justify-end gap-2 pt-1">
-          <button
-            type="button"
-            onClick={props.onClose}
-            class="px-4 py-2 text-sm font-semibold rounded-lg border border-[#E2E8F1] dark:border-gray-600 text-[#54657E] dark:text-gray-300 hover:bg-[#F1F4F9] dark:hover:bg-gray-800"
-          >
+        <div class="modal-foot">
+          <button type="button" class="btn-ghost" onClick={props.onClose}>
             Cancel
           </button>
-          <button
-            type="submit"
-            disabled={saving()}
-            class="px-4 py-2 text-sm font-bold rounded-lg bg-[#AC2334] text-white hover:bg-[#951d2c] disabled:opacity-60 disabled:cursor-not-allowed"
-          >
+          <button type="submit" class="btn-primary" disabled={saving()}>
             {saving() ? "Assigning…" : "Assign task"}
           </button>
         </div>

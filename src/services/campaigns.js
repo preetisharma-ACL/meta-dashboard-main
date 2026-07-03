@@ -101,12 +101,16 @@ export const fetchCampaignInsights = async (campaignId, pageSize = 1000) => {
 //   • scoping identical to single endpoint (client_nomen)
 export const fetchBulkCampaignInsights = async (
   campaignIds,
-  { startDate, endDate, pageSize = 10000 } = {},
+  { startDate, endDate, pageSize = 10000, clientNomen } = {},
 ) => {
   const ids = [...new Set((campaignIds || []).filter((id) => id != null))];
   if (ids.length === 0) return { data: [] };
 
-  const clientNomen = getClientNomen();
+  // Callers can pass `clientNomen` explicitly to override the localStorage-based
+  // scoping — pass null for an unscoped admin sweep across all clients (e.g. the
+  // Ad Accounts view, whose campaigns span many clients). Omitting it keeps the
+  // default per-client scoping used by the client dashboard / reports.
+  const nomen = clientNomen !== undefined ? clientNomen : getClientNomen();
   const CHUNK = 500; // backend hard limit on campaign_ids per call
   let allRows = [];
 
@@ -121,7 +125,7 @@ export const fetchBulkCampaignInsights = async (
         `&page=${page}&page_size=${pageSize}`;
       if (startDate) url += `&start_date=${startDate}`;
       if (endDate) url += `&end_date=${endDate}`;
-      if (clientNomen) url += `&client_nomen=${clientNomen}`;
+      if (nomen) url += `&client_nomen=${nomen}`;
 
       const res = await api(url, { method: "GET" });
 
