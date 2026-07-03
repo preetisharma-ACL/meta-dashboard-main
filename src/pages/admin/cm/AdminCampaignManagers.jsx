@@ -8,12 +8,14 @@ import {
   For,
   Show,
 } from "solid-js";
+import { useSearchParams } from "@solidjs/router";
 import { fetchManagerPerformance } from "../../../services/performance";
 import { probeAdminSwitchMode, fetchManagerOwnClients } from "../../../services/cmAdmin";
 import {
   setManagerScope,
   clearScope,
   ownScope,
+  viewingAs,
   setViewingAs,
 } from "../../../stores/cmScope";
 import { clientManagerMap, setClientManagerMap } from "../../../stores/cmManagerMap";
@@ -103,8 +105,12 @@ function ViewAsBlockedBanner(props) {
 }
 
 export default function AdminCampaignManagers() {
+  // The selected manager lives in the URL (?manager=<id>&view=own|team) instead
+  // of local state, so the view survives navigation: clicking a campaign routes
+  // to /campaign/:id, and browser Back returns here to the SAME manager's
+  // dashboard rather than resetting to the bare roster.
+  const [searchParams, setSearchParams] = useSearchParams();
   const [month, setMonth] = createSignal(currentMonthKey());
-  const [selected, setSelected] = createSignal(null); // manager row | null
   const [tab, setTab] = createSignal("dashboard"); // dashboard | alerts
   const [search, setSearch] = createSignal("");
 
@@ -122,6 +128,29 @@ export default function AdminCampaignManagers() {
 
   const rows = () => data()?.rows ?? [];
   const summary = () => data()?.summary ?? null;
+
+  // ── URL-derived selection (?manager=<id>&view=own|team) ──
+  // `view` defaults to "own"; anything else means the full-team view. `selected`
+  // resolves the roster row for the id in the URL, so it repopulates once the
+  // roster loads on a Back-navigation.
+  const selectedId = () => {
+    const raw = searchParams.manager;
+    return raw ? Number(raw) || null : null;
+  };
+  const ownFromUrl = () => searchParams.view !== "team";
+  const selected = createMemo(() => {
+    const id = selectedId();
+    if (id == null) return null;
+    return rows().find((r) => Number(r.manager_id) === id) ?? null;
+  });
+
+  // View gating — avoids flashing the roster while the roster reloads on Back:
+  //   • roster   → no manager in the URL (or the id isn't in this month's roster)
+  //   • loading  → a manager is in the URL but the roster hasn't resolved it yet
+  //   • manager  → the roster row is resolved
+  const showManager = () => !!selected();
+  const showLoading = () => selectedId() != null && !selected() && data.loading;
+  const showRoster = () => selectedId() == null || (!selected() && !data.loading);
 
   const visibleRows = createMemo(() => {
     const q = search().trim().toLowerCase();
@@ -192,32 +221,59 @@ export default function AdminCampaignManagers() {
   };
 
   const openManager = (m) => {
-    setSelected(m);
     setTab("dashboard");
+    // Push the manager into the URL — this becomes the history entry that a Back
+    // from a campaign detail returns to.
+    setSearchParams({ manager: m.manager_id, view: "own" });
     if (allowed()) applyManagerScope(m, true); // default: Own clients
   };
 
-  // Toggle the selected manager's own/team view.
+  // Toggle the selected manager's own/team view. Replace (not push) so the
+  // toggle doesn't pile up history entries.
   const setMemberView = (own) => {
     const m = selected();
-    if (m && allowed()) applyManagerScope(m, own);
+    if (!m) return;
+    setSearchParams({ view: own ? "own" : "team" }, { replace: true });
+    if (allowed()) applyManagerScope(m, own);
   };
 
   const backToRoster = () => {
     clearScope();
-    setSelected(null);
+    setSearchParams({ manager: null, view: null });
   };
 
-  // Entering the screen always starts at the clean roster — no manager scope
-  // lingering from an earlier visit. While "viewing as" a manager, the scope is
-  // intentionally NOT cleared on navigation, so the manager's Funding / CPL /
-  // Allowed-Budget pages stay scoped too; the global CM banner offers "Return".
-  onMount(() => clearScope());
+  // Restore scope for a manager that came back via the URL (e.g. Back from a
+  // campaign detail), where openManager() never ran this mount. Priming the
+  // "viewing as" email waits for the roster row to resolve.
+  createEffect(() => {
+    const m = selected();
+    if (m && allowed() && !viewingAs()) applyManagerScope(m, ownFromUrl());
+  });
+
+  // Fresh entry (no manager in the URL) starts at the clean roster and clears any
+  // lingering scope. Returning WITH a manager in the URL keeps that manager's
+  // scope so the embedded dashboard renders scoped instead of resetting — while
+  // "viewing as" a manager, the scope intentionally persists across navigation so
+  // their Funding / CPL / Allowed-Budget pages stay scoped and the global CM
+  // banner offers "Return".
+  onMount(() => {
+    const id = selectedId();
+    if (id == null) clearScope();
+    else setManagerScope(id, ownFromUrl());
+  });
 
   return (
     <div class="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 md:p-6 lg:p-8">
+      {/* Restoring a manager's dashboard after a Back-navigation while the
+          roster reloads — hold the frame instead of flashing the roster. */}
+      <Show when={showLoading()}>
+        <div class="min-h-[50vh] flex items-center justify-center">
+          <span class="w-7 h-7 rounded-full border-2 border-gray-300 border-t-blue-500 animate-spin" />
+        </div>
+      </Show>
+
       {/* ══════════════════ ROSTER VIEW ══════════════════ */}
-      <Show when={!selected()}>
+      <Show when={showRoster()}>
         <div class="flex items-start justify-between flex-wrap gap-3 mb-6">
           <div>
             <p class="text-xs font-bold uppercase tracking-[0.12em] text-blue-600 dark:text-blue-400 mb-1.5">
@@ -389,7 +445,7 @@ export default function AdminCampaignManagers() {
       </Show>
 
       {/* ══════════════════ SELECTED-MANAGER VIEW ══════════════════ */}
-      <Show when={selected()}>
+      <Show when={showManager()}>
         {/* Context header */}
         <div class="flex items-start justify-between flex-wrap gap-3 mb-5">
           <div class="flex items-center gap-3 min-w-0">
