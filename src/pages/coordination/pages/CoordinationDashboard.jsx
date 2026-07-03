@@ -36,6 +36,14 @@ const TYPE_BADGE = {
   cpl: "bg-[#FBF3E2] text-[#B07A14] dark:bg-gray-800 dark:text-amber-300", // amber
 };
 
+// Client-type multi-select chips (retainer excluded by default — client-funded).
+const CLIENT_TYPES = [
+  { key: "cpl", label: "CPL" },
+  { key: "hybrid", label: "Hybrid" },
+  { key: "retainer", label: "Retainer" },
+];
+const DEFAULT_CLIENT_TYPES = ["cpl", "hybrid"];
+
 export default function CoordinationDashboard() {
   // ── State ──────────────────────────────────────────────────────────────────
   const currentMonthStr = () => {
@@ -50,7 +58,17 @@ export default function CoordinationDashboard() {
   const [data, setData] = createSignal(null); // the `data` object from the API
 
   const [statusFilter, setStatusFilter] = createSignal("all"); // all|owes|low|healthy
-  const [typeFilter, setTypeFilter] = createSignal("all"); // all|retainer|hybrid|cpl
+  const [clientTypes, setClientTypes] = createSignal(DEFAULT_CLIENT_TYPES); // multi-select
+
+  // Toggle a client-type chip; never allow an empty selection.
+  const toggleClientType = (key) => {
+    setClientTypes((prev) => {
+      const next = prev.includes(key)
+        ? prev.filter((k) => k !== key)
+        : [...prev, key];
+      return next.length ? next : prev;
+    });
+  };
   const [searchText, setSearchText] = createSignal("");
   const [incGst, setIncGst] = createSignal(true); // GST toggle, default Including
   const [sortKey, setSortKey] = createSignal("closing"); // default sort
@@ -92,7 +110,7 @@ export default function CoordinationDashboard() {
   // Snap back to page 1 when the result set changes underneath us.
   createEffect(() => {
     statusFilter();
-    typeFilter();
+    clientTypes();
     searchText();
     month();
     setPage(1);
@@ -154,9 +172,10 @@ export default function CoordinationDashboard() {
       list = list.filter((c) => c.status === statusFilter());
     }
 
-    if (typeFilter() !== "all") {
-      list = list.filter(
-        (c) => (c.client_type || "").toLowerCase() === typeFilter(),
+    const types = clientTypes();
+    if (types.length < CLIENT_TYPES.length) {
+      list = list.filter((c) =>
+        types.includes((c.client_type || "").toLowerCase()),
       );
     }
 
@@ -357,6 +376,52 @@ export default function CoordinationDashboard() {
         </div>
       </Show>
 
+      {/* ════════ CLIENT-TYPE FILTER ════════ */}
+      <div class="flex flex-wrap items-center gap-2 mb-6">
+        <span class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400 mr-1">
+          Client type
+        </span>
+        <For each={CLIENT_TYPES}>
+          {(t) => {
+            const on = () => clientTypes().includes(t.key);
+            return (
+              <button
+                onClick={() => toggleClientType(t.key)}
+                aria-pressed={on()}
+                class={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[13px] font-semibold border transition-colors ${
+                  on()
+                    ? "bg-[#14233A] text-white border-[#14233A]"
+                    : "bg-gray-50 dark:bg-gray-800 text-[#54657E] dark:text-gray-300 border-[#E2E8F1] dark:border-gray-700 hover:border-[#14233A]/40"
+                }`}
+              >
+                <svg
+                  class="w-3.5 h-3.5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <Show
+                    when={on()}
+                    fallback={
+                      <circle cx="12" cy="12" r="9" stroke-width="1.6" />
+                    }
+                  >
+                    <path d="M20 6L9 17l-5-5" />
+                  </Show>
+                </svg>
+                {t.label}
+              </button>
+            );
+          }}
+        </For>
+        <span class="text-xs text-[#8593A8] dark:text-gray-500 ml-1">
+          Retainer accounts are client-funded; excluded by default.
+        </span>
+      </div>
+
       {/* ════════ SUMMARY CARDS ════════ */}
       <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4 mb-8">
         {/* Total Owed — headline */}
@@ -448,18 +513,6 @@ export default function CoordinationDashboard() {
           <option value="healthy">Healthy</option>
         </select>
 
-        {/* Client type filter dropdown */}
-        <select
-          value={typeFilter()}
-          onChange={(e) => setTypeFilter(e.currentTarget.value)}
-          class="border border-[#E2E8F1] dark:border-gray-600 px-3 py-2 rounded-lg bg-white dark:bg-gray-800 text-sm text-[#1A2B45] dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#AC2334]/25 focus:border-[#AC2334] cursor-pointer"
-        >
-          <option value="all">Client Type</option>
-          <option value="retainer">Retainer</option>
-          <option value="hybrid">Hybrid</option>
-          <option value="cpl">CPL</option>
-        </select>
-
         {/* Search */}
         <input
           type="text"
@@ -473,14 +526,15 @@ export default function CoordinationDashboard() {
         <Show
           when={
             statusFilter() !== "all" ||
-            typeFilter() !== "all" ||
+            clientTypes().length !== DEFAULT_CLIENT_TYPES.length ||
+            !DEFAULT_CLIENT_TYPES.every((k) => clientTypes().includes(k)) ||
             searchText().trim() !== ""
           }
         >
           <button
             onClick={() => {
               setStatusFilter("all");
-              setTypeFilter("all");
+              setClientTypes(DEFAULT_CLIENT_TYPES);
               setSearchText("");
             }}
             class="px-3 py-2 rounded-lg text-sm font-medium border border-[#E2E8F1] dark:border-gray-600 text-[#54657E] dark:text-gray-300 bg-white dark:bg-gray-800 hover:border-[#AC2334]/40 hover:text-[#AC2334] dark:hover:bg-gray-700 dark:hover:text-white transition-colors"

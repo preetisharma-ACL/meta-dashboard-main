@@ -1,9 +1,51 @@
-import { createSignal, createResource, createMemo, For, Show } from "solid-js";
+import { createSignal, createResource, createMemo, For, Show, onCleanup } from "solid-js";
+import Swal from "sweetalert2";
 import * as XLSX from "xlsx";
-import { fetchFundingAccounts } from "../../services/funding";
+import {
+  fetchFundingAccounts,
+  startFundingRefresh,
+  getFundingRefreshStatus,
+} from "../../services/funding";
 import { scopeKey } from "../../stores/cmScope";
+import { isGlobalRead } from "../../stores/currentUser";
 import Avatar from "../../components/common/Avatar";
 import useColumnSort from "../../components/Columnsorting";
+
+// ─── "Refresh from Meta" copy ─────────────────────────────────────────────────
+// Alok wants an on-demand balance refresh (the hourly sync feels slow). These
+// messages are an inside joke — friendly, not literal. Keep them here so the
+// roast level is easy to tune depending on who's watching. 😄
+const REFRESH_COPY = {
+  syncingTitle: "🧘 Patience, Alok! Your money is being loaded...",
+  syncingBody: "Fetching fresh balances from Meta — this takes a few seconds.",
+  cooldownTitle: "🫸 Easy there, Alok! You just refreshed.",
+  cooldownBody: (secs) => `Have some patience — try again in ${secs}s.`,
+  doneTitle: "Balances refreshed!",
+  doneBody: (n) => `Synced ${n} account${n === 1 ? "" : "s"}.`,
+  failedTitle: "Refresh hit a snag",
+  failedBody:
+    "Some accounts didn't sync. Try again shortly.",
+  timeoutTitle: "Still working…",
+  timeoutBody: "The sync is taking longer than usual — check back in a moment.",
+};
+
+// Poll cadence + safety cap for the background refresh job.
+const REFRESH_POLL_MS = 3000;
+const REFRESH_POLL_TIMEOUT_MS = 90000;
+
+// Small corner toast — reuses the project's sweetalert2 pattern (see
+// CampaignStatusControl) so refresh feedback matches the rest of the app.
+const refreshToast = (icon, title, text) =>
+  Swal.fire({
+    icon,
+    title,
+    text,
+    toast: true,
+    position: "top-end",
+    timer: icon === "error" ? 6000 : 4000,
+    timerProgressBar: true,
+    showConfirmButton: false,
+  });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Themed to match the project (ClientDashboard family): navy ink (#14233A),
@@ -358,7 +400,7 @@ export default function AccountFunding() {
 
   // Refetch when the switch scope OR the client-type filter changes — the
   // backend re-scopes the dataset and recomputes all four summary tiles.
-  const [data] = createResource(
+  const [data, { refetch }] = createResource(
     () => ({ scope: scopeKey(), types: clientTypes() }),
     async (s) => {
       const res = await fetchFundingAccounts(s.types);
@@ -368,6 +410,100 @@ export default function AccountFunding() {
 
   const accounts = () => (Array.isArray(data()?.data) ? data().data : []);
   const summary = () => data()?.meta?.summary ?? null;
+
+  // ─── "Refresh from Meta" — on-demand balance sync ─────────────────────────────
+  // Admin / global-read only (backend enforces 403; we also gate the button's
+  // visibility). Kicks off a background job, shows Alok's loading overlay, polls
+  // to completion, then reloads the funding table with the fresh numbers. The
+  // 60s cooldown is the real re-click guard; we also disable the button while a
+  // refresh is in flight to avoid confusing double-triggers.
+  const canRefresh = () => isGlobalRead();
+  const [refreshing, setRefreshing] = createSignal(false); // overlay while syncing
+  const [cooldownLeft, setCooldownLeft] = createSignal(0); // >0 → button on cooldown
+
+  let pollTimer = null; // next status poll
+  let cooldownTimer = null; // 1s countdown ticker
+  onCleanup(() => {
+    clearTimeout(pollTimer);
+    clearInterval(cooldownTimer);
+  });
+
+  const startCooldown = (secs) => {
+    clearInterval(cooldownTimer);
+    setCooldownLeft(Math.max(0, Math.ceil(secs)));
+    cooldownTimer = setInterval(() => {
+      setCooldownLeft((n) => {
+        if (n <= 1) {
+          clearInterval(cooldownTimer);
+          return 0;
+        }
+        return n - 1;
+      });
+    }, 1000);
+  };
+
+  // Poll GET /funding/refresh/status until done/failed or the safety timeout.
+  const pollRefresh = (taskId, startedAt) => {
+    pollTimer = setTimeout(async () => {
+      if (Date.now() - startedAt > REFRESH_POLL_TIMEOUT_MS) {
+        setRefreshing(false);
+        refreshToast("info", REFRESH_COPY.timeoutTitle, REFRESH_COPY.timeoutBody);
+        return;
+      }
+      let st;
+      try {
+        st = await getFundingRefreshStatus(taskId);
+      } catch {
+        // Transient poll error — keep trying until the overall timeout.
+        pollRefresh(taskId, startedAt);
+        return;
+      }
+      if (st?.status === "done") {
+        setRefreshing(false);
+        const synced = Number(st?.summary?.synced) || 0;
+        await refetch(); // reload the funding table with fresh numbers
+        refreshToast("success", REFRESH_COPY.doneTitle, REFRESH_COPY.doneBody(synced));
+        return;
+      }
+      if (st?.status === "failed") {
+        setRefreshing(false);
+        refreshToast("warning", REFRESH_COPY.failedTitle, REFRESH_COPY.failedBody);
+        return;
+      }
+      // still "running" (or an unexpected shape) — poll again.
+      pollRefresh(taskId, startedAt);
+    }, REFRESH_POLL_MS);
+  };
+
+  const handleRefresh = async () => {
+    if (refreshing() || cooldownLeft() > 0) return;
+    let res;
+    try {
+      res = await startFundingRefresh();
+    } catch (err) {
+      if (err?.status === 403) {
+        refreshToast("error", "Not allowed", "You don't have permission to refresh balances.");
+      } else {
+        refreshToast("error", "Couldn't start refresh", err?.message || "Please try again.");
+      }
+      return;
+    }
+
+    if (res?.status === "cooldown") {
+      // Someone refreshed in the last 60s. Count the exact TTL down live.
+      startCooldown(Number(res.seconds_remaining) || 0);
+      return;
+    }
+
+    if (res?.status === "started" && res.task_id) {
+      setRefreshing(true);
+      pollRefresh(res.task_id, Date.now());
+      return;
+    }
+
+    // Unexpected response shape — don't leave the user hanging.
+    refreshToast("error", "Couldn't start refresh", "Unexpected response. Please try again.");
+  };
 
   const isActive = (a) => a.is_active && a.account_status === 1;
 
@@ -653,32 +789,99 @@ export default function AccountFunding() {
             shortfall.
           </p>
         </div>
-        <button
-          onClick={downloadReport}
-          disabled={data.loading || rows().length === 0}
-          title="Download the current table as an Excel report"
-          class="group inline-flex items-center gap-2.5 pl-2.5 pr-4 py-2.5 rounded-xl text-sm font-bold text-white
-                 bg-[#14233A] hover:bg-[#1f3553] shadow-[0_1px_2px_rgba(16,29,49,.18),0_6px_16px_rgba(16,29,49,.14)]
-                 hover:shadow-[0_2px_4px_rgba(16,29,49,.22),0_10px_22px_rgba(16,29,49,.18)] active:scale-[0.97]
-                 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none disabled:active:scale-100
-                 transition-all duration-200"
-        >
-          <span class="flex items-center justify-center w-6 h-6 rounded-lg bg-white/15 group-hover:bg-white/25 transition-colors">
-            <svg
-              class="w-4 h-4 transition-transform duration-200 group-hover:translate-y-0.5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              stroke-width="2.2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
+        <div class="flex items-center gap-2.5 flex-wrap">
+          {/* Refresh from Meta — admin / global-read only */}
+          <Show when={canRefresh()}>
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing() || cooldownLeft() > 0}
+              title={
+                cooldownLeft() > 0
+                  ? `Just refreshed — try again in ${cooldownLeft()}s`
+                  : "Fetch fresh wallet balances from Meta"
+              }
+              class="group inline-flex items-center gap-2.5 pl-2.5 pr-4 py-2.5 rounded-xl text-sm font-bold text-[#14233A] dark:text-gray-100
+                     bg-gray-50 dark:bg-gray-800 border border-[#D4DDE9] dark:border-gray-700 hover:border-[#14233A]/50 hover:bg-white dark:hover:bg-gray-700
+                     shadow-[0_1px_2px_rgba(16,29,49,.06)] active:scale-[0.97]
+                     disabled:opacity-60 disabled:cursor-not-allowed disabled:active:scale-100
+                     transition-all duration-200"
             >
-              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" />
-            </svg>
-          </span>
-          Download report
-        </button>
+              <span class="flex items-center justify-center w-6 h-6 rounded-lg bg-[#EEF2F7] dark:bg-gray-700 group-hover:bg-[#E3EAF3] dark:group-hover:bg-gray-600 transition-colors">
+                <svg
+                  class={`w-4 h-4 ${refreshing() ? "animate-spin" : "transition-transform duration-500 group-hover:rotate-180"}`}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  stroke-width="2.2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M23 4v6h-6M1 20v-6h6" />
+                  <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
+                </svg>
+              </span>
+              {refreshing()
+                ? "Refreshing…"
+                : cooldownLeft() > 0
+                  ? `Wait ${cooldownLeft()}s`
+                  : "Refresh"}
+            </button>
+          </Show>
+
+          <button
+            onClick={downloadReport}
+            disabled={data.loading || rows().length === 0}
+            title="Download the current table as an Excel report"
+            class="group inline-flex items-center gap-2.5 pl-2.5 pr-4 py-2.5 rounded-xl text-sm font-bold text-white
+                   bg-[#14233A] hover:bg-[#1f3553] shadow-[0_1px_2px_rgba(16,29,49,.18),0_6px_16px_rgba(16,29,49,.14)]
+                   hover:shadow-[0_2px_4px_rgba(16,29,49,.22),0_10px_22px_rgba(16,29,49,.18)] active:scale-[0.97]
+                   disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none disabled:active:scale-100
+                   transition-all duration-200"
+          >
+            <span class="flex items-center justify-center w-6 h-6 rounded-lg bg-white/15 group-hover:bg-white/25 transition-colors">
+              <svg
+                class="w-4 h-4 transition-transform duration-200 group-hover:translate-y-0.5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                stroke-width="2.2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" />
+              </svg>
+            </span>
+            Download report
+          </button>
+        </div>
       </div>
+
+      {/* ════ REFRESH LOADING OVERLAY — Alok's "patience" screen 🧘 ════ */}
+      <Show when={refreshing()}>
+        <div class="fixed inset-0 z-[120] flex items-center justify-center bg-[#0B1626]/55 backdrop-blur-sm px-4">
+          <div class="w-full max-w-sm rounded-2xl bg-white dark:bg-gray-900 border border-[#E2E8F1] dark:border-gray-700 shadow-2xl px-7 py-8 text-center">
+            <div class="mx-auto mb-5 w-14 h-14 rounded-full border-4 border-[#EEF2F7] dark:border-gray-700 border-t-[#AC2334] animate-spin" />
+            <p class="text-base font-bold text-[#14233A] dark:text-white">
+              {REFRESH_COPY.syncingTitle}
+            </p>
+            <p class="text-sm text-[#54657E] dark:text-gray-400 mt-2 leading-snug">
+              {REFRESH_COPY.syncingBody}
+            </p>
+          </div>
+        </div>
+      </Show>
+
+      {/* ════ REFRESH COOLDOWN NOTICE — clicked again within 60s 🫸 ════ */}
+      <Show when={cooldownLeft() > 0}>
+        <div class="fixed top-6 right-6 z-[110] w-[340px] max-w-[calc(100vw-3rem)] rounded-2xl border border-[#B07A14]/40 dark:border-amber-700/70 bg-[#FBF3E2] dark:bg-amber-950/40 shadow-xl px-4 py-3.5">
+          <p class="text-sm font-bold text-[#8A5D10] dark:text-amber-300">
+            {REFRESH_COPY.cooldownTitle}
+          </p>
+          <p class="text-sm text-[#7A6636] dark:text-amber-200/80 mt-0.5 leading-snug">
+            {REFRESH_COPY.cooldownBody(cooldownLeft())}
+          </p>
+        </div>
+      </Show>
 
       {/* ════ CLIENT-TYPE FILTER (v3) ════ */}
       <div class="flex flex-wrap items-center gap-2 mb-5">
