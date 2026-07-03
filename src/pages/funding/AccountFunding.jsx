@@ -562,7 +562,12 @@ export default function AccountFunding() {
       }
 
       if (needsOnly() && fundingState(a) !== "needs") return false;
-      if (sf !== "all" && fundingState(a) !== sf) return false;
+      if (sf === "available") {
+        // "Available" isn't a funding state — it's any account with a positive
+        // wallet balance (matches the Available column).
+        const fa = parseFloat(a.funds_available);
+        if (!(isFinite(fa) && fa > 0)) return false;
+      } else if (sf !== "all" && fundingState(a) !== sf) return false;
       if (statusF === "active" && !isActive(a)) return false;
       if (statusF === "inactive" && isActive(a)) return false;
 
@@ -593,10 +598,14 @@ export default function AccountFunding() {
   });
 
   const stateCounts = createMemo(() => {
-    const c = { all: 0, needs: 0, funded: 0, card: 0, unknown: 0 };
+    const c = { all: 0, needs: 0, funded: 0, card: 0, unknown: 0, available: 0 };
     for (const a of accounts()) {
       c.all++;
       c[fundingState(a)]++;
+      // "Available" cuts across funding state — any account with a positive
+      // wallet balance (matches the Available column).
+      const fa = parseFloat(a.funds_available);
+      if (isFinite(fa) && fa > 0) c.available++;
     }
     return c;
   });
@@ -1114,6 +1123,26 @@ export default function AccountFunding() {
               </button>
             )}
           </For>
+
+          {/* Available — cross-cutting: accounts with a positive wallet balance */}
+          <button
+            onClick={() => {
+              setStateFilter(stateFilter() === "available" ? "all" : "available");
+              setNeedsOnly(false);
+            }}
+            class={`inline-flex items-center gap-2 px-3.5 py-2 rounded-full text-[13px] font-semibold border transition-colors ${
+              stateFilter() === "available"
+                ? "bg-[#15966A] text-white border-[#15966A]"
+                : "bg-gray-50 dark:bg-gray-800 text-[#54657E] dark:text-gray-300 border-[#E2E8F1] dark:border-gray-700 hover:border-[#14233A]/40"
+            }`}
+          >
+            Available
+            <span
+              class={`text-[11px] font-extrabold px-1.5 py-px rounded-full ${stateFilter() === "available" ? "bg-white/20 text-white" : "bg-[#F1F4F9] dark:bg-gray-700 text-[#8593A8]"}`}
+            >
+              {stateCounts().available}
+            </span>
+          </button>
         </div>
 
         <div class="relative">
