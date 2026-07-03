@@ -1,4 +1,4 @@
-import { A, useLocation } from "@solidjs/router";
+import { A, useLocation, useNavigate } from "@solidjs/router";
 import { useSidebar } from "../context/SidebarContext";
 import {
   createSignal,
@@ -27,14 +27,17 @@ const getUserRole = () => {
   }
 };
 
-const goToDashboard = () => {
-  const role = JSON.parse(localStorage.getItem("auth") || "{}")?.role;
-
-  if (role === "admin") {
-    clearClientDashboardContext();
+// Logo click: navigation to "/" is handled by the <A href="/"> itself. Here we
+// only reset any drilled-in client context so "/" renders the admin's own
+// dashboard instead of the last-opened client's. (Previously this called an
+// undefined `navigate`, so it threw and was never wired up.)
+const handleLogoClick = () => {
+  try {
+    const role = JSON.parse(localStorage.getItem("auth") || "{}")?.role;
+    if (role === "admin") clearClientDashboardContext();
+  } catch {
+    /* ignore malformed auth */
   }
-
-  navigate("/");
 };
 
 // ── Icon helpers ────────────────────────────────────────────────────────────
@@ -123,7 +126,18 @@ const NAV_INACTIVE =
 export default function Sidebar() {
   const { isCollapsed, isMobileOpen, closeMobileSidebar } = useSidebar();
   const location = useLocation();
+  const navigate = useNavigate();
   const isActive = (path) => location.pathname === path;
+
+  const goToDashboard = () => {
+    const role = JSON.parse(localStorage.getItem("auth") || "{}")?.role;
+
+    if (role === "admin") {
+      clearClientDashboardContext();
+    }
+
+    navigate("/");
+  };
   const [isLoggedIn, setIsLoggedIn] = createSignal(getAuthToken());
   const [userRole, setUserRole] = createSignal(getUserRole());
   const [openMenu, setOpenMenu] = createSignal(null);
@@ -459,33 +473,41 @@ export default function Sidebar() {
             fallback={
               <>
                 {/* Light theme */}
+                <A href="/" onClick={handleLogoClick} class="flex items-center justify-center">
                 <img
                   src="/logo.webp"
                   alt="aajneeti"
                   class="block dark:hidden w-9 h-9 object-contain"
                 />
+                </A>
                 {/* Dark theme */}
+                <A href="/" onClick={handleLogoClick} class="flex items-center justify-center">
                 <img
                   src="/V2-aajneeti-logo.png"
                   alt="aajneeti"
                   class="hidden dark:block w-9 h-9 object-contain"
                 />
+                </A>
               </>
             }
           >
             <div class="flex flex-col items-center justify-center gap-3 lg:gap-2">
               {/* Light theme */}
+              <A href="/" onClick={handleLogoClick} class="flex items-center justify-center">
               <img
                 src="/logo.webp"
                 alt="Aajneeti"
                 class="block dark:hidden h-14 w-auto object-contain"
               />
+              </A>
               {/* Dark theme */}
+              <A href="/" onClick={handleLogoClick} class="flex items-center justify-center">
               <img
                 src="/V2-aajneeti-logo.png"
                 alt="Aajneeti"
                 class="hidden dark:block h-14 w-auto object-contain"
               />
+              </A>
               <div class="flex items-center gap-2 lg:gap-1.5">
                 <span class="h-px w-5 lg:w-3.5 bg-amber-500/80" />
                 <span class="text-[12px] lg:text-[10px] font-bold uppercase tracking-[0.2em] lg:tracking-[0.15em] text-amber-600 whitespace-nowrap">

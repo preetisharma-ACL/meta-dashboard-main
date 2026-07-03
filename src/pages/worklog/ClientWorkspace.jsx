@@ -51,6 +51,14 @@ export default function ClientWorkspace() {
   const [search] = useSearchParams();
   const nomenId = () => params.nomenId;
 
+  // The workspace + worklog endpoints require the INTEGER nomen_id. The app only
+  // ever routes the integer here (My Work → client_nomen), but a hand-typed,
+  // shared, or stale URL can carry a client name/slug — which 404s activity and
+  // 500s complaints. Guard: expose the id only when it's numeric; otherwise skip
+  // the fetches and show a clear message instead of firing broken requests.
+  const validNomenId = () =>
+    /^\d+$/.test(String(params.nomenId ?? "").trim()) ? params.nomenId : null;
+
   const [tab, setTab] = createSignal(
     search.tab === "complaints" ? "complaints" : "activity",
   );
@@ -69,12 +77,15 @@ export default function ClientWorkspace() {
 
   // ── Resources ──
   const [activity] = createResource(
-    () => ({ id: nomenId(), n: activityNonce() }),
+    () => (validNomenId() ? { id: validNomenId(), n: activityNonce() } : null),
     ({ id }) => fetchClientActivity(id),
   );
 
   const [complaintsRes] = createResource(
-    () => ({ id: nomenId(), n: complaintsNonce(), scope: scopeKey() }),
+    () =>
+      validNomenId()
+        ? { id: validNomenId(), n: complaintsNonce(), scope: scopeKey() }
+        : null,
     ({ id }) => fetchComplaints({ clientNomen: id }),
   );
 
@@ -169,6 +180,16 @@ export default function ClientWorkspace() {
           </button>
         </div>
       </div>
+
+      {/* ════════ INVALID-NOMEN GUARD ════════ */}
+      {/* Reached only via a bad URL — the app always routes the integer id. */}
+      <Show when={!validNomenId()}>
+        <div class="bg-[#FBEEF0] dark:bg-red-900/20 border border-[#AC2334]/25 dark:border-red-800 rounded-xl p-4 mb-6 text-sm font-medium text-[#AC2334] dark:text-red-400">
+          This workspace link is invalid — it must reference a numeric client id
+          (got “{String(nomenId() ?? "")}”). Open a client from{" "}
+          <A href="/my-work" class="underline font-bold">My Work</A> instead.
+        </div>
+      </Show>
 
       {/* ════════ TABS ════════ */}
       <div class="inline-flex gap-1 p-1 bg-[#EEF2F7] dark:bg-gray-800 rounded-xl border border-[#E2E8F1] dark:border-gray-700 mb-6">
@@ -380,7 +401,7 @@ export default function ClientWorkspace() {
       {/* ════════ OVERLAYS ════════ */}
       <Show when={overlay()?.type === "log"}>
         <LogComplaintModal
-          clientNomen={nomenId()}
+          clientNomen={validNomenId()}
           clientName={clientName()}
           onClose={close}
           onCreated={() => {
@@ -393,7 +414,7 @@ export default function ClientWorkspace() {
 
       <Show when={overlay()?.type === "assign"}>
         <AssignTaskModal
-          clientNomen={nomenId()}
+          clientNomen={validNomenId()}
           clientName={clientName()}
           sourceComplaint={overlay().sourceComplaint}
           onClose={close}

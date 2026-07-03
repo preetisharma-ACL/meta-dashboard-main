@@ -23,6 +23,9 @@ import { scopeQuery, applyMeta } from "../stores/cmScope";
 // ── Normalizers (server snake_case → UI camelCase) ────────────────────────────
 
 // My Work queue item — the pre-sorted unified task+complaint row.
+// NOTE: my-work returns client_nomen as the INTEGER nomen_id and
+// client_nomen_name as the display name — the workspace route + worklog
+// endpoints require that integer (a name 404s activity / 500s complaints).
 const normalizeWorkItem = (r = {}) => ({
   kind: r.kind, // "task" | "complaint"
   id: r.id,
