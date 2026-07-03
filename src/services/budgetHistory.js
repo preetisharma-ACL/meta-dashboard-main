@@ -10,6 +10,16 @@ import { api } from "../api/api";
 // spend with null allocated values and sets meta.allocated_budget_available_for_range
 // = false + a human note. Callers must render the note, NOT ₹0 (see BudgetHistory).
 //
+// CARRY-FORWARD (meta.carry_forward = true): allocated budget is a STANDING value,
+// so for any tracked date a client's budget = their most recent captured value
+// on/before that date (today shows the standing budget, not a blank). The allocated
+// FIELD NAMES DIFFER by query mode — callers must branch:
+//   • Single date (?date=):     allocated_budget, allocated_carried_forward,
+//                               allocated_source_date  (overall: total_allocated_budget)
+//   • Date range (?start/end=): allocated_daily_rate (standing rate as of range end),
+//                               allocated_total_over_range (sum of each day's carried
+//                               budget), allocated_source_date, days_with_budget
+//
 // Params (all optional, but pass either `date` OR start+end):
 //   date       "YYYY-MM-DD"  single day
 //   startDate  "YYYY-MM-DD"  range start (with endDate; values aggregate across it)

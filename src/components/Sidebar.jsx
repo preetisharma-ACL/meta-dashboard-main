@@ -475,11 +475,13 @@ export default function Sidebar() {
           >
             <div class="flex flex-col items-center justify-center gap-3 lg:gap-2">
               {/* Light theme */}
-              <img
-                src="/logo.webp"
-                alt="Aajneeti"
-                class="block dark:hidden h-14 w-auto object-contain"
-              />
+              <Link href="/" class="flex items-center gap-2 lg:gap-1.5">
+                <img
+                  src="/logo.webp"
+                  alt="Aajneeti"
+                  class="block dark:hidden h-14 w-auto object-contain"
+                />
+              </Link>
               {/* Dark theme */}
               <img
                 src="/V2-aajneeti-logo.png"

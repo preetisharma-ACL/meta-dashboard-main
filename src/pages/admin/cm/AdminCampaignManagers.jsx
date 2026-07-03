@@ -446,64 +446,86 @@ export default function AdminCampaignManagers() {
 
       {/* ══════════════════ SELECTED-MANAGER VIEW ══════════════════ */}
       <Show when={showManager()}>
-        {/* Context header */}
-        <div class="flex items-start justify-between flex-wrap gap-3 mb-5">
-          <div class="flex items-center gap-3 min-w-0">
-            <button
-              onClick={backToRoster}
-              class="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 font-medium whitespace-nowrap"
-            >
-              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
-              All managers
-            </button>
-            <div class="flex items-center gap-3 min-w-0">
-              <Avatar name={selected().manager_email} />
+        {/* ══════════════════ CONTEXT HEADER ══════════════════ */}
+        {/* Back link — a quiet breadcrumb above the identity card. */}
+        <button
+          onClick={backToRoster}
+          class="group inline-flex items-center gap-1.5 mb-3 text-sm font-semibold text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
+        >
+          <svg class="w-4 h-4 transition-transform group-hover:-translate-x-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+          All managers
+        </button>
+
+        {/* Identity + controls — one cohesive panel with a subtle gradient rail. */}
+        <div class="relative rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-[0_1px_2px_rgba(16,29,49,.06),0_8px_24px_rgba(16,29,49,.05)] overflow-hidden mb-5">
+          <span class="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-blue-500 to-indigo-600" />
+          <div class="flex flex-col lg:flex-row lg:items-center gap-x-8 gap-y-5 p-5 pl-6">
+            {/* Identity */}
+            <div class="flex items-center gap-4 min-w-0 flex-1">
+              <Avatar name={selected().manager_email} size="w-14 h-14" textSize="text-lg" class="ring-2 ring-white dark:ring-gray-800 shadow-md" />
               <div class="min-w-0">
-                <p class="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">Viewing</p>
-                <h1 class="text-lg font-semibold text-gray-900 dark:text-white truncate">{selected().manager_email}</h1>
+                <p class="text-[11px] font-bold uppercase tracking-[0.14em] text-blue-600 dark:text-blue-400 mb-1">
+                  Viewing · Campaign Manager
+                </p>
+                <h1 class="text-xl font-bold text-gray-900 dark:text-white truncate leading-tight" title={selected().manager_email}>
+                  {selected().manager_email}
+                </h1>
+                <div class="flex items-center gap-2 mt-2 text-xs">
+                  <span class="inline-flex items-center gap-1.5 font-semibold text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">
+                    <svg class="w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4z" /></svg>
+                    {num(assignedCount(selected()))} clients
+                  </span>
+                  <Show when={selected().client_count != null}>
+                    <span class="inline-flex items-center gap-1.5 font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 px-2 py-0.5 rounded-full">
+                      <span class="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                      {num(selected().client_count)} active
+                    </span>
+                  </Show>
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Own/team toggle — scopes THIS manager's view to their own clients or
-              their full team. Defaults to Own clients on select. */}
-          <Show when={allowed()}>
-            <div class="flex items-center gap-2 self-center">
-              <span class="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">Clients</span>
-              <div class="inline-flex p-1 bg-gray-100 dark:bg-gray-800 rounded-xl" role="group" aria-label={`${selected().manager_email} client scope`}>
-                <For each={[{ own: true, label: "Own clients" }, { own: false, label: "Full team" }]}>
-                  {(o) => (
-                    <button
-                      onClick={() => setMemberView(o.own)}
-                      class={`px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                        ownScope() === o.own
-                          ? "bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm"
-                          : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
-                      }`}
-                    >
-                      {o.label}
-                    </button>
-                  )}
-                </For>
+            {/* Controls — grouped into a single grounded stat bar so the right
+                side reads as one solid block, not scattered text. */}
+            <div class="flex items-stretch rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-800/40 divide-x divide-gray-200 dark:divide-gray-700 self-start lg:self-auto overflow-hidden">
+              {/* Own/team toggle — scopes THIS manager to their own clients or full
+                  team. Defaults to Own clients on select. */}
+              <Show when={allowed()}>
+                <div class="px-4 py-3">
+                  <p class="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-1.5">Clients</p>
+                  <div class="inline-flex p-1 bg-gray-100 dark:bg-gray-900 rounded-lg" role="group" aria-label={`${selected().manager_email} client scope`}>
+                    <For each={[{ own: true, label: "Own clients" }, { own: false, label: "Full team" }]}>
+                      {(o) => (
+                        <button
+                          onClick={() => setMemberView(o.own)}
+                          class={`px-3.5 py-1.5 rounded-md text-sm font-semibold transition-all ${
+                            ownScope() === o.own
+                              ? "bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm"
+                              : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                          }`}
+                        >
+                          {o.label}
+                        </button>
+                      )}
+                    </For>
+                  </div>
+                </div>
+              </Show>
+
+              {/* Allocated-budget stat — read straight off the roster row. */}
+              <div class="px-5 py-3 flex flex-col justify-center text-right whitespace-nowrap">
+                <p class="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-1">Allocated budget</p>
+                <Show
+                  when={selected().allocated_budget != null}
+                  fallback={<p class="text-2xl font-extrabold text-gray-400 dark:text-gray-500 leading-none">—</p>}
+                >
+                  <p class="text-2xl font-extrabold text-gray-900 dark:text-white leading-none tabular-nums">
+                    {money2(selected().allocated_budget)}<span class="text-sm font-semibold text-gray-400 dark:text-gray-500">/day</span>
+                  </p>
+                </Show>
+                <p class="text-[11px] text-gray-400 dark:text-gray-500 mt-1.5">daily allocation</p>
               </div>
             </div>
-          </Show>
-
-          {/* Allocated-budget headline card — read straight off the roster row. */}
-          <div class="px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-            <p class="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">Allocated budget</p>
-            <Show
-              when={selected().allocated_budget != null}
-              fallback={<p class="text-xl font-bold text-gray-400 dark:text-gray-500 mt-0.5">—</p>}
-            >
-              <p class="text-xl font-bold text-gray-900 dark:text-white mt-0.5">
-                {money2(selected().allocated_budget)}<span class="text-sm font-medium text-gray-400 dark:text-gray-500">/day</span>
-              </p>
-            </Show>
-            <p class="text-xs text-gray-400 dark:text-gray-500">
-              across {num(assignedCount(selected()))} clients
-              <Show when={selected().client_count != null}>{" "}({num(selected().client_count)} active)</Show>
-            </p>
           </div>
         </div>
 

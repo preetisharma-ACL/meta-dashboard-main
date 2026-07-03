@@ -5,13 +5,25 @@ import { fetchBudgetHistory } from "../../services/budgetHistory";
 // BUDGET HISTORY — allocated budget + spend for a specific date (or range).
 // Rendered as a tab inside Allowed Budget (admin / global-read only).
 //
-// THE HONEST LIMITATION (front and centre in the UI):
-//   • Spend is backfilled → available for ANY past date.
+// TWO HONEST LIMITATIONS, both surfaced in the UI:
+//   • Spend is backfilled → available for ANY past date, never carried.
 //   • Allocated budget is only captured going forward from the day tracking
 //     deployed. For earlier dates it was never recorded, so we show the note the
 //     backend supplies — NEVER ₹0, which would read as "nothing allocated".
+//   • Allocated budget is a STANDING value → it CARRIES FORWARD. For any date a
+//     client's budget = their most recent captured value on/before that date.
+//     So "today" shows the standing budget (carried from the last capture), not
+//     a blank. When a value is carried, we show a "carried forward from {date}"
+//     hint so it's clear it wasn't re-captured that day.
+//
+// FIELD NAMES DIFFER BY MODE (this is why almost everything branches on mode):
+//   Single date → allocated_budget / allocated_carried_forward / allocated_source_date
+//                 (overall: total_allocated_budget)
+//   Date range  → allocated_daily_rate (standing rate as of range end)
+//                 + allocated_total_over_range (sum of each day's carried budget)
+//                 + allocated_source_date + days_with_budget
 // The endpoint tells us when tracking began (allocated_budget_tracked_from) and
-// whether the requested date has allocated data (allocated_budget_available_for_range).
+// whether the requested date/range has allocated data (allocated_budget_available_for_range).
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ─── Money / null discipline (matches Allowed Budget) ─────────────────────────
@@ -38,26 +50,66 @@ const GROUP_BYS = [
   { k: "overall", l: "Overall" },
 ];
 
-// Allocated-budget cell. When allocated data isn't available for the row's date
-// range, we render a muted "Not tracked" — never ₹0 (the note above the table
-// explains why). `available` is the meta flag; `tracked` is the per-row flag
-// (client grouping); either falsy → not tracked.
-function AllocatedValue(props) {
-  const shown = () =>
-    props.available && props.tracked !== false && props.value != null;
+// Subtle "carried forward from {date}" hint — shown when the allocated value in a
+// cell wasn't captured on the queried date but is the standing value from an
+// earlier date. Renders nothing when the value was captured that day.
+function CarriedHint(props) {
+  return (
+    <Show when={props.carried && props.sourceDate}>
+      <span
+        class="block text-[10px] italic font-medium text-[#8593A8] dark:text-gray-500 mt-0.5"
+        title="This is the standing allocated budget — it wasn't re-captured on the queried date, it carried forward from the date shown."
+      >
+        carried forward from {fmtDate(props.sourceDate)}
+      </span>
+    </Show>
+  );
+}
+
+const NotTracked = () => (
+  <span
+    class="text-[11px] italic font-medium text-[#8593A8] dark:text-gray-500"
+    title="Allocated budget wasn't captured for this date — see the note above."
+  >
+    Not tracked
+  </span>
+);
+
+// Allocated-budget table cell. Single date → one standing figure. Range → the
+// daily rate as the headline plus the total-over-range beneath it (they answer
+// different questions: rate = what's the budget; total = budget vs spend for the
+// period). Either mode shows the carried-forward hint and falls back to
+// "Not tracked" — never ₹0 (the note above the table explains why).
+function AllocatedCell(props) {
+  const a = () => props.alloc;
   return (
     <Show
-      when={shown()}
-      fallback={
-        <span
-          class="text-[11px] italic font-medium text-[#8593A8] dark:text-gray-500"
-          title="Allocated budget wasn't captured for this date — see the note above."
-        >
-          Not tracked
-        </span>
-      }
+      when={a().available && a().shown}
+      fallback={<NotTracked />}
     >
-      <span class="font-semibold text-[#14233A] dark:text-gray-100 tabular-nums">{money2(props.value)}</span>
+      <Show
+        when={props.mode === "range"}
+        fallback={
+          <div>
+            <span class="font-semibold text-[#14233A] dark:text-gray-100 tabular-nums">{money2(a().value)}</span>
+            <CarriedHint carried={a().carried} sourceDate={a().sourceDate} />
+          </div>
+        }
+      >
+        <div>
+          <span class="font-semibold text-[#14233A] dark:text-gray-100 tabular-nums">
+            {money2(a().dailyRate)}
+            <span class="text-[10px] font-medium text-[#8593A8] dark:text-gray-500">/day</span>
+          </span>
+          <Show when={a().totalOverRange != null}>
+            <span class="block text-[11px] font-medium text-[#54657E] dark:text-gray-400 tabular-nums mt-0.5">
+              {money2(a().totalOverRange)}
+              <Show when={a().daysWithBudget != null}> over {num(a().daysWithBudget)} day{a().daysWithBudget === 1 ? "" : "s"}</Show>
+            </span>
+          </Show>
+          <CarriedHint carried={a().carried} sourceDate={a().sourceDate} />
+        </div>
+      </Show>
     </Show>
   );
 }
@@ -106,8 +158,38 @@ export default function BudgetHistory(props) {
   const allocAvailable = () => meta()?.allocated_budget_available_for_range === true;
   const trackedFrom = () => meta()?.allocated_budget_tracked_from;
 
+  // The queried "as of" date — for a range the standing rate is reported as of
+  // the range end, so carry-forward is judged against endDate.
+  const queriedDate = () => (mode() === "range" ? endDate() : date());
+
+  // Per-row allocated accessor. Field names differ by mode; normalise here so the
+  // table/cell JSX stays mode-agnostic. `carried` is true when the value came
+  // from a prior date: single-date the backend flags it directly; range we infer
+  // it from allocated_source_date being before the queried (range-end) date.
+  const rowAlloc = (r) => {
+    if (mode() === "single") {
+      return {
+        available: allocAvailable(),
+        shown: r.allocated_budget != null,
+        value: r.allocated_budget,
+        carried: r.allocated_carried_forward === true,
+        sourceDate: r.allocated_source_date,
+      };
+    }
+    return {
+      available: allocAvailable(),
+      shown: r.allocated_daily_rate != null,
+      dailyRate: r.allocated_daily_rate,
+      totalOverRange: r.allocated_total_over_range,
+      daysWithBudget: r.days_with_budget,
+      sourceDate: r.allocated_source_date,
+      carried: !!(r.allocated_source_date && queriedDate() && r.allocated_source_date < queriedDate()),
+    };
+  };
+
   // The honest note — prefer the backend's string, fall back to one built from
-  // the tracking-start date. Only shown when allocated data isn't available.
+  // the tracking-start date. Only shown when allocated data isn't available
+  // (a pre-tracking date/range, where even carry-forward has nothing to carry).
   const noteText = () => {
     if (allocAvailable()) return null;
     if (meta()?.note) return meta().note;
@@ -117,28 +199,48 @@ export default function BudgetHistory(props) {
       : "Allocated budget wasn't captured for this date. Spend is shown; allocated budget is available only from the day tracking began.";
   };
 
-  // Totals for the selected date/range, summed from the visible rows (spend is
-  // always known; allocated only when the flag says it's available).
+  // Totals for the selected date/range. Spend is always known; allocated only
+  // when the flag says it's available. Field shape (and which allocated numbers
+  // exist) branches on single vs range — see the header comment.
   const totals = createMemo(() => {
+    const single = mode() === "single";
     const o = overall();
     if (o) {
+      const spend = parseFloat(o.total_spend) || 0;
+      const clients = Number(o.distinct_clients) || 0;
+      if (single) {
+        return {
+          spend, clients,
+          alloc: o.total_allocated_budget != null ? parseFloat(o.total_allocated_budget) || 0 : 0,
+          allocKnown: o.total_allocated_budget != null && allocAvailable(),
+        };
+      }
       return {
-        spend: parseFloat(o.total_spend) || 0,
-        alloc: o.total_allocated_budget != null ? parseFloat(o.total_allocated_budget) || 0 : 0,
-        allocKnown: o.total_allocated_budget != null && allocAvailable(),
-        clients: Number(o.distinct_clients) || 0,
+        spend, clients,
+        dailyRate: o.allocated_daily_rate != null ? parseFloat(o.allocated_daily_rate) || 0 : 0,
+        totalOverRange: o.allocated_total_over_range != null ? parseFloat(o.allocated_total_over_range) || 0 : 0,
+        allocKnown: o.allocated_daily_rate != null && allocAvailable(),
       };
     }
-    let spend = 0, alloc = 0, allocKnown = false, clients = 0;
+    let spend = 0, alloc = 0, dailyRate = 0, totalOverRange = 0, allocKnown = false, clients = 0;
     for (const r of rows()) {
       spend += parseFloat(r.total_spend) || 0;
-      if (allocAvailable() && r.total_allocated_budget != null) {
-        alloc += parseFloat(r.total_allocated_budget) || 0;
-        allocKnown = true;
-      }
       clients += Number(r.distinct_clients) || 0;
+      if (!allocAvailable()) continue;
+      if (single) {
+        if (r.allocated_budget != null) {
+          alloc += parseFloat(r.allocated_budget) || 0;
+          allocKnown = true;
+        }
+      } else {
+        if (r.allocated_daily_rate != null) {
+          dailyRate += parseFloat(r.allocated_daily_rate) || 0;
+          allocKnown = true;
+        }
+        if (r.allocated_total_over_range != null) totalOverRange += parseFloat(r.allocated_total_over_range) || 0;
+      }
     }
-    return { spend, alloc, allocKnown, clients };
+    return { spend, alloc, dailyRate, totalOverRange, allocKnown, clients };
   });
 
   const rangeLabel = () =>
@@ -234,12 +336,24 @@ export default function BudgetHistory(props) {
             <p class="text-xl font-bold text-[#14233A] dark:text-white tabular-nums mt-0.5">{moneyWhole(totals().spend)}</p>
           </div>
           <div class="px-4 py-3 rounded-xl border border-[#E2E8F1] dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
-            <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">Total allocated budget</p>
+            <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
+              {mode() === "range" ? "Allocated budget / day" : "Total allocated budget"}
+            </p>
             <Show
               when={totals().allocKnown}
               fallback={<p class="text-sm italic font-semibold text-[#8593A8] dark:text-gray-500 mt-1.5">Not tracked for this date</p>}
             >
-              <p class="text-xl font-bold text-[#14233A] dark:text-white tabular-nums mt-0.5">{moneyWhole(totals().alloc)}</p>
+              <Show
+                when={mode() === "range"}
+                fallback={<p class="text-xl font-bold text-[#14233A] dark:text-white tabular-nums mt-0.5">{moneyWhole(totals().alloc)}</p>}
+              >
+                <p class="text-xl font-bold text-[#14233A] dark:text-white tabular-nums mt-0.5">
+                  {moneyWhole(totals().dailyRate)}<span class="text-xs font-semibold text-[#8593A8] dark:text-gray-500">/day</span>
+                </p>
+                <p class="text-[11px] font-medium text-[#54657E] dark:text-gray-400 tabular-nums mt-0.5">
+                  {moneyWhole(totals().totalOverRange)} over range
+                </p>
+              </Show>
             </Show>
           </div>
           <div class="px-4 py-3 rounded-xl border border-[#E2E8F1] dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
@@ -277,12 +391,35 @@ export default function BudgetHistory(props) {
               <p class="text-2xl font-bold text-[#14233A] dark:text-white tabular-nums mt-1">{money2(overall().total_spend) ?? "—"}</p>
             </div>
             <div>
-              <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">Allocated budget</p>
+              <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
+                {mode() === "range" ? "Allocated budget / day" : "Allocated budget"}
+              </p>
+              {/* Single date → total_allocated_budget. Range → daily rate headline
+                  plus total-over-range beneath (both null for a pre-tracking range). */}
               <Show
-                when={allocAvailable() && overall().total_allocated_budget != null}
-                fallback={<p class="text-base italic font-semibold text-[#8593A8] dark:text-gray-500 mt-2">Not tracked for this date</p>}
+                when={mode() === "range"}
+                fallback={
+                  <Show
+                    when={allocAvailable() && overall().total_allocated_budget != null}
+                    fallback={<p class="text-base italic font-semibold text-[#8593A8] dark:text-gray-500 mt-2">Not tracked for this date</p>}
+                  >
+                    <p class="text-2xl font-bold text-[#14233A] dark:text-white tabular-nums mt-1">{money2(overall().total_allocated_budget)}</p>
+                  </Show>
+                }
               >
-                <p class="text-2xl font-bold text-[#14233A] dark:text-white tabular-nums mt-1">{money2(overall().total_allocated_budget)}</p>
+                <Show
+                  when={allocAvailable() && overall().allocated_daily_rate != null}
+                  fallback={<p class="text-base italic font-semibold text-[#8593A8] dark:text-gray-500 mt-2">Not tracked for this range</p>}
+                >
+                  <p class="text-2xl font-bold text-[#14233A] dark:text-white tabular-nums mt-1">
+                    {money2(overall().allocated_daily_rate)}<span class="text-sm font-semibold text-[#8593A8] dark:text-gray-500">/day</span>
+                  </p>
+                  <Show when={overall().allocated_total_over_range != null}>
+                    <p class="text-[12px] font-medium text-[#54657E] dark:text-gray-400 tabular-nums mt-1">
+                      {money2(overall().allocated_total_over_range)} over range
+                    </p>
+                  </Show>
+                </Show>
               </Show>
             </div>
             <div>
@@ -300,8 +437,10 @@ export default function BudgetHistory(props) {
             <thead>
               <tr class="border-b border-[#D4DDE9] dark:border-gray-700 bg-[#F8FAFC] dark:bg-gray-800/60 text-[#54657E] dark:text-gray-400 uppercase text-xs font-bold tracking-wider">
                 <th class="p-3.5 text-left whitespace-nowrap min-w-[220px]">{groupBy() === "manager" ? "Manager" : "Client"}</th>
-                <th class="p-3.5 text-right whitespace-nowrap">{groupBy() === "manager" ? "Clients" : "Days"}</th>
-                <th class="p-3.5 text-right whitespace-nowrap">Allocated budget</th>
+                <th class="p-3.5 text-right whitespace-nowrap">
+                  {groupBy() === "manager" ? "Clients" : (mode() === "range" ? "Budget days" : "Days")}
+                </th>
+                <th class="p-3.5 text-right whitespace-nowrap">{mode() === "range" ? "Allocated (rate · total)" : "Allocated budget"}</th>
                 <th class="p-3.5 text-right whitespace-nowrap">Spend</th>
               </tr>
             </thead>
@@ -318,10 +457,15 @@ export default function BudgetHistory(props) {
                       </Show>
                     </td>
                     <td class="p-3.5 text-right text-[#54657E] dark:text-gray-300 tabular-nums">
-                      {num(groupBy() === "manager" ? r.distinct_clients : r.days_in_range)}
+                      <Show
+                        when={groupBy() === "manager"}
+                        fallback={mode() === "range" ? num(r.days_with_budget) : "—"}
+                      >
+                        {num(r.distinct_clients)}
+                      </Show>
                     </td>
                     <td class="p-3.5 text-right whitespace-nowrap">
-                      <AllocatedValue value={r.total_allocated_budget} available={allocAvailable()} tracked={r.allocated_budget_tracked} />
+                      <AllocatedCell mode={mode()} alloc={rowAlloc(r)} />
                     </td>
                     <td class="p-3.5 text-right font-semibold text-[#1A2B45] dark:text-gray-200 tabular-nums whitespace-nowrap">
                       {money2(r.total_spend) ?? "—"}
@@ -342,7 +486,19 @@ export default function BudgetHistory(props) {
                   <td class="p-3.5" />
                   <td class="p-3.5 text-right whitespace-nowrap">
                     <Show when={totals().allocKnown} fallback={<span class="text-[11px] italic font-medium text-[#8593A8] dark:text-gray-500">Not tracked</span>}>
-                      <span class="font-extrabold text-[#14233A] dark:text-gray-100 tabular-nums">{money2(String(totals().alloc))}</span>
+                      <Show
+                        when={mode() === "range"}
+                        fallback={<span class="font-extrabold text-[#14233A] dark:text-gray-100 tabular-nums">{money2(String(totals().alloc))}</span>}
+                      >
+                        <div>
+                          <span class="font-extrabold text-[#14233A] dark:text-gray-100 tabular-nums">
+                            {money2(String(totals().dailyRate))}<span class="text-[10px] font-semibold text-[#8593A8] dark:text-gray-500">/day</span>
+                          </span>
+                          <span class="block text-[11px] font-medium text-[#54657E] dark:text-gray-400 tabular-nums mt-0.5">
+                            {money2(String(totals().totalOverRange))} over range
+                          </span>
+                        </div>
+                      </Show>
                     </Show>
                   </td>
                   <td class="p-3.5 text-right font-extrabold text-[#14233A] dark:text-gray-100 tabular-nums whitespace-nowrap">{money2(String(totals().spend))}</td>
