@@ -423,6 +423,7 @@ export default function AccountFunding() {
 
   let pollTimer = null; // next status poll
   let cooldownTimer = null; // 1s countdown ticker
+  let starting = false; // synchronous re-entrancy guard for the refresh POST
   onCleanup(() => {
     clearTimeout(pollTimer);
     clearInterval(cooldownTimer);
@@ -476,7 +477,11 @@ export default function AccountFunding() {
   };
 
   const handleRefresh = async () => {
-    if (refreshing() || cooldownLeft() > 0) return;
+    // `starting` blocks a rapid 2nd click that lands BEFORE refreshing() is set
+    // (during the in-flight POST) — otherwise two POSTs fire and click 1's loader
+    // overlay hides click 2's cooldown banner.
+    if (refreshing() || cooldownLeft() > 0 || starting) return;
+    starting = true;
     let res;
     try {
       res = await startFundingRefresh();
@@ -487,17 +492,27 @@ export default function AccountFunding() {
         refreshToast("error", "Couldn't start refresh", err?.message || "Please try again.");
       }
       return;
+    } finally {
+      starting = false;
     }
 
-    if (res?.status === "cooldown") {
-      // Someone refreshed in the last 60s. Count the exact TTL down live.
-      startCooldown(Number(res.seconds_remaining) || 0);
+    // Read the status from the DATA object no matter how the layer wraps it: the
+    // cooldown/started flag lives in `data`, never at the envelope top level. This
+    // is robust whether startFundingRefresh returns the {success,message,data}
+    // envelope OR the already-unwrapped data payload.
+    const d = res?.data ?? res ?? {};
+    const status = d.status;
+    const seconds = d.seconds_remaining;
+
+    if (status === "cooldown") {
+      // Refreshed in the last 60s — show the banner + live countdown, NO new sync.
+      startCooldown(Number(seconds) || 0);
       return;
     }
 
-    if (res?.status === "started" && res.task_id) {
+    if (status === "started" && d.task_id) {
       setRefreshing(true);
-      pollRefresh(res.task_id, Date.now());
+      pollRefresh(d.task_id, Date.now());
       return;
     }
 
@@ -882,7 +897,7 @@ export default function AccountFunding() {
 
       {/* ════ REFRESH COOLDOWN NOTICE — clicked again within 60s 🫸 ════ */}
       <Show when={cooldownLeft() > 0}>
-        <div class="fixed top-6 right-6 z-[110] w-[340px] max-w-[calc(100vw-3rem)] rounded-2xl border border-[#B07A14]/40 dark:border-amber-700/70 bg-[#FBF3E2] dark:bg-amber-950/40 shadow-xl px-4 py-3.5">
+        <div class="fixed top-6 right-6 z-[130] w-[340px] max-w-[calc(100vw-3rem)] rounded-2xl border border-[#B07A14]/40 dark:border-amber-700/70 bg-[#FBF3E2] dark:bg-amber-950/40 shadow-xl px-4 py-3.5">
           <p class="text-sm font-bold text-[#8A5D10] dark:text-amber-300">
             {REFRESH_COPY.cooldownTitle}
           </p>

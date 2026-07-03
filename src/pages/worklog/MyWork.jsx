@@ -1,7 +1,7 @@
 import { createSignal, createResource, createMemo, For, Show } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { fetchMyWork } from "../../services/worklog";
-import { currentUser } from "../../stores/currentUser";
+import { currentUser, isGlobalRead } from "../../stores/currentUser";
 import LogComplaintModal from "../../components/worklog/LogComplaintModal";
 import AssignTaskModal from "../../components/worklog/AssignTaskModal";
 import {
@@ -19,8 +19,6 @@ import {
 // (most urgent first — we never re-sort). Styled to Alok's approved
 // forest/gold/clay prototype (scoped .wl theme).
 
-const SENIOR_ROLES = new Set(["admin", "coordination", "accounts"]);
-
 const PlusIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
     <path d="M12 5v14M5 12h14" />
@@ -29,9 +27,12 @@ const PlusIcon = () => (
 
 export default function MyWork() {
   const navigate = useNavigate();
-  const canSeeAll = () => SENIOR_ROLES.has(currentUser.role);
+  // isGlobalRead() has a localStorage fallback, so seniors get the "All clients"
+  // control (and default) even before /auth/me resolves.
+  const canSeeAll = () => isGlobalRead();
 
-  const [view, setView] = createSignal("own"); // "own" | "assigned_by_me" | "all"
+  // Default to "All clients" for seniors; everyone else starts on "Mine".
+  const [view, setView] = createSignal(canSeeAll() ? "all" : "own"); // "own" | "assigned_by_me" | "all"
   const [typeFilter, setTypeFilter] = createSignal("all"); // all | task | complaint
   const [statusFilter, setStatusFilter] = createSignal("all"); // all | open | in_progress | overdue | resolved
 
@@ -120,12 +121,14 @@ export default function MyWork() {
           </div>
         </div>
 
-        {/* View segment — Mine · By me (tasks I delegated) · All clients (senior only) */}
+        {/* View segment — All clients (senior only) · By me (tasks I delegated) · Mine */}
         <div style="margin-top:12px">
           <div class="seg">
-            <button class={view() === "own" ? "on" : ""} onClick={() => setView("own")}>
-              Mine
-            </button>
+            <Show when={canSeeAll()}>
+              <button class={view() === "all" ? "on" : ""} onClick={() => setView("all")}>
+                All clients
+              </button>
+            </Show>
             <button
               class={view() === "assigned_by_me" ? "on" : ""}
               onClick={() => setView("assigned_by_me")}
@@ -133,11 +136,9 @@ export default function MyWork() {
             >
               By me
             </button>
-            <Show when={canSeeAll()}>
-              <button class={view() === "all" ? "on" : ""} onClick={() => setView("all")}>
-                All clients
-              </button>
-            </Show>
+            <button class={view() === "own" ? "on" : ""} onClick={() => setView("own")}>
+              Mine
+            </button>
           </div>
         </div>
 
