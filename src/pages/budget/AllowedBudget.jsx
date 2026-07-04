@@ -1,4 +1,4 @@
-import { createSignal, createResource, createMemo, For, Show } from "solid-js";
+import { createSignal, createResource, createMemo, For, Show, onMount } from "solid-js";
 import Swal from "sweetalert2";
 import {
   fetchAllowedBudgetClients,
@@ -294,6 +294,134 @@ function RequestModal(props) {
   );
 }
 
+// ─── Request-detail drawer (Requests tab) — DISPLAY-ONLY ──────────────────────
+// Slides in from the right with the full, untruncated details of one request
+// row. No fetch, no write — it just renders the row object it's handed.
+// Animation: mounts hidden, flips `open` on next frame so CSS transitions the
+// backdrop fade + panel slide; on close it animates out first, then unmounts.
+function RequestDetailDrawer(props) {
+  const r = () => props.request;
+  const [open, setOpen] = createSignal(false);
+  onMount(() => requestAnimationFrame(() => setOpen(true)));
+  const close = () => {
+    setOpen(false);
+    setTimeout(props.onClose, 260); // let the exit transition finish
+  };
+
+  // Delta between current and requested (for the change card).
+  const cur = () => { const n = parseFloat(r()?.current_value); return isFinite(n) ? n : null; };
+  const req = () => { const n = parseFloat(r()?.requested_value); return isFinite(n) ? n : null; };
+  const delta = () => (cur() != null && req() != null ? req() - cur() : null);
+  const dir = () => { const d = delta(); return d == null || d === 0 ? "flat" : d > 0 ? "up" : "down"; };
+  const DIR_META = {
+    up:   { color: "#15966A", chip: "bg-[#E9F7F1] text-[#15966A] dark:bg-green-900/30 dark:text-green-300", sign: "+", label: "Increase" },
+    down: { color: "#AC2334", chip: "bg-[#FBEEF0] text-[#AC2334] dark:bg-red-900/30 dark:text-red-300", sign: "−", label: "Decrease" },
+    flat: { color: "#8593A8", chip: "bg-[#F1F4F9] text-[#54657E] dark:bg-gray-800 dark:text-gray-300", sign: "", label: "No change" },
+  };
+
+  const Person = (p) => (
+    <div class="rounded-xl border border-[#E2E8F1] dark:border-gray-700 bg-[#F8FAFC] dark:bg-gray-800/40 overflow-hidden">
+      <div class="flex items-center gap-2.5 px-4 py-3">
+        <span class="w-8 h-8 flex-none rounded-full grid place-items-center text-xs font-bold text-white" style={`background:${p.tint}`}>{p.icon}</span>
+        <div class="min-w-0">
+          <p class="text-[10px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-500">{p.label}</p>
+          <p class="text-sm font-semibold text-[#14233A] dark:text-gray-100 break-words">{p.who ?? "—"}</p>
+        </div>
+      </div>
+      <Show when={p.note}>
+        <p class="mx-4 mb-3 text-[13px] leading-relaxed text-[#54657E] dark:text-gray-300 whitespace-pre-wrap break-words bg-gray-50 dark:bg-gray-900 rounded-lg p-3 border border-[#E2E8F1] dark:border-gray-700">“{p.note}”</p>
+      </Show>
+    </div>
+  );
+
+  return (
+    <div class="fixed inset-0 z-50">
+      {/* backdrop */}
+      <div
+        onClick={close}
+        class="absolute inset-0 bg-[#101D31]/40 backdrop-blur-sm transition-opacity duration-300 ease-out"
+        style={`opacity:${open() ? 1 : 0}`}
+      />
+      {/* panel */}
+      <div
+        class="absolute top-0 right-0 h-full w-full max-w-[440px] bg-gray-50 dark:bg-gray-900 shadow-[0_10px_40px_rgba(16,29,49,0.35)] border-l border-[#E2E8F1] dark:border-gray-700 flex flex-col transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform"
+        style={`transform:translateX(${open() ? "0" : "100%"})`}
+      >
+        {/* header — dark banner with avatar */}
+        <div class="relative px-5 pt-5 pb-4 bg-[#14233A] text-white">
+          <div class="flex items-start justify-between gap-3">
+            <div class="flex items-center gap-3 min-w-0">
+              <Avatar name={r()?.name} size="w-11 h-11" />
+              <div class="min-w-0">
+                <h2 class="text-[17px] font-bold leading-tight break-words">{r()?.name}</h2>
+                <p class="text-xs text-white/60 mt-0.5">Budget increase request</p>
+              </div>
+            </div>
+            <button onClick={close} class="w-8 h-8 flex-none rounded-full flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 transition-colors">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+          <div class="flex items-center gap-2 flex-wrap mt-3.5">
+            <span class="text-[10px] font-bold px-2.5 py-1 rounded-full bg-white/15 text-white uppercase tracking-wide">{r()?.budget_kind}</span>
+            <span class={`inline-flex px-2.5 py-1 rounded-full text-[11px] font-bold capitalize ${STATUS_CHIP[r()?.status] ?? "bg-white/15 text-white"}`}>{r()?.status}</span>
+          </div>
+        </div>
+
+        {/* body */}
+        <div class="flex-1 overflow-y-auto px-5 py-5 space-y-5">
+          {/* change card */}
+          <div class="rounded-2xl border border-[#E2E8F1] dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 p-4">
+            <div class="flex items-center justify-between mb-3">
+              <p class="text-[10px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-500">Requested change</p>
+              <Show when={delta() != null}>
+                <span class={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full ${DIR_META[dir()].chip}`}>
+                  {DIR_META[dir()].label}{delta() !== 0 ? ` · ${DIR_META[dir()].sign}${money2(Math.abs(delta()))}` : ""}
+                </span>
+              </Show>
+            </div>
+            <div class="flex items-center gap-3">
+              <div class="flex-1 text-center">
+                <p class="text-[10px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-500 mb-1">Current</p>
+                <p class="text-lg font-bold text-[#54657E] dark:text-gray-300 tabular-nums">{money2(cur()) ?? "Not set"}</p>
+              </div>
+              <svg class="w-6 h-6 flex-none text-[#C4CDDA]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+              <div class="flex-1 text-center">
+                <p class="text-[10px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-500 mb-1">Requested</p>
+                <p class="text-lg font-extrabold tabular-nums" style={`color:${DIR_META[dir()].color}`}>{money2(req()) ?? "—"}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* people */}
+          <Person label="Requested by" who={r()?.requested_by} note={r()?.reason} icon="↑" tint="#3E6FB0" />
+          <Person label="Reviewed by" who={r()?.reviewed_by} note={r()?.review_note} icon="✓" tint="#15966A" />
+
+          {/* timeline */}
+          <div class="rounded-2xl border border-[#E2E8F1] dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 p-4">
+            <p class="text-[10px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-500 mb-3">Timeline</p>
+            <div class="space-y-3">
+              <div class="flex items-start gap-3">
+                <span class="mt-1 w-2.5 h-2.5 rounded-full bg-[#3E6FB0] flex-none ring-4 ring-[#3E6FB0]/15" />
+                <div>
+                  <p class="text-[13px] font-semibold text-[#14233A] dark:text-gray-100">Requested</p>
+                  <p class="text-xs text-[#8593A8] dark:text-gray-500">{fmtDate(r()?.created_at)}</p>
+                </div>
+              </div>
+              <div class="flex items-start gap-3">
+                <span class={`mt-1 w-2.5 h-2.5 rounded-full flex-none ring-4 ${r()?.reviewed_at ? "bg-[#15966A] ring-[#15966A]/15" : "bg-[#C4CDDA] ring-[#C4CDDA]/20"}`} />
+                <div>
+                  <p class="text-[13px] font-semibold text-[#14233A] dark:text-gray-100">{r()?.reviewed_at ? "Reviewed" : "Awaiting review"}</p>
+                  <p class="text-xs text-[#8593A8] dark:text-gray-500">{r()?.reviewed_at ? fmtDate(r()?.reviewed_at) : "—"}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Generic modal shell (UNCHANGED logic, v4 styling) ────────────────────────
 function ModalShell(props) {
   return (
@@ -319,6 +447,7 @@ export default function AllowedBudget() {
   const [editClient, setEditClient] = createSignal(null);
   const [requestClient, setRequestClient] = createSignal(null);
   const [auditStatus, setAuditStatus] = createSignal("all");
+  const [detailReq, setDetailReq] = createSignal(null); // Requests-tab row → drawer
 
   // ── New display-only UI state (filters the clients list, same pattern as the
   // existing audit status filter — no fetch). ──
@@ -811,7 +940,8 @@ export default function AllowedBudget() {
               <tbody>
                 <For each={audit() ?? []}>
                   {(r, i) => (
-                    <tr class={`border-b border-[#E2E8F1] dark:border-gray-800 ${i() % 2 === 0 ? "bg-gray-50 dark:bg-gray-900" : "bg-[#FAFBFD] dark:bg-gray-800/30"}`}>
+                    <tr onClick={() => setDetailReq(r)} title="Click to view full details"
+                      class={`border-b border-[#E2E8F1] dark:border-gray-800 cursor-pointer hover:bg-[#F6F9FC] dark:hover:bg-gray-800/60 transition-colors ${i() % 2 === 0 ? "bg-gray-50 dark:bg-gray-900" : "bg-[#FAFBFD] dark:bg-gray-800/30"}`}>
                       <td class="p-3.5 font-bold text-[#14233A] dark:text-gray-100">{r.name}</td>
                       <td class="p-3.5 capitalize text-[#54657E] dark:text-gray-400">{r.budget_kind}</td>
                       <td class="p-3.5 text-right whitespace-nowrap text-[#54657E] dark:text-gray-300 tabular-nums">{money2(r.current_value) ?? "Not set"} → <span class="font-bold text-[#14233A] dark:text-white">{money2(r.requested_value)}</span></td>
@@ -844,6 +974,9 @@ export default function AllowedBudget() {
       </Show>
       <Show when={requestClient()}>
         <RequestModal client={requestClient()} onClose={() => setRequestClient(null)} onSaved={refreshAll} />
+      </Show>
+      <Show when={detailReq()}>
+        <RequestDetailDrawer request={detailReq()} onClose={() => setDetailReq(null)} />
       </Show>
     </div>
   );
