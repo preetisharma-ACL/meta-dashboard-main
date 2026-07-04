@@ -884,7 +884,9 @@ export default function AccountFunding() {
       <Show when={refreshing()}>
         <div class="fixed inset-0 z-[120] flex items-center justify-center bg-[#0B1626]/55 backdrop-blur-sm px-4">
           <div class="w-full max-w-sm rounded-2xl bg-white dark:bg-gray-900 border border-[#E2E8F1] dark:border-gray-700 shadow-2xl px-7 py-8 text-center">
-            <div class="mx-auto mb-5 w-14 h-14 rounded-full border-4 border-[#EEF2F7] dark:border-gray-700 border-t-[#AC2334] animate-spin" />
+            <div class="mx-auto mb-3 w-48 h-32 overflow-hidden flex items-center justify-center">
+              <img src="/budget.gif" alt="Loading balances" class="w-full h-full object-cover" />
+            </div>
             <p class="text-base font-bold text-[#14233A] dark:text-white">
               {REFRESH_COPY.syncingTitle}
             </p>
