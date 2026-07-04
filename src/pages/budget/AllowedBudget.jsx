@@ -347,23 +347,23 @@ function RequestDetailDrawer(props) {
         class="absolute top-0 right-0 h-full w-full max-w-[440px] bg-gray-50 dark:bg-gray-900 shadow-[0_10px_40px_rgba(16,29,49,0.35)] border-l border-[#E2E8F1] dark:border-gray-700 flex flex-col transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform"
         style={`transform:translateX(${open() ? "0" : "100%"})`}
       >
-        {/* header — dark banner with avatar */}
-        <div class="relative px-5 pt-5 pb-4 bg-[#14233A] text-white">
+        {/* header — light banner with avatar */}
+        <div class="relative px-5 pt-5 pb-4 bg-blue-50 dark:bg-gray-800 border-b border-blue-100 dark:border-gray-700">
           <div class="flex items-start justify-between gap-3">
             <div class="flex items-center gap-3 min-w-0">
               <Avatar name={r()?.name} size="w-11 h-11" />
               <div class="min-w-0">
-                <h2 class="text-[17px] font-bold leading-tight break-words">{r()?.name}</h2>
-                <p class="text-xs text-white/60 mt-0.5">Budget increase request</p>
+                <h2 class="text-[17px] font-bold leading-tight break-words text-[#14233A] dark:text-white">{r()?.name}</h2>
+                <p class="text-xs text-[#54657E] dark:text-gray-400 mt-0.5">Budget increase request</p>
               </div>
             </div>
-            <button onClick={close} class="w-8 h-8 flex-none rounded-full flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 transition-colors">
+            <button onClick={close} class="w-8 h-8 flex-none rounded-full flex items-center justify-center text-[#8593A8] hover:text-[#14233A] dark:hover:text-white hover:bg-[#F1F4F9] dark:hover:bg-gray-800 transition-colors">
               <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
             </button>
           </div>
           <div class="flex items-center gap-2 flex-wrap mt-3.5">
-            <span class="text-[10px] font-bold px-2.5 py-1 rounded-full bg-white/15 text-white uppercase tracking-wide">{r()?.budget_kind}</span>
-            <span class={`inline-flex px-2.5 py-1 rounded-full text-[11px] font-bold capitalize ${STATUS_CHIP[r()?.status] ?? "bg-white/15 text-white"}`}>{r()?.status}</span>
+            <span class="text-[10px] font-bold px-2.5 py-1 rounded-full bg-[#F1F4F9] text-[#54657E] dark:bg-gray-800 dark:text-gray-300 uppercase tracking-wide">{r()?.budget_kind}</span>
+            <span class={`inline-flex px-2.5 py-1 rounded-full text-[11px] font-bold capitalize ${STATUS_CHIP[r()?.status] ?? "bg-[#F1F4F9] text-[#54657E]"}`}>{r()?.status}</span>
           </div>
         </div>
 
