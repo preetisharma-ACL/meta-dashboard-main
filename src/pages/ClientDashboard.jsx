@@ -288,6 +288,7 @@ export default function MainDashboard() {
           : "N/A",
         uploaddocument: item.upload_document ?? null,
         activeCampaigns: item.campaign_count ?? 0,
+        completedCampaigns: item.completed_campaigns ?? 0,
         pausedCampaigns: item.paused_campaigns ?? 0,
         status: item.status,
         clientRequest: item.client_request ?? null,
@@ -350,6 +351,7 @@ export default function MainDashboard() {
               item.property_type.slice(1).toLowerCase()
             : "N/A",
           activeCampaigns: item.campaign_count ?? 0,
+          completedCampaigns: item.completed_campaigns ?? 0,
           pausedCampaigns: item.paused_campaigns ?? 0,
           status: item.status,
           cpl: parseFloat(item.cpl) || 0,
@@ -498,19 +500,26 @@ export default function MainDashboard() {
       const resolvedCpl = totalLeads > 0 ? Number(avgCPL) : 1500;
 
       // ✅ Date-range aware campaign counts
-      let activeCampaigns, pausedCampaigns;
+      let activeCampaigns, pausedCampaigns, completedCampaigns;
       if (!from || !to) {
         activeCampaigns = project.activeCampaigns ?? 0;
+        completedCampaigns = project.completedCampaigns ?? 0;
         pausedCampaigns = project.pausedCampaigns ?? 0;
       } else {
+        // Completed campaigns are tracked on their own — never as active/paused.
+        const completedIds = new Set(
+          campaigns.filter((c) => c.status === "completed").map((c) => c.id),
+        );
         const activeCampaignIds = new Set(
           filtered
             .filter((d) => d.spend > 0 || d.leads > 0)
             .map((d) => d.campaignId),
         );
+        for (const id of completedIds) activeCampaignIds.delete(id);
         activeCampaigns = activeCampaignIds.size;
+        completedCampaigns = completedIds.size;
         pausedCampaigns = campaigns.filter(
-          (c) => !activeCampaignIds.has(c.id),
+          (c) => !activeCampaignIds.has(c.id) && !completedIds.has(c.id),
         ).length;
       }
 
@@ -529,6 +538,7 @@ export default function MainDashboard() {
         avgCPL,
         resolvedCpl,
         activeCampaigns,
+        completedCampaigns,
         pausedCampaigns,
       };
     }
@@ -547,6 +557,21 @@ export default function MainDashboard() {
   //
   //  2. Page-1 with pageSize=1000 is kept, but we now also paginate if needed so
   //     large accounts (>1000 campaigns per project) don't miss any active ones.
+
+  // Roll a project's status up from its campaigns:
+  //   • any campaign still running (not paused, not completed) → "active"
+  //   • otherwise, every campaign completed (≥1 campaign)      → "completed"
+  //   • otherwise (all paused, or a paused/completed mix)       → "paused"
+  const deriveStatus = (camps) => {
+    if (!Array.isArray(camps) || camps.length === 0) return "paused";
+    const running = camps.filter(
+      (c) => c.status !== "paused" && c.status !== "completed",
+    ).length;
+    if (running > 0) return "active";
+    const completed = camps.filter((c) => c.status === "completed").length;
+    if (completed === camps.length) return "completed";
+    return "paused";
+  };
 
   const deriveProjectStatuses = async (
     projectList,
@@ -589,6 +614,7 @@ export default function MainDashboard() {
             id: project.id,
             status: project.status,
             activeCampaigns: project.activeCampaigns,
+            completedCampaigns: project.completedCampaigns,
             pausedCampaigns: project.pausedCampaigns,
           };
         }
@@ -596,16 +622,21 @@ export default function MainDashboard() {
         // rule the campaigns table / ProjectDetails use (status !== "paused").
         // Using a strict === "active" here mislabels projects as paused when
         // their live campaigns carry a non-"active" status (e.g. in_review).
+        // Live only — completed campaigns are counted separately, not as active.
         const activeCampaigns = camps.filter(
-          (c) => c.status !== "paused",
+          (c) => c.status !== "paused" && c.status !== "completed",
+        ).length;
+        const completedCampaigns = camps.filter(
+          (c) => c.status === "completed",
         ).length;
         const pausedCampaigns = camps.filter(
           (c) => c.status === "paused",
         ).length;
         return {
           id: project.id,
-          status: activeCampaigns > 0 ? "active" : "paused",
+          status: deriveStatus(camps),
           activeCampaigns,
+          completedCampaigns,
           pausedCampaigns,
         };
       });
@@ -654,8 +685,12 @@ export default function MainDashboard() {
           // "Live" = not paused (matches the campaigns table / ProjectDetails).
           // A strict === "active" check mislabels a project as paused when its
           // live campaigns report a non-"active" status (e.g. in_review).
+          // Live only — completed campaigns are counted separately, not active.
           const activeCampaigns = allCampaigns.filter(
-            (c) => c.status !== "paused",
+            (c) => c.status !== "paused" && c.status !== "completed",
+          ).length;
+          const completedCampaigns = allCampaigns.filter(
+            (c) => c.status === "completed",
           ).length;
           const pausedCampaigns = allCampaigns.filter(
             (c) => c.status === "paused",
@@ -665,9 +700,11 @@ export default function MainDashboard() {
             // status update committed to the cache (campaigns NOT spread in)
             status: {
               id: project.id,
-              // At least one active campaign → project is active
-              status: activeCampaigns > 0 ? "active" : "paused",
+              // Active if any campaign is running; completed only when EVERY
+              // campaign is completed; otherwise paused.
+              status: deriveStatus(allCampaigns),
               activeCampaigns,
+              completedCampaigns,
               pausedCampaigns,
             },
             // raw campaigns handed back so the insights pass can reuse them
@@ -686,6 +723,7 @@ export default function MainDashboard() {
               // project.activeCampaigns is mapped from campaign_count (total),
               // not active-only. Preserve it so the table isn't blank.
               activeCampaigns: project.activeCampaigns,
+              completedCampaigns: project.completedCampaigns,
               pausedCampaigns: project.pausedCampaigns,
             },
             campaigns: [],
@@ -1061,19 +1099,26 @@ export default function MainDashboard() {
           : null;
       // ─────────────────────────────────────────────────────────────────────
 
-      let activeCampaigns, pausedCampaigns;
+      let activeCampaigns, pausedCampaigns, completedCampaigns;
       if (!from || !to) {
         activeCampaigns = project.activeCampaigns ?? 0;
+        completedCampaigns = project.completedCampaigns ?? 0;
         pausedCampaigns = project.pausedCampaigns ?? 0;
       } else {
+        // Completed campaigns are tracked on their own — never as active/paused.
+        const completedIds = new Set(
+          campaigns.filter((c) => c.status === "completed").map((c) => c.id),
+        );
         const activeCampaignIds = new Set(
           filtered
             .filter((d) => d.spend > 0 || d.leads > 0)
             .map((d) => d.campaignId),
         );
+        for (const id of completedIds) activeCampaignIds.delete(id);
         activeCampaigns = activeCampaignIds.size;
+        completedCampaigns = completedIds.size;
         pausedCampaigns = campaigns.filter(
-          (c) => !activeCampaignIds.has(c.id),
+          (c) => !activeCampaignIds.has(c.id) && !completedIds.has(c.id),
         ).length;
       }
 
@@ -1096,6 +1141,7 @@ export default function MainDashboard() {
         modifiedCpl, // ← now properly computed
         resolvedCpl,
         activeCampaigns,
+        completedCampaigns,
         pausedCampaigns,
       };
     }
@@ -1113,6 +1159,7 @@ export default function MainDashboard() {
         totalSpent: stats.totalSpent || 0,
         avgCPL: Number(stats.avgCPL || 0),
         activeCampaigns: stats.activeCampaigns || 0,
+        completedCampaigns: stats.completedCampaigns || 0,
         pausedCampaigns: stats.pausedCampaigns || 0,
         modifiedCpl: stats.modifiedCpl ?? null, // ← add this
       };
@@ -1170,6 +1217,10 @@ export default function MainDashboard() {
       (s, p) => s + (statsMap[p.id]?.activeCampaigns ?? 0),
       0,
     );
+    const completedCampaigns = all.reduce(
+      (s, p) => s + (statsMap[p.id]?.completedCampaigns ?? 0),
+      0,
+    );
     const pausedCampaigns = all.reduce(
       (s, p) => s + (statsMap[p.id]?.pausedCampaigns ?? 0),
       0,
@@ -1181,6 +1232,7 @@ export default function MainDashboard() {
       totalLeads,
       avgCPL,
       activeCampaigns,
+      completedCampaigns,
       pausedCampaigns,
       activeProjects,
     };
@@ -2141,6 +2193,7 @@ export default function MainDashboard() {
             <option value="all">All</option>
             <option value="active">Active Project</option>
             <option value="paused">Paused Project</option>
+            <option value="completed">Completed Project</option>
           </select>
 
           <div class="pointer-events-none absolute inset-y-0 right-3 flex items-center">
@@ -2269,6 +2322,9 @@ export default function MainDashboard() {
               <th class="p-3" onClick={() => handleSort("activeCampaigns")}>
                 Active Campaigns {getSortIcon("activeCampaigns")}
               </th>
+              <th class="p-3" onClick={() => handleSort("completedCampaigns")}>
+                Completed Campaigns {getSortIcon("completedCampaigns")}
+              </th>
               <th class="p-3" onClick={() => handleSort("pausedCampaigns")}>
                 Paused Campaigns {getSortIcon("pausedCampaigns")}
               </th>
@@ -2349,9 +2405,11 @@ export default function MainDashboard() {
                             "inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold uppercase tracking-wide rounded-full " +
                             (project.status === "active"
                               ? "bg-[#E9F7F1] text-[#15966A] dark:bg-green-900/30 dark:text-green-300"
-                              : project.status === "paused"
-                                ? "bg-[#FBF3E2] text-[#B07A14] dark:bg-yellow-900/30 dark:text-yellow-300"
-                                : "bg-[#FBEEF0] text-[#AC2334] dark:bg-red-900/30 dark:text-red-300")
+                              : project.status === "completed"
+                                ? "bg-[#ECF2FA] text-[#3E6FB0] dark:bg-blue-900/30 dark:text-blue-300"
+                                : project.status === "paused"
+                                  ? "bg-[#FBF3E2] text-[#B07A14] dark:bg-yellow-900/30 dark:text-yellow-300"
+                                  : "bg-[#FBEEF0] text-[#AC2334] dark:bg-red-900/30 dark:text-red-300")
                           }
                         >
                           <span
@@ -2359,9 +2417,11 @@ export default function MainDashboard() {
                               "w-1.5 h-1.5 rounded-full " +
                               (project.status === "active"
                                 ? "bg-[#15966A]"
-                                : project.status === "paused"
-                                  ? "bg-[#B07A14]"
-                                  : "bg-[#AC2334]")
+                                : project.status === "completed"
+                                  ? "bg-[#3E6FB0]"
+                                  : project.status === "paused"
+                                    ? "bg-[#B07A14]"
+                                    : "bg-[#AC2334]")
                             }
                           ></span>
                           {project.status}
@@ -2464,6 +2524,11 @@ export default function MainDashboard() {
                         {stats().activeCampaigns ?? 0}
                       </td>
 
+                      {/* Completed Campaigns */}
+                      <td class="p-2 text-center font-medium text-[#3E6FB0] dark:text-blue-300">
+                        {stats().completedCampaigns ?? 0}
+                      </td>
+
                       {/* Paused Campaigns */}
                       <td class="p-2 text-center font-medium text-[#B07A14] dark:text-yellow-300">
                         {stats().pausedCampaigns ?? 0}
@@ -2526,6 +2591,9 @@ export default function MainDashboard() {
 
                 {/* Active Campaigns */}
                 <td>{overviewStats().activeCampaigns}</td>
+
+                {/* Completed Campaigns */}
+                <td>{overviewStats().completedCampaigns}</td>
 
                 {/* Paused Campaigns */}
                 <td> {overviewStats().pausedCampaigns}</td>

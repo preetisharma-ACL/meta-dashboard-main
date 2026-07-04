@@ -285,6 +285,14 @@ export default function ProjectDetails() {
       hour12: true,
     });
   };
+  // Normalise the raw campaign status into the three states this table shows.
+  // Anything not paused/completed is treated as running ("Live").
+  const normalizeStatus = (s) => {
+    const v = String(s || "").toLowerCase();
+    if (v === "paused") return "paused";
+    if (v === "completed") return "completed";
+    return "Live";
+  };
   // ── Re-scope to the selected date range. premium_metrics is server-computed
   //    per range, so changing the filter must re-fetch the list (raw columns
   //    stay reactive via their own client-side insight filtering). Tracks only
@@ -381,7 +389,7 @@ export default function ProjectDetails() {
           stop_date: item.stop_date || "No date",
           location: item.project_name || "-",
           ad_account: item.ad_account_name || "-",
-          status: item.status === "paused" ? "paused" : "Live",
+          status: normalizeStatus(item.status),
           cpl: item.cpl || 0,
           // Server-computed lead counts (scoped to the requested date range).
           // extra_leads = manually-added leads; leads_count = own + extra.
@@ -472,7 +480,7 @@ export default function ProjectDetails() {
             start_date: item.start_date || "No Date",
             paused_date: formatDateTime(item.paused_at),
             stop_date: item.stop_date || "No date",
-            status: item.status === "paused" ? "paused" : "Live",
+            status: normalizeStatus(item.status),
             cpl: item.cpl || 0,
             own_leads: Number(item.own_leads ?? 0),
             extra_leads: Number(item.extra_leads ?? 0),
@@ -1072,6 +1080,7 @@ export default function ProjectDetails() {
               <option value="All">All</option>
               <option value="Live">Live</option>
               <option value="paused">Paused</option>
+              <option value="completed">Completed</option>
             </select>
 
             <div class="pointer-events-none absolute inset-y-0 right-3 flex items-center">
@@ -1326,6 +1335,8 @@ export default function ProjectDetails() {
                           row.status === "Live",
                         "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400":
                           row.status === "paused",
+                        "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400":
+                          row.status === "completed",
                       }}
                     >
                       {row.status}
