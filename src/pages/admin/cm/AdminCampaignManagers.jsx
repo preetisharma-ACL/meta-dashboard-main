@@ -54,6 +54,22 @@ const money2 = (v) => {
 };
 const num = (v) => (Number(v) || 0).toLocaleString("en-IN");
 
+// Compact money for the hero sub-labels only (e.g. ₹42.05L). Display-only —
+// never used for any figure the roster serves authoritatively.
+const compactINR = (v) => {
+  const n = Number(v) || 0;
+  if (n >= 1e7) return `₹${(n / 1e7).toFixed(2)}Cr`;
+  if (n >= 1e5) return `₹${(n / 1e5).toFixed(2)}L`;
+  if (n >= 1e3) return `₹${(n / 1e3).toFixed(1)}K`;
+  return `₹${n.toFixed(0)}`;
+};
+
+// Friendly manager name from the email local-part (presentation only).
+const labelFromEmail = (email) => {
+  const local = String(email ?? "").split("@")[0] || "—";
+  return local.charAt(0).toUpperCase() + local.slice(1);
+};
+
 // Roster client count. `assigned_client_count` is the true roster figure (all
 // CPL+Hybrid clients assigned to the manager); `client_count` is the active
 // subset (clients with spend this month). Prefer assigned, fall back to the
@@ -158,6 +174,14 @@ export default function AdminCampaignManagers() {
     return rows().filter((r) => r.manager_email?.toLowerCase().includes(q));
   });
 
+  // Derived display aggregates for the hero bar + budget mini-bars. Pure
+  // presentation over already-fetched roster fields — no extra fetches.
+  const totalAssigned = () => rows().reduce((s, r) => s + assignedCount(r), 0);
+  const totalActive = () =>
+    rows().reduce((s, r) => s + (Number(r.client_count) || 0), 0);
+  const maxBudget = () =>
+    Math.max(1, ...rows().map((r) => Number(r.allocated_budget) || 0));
+
   // ── Probe switch-mode once the roster has at least one manager. Role-level
   // gate, so a single probe is authoritative for every manager. ──
   createEffect(
@@ -179,10 +203,6 @@ export default function AdminCampaignManagers() {
   // manager, NOT via the global signal). Built lazily the first time the admin
   // looks at a Full-team view, then cached in the module-level store for the
   // session. CMHierarchy reads it to tag each client with its CM.
-  const labelFromEmail = (email) => {
-    const local = String(email ?? "").split("@")[0] || "—";
-    return local.charAt(0).toUpperCase() + local.slice(1);
-  };
   const [mapBuilt, setMapBuilt] = createSignal(false);
 
   const buildManagerMap = async (managers) => {
@@ -274,26 +294,39 @@ export default function AdminCampaignManagers() {
 
       {/* ══════════════════ ROSTER VIEW ══════════════════ */}
       <Show when={showRoster()}>
-        <div class="flex items-start justify-between flex-wrap gap-3 mb-6">
-          <div>
-            <p class="text-xs font-bold uppercase tracking-[0.12em] text-blue-600 dark:text-blue-400 mb-1.5">
-              Admin · Team
+        {/* ── Header ── */}
+        <div class="flex items-start justify-between flex-wrap gap-4 mb-7">
+          <div class="min-w-0">
+            <p class="flex items-center gap-2.5 text-[11px] font-bold uppercase tracking-[0.18em] mb-3">
+              <span class="inline-flex items-center gap-1.5 text-[#AC2334]">
+                <span class="w-1.5 h-1.5 rounded-full bg-[#AC2334]" />
+                Admin
+              </span>
+              <span class="text-gray-300 dark:text-gray-600">·</span>
+              <span class="text-gray-400 dark:text-gray-500">Team</span>
             </p>
-            <h1 class="text-2xl font-semibold text-gray-900 dark:text-white tracking-tight">
+            <h1 class="cm-serif text-4xl md:text-5xl text-gray-900 dark:text-white leading-[1.04]">
               Campaign Managers
             </h1>
-            <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
-              Every campaign manager. Open one to see their dashboard — clients,
-              drill-down, alerts and AI insights — exactly as they’d see it.
+            <p class="text-sm text-gray-500 dark:text-gray-400 mt-3 max-w-xl leading-relaxed">
+              Every campaign manager on the desk. Open one to see their dashboard —
+              clients, drill-down, alerts and AI insights — exactly as they see it.
             </p>
           </div>
-          <select
-            value={month()}
-            onChange={(e) => setMonth(e.target.value)}
-            class="px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-400 cursor-pointer"
-          >
-            <For each={monthOptions()}>{(o) => <option value={o.key}>{o.label}</option>}</For>
-          </select>
+
+          {/* Reporting period — restyled box wrapping the untouched month <select> */}
+          <div class="rounded-xl border border-[#AC2334]/50 dark:border-[#AC2334]/45 bg-white dark:bg-gray-900 px-4 py-2 shadow-sm">
+            <p class="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+              Reporting Period
+            </p>
+            <select
+              value={month()}
+              onChange={(e) => setMonth(e.target.value)}
+              class="mt-0.5 -ml-0.5 bg-transparent text-[15px] font-semibold text-gray-900 dark:text-white focus:outline-none cursor-pointer"
+            >
+              <For each={monthOptions()}>{(o) => <option value={o.key}>{o.label}</option>}</For>
+            </select>
+          </div>
         </div>
 
         {/* Backend-dependency flag — shown only once the probe confirms denial */}
@@ -301,55 +334,56 @@ export default function AdminCampaignManagers() {
           <ViewAsBlockedBanner />
         </Show>
 
-        {/* Roster summary chips */}
+        {/* ── Hero stat bar ── */}
         <Show when={!data.loading && summary()}>
-          <div class="flex flex-wrap gap-3 mb-5">
-            <div class="px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-              <p class="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">Managers</p>
-              <p class="text-xl font-bold text-gray-900 dark:text-white tabular-nums">{num(summary().managers)}</p>
-            </div>
-            <div class="px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-              <p class="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">Total clients</p>
-              <p class="text-xl font-bold text-gray-900 dark:text-white tabular-nums">
-                {num(rows().reduce((s, r) => s + assignedCount(r), 0))}
-              </p>
-            </div>
-            {/* Grand total allocated budget — straight from the roster summary. */}
-            <Show when={summary().total_allocated_budget != null}>
-              <div class="px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-                <p class="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">Allocated budget</p>
-                <p class="text-xl font-bold text-gray-900 dark:text-white tabular-nums">
-                  {money2(summary().total_allocated_budget)}<span class="text-sm font-medium text-gray-400 dark:text-gray-500">/day</span>
+          <div class="relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#14233A] via-[#1B2E4B] to-[#14233A] shadow-[0_10px_30px_-12px_rgba(16,29,49,.5)] mb-6">
+            <div class="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-white/10">
+              {/* Managers */}
+              <div class="p-6">
+                <p class="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.14em] text-white/45 mb-2.5">
+                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4z" /></svg>
+                  Managers
+                </p>
+                <p class="text-3xl font-bold text-white tabular-nums leading-none">{num(summary().managers)}</p>
+                <p class="text-[13px] text-white/45 mt-2">On the roster this period</p>
+              </div>
+              {/* Total clients */}
+              <div class="p-6">
+                <p class="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.14em] text-white/45 mb-2.5">
+                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197" /></svg>
+                  Total Clients
+                </p>
+                <p class="text-3xl font-bold text-white tabular-nums leading-none">{num(totalAssigned())}</p>
+                <p class="text-[13px] text-white/45 mt-2">
+                  <span class="font-semibold text-emerald-300/90">{num(totalActive())} active</span>
+                  {" · "}{num(Math.max(0, totalAssigned() - totalActive()))} paused
                 </p>
               </div>
-            </Show>
-            <Show when={switchMode() === "checking"}>
-              <div class="px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex items-center gap-2">
-                <span class="w-3.5 h-3.5 rounded-full border-2 border-gray-300 border-t-blue-500 animate-spin" />
-                <span class="text-sm text-gray-500 dark:text-gray-400">Checking view-as access…</span>
+              {/* Allocated budget */}
+              <div class="p-6">
+                <p class="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.14em] text-white/45 mb-2.5">
+                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" /></svg>
+                  Allocated Budget
+                </p>
+                <Show
+                  when={summary().total_allocated_budget != null}
+                  fallback={<p class="text-3xl font-bold text-white/50 tabular-nums leading-none">—</p>}
+                >
+                  <p class="text-3xl font-bold text-white tabular-nums leading-none">
+                    {money2(summary().total_allocated_budget)}<span class="text-base font-semibold text-white/40">/day</span>
+                  </p>
+                  <p class="text-[13px] text-white/45 mt-2">≈ {compactINR(Number(summary().total_allocated_budget) * 30)} monthly commitment</p>
+                </Show>
               </div>
-            </Show>
+            </div>
           </div>
         </Show>
 
-        {/* Search */}
-        <Show when={!data.loading && rows().length > 0}>
-          <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-3.5 mb-4 flex flex-wrap items-center gap-3">
-            <div class="relative flex-1 min-w-[220px]">
-              <svg class="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
-              </svg>
-              <input
-                type="text"
-                placeholder="Search by manager email…"
-                value={search()}
-                onInput={(e) => setSearch(e.target.value)}
-                class="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-400"
-              />
-            </div>
-            <span class="ml-auto text-sm text-gray-400 dark:text-gray-500 whitespace-nowrap">
-              {visibleRows().length} manager{visibleRows().length !== 1 ? "s" : ""}
-            </span>
+        {/* Checking view-as access — subtle line */}
+        <Show when={switchMode() === "checking"}>
+          <div class="flex items-center gap-2 mb-4 text-sm text-gray-500 dark:text-gray-400">
+            <span class="w-3.5 h-3.5 rounded-full border-2 border-gray-300 border-t-[#AC2334] animate-spin" />
+            Checking view-as access…
           </div>
         </Show>
 
@@ -360,85 +394,138 @@ export default function AdminCampaignManagers() {
           </div>
         </Show>
 
-        {/* Roster table */}
-        <div class="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-auto max-h-[70vh]">
-          <table class="min-w-full text-sm">
-            <thead>
-              <tr class="text-[11px] font-bold uppercase tracking-[0.08em] text-[#54657E] dark:text-gray-300">
-                <th class="sticky top-0 z-20 bg-gradient-to-b from-[#F1F4F9] to-[#E9EEF5] dark:from-gray-800 dark:to-gray-800 border-b border-[#D4DDE9] dark:border-gray-700 shadow-[0_3px_6px_-3px_rgba(16,29,49,.18)] p-3.5 text-left whitespace-nowrap min-w-[240px]">Manager</th>
-                <th class="sticky top-0 z-20 bg-gradient-to-b from-[#F1F4F9] to-[#E9EEF5] dark:from-gray-800 dark:to-gray-800 border-b border-[#D4DDE9] dark:border-gray-700 shadow-[0_3px_6px_-3px_rgba(16,29,49,.18)] p-3.5 text-right whitespace-nowrap">Clients</th>
-                <th class="sticky top-0 z-20 bg-gradient-to-b from-[#F1F4F9] to-[#E9EEF5] dark:from-gray-800 dark:to-gray-800 border-b border-[#D4DDE9] dark:border-gray-700 shadow-[0_3px_6px_-3px_rgba(16,29,49,.18)] p-3.5 text-right whitespace-nowrap text-[#14233A] dark:text-gray-100">Allocated Budget</th>
-                <th class="sticky top-0 z-20 bg-gradient-to-b from-[#F1F4F9] to-[#E9EEF5] dark:from-gray-800 dark:to-gray-800 border-b border-[#D4DDE9] dark:border-gray-700 shadow-[0_3px_6px_-3px_rgba(16,29,49,.18)] p-3.5 text-right whitespace-nowrap" />
-              </tr>
-            </thead>
-            <Show
-              when={!data.loading}
-              fallback={
-                <tbody>
-                  <For each={Array(8).fill(0)}>
-                    {() => (
-                      <tr class="border-b border-gray-100 dark:border-gray-800 animate-pulse">
-                        <For each={Array(4).fill(0)}>
-                          {(_, i) => (
-                            <td class="p-3.5">
-                              <div class={`h-3 bg-gray-200 dark:bg-gray-700 rounded ${i() === 0 ? "w-48" : "w-16 ml-auto"}`} />
-                            </td>
-                          )}
-                        </For>
-                      </tr>
-                    )}
-                  </For>
-                </tbody>
-              }
-            >
-              <tbody>
-                <For each={visibleRows()}>
-                  {(r, i) => (
-                    <tr class={`border-b border-gray-100 dark:border-gray-800 transition-colors hover:bg-blue-50/40 dark:hover:bg-gray-800/40 ${i() % 2 === 0 ? "bg-white dark:bg-gray-900" : "bg-gray-50/60 dark:bg-gray-800/30"}`}>
-                      <td class="p-3.5">
-                        <div class="flex items-center gap-3">
-                          <Avatar name={r.manager_email} />
-                          <span class="font-medium text-gray-800 dark:text-gray-100">{r.manager_email}</span>
-                        </div>
-                      </td>
-                      <td class="p-3.5 text-right text-gray-700 dark:text-gray-300 tabular-nums">
-                        <span class="font-medium">{num(assignedCount(r))}</span>
-                        <Show when={r.client_count != null}>
-                          <span class="text-gray-400 dark:text-gray-500 text-xs">{" · "}{num(r.client_count)} active</span>
-                        </Show>
-                      </td>
-                      <td class="p-3.5 text-right tabular-nums">
-                        {/* Served directly on the roster — no per-manager fetch. */}
-                        <Show when={r.allocated_budget != null} fallback={<span class="text-gray-400 dark:text-gray-500">—</span>}>
-                          <span class="font-medium text-gray-800 dark:text-gray-100">{money2(r.allocated_budget)}</span>
-                          <span class="text-gray-400 dark:text-gray-500 text-xs">/day</span>
-                        </Show>
-                      </td>
-                      <td class="p-3.5 text-right">
-                        <button
-                          onClick={() => openManager(r)}
-                          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-gray-900 dark:bg-gray-700 text-white font-semibold hover:bg-black dark:hover:bg-gray-600 whitespace-nowrap"
-                        >
-                          View dashboard
-                          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
-                        </button>
-                      </td>
-                    </tr>
-                  )}
-                </For>
-                <Show when={rows().length > 0 && visibleRows().length === 0}>
-                  <tr><td colspan="4" class="py-16 text-center text-gray-400 dark:text-gray-500">No managers match your search.</td></tr>
-                </Show>
-                <Show when={rows().length === 0}>
-                  <tr><td colspan="4" class="py-16 text-center text-gray-400 dark:text-gray-500">No campaign managers for this month.</td></tr>
-                </Show>
-              </tbody>
+        {/* ── Search ── */}
+        <Show when={!data.loading && rows().length > 0}>
+          <div class="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm p-2 pl-4 mb-5 flex items-center gap-3">
+            <svg class="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
+            </svg>
+            <input
+              type="text"
+              placeholder="Search by manager email…"
+              value={search()}
+              onInput={(e) => setSearch(e.target.value)}
+              class="flex-1 min-w-0 bg-transparent py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none"
+            />
+            <span class="flex-shrink-0 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap">
+              {visibleRows().length} manager{visibleRows().length !== 1 ? "s" : ""}
+            </span>
+          </div>
+        </Show>
+
+        {/* ── Column labels ── */}
+        <Show when={!data.loading && visibleRows().length > 0}>
+          <div class="hidden md:grid md:grid-cols-[minmax(0,1fr)_150px_minmax(220px,1.1fr)_160px] items-center gap-4 px-5 mb-2.5 text-[11px] font-bold uppercase tracking-[0.1em] text-gray-400 dark:text-gray-500">
+            <span>Manager</span>
+            <span>Clients</span>
+            <span>Allocated Budget</span>
+            <span />
+          </div>
+        </Show>
+
+        {/* ── Manager list ── */}
+        <Show
+          when={!data.loading}
+          fallback={
+            <div class="space-y-3">
+              <For each={Array(6).fill(0)}>
+                {() => (
+                  <div class="flex items-center gap-4 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-5 py-4 animate-pulse">
+                    <div class="w-11 h-11 rounded-full bg-gray-200 dark:bg-gray-700 flex-shrink-0" />
+                    <div class="flex-1 space-y-2">
+                      <div class="h-3 w-40 bg-gray-200 dark:bg-gray-700 rounded" />
+                      <div class="h-2.5 w-56 bg-gray-100 dark:bg-gray-800 rounded" />
+                    </div>
+                    <div class="h-3 w-16 bg-gray-200 dark:bg-gray-700 rounded" />
+                    <div class="h-3 w-28 bg-gray-200 dark:bg-gray-700 rounded" />
+                    <div class="h-9 w-32 bg-gray-200 dark:bg-gray-700 rounded-xl" />
+                  </div>
+                )}
+              </For>
+            </div>
+          }
+        >
+          <div class="space-y-3">
+            <For each={visibleRows()}>
+              {(r) => (
+                <div class="group grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_150px_minmax(220px,1.1fr)_160px] items-center gap-4 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-5 py-4 transition-all hover:border-[#14233A]/30 dark:hover:border-gray-600 hover:shadow-[0_8px_24px_-14px_rgba(16,29,49,.4)]">
+                  {/* Manager */}
+                  <div class="flex items-center gap-3.5 min-w-0">
+                    <Avatar name={r.manager_email} size="w-11 h-11" />
+                    <div class="min-w-0">
+                      <p class="font-semibold text-gray-900 dark:text-gray-100 truncate">
+                        {labelFromEmail(r.manager_email)}
+                      </p>
+                      <p class="text-[13px] text-gray-500 dark:text-gray-400 truncate" title={r.manager_email}>
+                        {r.manager_email}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Clients */}
+                  <div class="flex items-center gap-2.5">
+                    <span class="text-xl font-bold text-gray-900 dark:text-white tabular-nums">{num(assignedCount(r))}</span>
+                    <Show when={r.client_count != null}>
+                      {(() => {
+                        const allActive = Number(r.client_count) >= assignedCount(r);
+                        return (
+                          <span class={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold ${allActive ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" : "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"}`}>
+                            <span class={`w-1.5 h-1.5 rounded-full ${allActive ? "bg-emerald-500" : "bg-amber-500"}`} />
+                            {num(r.client_count)} active
+                          </span>
+                        );
+                      })()}
+                    </Show>
+                  </div>
+
+                  {/* Allocated budget — mini-bar scaled to the roster max */}
+                  <div class="min-w-0">
+                    <Show
+                      when={r.allocated_budget != null}
+                      fallback={<span class="text-gray-400 dark:text-gray-500">—</span>}
+                    >
+                      <div class="h-1.5 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden mb-2">
+                        <div
+                          class="h-full rounded-full bg-gradient-to-r from-[#14233A] to-[#3B5A86] dark:from-blue-500 dark:to-indigo-500"
+                          style={{ width: `${Math.max(4, Math.round(((Number(r.allocated_budget) || 0) / maxBudget()) * 100))}%` }}
+                        />
+                      </div>
+                      <p class="text-sm tabular-nums">
+                        <span class="font-bold text-gray-900 dark:text-gray-100">{money2(r.allocated_budget)}</span>
+                        <span class="text-gray-400 dark:text-gray-500 text-xs">/day</span>
+                      </p>
+                    </Show>
+                  </div>
+
+                  {/* Action */}
+                  <div class="md:text-right">
+                    <button
+                      onClick={() => openManager(r)}
+                      class="inline-flex items-center gap-1.5 px-4 py-2.5 text-sm rounded-xl bg-[#14233A] dark:bg-gray-700 text-white font-semibold hover:bg-[#0E1A2C] dark:hover:bg-gray-600 transition-colors shadow-sm whitespace-nowrap"
+                    >
+                      View dashboard
+                      <svg class="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </For>
+
+            <Show when={rows().length > 0 && visibleRows().length === 0}>
+              <div class="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 py-16 text-center text-gray-400 dark:text-gray-500">
+                No managers match your search.
+              </div>
             </Show>
-          </table>
-        </div>
+            <Show when={rows().length === 0}>
+              <div class="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 py-16 text-center text-gray-400 dark:text-gray-500">
+                No campaign managers for this month.
+              </div>
+            </Show>
+          </div>
+        </Show>
 
         <Show when={switchMode() === "denied" && rows().length > 0}>
-          <p class="text-xs text-gray-400 dark:text-gray-500 mt-3">
+          <p class="text-xs text-gray-400 dark:text-gray-500 mt-4">
             Per-manager dashboards appear here automatically once admin view-as is enabled on the backend.
           </p>
         </Show>
