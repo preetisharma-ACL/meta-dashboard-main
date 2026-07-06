@@ -179,14 +179,7 @@ export default function Sidebar() {
         ),
         path: "/my-work",
       },
-      {
-        name: "Alerts",
-        roles: ["campaign_manager"],
-        icon: () => (
-          <Icon d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 01-3 3H9a3 3 0 01-3-3v-1m6 0h6" />
-        ),
-        path: "/cm-alerts",
-      },
+
       {
         name: "Accounts & Funding",
         roles: ["admin", "campaign_manager"],
@@ -228,7 +221,7 @@ export default function Sidebar() {
       },
       {
         name: "Clients",
-        roles: ["admin"],
+        roles: ["admin", "campaign_manager"],
         icon: () => (
           <Icon d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0h-6m6 0a3 3 0 01-5.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M9 7a4 4 0 11-8 0 4 4 0 018 0zm0 0a4 4 0 015.536 3.536M15.536 10.536A5.967 5.967 0 0121 16.941M16.536 10.536A5.973 5.973 0 0012 16c0 .132 0 .263.012.391M12 16a5.973 5.973 0 00-4.536-2.464" />
         ),
@@ -262,6 +255,22 @@ export default function Sidebar() {
             ),
           },
         ],
+      },
+      {
+        name: "Meta Ad Accounts",
+        roles: ["campaign_manager"],
+        icon: () => (
+          <SmallIcon d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+        ),
+        path: "/ad-accounts",
+      },
+      {
+        name: "Alerts",
+        roles: ["campaign_manager"],
+        icon: () => (
+          <Icon d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 01-3 3H9a3 3 0 01-3-3v-1m6 0h6" />
+        ),
+        path: "/cm-alerts",
       },
       {
         name: "Allowed Budget",
