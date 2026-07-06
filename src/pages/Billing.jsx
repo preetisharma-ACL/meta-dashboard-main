@@ -35,7 +35,7 @@ const isWalletMethod = (m) =>
 // entry is: a carried-over opening balance, a points credit, or real funds.
 // `iconClass` colour-codes the leading avatar to match the category tag.
 const paymentCategory = (pay) => {
-  if (pay.isWallet)
+  if (pay.isWallet || pay.isOpeningBalance)
     return {
       label: "Opening Balance",
       variant: "gray",
@@ -714,6 +714,9 @@ export default function Billing() {
         isPointsMethod(item.method) || isPointsMethod(item.method_label),
       isWallet:
         isWalletMethod(item.method) || isWalletMethod(item.method_label),
+      // Explicit backend flag: an opening-balance carry-in, not money received
+      // this period — badged as such and excluded from "Total Received".
+      isOpeningBalance: !!item.is_opening_balance,
       date: new Date(item.paid_at).toLocaleDateString("en-IN", {
         day: "2-digit",
         month: "short",
@@ -910,12 +913,12 @@ export default function Billing() {
   // opening balance, so they're summed into neither total.
   const totalReceived = createMemo(() =>
     payments()
-      .filter((p) => !p.isWallet)
+      .filter((p) => !p.isWallet && !p.isOpeningBalance)
       .reduce((s, p) => s + (p.amount || 0), 0),
   );
   const totalReceivedExGST = createMemo(() =>
     payments()
-      .filter((p) => !p.isWallet)
+      .filter((p) => !p.isWallet && !p.isOpeningBalance)
       .reduce((s, p) => s + (p.baseAmount || 0), 0),
   );
 
