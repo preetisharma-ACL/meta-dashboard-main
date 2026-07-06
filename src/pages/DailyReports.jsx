@@ -507,9 +507,9 @@ export default function DailyReports() {
           </div>
         }
       >
-        <div class="overflow-x-auto bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+        <div class="overflow-x-auto overflow-y-auto max-h-[500px] bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
           <table class="w-full text-sm table-auto">
-            <thead class="bg-gray-100 dark:bg-gray-800">
+            <thead class="bg-gray-100 dark:bg-gray-800 sticky top-0 z-10">
               <tr class="[&_th]:text-center [&_th:first-child]:text-left text-gray-700 dark:text-gray-200 [&_th]:whitespace-nowrap [&_th]:font-semibold">
                 <th class="p-3 pl-4">Date</th>
                 <th class="p-3">Project</th>
@@ -630,7 +630,7 @@ export default function DailyReports() {
                 </tbody>
 
                 {/* Footer totals */}
-                <tfoot>
+                <tfoot class="sticky bottom-0 z-10">
                   <tr class="bg-gradient-to-r from-purple-100 to-purple-50 dark:from-gray-800 dark:to-gray-900 border-t-2 border-purple-300 dark:border-gray-600 shadow-[0_-2px_10px_rgba(0,0,0,0.06)] [&_td]:text-center [&_td:first-child]:text-left font-semibold">
                     <td class="p-3 pl-4">
                       <span class="px-3 py-1 bg-purple-600 text-white rounded-lg text-xs font-bold tracking-wide">
