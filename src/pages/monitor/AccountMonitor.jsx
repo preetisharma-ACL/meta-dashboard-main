@@ -399,7 +399,7 @@ export default function AccountMonitor() {
                             <span class="text-[#4B5568] dark:text-gray-400 tabular-nums">{money2(a.spent_today) ?? "—"}</span>
                             <span class="block text-[10px] text-[#8593A8] dark:text-gray-500 uppercase tracking-wide">so far</span>
                           </td>
-                          <td class="p-4 text-right align-middle border-b border-[#EEF1F6] dark:border-gray-800"><StatusCell account={a} /></td>
+                          <td class="p-2 text-right align-middle border-b border-[#EEF1F6] dark:border-gray-800"><StatusCell account={a} /></td>
                         </tr>
                       )}
                     </For>
