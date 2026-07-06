@@ -42,6 +42,7 @@ import AllowedBudget from "./pages/budget/AllowedBudget";
 import ManagerPerformance from "./pages/performance/ManagerPerformance";
 import AdminCampaignManagers from "./pages/admin/cm/AdminCampaignManagers";
 import CampaignManagerClients from "./pages/admin/cm/CampaignManagerClients";
+import BulkCampaignOperations from "./pages/admin/cm/BulkCampaignOperations";
 import AccountMonitor from "./pages/monitor/AccountMonitor";
 import MyWork from "./pages/worklog/MyWork";
 import ClientWorkspace from "./pages/worklog/ClientWorkspace";
@@ -147,6 +148,18 @@ function App() {
               component={() => (
                 <AdminRoute>
                   <CampaignManagerClients />
+                </AdminRoute>
+              )}
+            />
+            {/* Bulk campaign ops — route-gated to write-capable roles; the page
+                further gates Tier-2 CMs out via canWriteCampaigns(). */}
+            <Route
+              path="/bulk-campaign-operations"
+              component={() => (
+                <AdminRoute
+                  roles={["admin", "coordination", "accounts", "campaign_manager"]}
+                >
+                  <BulkCampaignOperations />
                 </AdminRoute>
               )}
             />
