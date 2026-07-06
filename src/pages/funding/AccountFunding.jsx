@@ -461,6 +461,12 @@ export default function AccountFunding() {
       }
       if (st?.status === "done") {
         setRefreshing(false);
+        // Proactive countdown: the status payload carries the LIVE cooldown TTL
+        // (already net of the ~60s the sync consumed — no over-counting). Drive
+        // the SAME cooldownLeft() that gates the button + banner so the user
+        // sees "Wait Ns" immediately, without having to click and get rejected.
+        const cdRemaining = Number(st?.cooldown_remaining) || 0;
+        if (cdRemaining > 0) startCooldown(cdRemaining);
         const synced = Number(st?.summary?.synced) || 0;
         await refetch(); // reload the funding table with fresh numbers
         refreshToast("success", REFRESH_COPY.doneTitle, REFRESH_COPY.doneBody(synced));
@@ -486,6 +492,11 @@ export default function AccountFunding() {
     try {
       res = await startFundingRefresh();
     } catch (err) {
+      // Verified contract: the cooldown is a 200/success:true response, so it
+      // does NOT arrive here. Reaching this branch means a genuine failure
+      // (403, network, envelope success:false). The log lets QA confirm the
+      // cooldown did NOT go down the throw path.
+      console.log("[refresh] threw:", err?.status, err?.message);
       if (err?.status === 403) {
         refreshToast("error", "Not allowed", "You don't have permission to refresh balances.");
       } else {
@@ -496,21 +507,23 @@ export default function AccountFunding() {
       starting = false;
     }
 
-    // Read the status from the DATA object no matter how the layer wraps it: the
-    // cooldown/started flag lives in `data`, never at the envelope top level. This
-    // is robust whether startFundingRefresh returns the {success,message,data}
-    // envelope OR the already-unwrapped data payload.
+    // Backend contract (HTTP 200, success:true). startFundingRefresh() already
+    // unwrapped the envelope, so `res` IS the inner data object; the `?? res`
+    // fallback keeps this robust if the layer ever hands back the full envelope.
+    //   cooldown → { status:"cooldown", seconds_remaining }
+    //   started  → { status:"started",  task_id, cooldown_seconds }
     const d = res?.data ?? res ?? {};
-    const status = d.status;
-    const seconds = d.seconds_remaining;
+    console.log("[refresh] response status:", d.status, "seconds:", d.seconds_remaining, res);
 
-    if (status === "cooldown") {
-      // Refreshed in the last 60s — show the banner + live countdown, NO new sync.
-      startCooldown(Number(seconds) || 0);
+    if (d.status === "cooldown") {
+      // Refreshed within the cooldown window — show the banner + live countdown,
+      // NO new sync. Fallback to 120s if seconds_remaining is ever missing so
+      // the banner still renders (cooldownLeft() must be > 0 for the <Show>).
+      startCooldown(Number(d.seconds_remaining) || 120);
       return;
     }
 
-    if (status === "started" && d.task_id) {
+    if (d.status === "started" && d.task_id) {
       setRefreshing(true);
       pollRefresh(d.task_id, Date.now());
       return;

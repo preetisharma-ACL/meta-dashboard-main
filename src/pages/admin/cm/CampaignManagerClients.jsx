@@ -17,8 +17,10 @@ import Avatar from "../../../components/common/Avatar";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ADMIN · Campaign Manager's Clients  (route: /campaign-manager-clients)
-// One card per campaign manager showing the COUNT and NAMES of their ACTIVE
-// clients, each tagged CPL / Hybrid / Retainer.
+// Master-detail: a manager rail (search + per-manager mix) on the left, and a
+// client ledger on the right — either the full ledger grouped by manager
+// ("All clients") or a single manager's roster. Each client is tagged CPL /
+// Hybrid / Retainer.
 //
 // Data assembly (both patterns already used on the Campaign Managers screen):
 //   • Manager roster           ← fetchManagerPerformance()  (manager_id/email)
@@ -75,9 +77,46 @@ const CLIENT_TYPES = [
 // All three selected by default — show every active client.
 const DEFAULT_CLIENT_TYPES = CLIENT_TYPES.map((t) => t.key);
 
+// Chip label — CPL stays upper-case, the rest are Title-cased by the caller's
+// uppercase utility class.
+const tagLabel = (t) => (t === "cpl" ? "CPL" : t);
+
+// ── Small presentational helpers ────────────────────────────────────────────
+// A three-segment proportional bar (CPL · Hybrid · Retainer).
+function MixBar(props) {
+  const c = () => props.counts || { cpl: 0, hybrid: 0, retainer: 0 };
+  return (
+    <div
+      class={`flex rounded overflow-hidden ${
+        props.active ? "bg-white/20" : "bg-gray-100 dark:bg-gray-800"
+      } ${props.class || "h-1"}`}
+    >
+      <span class="bg-teal-500" style={{ "flex-grow": String(c().cpl) }} />
+      <span class="bg-indigo-500" style={{ "flex-grow": String(c().hybrid) }} />
+      <span class="bg-amber-400" style={{ "flex-grow": String(c().retainer) }} />
+    </div>
+  );
+}
+
+function TypeTag(props) {
+  return (
+    <span
+      class={`inline-block text-[10px] font-bold tracking-[0.08em] uppercase px-2.5 py-[3px] rounded-full whitespace-nowrap ${
+        TYPE_CHIP[props.type] ?? TYPE_CHIP.retainer
+      }`}
+    >
+      {tagLabel(props.type)}
+    </span>
+  );
+}
+
 export default function CampaignManagerClients() {
   const [month, setMonth] = createSignal(currentMonthKey());
   const [clientTypes, setClientTypes] = createSignal(DEFAULT_CLIENT_TYPES);
+
+  // Master-detail UI state (client-side only — never touches the API layer).
+  const [selected, setSelected] = createSignal("all"); // "all" | manager_id
+  const [query, setQuery] = createSignal("");
 
   // Toggle a client-type pill; never allow an empty selection.
   const toggleClientType = (key) => {
@@ -169,6 +208,121 @@ export default function CampaignManagerClients() {
       .sort((a, b) => b.clients.length - a.clients.length);
   });
 
+  // Full (type-unfiltered) active-client counts per manager — powers the rail
+  // mix bars, the segment badges and the roster totals, so those read as
+  // "everything available" while the ledger below reflects the current filter.
+  const fullByMgr = createMemo(() => {
+    const own = ownLists() ?? {};
+    const active = activeNomen();
+    const map = {};
+    for (const m of managers()) {
+      const seen = new Set();
+      const counts = { cpl: 0, hybrid: 0, retainer: 0, total: 0 };
+      for (const c of own[m.manager_id] ?? []) {
+        const key = String(c.client_nomen_id);
+        if (!active.has(key) || seen.has(key)) continue;
+        seen.add(key);
+        const t = counts[c.client_type] != null ? c.client_type : "retainer";
+        counts[t]++;
+        counts.total++;
+      }
+      map[m.manager_id] = counts;
+    }
+    return map;
+  });
+
+  // Aggregate counts across every manager (for "All clients" overview).
+  const aggCounts = createMemo(() => {
+    const acc = { cpl: 0, hybrid: 0, retainer: 0, total: 0 };
+    const m = fullByMgr();
+    for (const id in m) {
+      acc.cpl += m[id].cpl;
+      acc.hybrid += m[id].hybrid;
+      acc.retainer += m[id].retainer;
+      acc.total += m[id].total;
+    }
+    return acc;
+  });
+
+  // Rail roster — every manager, ordered by full active-client count (desc).
+  const railManagers = createMemo(() =>
+    managers()
+      .map((m) => ({
+        manager: m,
+        counts: fullByMgr()[m.manager_id] || {
+          cpl: 0,
+          hybrid: 0,
+          retainer: 0,
+          total: 0,
+        },
+      }))
+      .sort((a, b) => b.counts.total - a.counts.total),
+  );
+
+  // manager_id → type-filtered client list (drives the ledger body).
+  const filteredByMgr = createMemo(() =>
+    Object.fromEntries(cards().map((c) => [c.manager.manager_id, c.clients])),
+  );
+
+  const grandTotalFull = () => aggCounts().total;
+
+  // ── Selection helpers ──
+  const activeManager = () =>
+    railManagers().find((r) => r.manager.manager_id === selected());
+  const mode = () => (selected() === "all" || !activeManager() ? "all" : "single");
+  const segCounts = () =>
+    mode() === "all"
+      ? aggCounts()
+      : fullByMgr()[selected()] || { cpl: 0, hybrid: 0, retainer: 0, total: 0 };
+
+  const matchQuery = (client, mgr) => {
+    const q = query().trim().toLowerCase();
+    if (!q) return true;
+    return `${client.name} ${labelFromEmail(mgr.manager_email)}`
+      .toLowerCase()
+      .includes(q);
+  };
+
+  // Grouped ledger for "All clients" mode — groups with at least one match.
+  const groups = createMemo(() =>
+    railManagers()
+      .map((r) => ({
+        manager: r.manager,
+        counts: r.counts,
+        clients: (filteredByMgr()[r.manager.manager_id] || []).filter((c) =>
+          matchQuery(c, r.manager),
+        ),
+      }))
+      .filter((g) => g.clients.length > 0),
+  );
+
+  // Flat ledger for single-manager mode.
+  const singleRows = createMemo(() => {
+    const m = activeManager();
+    if (!m) return [];
+    return (filteredByMgr()[m.manager.manager_id] || []).filter((c) =>
+      matchQuery(c, m.manager),
+    );
+  });
+
+  const shownCount = () =>
+    mode() === "all"
+      ? groups().reduce((s, g) => s + g.clients.length, 0)
+      : singleRows().length;
+  const totalCount = () => segCounts().total;
+
+  // A search should widen the view to the full ledger (design behaviour).
+  const onSearch = (v) => {
+    setQuery(v);
+    if (v.trim() && selected() !== "all") setSelected("all");
+  };
+
+  // Switching month resets the selection so a stale manager_id can't linger.
+  createEffect(on(month, () => setSelected("all"), { defer: true }));
+
+  const monthLabel = () =>
+    monthOptions().find((o) => o.key === month())?.label ?? month();
+
   // The roster must resolve (not error) before the probe can run. Only treat
   // the probe as "loading" when we actually have managers to probe with —
   // otherwise an errored/empty roster would leave switchMode stuck at "unknown"
@@ -180,194 +334,572 @@ export default function CampaignManagerClients() {
     rosterRes.loading ||
     (rosterReady() && managers().length > 0 && probing()) ||
     (allowed() && (adminClients.loading || ownLists.loading));
-  const failed = () =>
-    rosterRes.error || adminClients.error || ownLists.error;
+  const failed = () => rosterRes.error || adminClients.error || ownLists.error;
   // Roster came back with zero managers (distinct from "still loading").
   const noManagers = () => rosterReady() && managers().length === 0;
-  const totalActive = () => cards().reduce((s, c) => s + c.clients.length, 0);
+  const ready = () =>
+    allowed() && !dataLoading() && !failed() && !noManagers();
+
+  // Icons ------------------------------------------------------------------
+  const CalendarIcon = (p) => (
+    <svg
+      class={p.class}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <rect x="3" y="5" width="18" height="16" rx="2" />
+      <path d="M8 3v4M16 3v4M3 10h18" />
+    </svg>
+  );
 
   return (
-    <div class="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 md:p-6 lg:p-8">
-      {/* ── Page header ── */}
-      <div class="flex items-end justify-between flex-wrap gap-2 mb-6">
-        <div>
-          <p class="text-xs font-bold uppercase tracking-[0.12em] text-blue-600 dark:text-blue-400 mb-1.5">
-            Admin · Team
-          </p>
-          <h1 class="text-2xl font-semibold text-gray-900 dark:text-white tracking-tight">
-            Campaign Manager's Clients
-          </h1>
-          <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Active clients grouped by campaign manager, tagged CPL / Hybrid /
-            Retainer.
-          </p>
-        </div>
-        <div class="flex items-center gap-3">
-          <Show when={allowed() && !dataLoading() && !failed()}>
-            <span class="text-sm text-gray-400 dark:text-gray-500 whitespace-nowrap">
-              {managers().length} manager{managers().length !== 1 ? "s" : ""} ·{" "}
-              {totalActive()} active client{totalActive() !== 1 ? "s" : ""}
-            </span>
-          </Show>
-          <select
-            value={month()}
-            onChange={(e) => setMonth(e.target.value)}
-            class="px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-400 cursor-pointer"
+    <div class="min-h-screen bg-[#F6F7FA] dark:bg-gray-900">
+      {/* ─────────────── Masthead (light card) ─────────────── */}
+      <div class="max-w-[1480px] mx-auto px-4 md:px-9 pt-6">
+        <header class="relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-sm overflow-hidden px-6 md:px-8 py-6">
+          {/* thin secondary (crimson) accent rule */}
+          <span class="absolute inset-x-0 top-0 h-1 bg-[#AC2334]" />
+          <nav
+            class="flex items-center gap-2 text-[11px] font-semibold tracking-[0.14em] uppercase text-gray-400 mb-3"
+            aria-label="Breadcrumb"
           >
-            <For each={monthOptions()}>
-              {(o) => <option value={o.key}>{o.label}</option>}
-            </For>
-          </select>
-        </div>
-      </div>
-
-      {/* ════ CLIENT-TYPE FILTER (multi-select pills, all on by default) ════ */}
-      <div class="flex flex-wrap items-center gap-2 mb-6">
-        <span class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400 mr-1">
-          Client type
-        </span>
-        <For each={CLIENT_TYPES}>
-          {(t) => {
-            const on = () => clientTypes().includes(t.key);
-            return (
-              <button
-                onClick={() => toggleClientType(t.key)}
-                aria-pressed={on()}
-                class={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[13px] font-semibold border transition-colors ${
-                  on()
-                    ? "bg-[#14233A] text-white border-[#14233A]"
-                    : "bg-gray-50 dark:bg-gray-800 text-[#54657E] dark:text-gray-300 border-[#E2E8F1] dark:border-gray-700 hover:border-[#14233A]/40"
-                }`}
-              >
-                <svg
-                  class="w-3.5 h-3.5"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2.5"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <Show
-                    when={on()}
-                    fallback={<circle cx="12" cy="12" r="9" stroke-width="1.6" />}
+            <span>Admin</span>
+            <span class="text-gray-300 dark:text-gray-600">/</span>
+            <span>Team</span>
+            <span class="text-gray-300 dark:text-gray-600">/</span>
+            <span class="text-[#AC2334]">Campaign Managers</span>
+          </nav>
+          <div class="flex items-end justify-between gap-6 flex-wrap">
+            <div>
+              <h1 class="font-sans font-bold text-xl   text-gray-700 dark:text-white">
+                Campaign Manager's Clients
+              </h1>
+              <p class="mt-2 text-[13.5px] text-gray-500 dark:text-gray-400 max-w-[560px]">
+                Active clients grouped by campaign manager. Select a manager to
+                review their roster, or view the full client ledger.
+              </p>
+            </div>
+            <div class="flex flex-wrap gap-3">
+              <StatCard
+                value={ready() ? managers().length : "—"}
+                label="Managers"
+                icon={
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    class="w-[18px] h-[18px]"
                   >
-                    <path d="M20 6L9 17l-5-5" />
-                  </Show>
-                </svg>
-                {t.label}
-              </button>
-            );
-          }}
-        </For>
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+                  </svg>
+                }
+              />
+              <StatCard
+                value={ready() ? grandTotalFull() : "—"}
+                label="Active clients"
+                icon={
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    class="w-[18px] h-[18px]"
+                  >
+                    <rect x="2" y="7" width="20" height="14" rx="2" />
+                    <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+                  </svg>
+                }
+              />
+              <StatCard
+                value={
+                  ready() && managers().length
+                    ? (grandTotalFull() / managers().length).toFixed(1)
+                    : "—"
+                }
+                suffix="avg"
+                label="Clients / manager"
+                icon={
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    class="w-[18px] h-[18px]"
+                  >
+                    <line x1="6" y1="20" x2="6" y2="14" />
+                    <line x1="12" y1="20" x2="12" y2="4" />
+                    <line x1="18" y1="20" x2="18" y2="10" />
+                  </svg>
+                }
+              />
+            </div>
+          </div>
+        </header>
       </div>
 
-      {/* Needs admin view-as — show a quiet note if the probe reports denial. */}
-      <Show when={switchMode() === "denied"}>
-        <div class="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 text-sm text-gray-500 dark:text-gray-400">
-          Per-manager client lists appear here once admin view-as is enabled on
-          the backend.
-        </div>
-      </Show>
+      <div class="max-w-[1480px] mx-auto px-4 md:px-9 pt-6 pb-16">
+        {/* Needs admin view-as — quiet note if the probe reports denial. */}
+        <Show when={switchMode() === "denied"}>
+          <div class="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 text-sm text-gray-500 dark:text-gray-400">
+            Per-manager client lists appear here once admin view-as is enabled on
+            the backend.
+          </div>
+        </Show>
 
-      {/* Roster resolved but empty for the selected month. */}
-      <Show when={noManagers() && !failed()}>
-        <div class="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 text-sm text-gray-500 dark:text-gray-400">
-          No campaign managers with data for this month. Try an earlier month
-          from the selector above.
-        </div>
-      </Show>
+        {/* Roster resolved but empty for the selected month. */}
+        <Show when={noManagers() && !failed() && switchMode() !== "denied"}>
+          <div class="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 text-sm text-gray-500 dark:text-gray-400">
+            No campaign managers with data for this month. Try an earlier month
+            from the selector above.
+          </div>
+        </Show>
 
-      {/* Loading skeleton */}
-      <Show when={dataLoading() && switchMode() !== "denied"}>
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <For each={Array(6).fill(0)}>
-            {() => (
-              <div class="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 animate-pulse">
-                <div class="flex items-center gap-3 mb-3">
-                  <div class="w-9 h-9 rounded-full bg-gray-200 dark:bg-gray-700" />
-                  <div class="h-3 w-40 bg-gray-200 dark:bg-gray-700 rounded" />
+        {/* Error */}
+        <Show when={!dataLoading() && failed()}>
+          <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4 text-sm text-red-600 dark:text-red-400">
+            Couldn't load campaign managers' clients. Please try again.
+          </div>
+        </Show>
+
+        {/* Loading skeleton (master-detail shaped) */}
+        <Show when={dataLoading() && switchMode() !== "denied"}>
+          <div class="grid grid-cols-1 lg:grid-cols-[296px_minmax(0,1fr)] gap-6 items-start">
+            <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl p-3.5 animate-pulse">
+              <div class="h-9 bg-gray-100 dark:bg-gray-800 rounded-lg mb-3" />
+              <div class="space-y-2.5">
+                <For each={Array(7).fill(0)}>
+                  {() => (
+                    <div class="flex items-center gap-3">
+                      <div class="w-9 h-9 rounded-full bg-gray-200 dark:bg-gray-700" />
+                      <div class="h-3 flex-1 bg-gray-200 dark:bg-gray-700 rounded" />
+                    </div>
+                  )}
+                </For>
+              </div>
+            </div>
+            <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl p-5 animate-pulse">
+              <div class="flex items-center gap-3.5 mb-6">
+                <div class="w-11 h-11 rounded-full bg-gray-200 dark:bg-gray-700" />
+                <div class="h-5 w-48 bg-gray-200 dark:bg-gray-700 rounded" />
+              </div>
+              <div class="space-y-3">
+                <For each={Array(8).fill(0)}>
+                  {() => (
+                    <div class="h-4 w-full bg-gray-100 dark:bg-gray-800 rounded" />
+                  )}
+                </For>
+              </div>
+            </div>
+          </div>
+        </Show>
+
+        {/* ─────────────── Master-detail workspace ─────────────── */}
+        <Show when={ready()}>
+          <div class="grid grid-cols-1 lg:grid-cols-[296px_minmax(0,1fr)] gap-6 items-start">
+            {/* ── Manager rail ── */}
+            <aside class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl overflow-hidden shadow-sm flex flex-col lg:sticky lg:top-5 lg:max-h-[calc(100vh-40px)]">
+              <div class="p-3.5 border-b border-gray-100 dark:border-gray-800">
+                <div class="text-[13px] text-gray-400 dark:text-gray-100 font-semibold  text-gray-600 mb-2.5 px-0.5">
+                  Campaign Managers
                 </div>
-                <div class="space-y-2">
-                  <div class="h-3 w-full bg-gray-200 dark:bg-gray-700 rounded" />
-                  <div class="h-3 w-2/3 bg-gray-200 dark:bg-gray-700 rounded" />
+                <div class="relative">
+                  <svg
+                    class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                  >
+                    <circle cx="11" cy="11" r="7" />
+                    <path d="m20 20-3.5-3.5" />
+                  </svg>
+                  <input
+                    type="search"
+                    value={query()}
+                    onInput={(e) => onSearch(e.target.value)}
+                    placeholder="Search clients or managers…"
+                    aria-label="Search clients or managers"
+                    class="w-full h-[35px] rounded-[9px] border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 pl-[33px] pr-3 text-[13px] text-gray-800 dark:text-gray-100 placeholder:text-gray-400 focus:outline-none focus:border-[#14233A] focus:bg-white dark:focus:bg-gray-900 focus:ring-2 focus:ring-[#14233A]/10 transition-colors"
+                  />
                 </div>
               </div>
-            )}
-          </For>
-        </div>
-      </Show>
 
-      {/* Error */}
-      <Show when={!dataLoading() && failed()}>
-        <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4 text-sm text-red-600 dark:text-red-400">
-          Couldn't load campaign managers' clients. Please try again.
-        </div>
-      </Show>
-
-      {/* Cards */}
-      <Show when={allowed() && !dataLoading() && !failed()}>
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <For each={cards()}>
-            {(card) => (
-              <div class="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 flex flex-col">
-                {/* Manager header + active count */}
-                <div class="flex items-center gap-3 pb-3 border-b border-gray-100 dark:border-gray-800">
-                  <Avatar name={card.manager.manager_email} />
-                  <div class="min-w-0 flex-1">
-                    <p class="font-semibold text-gray-800 dark:text-gray-100 truncate">
-                      {labelFromEmail(card.manager.manager_email)}
-                    </p>
-                    <p class="text-xs text-gray-400 dark:text-gray-500 truncate">
-                      {card.manager.manager_email}
-                    </p>
-                  </div>
-                  <span class="flex-shrink-0 inline-flex items-center justify-center min-w-[2rem] px-2 h-7 rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-sm font-bold tabular-nums">
-                    {card.clients.length}
-                  </span>
+              <nav class="overflow-y-auto p-2 flex-1">
+                {/* All clients */}
+                <div class="border-b border-gray-100 dark:border-gray-800 mb-1 pb-1">
+                  <RailRow
+                    active={selected() === "all"}
+                    onClick={() => setSelected("all")}
+                    marker={
+                      <div class="w-9 h-9 rounded-full grid place-items-center bg-[#AC2334] text-white font-sans font-bold flex-shrink-0">
+                        A
+                      </div>
+                    }
+                    name="All clients"
+                    count={grandTotalFull()}
+                    counts={aggCounts()}
+                  />
                 </div>
 
-                {/* Active client list */}
-                <Show
-                  when={card.clients.length > 0}
-                  fallback={
-                    <p class="text-sm text-gray-400 dark:text-gray-500 py-4">
-                      No active clients.
-                    </p>
-                  }
-                >
-                  <ul class="mt-3 space-y-2">
-                    <For each={card.clients}>
-                      {(c) => (
-                        <li class="flex items-center justify-between gap-2">
-                          <span class="text-sm text-gray-700 dark:text-gray-200 truncate">
-                            {c.name}
-                          </span>
-                          <Show when={c.type}>
-                            <span
-                              class={`flex-shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize ${
-                                TYPE_CHIP[c.type] ?? TYPE_CHIP.retainer
-                              }`}
-                            >
-                              {c.type}
-                            </span>
-                          </Show>
-                        </li>
+                <For each={railManagers()}>
+                  {(r) => (
+                    <RailRow
+                      active={selected() === r.manager.manager_id}
+                      onClick={() => setSelected(r.manager.manager_id)}
+                      marker={
+                        <Avatar
+                          name={labelFromEmail(r.manager.manager_email)}
+                          size="w-9 h-9"
+                          textSize="text-[13px]"
+                        />
+                      }
+                      name={labelFromEmail(r.manager.manager_email)}
+                      count={r.counts.total}
+                      counts={r.counts}
+                    />
+                  )}
+                </For>
+              </nav>
+            </aside>
+
+            {/* ── Detail panel ── */}
+            <section class="min-w-0" aria-live="polite">
+              {/* Header */}
+              <div class="flex items-center justify-between gap-4 flex-wrap mb-3.5">
+                <div class="flex items-center gap-3.5 min-w-0">
+                  <Show
+                    when={mode() === "single"}
+                    fallback={
+                      <div class="w-[46px] h-[46px] rounded-xl grid place-items-center bg-[#AC2334] text-white font-sans text-xl font-bold flex-shrink-0">
+                        A
+                      </div>
+                    }
+                  >
+                    <Avatar
+                      name={labelFromEmail(activeManager().manager.manager_email)}
+                      size="w-[46px] h-[46px]"
+                      textSize="text-lg"
+                      class="rounded-xl"
+                    />
+                  </Show>
+                  <div class="min-w-0">
+                    <div class="font-sans font-bold  text-lg  text-gray-800 dark:text-white truncate">
+                      {mode() === "all"
+                        ? "All clients"
+                        : labelFromEmail(activeManager().manager.manager_email)}
+                    </div>
+                    <div class="text-[12.5px] text-gray-400 dark:text-gray-500 mt-0.5 truncate">
+                      {mode() === "all"
+                        ? `Full ledger across ${managers().length} campaign manager${
+                            managers().length !== 1 ? "s" : ""
+                          }`
+                        : activeManager().manager.manager_email}
+                    </div>
+                  </div>
+                </div>
+
+                <div class="flex items-center gap-3 flex-wrap">
+                  {/* Client-type segment (the multi-select type filter) */}
+                  <div class="inline-flex bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-[10px] p-[3px] gap-0.5">
+                    <SegButton
+                      active={allTypesSelected()}
+                      onClick={() => setClientTypes(DEFAULT_CLIENT_TYPES)}
+                      label="All"
+                      count={segCounts().total}
+                    />
+                    <For each={CLIENT_TYPES}>
+                      {(t) => (
+                        <SegButton
+                          active={clientTypes().includes(t.key)}
+                          onClick={() => toggleClientType(t.key)}
+                          label={t.label}
+                          count={segCounts()[t.key]}
+                        />
                       )}
                     </For>
-                  </ul>
+                  </div>
+
+                  {/* Month selector (native select, styled as the design pill) */}
+                  <div class="relative">
+                    <CalendarIcon class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500 dark:text-gray-400 pointer-events-none" />
+                    <select
+                      value={month()}
+                      onChange={(e) => setMonth(e.target.value)}
+                      aria-label="Reporting month"
+                      class="appearance-none h-9 pl-9 pr-9 rounded-[10px] border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-[13px] font-semibold text-gray-800 dark:text-gray-100 cursor-pointer focus:outline-none focus:border-[#14233A] focus:ring-2 focus:ring-[#14233A]/10"
+                    >
+                      <For each={monthOptions()}>
+                        {(o) => <option value={o.key}>{o.label}</option>}
+                      </For>
+                    </select>
+                    <svg
+                      class="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500 dark:text-gray-400 pointer-events-none"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                    >
+                      <path d="m6 9 6 6 6-6" />
+                    </svg>
+                  </div>
+                </div>
+              </div>
+
+              {/* Mix summary */}
+              <div class="flex items-center gap-4 mb-3.5 text-[12px] text-gray-400 dark:text-gray-500 font-medium flex-wrap">
+                <MixBar
+                  counts={segCounts()}
+                  class="w-[180px] h-1.5 flex-shrink-0"
+                />
+                <MixKey color="bg-teal-500" n={segCounts().cpl} label="CPL" />
+                <MixKey
+                  color="bg-indigo-500"
+                  n={segCounts().hybrid}
+                  label="Hybrid"
+                />
+                <MixKey
+                  color="bg-amber-400"
+                  n={segCounts().retainer}
+                  label="Retainer"
+                />
+                <span>
+                  <b class="text-gray-600 dark:text-gray-300 tabular-nums font-semibold">
+                    {segCounts().total}
+                  </b>{" "}
+                  total
+                </span>
+              </div>
+
+              {/* Ledger */}
+              <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl overflow-hidden shadow-sm">
+                <div class="overflow-x-auto">
+                  <table class="w-full border-collapse">
+                    <thead>
+                      <tr>
+                        <th class="text-left text-[10.5px] font-bold tracking-[0.12em] uppercase text-gray-400 pl-[22px] pr-4 py-3 bg-[#14233A]/[0.03] dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 w-[52px]">
+                          #
+                        </th>
+                        <th class="text-left text-[10.5px] font-bold tracking-[0.12em] uppercase text-gray-400 px-4 py-3 bg-[#14233A]/[0.03] dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+                          Client
+                        </th>
+                        <th class="text-right text-[10.5px] font-bold tracking-[0.12em] uppercase text-gray-400 px-4 py-3 pr-[22px] bg-[#14233A]/[0.03] dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+                          Type
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {/* All-clients mode: grouped by manager */}
+                      <Show when={mode() === "all"}>
+                        <For each={groups()}>
+                          {(g) => (
+                            <>
+                              <tr>
+                                <td
+                                  colspan="3"
+                                  class="px-[22px] py-2.5 bg-gray-50 dark:bg-gray-800/50 border-y border-gray-200 dark:border-gray-700"
+                                >
+                                  <span class="inline-flex items-center gap-2.5 text-[12px] font-bold uppercase tracking-[0.04em] text-[#14233A] dark:text-gray-200">
+                                    <Avatar
+                                      name={labelFromEmail(
+                                        g.manager.manager_email,
+                                      )}
+                                      size="w-5 h-5"
+                                      textSize="text-[10px]"
+                                    />
+                                    {labelFromEmail(g.manager.manager_email)}
+                                    <span class="text-[11.5px] font-medium text-gray-400 normal-case tracking-normal tabular-nums">
+                                      {g.clients.length} of {g.counts.total}{" "}
+                                      clients
+                                    </span>
+                                  </span>
+                                </td>
+                              </tr>
+                              <For each={g.clients}>
+                                {(c, i) => (
+                                  <ClientRow index={i() + 1} client={c} />
+                                )}
+                              </For>
+                            </>
+                          )}
+                        </For>
+                      </Show>
+
+                      {/* Single-manager mode: flat list */}
+                      <Show when={mode() === "single"}>
+                        <For each={singleRows()}>
+                          {(c, i) => (
+                            <ClientRow index={i() + 1} client={c} />
+                          )}
+                        </For>
+                      </Show>
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Empty / footer */}
+                <Show
+                  when={shownCount() > 0}
+                  fallback={
+                    <div class="py-16 px-5 text-center">
+                      <div class="font-sans font-semibold text-2xl text-gray-500 dark:text-gray-300 mb-1">
+                        No matches found
+                      </div>
+                      <div class="text-sm text-gray-400 dark:text-gray-500">
+                        Try a different name, or adjust the client type filter.
+                      </div>
+                    </div>
+                  }
+                >
+                  <div class="flex items-center justify-between px-[22px] py-3 border-t border-gray-200 dark:border-gray-700 bg-[#14233A]/[0.03] dark:bg-gray-800 text-[12px] text-gray-400 dark:text-gray-500">
+                    <span>
+                      Showing{" "}
+                      <b class="text-gray-600 dark:text-gray-300 tabular-nums font-semibold">
+                        {shownCount()}
+                      </b>{" "}
+                      of{" "}
+                      <b class="text-gray-600 dark:text-gray-300 tabular-nums font-semibold">
+                        {totalCount()}
+                      </b>{" "}
+                      clients
+                    </span>
+                    <span>{monthLabel()} reporting period</span>
+                  </div>
                 </Show>
               </div>
-            )}
-          </For>
+            </section>
+          </div>
+        </Show>
+      </div>
+    </div>
+  );
+}
 
-          <Show when={cards().length === 0}>
-            <p class="col-span-full py-10 text-center text-sm text-gray-400 dark:text-gray-500">
-              No campaign managers found.
-            </p>
+// ── Rail row (avatar + name + count) ─────────────────────────────────────────
+function RailRow(props) {
+  return (
+    <button
+      onClick={props.onClick}
+      class={`w-full text-left flex items-center gap-3 p-2.5 rounded-[10px] relative transition-colors ${
+        props.active
+          ? "bg-[#14233A]"
+          : "hover:bg-gray-50 dark:hover:bg-gray-800"
+      }`}
+    >
+      <Show when={props.active}>
+        <span class="absolute left-0 top-2.5 bottom-2.5 w-[3px] rounded bg-[#AC2334]" />
+      </Show>
+      {props.marker}
+      <div class="min-w-0 flex-1 flex items-center justify-between gap-2">
+        <span
+          class={`text-[13.5px] font-semibold truncate ${
+            props.active ? "text-white" : "text-gray-800 dark:text-gray-100"
+          }`}
+        >
+          {props.name}
+        </span>
+        <span
+          class={`text-[12.5px] font-semibold tabular-nums ${
+            props.active ? "text-white/75" : "text-gray-400"
+          }`}
+        >
+          {props.count}
+        </span>
+      </div>
+    </button>
+  );
+}
+
+// ── Masthead stat card (minimal blue + white) ───────────────────────────────
+function StatCard(props) {
+  return (
+    <div class="flex items-center gap-3 bg-white dark:bg-gray-900 border border-[#14233A]/10 dark:border-gray-700 rounded-xl px-4 py-3 shadow-sm min-w-[136px]">
+      <div class="w-9 h-9 rounded-lg grid place-items-center bg-[#14233A]/[0.06] dark:bg-white/10 text-[#14233A] dark:text-white flex-shrink-0">
+        {props.icon}
+      </div>
+      <div class="min-w-0">
+        <div class="text-xl font-bold leading-none tabular-nums text-[#14233A] dark:text-white">
+          {props.value}
+          <Show when={props.suffix}>
+            <span class="text-[12px] font-medium text-[#14233A]/45 dark:text-white/45 ml-0.5">
+              {props.suffix}
+            </span>
           </Show>
         </div>
-      </Show>
+        <div class="mt-1.5 text-[10px] font-semibold tracking-[0.1em] uppercase text-[#14233A]/50 dark:text-white/50">
+          {props.label}
+        </div>
+      </div>
     </div>
+  );
+}
+
+// ── Segment button (client-type filter) ──────────────────────────────────────
+function SegButton(props) {
+  return (
+    <button
+      onClick={props.onClick}
+      aria-pressed={props.active}
+      class={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[7px] text-[12.5px] font-semibold transition-colors ${
+        props.active
+          ? "bg-[#14233A] text-white"
+          : "text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+      }`}
+    >
+      {props.label}
+      <span
+        class={`text-[11px] tabular-nums ${
+          props.active ? "text-white/65" : "text-gray-400"
+        }`}
+      >
+        {props.count}
+      </span>
+    </button>
+  );
+}
+
+// ── Mix summary key (coloured dot + count + label) ───────────────────────────
+function MixKey(props) {
+  return (
+    <span class="inline-flex items-center gap-1.5">
+      <span class={`w-[7px] h-[7px] rounded-[2px] ${props.color}`} />
+      <b class="text-gray-600 dark:text-gray-300 tabular-nums font-semibold">
+        {props.n}
+      </b>
+      {props.label}
+    </span>
+  );
+}
+
+// ── Ledger client row ────────────────────────────────────────────────────────
+function ClientRow(props) {
+  return (
+    <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
+      <td class="pl-[22px] pr-4 py-2.5 text-[11.5px] tabular-nums text-gray-400 border-b border-gray-100 dark:border-gray-800">
+        {String(props.index).padStart(2, "0")}
+      </td>
+      <td class="px-4 py-2.5 text-[13.5px] font-semibold text-gray-900 dark:text-gray-100 border-b border-gray-100 dark:border-gray-800">
+        {props.client.name}
+      </td>
+      <td class="px-4 py-2.5 pr-[22px] text-right border-b border-gray-100 dark:border-gray-800">
+        <Show when={props.client.type}>
+          <TypeTag type={props.client.type} />
+        </Show>
+      </td>
+    </tr>
   );
 }

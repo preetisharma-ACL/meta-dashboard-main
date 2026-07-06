@@ -39,8 +39,11 @@ export const startFundingRefresh = async () => {
 };
 
 // GET the status of an in-flight refresh. data.status is
-// "running" | "done" | "failed"; `summary` is present once "done":
+// "running" | "done" | "idle"; `summary` is present once "done":
 //   { synced, failed, total_available_balance, duration_seconds }
+// data.cooldown_remaining is the LIVE cooldown TTL in seconds (0 if none),
+// already net of the sync duration — the caller uses it to show the proactive
+// "Wait Ns" countdown on the button the moment the sync finishes.
 export const getFundingRefreshStatus = async (taskId) => {
   const res = await api(
     `/cm/funding/refresh/status/?task_id=${encodeURIComponent(taskId)}`,
