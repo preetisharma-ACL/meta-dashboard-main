@@ -179,7 +179,14 @@ export default function Sidebar() {
         ),
         path: "/my-work",
       },
-
+      {
+        name: "Alerts",
+        roles: ["campaign_manager"],
+        icon: () => (
+          <Icon d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 01-3 3H9a3 3 0 01-3-3v-1m6 0h6" />
+        ),
+        path: "/cm-alerts",
+      },
       {
         name: "Accounts & Funding",
         roles: ["admin", "campaign_manager"],
@@ -198,7 +205,7 @@ export default function Sidebar() {
           {
             name: "Meta Ad Accounts",
             path: "/ad-accounts",
-            roles: ["admin"],
+            roles: ["admin","campaign_manager"],
             icon: () => (
               <SmallIcon d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
             ),
@@ -215,13 +222,15 @@ export default function Sidebar() {
             name: "Account Monitor",
             path: "/account-monitor",
             roles: ["admin"],
-            icon: () => <SmallIcon d="M3 12l2-2 4 4 6-6 4 4 2-2" />,
+            icon: () => (
+              <SmallIcon d="M3 12l2-2 4 4 6-6 4 4 2-2" />
+            ),
           },
         ],
       },
       {
         name: "Clients",
-        roles: ["admin", "campaign_manager"],
+        roles: ["admin","campaign_manager"],
         icon: () => (
           <Icon d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0h-6m6 0a3 3 0 01-5.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M9 7a4 4 0 11-8 0 4 4 0 018 0zm0 0a4 4 0 015.536 3.536M15.536 10.536A5.967 5.967 0 0121 16.941M16.536 10.536A5.973 5.973 0 0012 16c0 .132 0 .263.012.391M12 16a5.973 5.973 0 00-4.536-2.464" />
         ),
@@ -229,7 +238,7 @@ export default function Sidebar() {
           {
             name: "Clients",
             path: "/clients",
-            roles: ["admin", "campaign_manager"],
+            roles: ["admin","campaign_manager"],
             icon: () => (
               <SmallIcon d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
             ),
@@ -237,7 +246,7 @@ export default function Sidebar() {
           {
             name: "Client Nomen",
             path: "/client-nomen",
-            roles: ["admin", "campaign_manager"],
+            roles: ["admin","campaign_manager"],
             icon: () => (
               <SmallIcon d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
             ),
@@ -245,7 +254,7 @@ export default function Sidebar() {
           {
             name: "Project Display Config",
             path: "/project-display-config",
-            roles: ["admin", "campaign_manager"],
+            roles: ["admin","campaign_manager"],
             icon: () => (
               <SmallIcon d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
             ),
@@ -253,28 +262,12 @@ export default function Sidebar() {
           {
             name: "Leed Feeding",
             path: "/feeded-leads",
-            roles: ["admin", "campaign_manager"],
+            roles: ["admin","campaign_manager"],
             icon: () => (
               <SmallIcon d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             ),
           },
         ],
-      },
-      {
-        name: "Meta Ad Accounts",
-        roles: ["campaign_manager"],
-        icon: () => (
-          <SmallIcon d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-        ),
-        path: "/ad-accounts",
-      },
-      {
-        name: "Alerts",
-        roles: ["campaign_manager"],
-        icon: () => (
-          <Icon d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 01-3 3H9a3 3 0 01-3-3v-1m6 0h6" />
-        ),
-        path: "/cm-alerts",
       },
       {
         name: "Allowed Budget",
@@ -319,10 +312,12 @@ export default function Sidebar() {
       {
         name: "Activity Log",
         roles: ["admin", "campaign_manager"],
-        icon: () => <Icon d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />,
+        icon: () => (
+          <Icon d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+        ),
         path: "/activity",
       },
-
+      
       {
         name: "Campaigns",
         roles: ["admin"],
@@ -481,10 +476,10 @@ export default function Sidebar() {
       <aside
         class={`fixed overflow-hidden flex flex-col top-0 left-0 h-full z-50 transition-all duration-300
           bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 ${
-            isCollapsed() ? "w-20" : "w-64"
-          } ${
-            isMobileOpen() ? "translate-x-0" : "-translate-x-full"
-          } lg:translate-x-0`}
+          isCollapsed() ? "w-20" : "w-64"
+        } ${
+          isMobileOpen() ? "translate-x-0" : "-translate-x-full"
+        } lg:translate-x-0`}
       >
         {/* Logo — AAJneeti wordmark + gold "Reporting Dashboard" (all screens) */}
         <div class="flex-shrink-0 px-4 py-5 border-b border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 flex items-center justify-center">
@@ -493,56 +488,40 @@ export default function Sidebar() {
             fallback={
               <>
                 {/* Light theme */}
-                <A
-                  href="/"
-                  onClick={handleLogoClick}
-                  class="flex items-center justify-center"
-                >
-                  <img
-                    src="/logo.webp"
-                    alt="aajneeti"
-                    class="block dark:hidden w-9 h-9 object-contain"
-                  />
+                <A href="/" onClick={handleLogoClick} class="flex items-center justify-center">
+                <img
+                  src="/logo.webp"
+                  alt="aajneeti"
+                  class="block dark:hidden w-9 h-9 object-contain"
+                />
                 </A>
                 {/* Dark theme */}
-                <A
-                  href="/"
-                  onClick={handleLogoClick}
-                  class="flex items-center justify-center"
-                >
-                  <img
-                    src="/V2-aajneeti-logo.png"
-                    alt="aajneeti"
-                    class="hidden dark:block w-9 h-9 object-contain"
-                  />
+                <A href="/" onClick={handleLogoClick} class="flex items-center justify-center">
+                <img
+                  src="/V2-aajneeti-logo.png"
+                  alt="aajneeti"
+                  class="hidden dark:block w-9 h-9 object-contain"
+                />
                 </A>
               </>
             }
           >
             <div class="flex flex-col items-center justify-center gap-3 lg:gap-2">
               {/* Light theme */}
-              <A
-                href="/"
-                onClick={handleLogoClick}
-                class="flex items-center justify-center"
-              >
-                <img
-                  src="/logo.webp"
-                  alt="Aajneeti"
-                  class="block dark:hidden h-14 w-auto object-contain"
-                />
+              <A href="/" onClick={handleLogoClick} class="flex items-center justify-center">
+              <img
+                src="/logo.webp"
+                alt="Aajneeti"
+                class="block dark:hidden h-14 w-auto object-contain"
+              />
               </A>
               {/* Dark theme */}
-              <A
-                href="/"
-                onClick={handleLogoClick}
-                class="flex items-center justify-center"
-              >
-                <img
-                  src="/V2-aajneeti-logo.png"
-                  alt="Aajneeti"
-                  class="hidden dark:block h-14 w-auto object-contain"
-                />
+              <A href="/" onClick={handleLogoClick} class="flex items-center justify-center">
+              <img
+                src="/V2-aajneeti-logo.png"
+                alt="Aajneeti"
+                class="hidden dark:block h-14 w-auto object-contain"
+              />
               </A>
               <div class="flex items-center gap-2 lg:gap-1.5">
                 <span class="h-px w-5 lg:w-3.5 bg-amber-500/80" />
@@ -617,11 +596,7 @@ export default function Sidebar() {
                   {/* Animated submenu */}
                   <AnimatedCollapse open={openMenu() === item.name}>
                     <div class="mt-1 ml-3 pl-3 border-l-2 border-blue-100 dark:border-blue-900/50 space-y-0.5 pb-1">
-                      <For
-                        each={item.subMenus.filter(
-                          (sub) => !sub.roles || sub.roles.includes(userRole()),
-                        )}
-                      >
+                      <For each={item.subMenus.filter((sub) => !sub.roles || sub.roles.includes(userRole()))}>
                         {(sub) => (
                           <A
                             href={sub.path}

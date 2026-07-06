@@ -7,7 +7,10 @@ export default function AdminRoute(props) {
     return <Navigate href="/login" />;
   }
 
-  if (auth?.role !== "admin") {
+  // Defaults to admin-only. Pass `roles` to widen access to specific pages
+  // (e.g. the Clients section is also open to campaign managers).
+  const allowed = props.roles ?? ["admin"];
+  if (!allowed.includes(auth?.role)) {
     return <Navigate href="/" />;
   }
 

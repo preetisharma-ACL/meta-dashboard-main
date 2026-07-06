@@ -172,7 +172,7 @@ function App() {
             <Route
               path="/clients"
               component={() => (
-                <AdminRoute>
+                <AdminRoute roles={["admin", "campaign_manager"]}>
                   <Clients />
                 </AdminRoute>
               )}
@@ -180,7 +180,7 @@ function App() {
             <Route
               path="/project-display-config"
               component={() => (
-                <AdminRoute>
+                <AdminRoute roles={["admin", "campaign_manager"]}>
                   <ProjectDisplayConfig />
                 </AdminRoute>
               )}
@@ -188,7 +188,7 @@ function App() {
             <Route
               path="/client-nomen"
               component={() => (
-                <AdminRoute>
+                <AdminRoute roles={["admin", "campaign_manager"]}>
                   <ClientNomen />
                 </AdminRoute>
               )}
@@ -212,7 +212,7 @@ function App() {
             <Route
               path="/ad-accounts"
               component={() => (
-                <AdminRoute>
+                <AdminRoute roles={["admin", "campaign_manager"]}>
                   <AdAccounts />
                 </AdminRoute>
               )}
@@ -220,7 +220,7 @@ function App() {
             <Route
               path="/ad-accounts/:id"
               component={() => (
-                <AdminRoute>
+                <AdminRoute roles={["admin", "campaign_manager"]}>
                   <AdAccountCampaigns />
                 </AdminRoute>
               )}
@@ -228,7 +228,7 @@ function App() {
             <Route
               path="/feeded-leads"
               component={() => (
-                <AdminRoute>
+                <AdminRoute roles={["admin", "campaign_manager"]}>
                   <ManualBatches />
                 </AdminRoute>
               )}

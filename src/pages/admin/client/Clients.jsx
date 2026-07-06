@@ -10,6 +10,7 @@ import {
 } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { fetchClients } from "../services/fetchClients";
+import { fetchHierarchyClients } from "../../../services/cm";
 import { fetchManagerPerformance } from "../../../services/performance";
 import {
   probeAdminSwitchMode,
@@ -71,6 +72,33 @@ const fmt = (iso) => {
 };
 
 // ─── component ───────────────────────────────────────────────────────────────
+
+// Read the caller's role synchronously (same source the route guards use).
+const authRole = (() => {
+  try {
+    return JSON.parse(localStorage.getItem("auth") || "{}")?.role ?? null;
+  } catch {
+    return null;
+  }
+})();
+const isCampaignManager = () => authRole === "campaign_manager";
+
+// The admin clients endpoint is 403 for CMs, so CMs are sourced from the
+// CM-scoped hierarchy endpoint instead. That payload is smaller — this maps it
+// onto the fields the table reads. Columns the hierarchy doesn't expose
+// (email, organisation, created-at) fall back to null → rendered as "—"; the
+// active flag is inferred from has_client_login.
+const adaptHierarchyClient = (c) => ({
+  id: c.client_nomen_id,
+  client_nomen: c.client_nomen_id,
+  client_nomen_name: c.client_name ?? "",
+  organization_name: c.organization_name ?? null,
+  email: c.email ?? null,
+  client_type: c.client_type ?? null,
+  is_active: c.is_active ?? c.has_client_login ?? true,
+  created_at: c.created_at ?? null,
+});
+
 export default function Clients() {
   const navigate = useNavigate();
 
@@ -94,10 +122,15 @@ export default function Clients() {
   // The admin clients endpoint carries no owner, so we assemble it the same way
   // the "Campaign Manager's Clients" screen does: roster → switch-mode probe →
   // per-manager own-client lists, joined on the client nomen id.
-  const [rosterRes] = createResource(currentMonthKey, async (m) => {
-    const res = await fetchManagerPerformance(m);
-    return Array.isArray(res?.data) ? res.data : [];
-  });
+  // Roster + switch-mode probing are admin-only; skip them entirely for CMs so
+  // they don't 403 (and leave the CM filter stuck on "Loading managers…").
+  const [rosterRes] = createResource(
+    () => (isCampaignManager() ? false : currentMonthKey()),
+    async (m) => {
+      const res = await fetchManagerPerformance(m);
+      return Array.isArray(res?.data) ? res.data : [];
+    },
+  );
   const managers = () => rosterRes() ?? [];
 
   const [switchMode, setSwitchMode] = createSignal("unknown");
@@ -169,6 +202,23 @@ export default function Clients() {
   const loadClients = async (pageNo = 1) => {
     setLoading(true);
     try {
+      // CMs: one CM-scoped call returns their whole (small) client set — no
+      // server pagination, so we render it as a single page.
+      if (isCampaignManager()) {
+        const res = await fetchHierarchyClients();
+        const rows = (Array.isArray(res?.data) ? res.data : []).map(
+          adaptHierarchyClient,
+        );
+        setClients(rows);
+        setAllClients(rows);
+        setPage(1);
+        setTotal(rows.length);
+        setTotalPages(1);
+        setHasNext(false);
+        setHasPrev(false);
+        return;
+      }
+
       const res = await fetchClients(pageNo, pageSize());
       setClients(res.data ?? []);
 
@@ -189,6 +239,8 @@ export default function Clients() {
   };
 
   const loadAllClients = async () => {
+    // CMs already have their full set from loadClients (hierarchy has no paging).
+    if (isCampaignManager()) return;
     try {
       let currentPage = 1;
       let hasMore = true;
@@ -441,7 +493,9 @@ export default function Clients() {
           <option value="No">Inactive</option>
         </select>
 
-        {/* Assignment filter — rectangle pills */}
+        {/* Assignment + Campaign-manager filters are admin-only: they depend on
+            the manager roster, which CMs can't read. Hidden for CMs. */}
+        <Show when={!isCampaignManager()}>
         <div class="inline-flex items-center gap-1 p-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
           <For each={ASSIGN_OPTIONS}>
             {(o) => {
@@ -482,6 +536,7 @@ export default function Clients() {
             {(m) => <option value={m.email}>{m.name}</option>}
           </For>
         </select>
+        </Show>
         {/* Clear All Filters Button */}
         <button
           onClick={() => {
@@ -536,9 +591,11 @@ export default function Clients() {
               >
                 Client Nomen {sortIcon("client_nomen_name")}
               </th>
-              <th class="p-3 text-left whitespace-nowrap">
-                Campaign Manager
-              </th>
+              <Show when={!isCampaignManager()}>
+                <th class="p-3 text-left whitespace-nowrap">
+                  Campaign Manager
+                </th>
+              </Show>
               <th
                 class="p-3 text-left cursor-pointer hover:text-blue-900 whitespace-nowrap"
                 onClick={() => toggleSort("organization_name")}
@@ -643,33 +700,35 @@ export default function Clients() {
                     </td>
 
                     {/* Assigned campaign manager */}
-                    <td class="p-3" onClick={(e) => e.stopPropagation()}>
-                      <Show
-                        when={cmReady()}
-                        fallback={
-                          <span class="text-gray-300 dark:text-gray-600">—</span>
-                        }
-                      >
+                    <Show when={!isCampaignManager()}>
+                      <td class="p-3" onClick={(e) => e.stopPropagation()}>
                         <Show
-                          when={cmForClient(client)}
+                          when={cmReady()}
                           fallback={
-                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700 ring-1 ring-amber-200 dark:bg-amber-900/20 dark:text-amber-300">
-                              Not assigned
-                            </span>
+                            <span class="text-gray-300 dark:text-gray-600">—</span>
                           }
                         >
-                          <div class="flex items-center gap-2">
-                            <Avatar name={cmForClient(client).email} size="w-7 h-7" />
-                            <span
-                              class="text-gray-700 dark:text-gray-300 font-medium truncate max-w-[160px]"
-                              title={cmForClient(client).email}
-                            >
-                              {cmForClient(client).name}
-                            </span>
-                          </div>
+                          <Show
+                            when={cmForClient(client)}
+                            fallback={
+                              <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700 ring-1 ring-amber-200 dark:bg-amber-900/20 dark:text-amber-300">
+                                Not assigned
+                              </span>
+                            }
+                          >
+                            <div class="flex items-center gap-2">
+                              <Avatar name={cmForClient(client).email} size="w-7 h-7" />
+                              <span
+                                class="text-gray-700 dark:text-gray-300 font-medium truncate max-w-[160px]"
+                                title={cmForClient(client).email}
+                              >
+                                {cmForClient(client).name}
+                              </span>
+                            </div>
+                          </Show>
                         </Show>
-                      </Show>
-                    </td>
+                      </td>
+                    </Show>
 
                     {/* organization_name */}
                     <td class="p-3 text-gray-500 dark:text-gray-400">
@@ -731,7 +790,7 @@ export default function Clients() {
               <Show when={filtered().length === 0}>
                 <tr>
                   <td
-                    colspan="8"
+                    colspan={isCampaignManager() ? 7 : 8}
                     class="py-16 text-center text-gray-400 dark:text-gray-500"
                   >
                     <svg
@@ -758,7 +817,7 @@ export default function Clients() {
           <tfoot>
             <tr class="border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60">
               <td
-                colspan="8"
+                colspan={isCampaignManager() ? 7 : 8}
                 class="px-4 py-2.5 text-xs text-gray-500 dark:text-gray-400"
               >
                 {filtered().length} client{filtered().length !== 1 ? "s" : ""}{" "}
