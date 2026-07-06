@@ -1,5 +1,6 @@
 import { createSignal, createResource, createMemo, For, Show } from "solid-js";
 import { fetchManagerPerformance } from "../../services/performance";
+import Avatar from "../../components/common/Avatar";
 
 // ─── Formatters ───────────────────────────────────────────────────────────────
 const money0 = (v) => {
@@ -23,6 +24,14 @@ const pct = (v) => {
   return `${n.toFixed(1)}%`;
 };
 const num = (v) => (Number(v) || 0).toLocaleString("en-IN");
+// Friendly manager name from the email local-part (presentation only).
+const labelFromEmail = (email) => {
+  const local = String(email ?? "").split("@")[0] || "—";
+  return local.charAt(0).toUpperCase() + local.slice(1);
+};
+// Share-panel palette — mirrors the ClientDashboard "lead share" chart.
+const SHARE_COLORS = ["#3E6FB0", "#7FA8D8", "#15966A", "#AC2334"];
+const OTHERS_COLOR = "#D8DFE9";
 // Roster client count. `assigned_client_count` = all CPL+Hybrid clients assigned
 // to the manager (true roster); `client_count` = active subset with spend this
 // month. Prefer assigned, fall back to active for backends without the field.
@@ -113,18 +122,66 @@ export default function ManagerPerformance() {
   // Bar chart scale — max absolute profit for proportional bars.
   const maxAbsProfit = createMemo(() => Math.max(1, ...rows().map((r) => Math.abs(parseFloat(r.profit) || 0))));
 
+  // Average profit across managers — anchors the dashed "avg" marker + per-row
+  // delta, mirroring the ClientDashboard CPL chart. Display-only.
+  const avgProfit = createMemo(() => {
+    const rs = rows();
+    if (!rs.length) return 0;
+    return rs.reduce((s, r) => s + (parseFloat(r.profit) || 0), 0) / rs.length;
+  });
+
+  // Net-billable share across managers (top 4 + Others) — analog of the
+  // ClientDashboard "where the leads came from" panel. Pure presentation over
+  // the same net_billable the table already shows.
+  const billableShare = createMemo(() => {
+    const withVal = rows()
+      .map((r) => ({
+        name: labelFromEmail(r.manager_email),
+        val: Math.max(0, parseFloat(r.net_billable) || 0),
+      }))
+      .sort((a, b) => b.val - a.val);
+    const total = withVal.reduce((s, x) => s + x.val, 0);
+    if (total <= 0) return { total: 0, items: [] };
+    const top = withVal.slice(0, 4);
+    const rest = withVal.slice(4);
+    const items = top.map((x, i) => ({
+      name: x.name,
+      count: x.val,
+      pct: (x.val / total) * 100,
+      color: SHARE_COLORS[i],
+    }));
+    if (rest.length) {
+      const restVal = rest.reduce((s, x) => s + x.val, 0);
+      items.push({
+        name: `Others (${rest.length})`,
+        count: restVal,
+        pct: (restVal / total) * 100,
+        color: OTHERS_COLOR,
+      });
+    }
+    return { total, items };
+  });
+
+  // Pricing coverage across the whole roster — analog of "campaign health".
+  const coverageTotals = createMemo(() => {
+    const rs = rows();
+    const priced = rs.reduce((s, r) => s + (Number(r.projects_priced) || 0), 0);
+    const total = rs.reduce((s, r) => s + (Number(r.projects_total) || 0), 0);
+    return { priced, total, unpriced: Math.max(0, total - priced) };
+  });
+
   return (
     <div class="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 md:p-6 lg:p-8">
       <div class="flex items-start justify-between flex-wrap gap-3 mb-6">
         <div>
-          <h1 class="text-2xl font-semibold text-gray-900 dark:text-white tracking-tight">Manager Performance</h1>
-          <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+          <h1 class="text-2xl font-bold text-[#14233A] dark:text-white tracking-tight">Manager Performance</h1>
+          <p class="text-sm text-[#8593A8] dark:text-gray-400 mt-0.5">
             Monthly profitability per manager — revenue minus ad spend for CP + Hybrid clients.
           </p>
         </div>
         <div class="flex items-center gap-2">
           <select value={month()} onChange={(e) => setMonth(e.target.value)}
-            class="px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-purple-400 cursor-pointer">
+            class="px-3 py-2 text-sm rounded-lg border border-[#E2E8F1] dark:border-gray-700 bg-white dark:bg-gray-800 text-[#54657E] dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-[#AC2334]/30 cursor-pointer">
             <For each={monthOptions()}>{(o) => <option value={o.key}>{o.label}</option>}</For>
           </select>
           <Show when={!data.loading && summary()}>
@@ -150,21 +207,37 @@ export default function ManagerPerformance() {
       </Show>
 
       <Show when={!forbidden()}>
-        {/* Summary band */}
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <Show when={!data.loading && summary()} fallback={
-            <For each={Array(4).fill(0)}>{() => <div class="px-5 py-6 rounded-xl shadow-sm border bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"><div class="h-4 w-24 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" /><div class="h-7 w-28 mt-3 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" /></div>}</For>
-          }>
-            <For each={cards()}>
-              {(c) => (
-                <div class={`px-5 py-6 rounded-xl shadow-sm border ${c.bg}`}>
-                  <p class="text-sm text-gray-500 dark:text-gray-400">{c.label}</p>
-                  <h3 class={`text-2xl font-semibold mt-2 ${c.accent}`}>{c.value}</h3>
-                </div>
-              )}
-            </For>
-          </Show>
-        </div>
+        {/* One summary card — every headline metric in a single divided panel */}
+        <Show
+          when={!data.loading && summary()}
+          fallback={
+            <div class="bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] overflow-hidden mb-6">
+              <div class="grid grid-cols-2 lg:grid-cols-4 divide-x divide-y lg:divide-y-0 divide-[#E2E8F1] dark:divide-gray-700">
+                <For each={Array(4).fill(0)}>
+                  {() => (
+                    <div class="p-5">
+                      <div class="h-3.5 w-24 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+                      <div class="h-7 w-28 mt-3 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+                    </div>
+                  )}
+                </For>
+              </div>
+            </div>
+          }
+        >
+          <div class="bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] overflow-hidden mb-6">
+            <div class="grid grid-cols-2 lg:grid-cols-4 divide-x divide-y lg:divide-y-0 divide-[#E2E8F1] dark:divide-gray-700">
+              <For each={cards()}>
+                {(c) => (
+                  <div class="p-5">
+                    <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">{c.label}</p>
+                    <h3 class={`text-2xl font-bold mt-2 ${c.accent}`}>{c.value}</h3>
+                  </div>
+                )}
+              </For>
+            </div>
+          </div>
+        </Show>
 
         <Show when={isLive() && !data.loading}>
           <p class="text-xs text-gray-400 dark:text-gray-500 mb-4 -mt-2">Live — these figures update through the month and are finalized when the month closes.</p>
@@ -174,79 +247,163 @@ export default function ManagerPerformance() {
           <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4 mb-4 text-sm text-red-600 dark:text-red-400">Failed to load manager performance. Please try again.</div>
         </Show>
 
-        {/* Profit-by-manager bar chart */}
+        {/* ── How managers are performing (reference chart design) ── */}
         <Show when={!data.loading && rows().length > 0}>
-          <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-4 mb-6">
-            <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Profit by manager</h3>
-            <div class="space-y-1.5">
-              <For each={rows()}>
-                {(r) => {
-                  const p = parseFloat(r.profit) || 0;
-                  const w = `${(Math.abs(p) / maxAbsProfit()) * 100}%`;
-                  return (
-                    <div class="flex items-center gap-2 text-xs">
-                      <span class="w-40 truncate text-gray-500 dark:text-gray-400" title={r.manager_email}>{r.manager_email}</span>
-                      <div class="flex-1 h-4 bg-gray-100 dark:bg-gray-800 rounded overflow-hidden">
-                        <div class={`h-full rounded ${p >= 0 ? "bg-green-400 dark:bg-green-500/70" : "bg-red-400 dark:bg-red-500/70"}`} style={{ width: w }} />
+          <p class="text-[11px] font-bold uppercase tracking-[0.14em] text-[#AC2334] mb-3">
+            How managers are performing
+          </p>
+          <div class="grid grid-cols-1 lg:grid-cols-[1.25fr_1fr] gap-4 mb-6">
+            {/* Left — Profit by manager */}
+            <div class="bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] p-5 sm:p-6">
+              <h3 class="text-base font-bold text-[#14233A] dark:text-white">Profit by manager</h3>
+              <p class="text-xs text-[#8593A8] dark:text-gray-400 mt-0.5 mb-5">
+                Dashed line marks the average of {money0(avgProfit())} · {rows().length} managers
+              </p>
+              <div class="relative pt-1.5">
+                <Show when={avgProfit() > 0}>
+                  <div
+                    class="hidden sm:block absolute top-0 bottom-5 border-l-2 border-dashed border-[#B9C5D6] dark:border-gray-600 pointer-events-none"
+                    style={`left: calc(132px + (100% - 248px) * ${Math.max(0, Math.min(1, avgProfit() / maxAbsProfit()))})`}
+                  ></div>
+                  <span
+                    class="hidden sm:block absolute -top-1.5 text-[10px] font-bold uppercase tracking-wide text-[#8593A8] pointer-events-none"
+                    style={`left: calc(132px + (100% - 248px) * ${Math.max(0, Math.min(1, avgProfit() / maxAbsProfit()))} + 8px)`}
+                  >
+                    avg
+                  </span>
+                </Show>
+                <For each={rows()}>
+                  {(r) => {
+                    const p = parseFloat(r.profit) || 0;
+                    const width = (Math.abs(p) / maxAbsProfit()) * 100;
+                    const avg = avgProfit();
+                    const delta = avg ? Math.round(((p - avg) / Math.abs(avg)) * 100) : 0;
+                    return (
+                      <div class="grid grid-cols-[1fr_auto] sm:grid-cols-[120px_1fr_104px] gap-x-3 gap-y-2 items-center py-2.5">
+                        <div class="text-sm font-bold text-[#54657E] dark:text-gray-300 text-left sm:text-right truncate sm:row-start-1 sm:col-start-1" title={r.manager_email}>
+                          {labelFromEmail(r.manager_email)}
+                        </div>
+                        <div class="col-span-2 sm:col-span-1 h-3 rounded-full bg-[#EDF1F7] dark:bg-gray-900 relative sm:row-start-1 sm:col-start-2">
+                          <div
+                            class={"absolute inset-y-0 left-0 rounded-full transition-all duration-700 " + (p >= 0 ? "bg-[#15966A]" : "bg-[#AC2334]")}
+                            style={`width:${width}%`}
+                          ></div>
+                        </div>
+                        <div class="row-start-1 col-start-2 sm:col-start-3 text-right">
+                          <span class={`text-sm font-bold ${profitTone(p)}`}>{money0(p)}</span>
+                          <span class="block text-[10px] font-medium text-[#8593A8]">
+                            {delta === 0 ? "at avg" : `${Math.abs(delta)}% ${delta > 0 ? "above" : "below"} avg`}
+                          </span>
+                        </div>
                       </div>
-                      <span class={`w-24 text-right font-medium ${profitTone(p)}`}>{money0(p)}</span>
+                    );
+                  }}
+                </For>
+              </div>
+            </div>
+
+            {/* Right — Net billable share + pricing coverage */}
+            <div class="bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] p-5 sm:p-6">
+              <h3 class="text-base font-bold text-[#14233A] dark:text-white">Net billable share by manager</h3>
+              <p class="text-xs text-[#8593A8] dark:text-gray-400 mt-0.5 mb-4">
+                Share of billable across the roster
+              </p>
+              <Show
+                when={billableShare().total > 0}
+                fallback={<p class="text-sm text-[#8593A8] dark:text-gray-400 py-2">No billable in this range.</p>}
+              >
+                <div class="flex h-4 rounded-full overflow-hidden mb-4">
+                  <For each={billableShare().items}>
+                    {(item) => <div style={`width:${item.pct}%;background:${item.color}`}></div>}
+                  </For>
+                </div>
+                <For each={billableShare().items}>
+                  {(item) => (
+                    <div class="flex items-center gap-2.5 py-2 border-b border-[#E2E8F1] dark:border-gray-700 last:border-b-0 text-sm">
+                      <span class="w-2.5 h-2.5 rounded flex-none" style={`background:${item.color}`}></span>
+                      <span class="flex-1 text-[#54657E] dark:text-gray-300 font-medium truncate">{item.name}</span>
+                      <span class="font-bold text-[#14233A] dark:text-white">{money0(item.count)}</span>
+                      <span class="w-12 text-right text-xs font-medium text-[#8593A8]">{item.pct.toFixed(1)}%</span>
                     </div>
-                  );
-                }}
-              </For>
+                  )}
+                </For>
+              </Show>
+
+              {/* Pricing coverage — analog of campaign health */}
+              <div class="mt-5 pt-5 border-t border-[#E2E8F1] dark:border-gray-700">
+                <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400 mb-2.5">
+                  Pricing coverage
+                </p>
+                <div class="flex h-3.5 rounded-full overflow-hidden bg-[#EDF1F7] dark:bg-gray-900">
+                  <div
+                    class="bg-[#15966A]"
+                    style={`width:${coverageTotals().total > 0 ? (coverageTotals().priced / coverageTotals().total) * 100 : 0}%`}
+                  ></div>
+                  <div class="bg-[#D89A2B] flex-1"></div>
+                </div>
+                <div class="flex justify-between mt-2 text-xs font-medium text-[#54657E] dark:text-gray-400">
+                  <span><b class="text-[#14233A] dark:text-white">{num(coverageTotals().priced)}</b> priced</span>
+                  <span><b class="text-[#14233A] dark:text-white">{num(coverageTotals().unpriced)}</b> unpriced</span>
+                </div>
+              </div>
             </div>
           </div>
         </Show>
 
-        {/* Table */}
-        <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 overflow-x-auto">
-          <table class="min-w-full text-sm">
-            <thead>
-              <tr class="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400 uppercase text-xs tracking-wider">
-                <th class="p-3 text-left whitespace-nowrap min-w-[200px]">Manager</th>
-                <th class="p-3 text-right whitespace-nowrap">Clients</th>
-                <th class="p-3 text-right whitespace-nowrap">Net Billable</th>
-                <th class="p-3 text-right whitespace-nowrap">Spend</th>
-                <th class="p-3 text-right whitespace-nowrap">Profit</th>
-                <th class="p-3 text-right whitespace-nowrap">Margin</th>
-                <th class="p-3 text-right whitespace-nowrap">Profit / Client</th>
-                <th class="p-3 text-center whitespace-nowrap">Coverage</th>
+        {/* Table — ClientDashboard theme */}
+        <div class="overflow-auto max-h-[70vh] bg-gray-50 dark:bg-gray-800 rounded-xl border border-[#E2E8F1] dark:border-gray-700 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)]">
+          <table class="w-full text-sm table-auto">
+            <thead class="bg-[#F8FAFC] dark:bg-gray-800">
+              <tr class="[&_th]:p-3 [&_th]:text-xs [&_th]:uppercase [&_th]:tracking-wider [&_th]:font-bold [&_th]:whitespace-nowrap [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-[#F8FAFC] dark:[&_th]:bg-gray-800 [&_th]:shadow-[0_1px_0_#D4DDE9] dark:[&_th]:shadow-[0_1px_0_#374151] text-[#54657E] dark:text-gray-300">
+                <th class="w-12 text-center">S.No</th>
+                <th class="text-left min-w-[200px]">Manager</th>
+                <th class="text-right">Clients</th>
+                <th class="text-right">Net Billable</th>
+                <th class="text-right">Spend</th>
+                <th class="text-right">Profit</th>
+                <th class="text-right">Margin</th>
+                <th class="text-right">Profit / Client</th>
+                <th class="text-center">Coverage</th>
               </tr>
             </thead>
             <Show when={!data.loading} fallback={
               <tbody>
-                <For each={Array(8).fill(0)}>{() => <tr class="border-b border-gray-100 dark:border-gray-800 animate-pulse"><For each={Array(8).fill(0)}>{(_, i) => <td class="p-3"><div class={`h-3 bg-gray-200 dark:bg-gray-700 rounded ${i() === 0 ? "w-44" : "w-16 ml-auto"}`} /></td>}</For></tr>}</For>
+                <For each={Array(8).fill(0)}>{() => <tr class="border-t border-[#E2E8F1] dark:border-gray-700 animate-pulse"><For each={Array(9).fill(0)}>{(_, i) => <td class="p-3"><div class={`h-3 bg-gray-200 dark:bg-gray-700 rounded ${i() === 1 ? "w-44" : "w-16 mx-auto"}`} /></td>}</For></tr>}</For>
               </tbody>
             }>
               <tbody>
                 <For each={rows()}>
                   {(r, i) => (
-                    <tr class={`border-b border-gray-100 dark:border-gray-800 transition-colors hover:bg-purple-50/40 dark:hover:bg-gray-800/40 ${i() % 2 === 0 ? "bg-white dark:bg-gray-900" : "bg-gray-50/60 dark:bg-gray-800/30"}`}>
-                      <td class="p-3">
-                        <div class="flex items-center gap-2">
-                          <span class="font-medium text-gray-800 dark:text-gray-100">{r.manager_email}</span>
+                    <tr class={`border-t border-[#E2E8F1] dark:border-gray-700 transition-colors [&_td]:p-3 [&_td]:whitespace-nowrap hover:bg-[#F3F6FA] dark:hover:bg-gray-800/60 ${i() % 2 === 0 ? "bg-gray-50 dark:bg-gray-800" : "bg-[#FAFBFD] dark:bg-gray-800"}`}>
+                      <td class="text-center w-12">
+                        <span class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-[#FBEEF0] dark:bg-red-900/30 text-[#AC2334] dark:text-red-300 text-xs font-bold">{i() + 1}</span>
+                      </td>
+                      <td class="text-left">
+                        <div class="flex items-center gap-2.5">
+                          <Avatar name={r.manager_email} />
+                          <span class="font-semibold text-[#14233A] dark:text-gray-100">{r.manager_email}</span>
                           <Show when={r.is_finalized === true}>
                             <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">Final</span>
                           </Show>
                         </div>
                       </td>
-                      <td class="p-3 text-right text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                        <span class="font-medium">{num(assignedCount(r))}</span>
+                      <td class="text-right text-[#54657E] dark:text-gray-300">
+                        <span class="font-semibold">{num(assignedCount(r))}</span>
                         <Show when={r.client_count != null}>
-                          <span class="text-gray-400 dark:text-gray-500 text-xs">{" · "}{num(r.client_count)} active</span>
+                          <span class="text-[#8593A8] dark:text-gray-500 text-xs">{" · "}{num(r.client_count)} active</span>
                         </Show>
                       </td>
-                      <td class="p-3 text-right text-gray-700 dark:text-gray-300 whitespace-nowrap">{money0(r.net_billable)}</td>
-                      <td class="p-3 text-right text-gray-500 dark:text-gray-400 whitespace-nowrap">{money0(r.actual_spend)}</td>
-                      <td class={`p-3 text-right font-bold whitespace-nowrap ${profitTone(r.profit)}`}>{money0(r.profit)}</td>
-                      <td class="p-3 text-right text-gray-700 dark:text-gray-300 whitespace-nowrap">{pct(r.margin_pct)}</td>
-                      <td class="p-3 text-right text-gray-700 dark:text-gray-300 whitespace-nowrap">{money0(r.profit_per_client)}</td>
-                      <td class="p-3 text-center"><Coverage priced={r.projects_priced} total={r.projects_total} note={r.coverage_note} /></td>
+                      <td class="text-right text-[#54657E] dark:text-gray-300">{money0(r.net_billable)}</td>
+                      <td class="text-right text-[#8593A8] dark:text-gray-400">{money0(r.actual_spend)}</td>
+                      <td class={`text-right font-bold ${profitTone(r.profit)}`}>{money0(r.profit)}</td>
+                      <td class="text-right text-[#54657E] dark:text-gray-300">{pct(r.margin_pct)}</td>
+                      <td class="text-right text-[#54657E] dark:text-gray-300">{money0(r.profit_per_client)}</td>
+                      <td class="text-center"><Coverage priced={r.projects_priced} total={r.projects_total} note={r.coverage_note} /></td>
                     </tr>
                   )}
                 </For>
                 <Show when={rows().length === 0}>
-                  <tr><td colspan="8" class="py-16 text-center text-gray-400 dark:text-gray-500">No manager activity for this month.</td></tr>
+                  <tr><td colspan="9" class="py-16 text-center text-[#8593A8] dark:text-gray-500">No manager activity for this month.</td></tr>
                 </Show>
               </tbody>
             </Show>
