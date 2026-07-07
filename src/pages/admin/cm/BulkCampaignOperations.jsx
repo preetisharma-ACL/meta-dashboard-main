@@ -1195,7 +1195,7 @@ function HistoryPanel(props) {
                 ]}
               >
                 {(h) => (
-                  <th class="text-left text-[10.5px] font-bold tracking-[0.12em] uppercase text-gray-400 px-4 py-3 bg-[#14233A]/[0.03] dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+                  <th class="text-left text-[12px] font-bold tracking-[0.12em] uppercase text-gray-600 px-4 py-3 bg-[#14233A]/[0.03] dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
                     {h}
                   </th>
                 )}
@@ -1291,7 +1291,7 @@ function HistoryRow(props) {
           {op().status}
         </span>
       </td>
-      <td class="px-4 py-3 border-b border-gray-100 dark:border-gray-800 text-[12px] text-gray-500 dark:text-gray-400 tabular-nums whitespace-nowrap">
+      <td class="px-4 py-3 border-b border-gray-100 dark:border-gray-800 text-[14px] text-gray-500 dark:text-gray-400 tabular-nums whitespace-nowrap">
         <b class="text-[#15966A]">{sum().succeeded ?? 0}</b> ok
         <Show when={(sum().failed ?? 0) > 0}>
           {" · "}
@@ -1305,12 +1305,12 @@ function HistoryRow(props) {
       <td class="px-4 py-3 border-b border-gray-100 dark:border-gray-800">
         <div class="flex items-center gap-2 min-w-0">
           <Avatar name={op().actor_email || "?"} size="w-6 h-6" textSize="text-[10px]" />
-          <span class="text-[12px] text-gray-500 dark:text-gray-400 truncate max-w-[160px]">
+          <span class="text-[14px] text-gray-700 dark:text-gray-400 truncate max-w-[160px]">
             {op().actor_email || "—"}
           </span>
         </div>
       </td>
-      <td class="px-4 py-3 border-b border-gray-100 dark:border-gray-800 text-[12px] text-gray-400 whitespace-nowrap">
+      <td class="px-4 py-3 border-b border-gray-100 dark:border-gray-800 text-[14px] text-gray-600 whitespace-nowrap">
         <span class="inline-flex items-center gap-1">
           <Clock class="w-3 h-3" />
           {relTime(op().created_at)}

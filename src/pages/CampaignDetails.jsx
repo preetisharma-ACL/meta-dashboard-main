@@ -145,7 +145,15 @@ export default function CampaignDetails() {
         </div>
 
         <div class="flex items-center gap-3 flex-wrap">
-          <span class="px-4 py-1 text-sm rounded-full bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
+          <span
+            class={`px-4 py-1 text-sm rounded-full ${
+              String(campaign()?.status).toLowerCase() === "active"
+                ? "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300"
+                : String(campaign()?.status).toLowerCase() === "paused"
+                  ? "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300"
+                  : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"
+            }`}
+          >
             {campaign()?.status_label}
           </span>
           <Show when={campaign()}>
