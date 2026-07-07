@@ -789,9 +789,19 @@ function NewOperation(props) {
                     {(w) => (
                       <div class="flex items-center gap-2 px-2 py-1.5 rounded-lg">
                         <Check class="w-3.5 h-3.5 text-[#15966A] flex-shrink-0" />
-                        <span class="text-[12.5px] font-medium text-gray-700 dark:text-gray-200 truncate flex-1">
-                          {w.campaign_name}
-                        </span>
+                        <div class="min-w-0 flex-1">
+                          <div class="text-[12.5px] font-medium text-gray-700 dark:text-gray-200 truncate">
+                            {w.campaign_name}
+                          </div>
+                          <Show when={w.ad_account_name}>
+                            <div
+                              class="text-[10.5px] text-gray-400 truncate"
+                              title={w.ad_account_id || ""}
+                            >
+                              {w.ad_account_name}
+                            </div>
+                          </Show>
+                        </div>
                         <Show
                           when={action() === "budget"}
                           fallback={
@@ -823,9 +833,19 @@ function NewOperation(props) {
                     {(s) => (
                       <div class="flex items-center gap-2 px-2 py-1.5">
                         <X class="w-3.5 h-3.5 text-gray-300 flex-shrink-0" />
-                        <span class="text-[12px] text-gray-400 truncate flex-1">
-                          {s.campaign_name}
-                        </span>
+                        <div class="min-w-0 flex-1">
+                          <div class="text-[12px] text-gray-400 truncate">
+                            {s.campaign_name}
+                          </div>
+                          <Show when={s.ad_account_name}>
+                            <div
+                              class="text-[10px] text-gray-400/80 truncate"
+                              title={s.ad_account_id || ""}
+                            >
+                              {s.ad_account_name}
+                            </div>
+                          </Show>
+                        </div>
                         <span class="text-[10.5px] text-gray-400 italic whitespace-nowrap">
                           {s.reason}
                         </span>
@@ -917,8 +937,13 @@ function PickerRow(props) {
         <div class="text-[13.5px] font-semibold text-gray-900 dark:text-gray-100 truncate">
           {c().name}
         </div>
-        <div class="text-[11.5px] text-gray-400 truncate">
-          {c().client_nomen_name || c().project_name || "—"}
+        <div
+          class="text-[11.5px] text-gray-400 truncate"
+          title={c().ad_account_id || ""}
+        >
+          {[c().client_nomen_name || c().project_name, c().ad_account_name]
+            .filter(Boolean)
+            .join(" · ") || "—"}
         </div>
       </div>
       <span
@@ -1439,8 +1464,18 @@ function DetailRow(props) {
   const ok = () => String(it().result ?? "").toLowerCase() === "success";
   return (
     <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/40">
-      <td class="px-4 py-2.5 text-[12.5px] font-medium text-gray-800 dark:text-gray-100 border-b border-gray-100 dark:border-gray-800 truncate max-w-[220px]">
-        {it().campaign_name}
+      <td class="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800 max-w-[220px]">
+        <div class="text-[12.5px] font-medium text-gray-800 dark:text-gray-100 truncate">
+          {it().campaign_name}
+        </div>
+        <Show when={it().ad_account_name}>
+          <div
+            class="text-[10.5px] text-gray-400 truncate"
+            title={it().ad_account_id || ""}
+          >
+            {it().ad_account_name}
+          </div>
+        </Show>
       </td>
       <td class="px-4 py-2.5 text-[12px] text-gray-400 tabular-nums border-b border-gray-100 dark:border-gray-800 whitespace-nowrap">
         {before()}
