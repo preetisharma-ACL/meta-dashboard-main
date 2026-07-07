@@ -279,7 +279,7 @@ function NewOperation(props) {
       if (!q) return true;
       const hay = `${c.name ?? ""} ${c.client_nomen_name ?? ""} ${
         c.project_name ?? ""
-      }`.toLowerCase();
+      } ${c.ad_account_name ?? ""} ${c.ad_account_id ?? ""}`.toLowerCase();
       return hay.includes(q);
     });
   });
@@ -527,7 +527,7 @@ function NewOperation(props) {
                 type="search"
                 value={query()}
                 onInput={(e) => setQuery(e.target.value)}
-                placeholder="Search campaign, client or project…"
+                placeholder="Search campaign, client, project or ad account…"
                 class="w-full h-[35px] rounded-[9px] border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 pl-[33px] pr-3 text-[13px] text-gray-800 dark:text-gray-100 placeholder:text-gray-400 focus:outline-none focus:border-[#14233A] focus:bg-white dark:focus:bg-gray-900 focus:ring-2 focus:ring-[#14233A]/10 transition-colors"
               />
             </div>
