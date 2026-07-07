@@ -700,7 +700,7 @@ export default function DailyReports() {
       </Show>
 
       {/* ── Action Buttons ── */}
-      <div class="flex items-center gap-3 mt-6 flex-wrap">
+      <div class="sticky bottom-0 z-20 flex items-center gap-3 mt-6 flex-wrap -mx-4 px-4 py-3 bg-white/90 dark:bg-gray-900/90 backdrop-blur border-t border-gray-200 dark:border-gray-700">
         {/* Preview */}
         <button
           onClick={handlePreview}
