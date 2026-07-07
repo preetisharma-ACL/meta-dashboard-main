@@ -80,13 +80,23 @@ export default function Header() {
       const readIds = JSON.parse(localStorage.getItem("readAlerts") || "[]");
 
       const allNotifications = (res.data || [])
-        .filter((item) => item.type?.toLowerCase() === "info")
+        // Info alerts as before, PLUS account-suspension alerts (type "danger")
+        // so the bell surfaces them consistently with the top banner.
+        .filter(
+          (item) =>
+            item.type?.toLowerCase() === "info" ||
+            item.category === "account_suspended",
+        )
         .map((item) => ({
           id: item.id,
-          title: item.project_name || "Project",
+          title:
+            item.category === "account_suspended"
+              ? "Ad account suspended"
+              : item.project_name || "Project",
           message: item.message,
           time: formatTime(item.created_at),
           unread: !readIds.includes(item.id) && !item.is_acknowledged,
+          category: item.category,
         }));
 
       setHeaderCache({
@@ -295,6 +305,15 @@ export default function Header() {
                     <For each={notifications()}>
                       {(notif) => (
                         <div
+                          onClick={() => {
+                            // Only account-suspension alerts navigate — to the
+                            // disabled ad-accounts view. Others keep their
+                            // existing (no-op) behavior.
+                            if (notif.category === "account_suspended") {
+                              setShowNotifications(false);
+                              navigate("/ad-accounts?status=disabled");
+                            }
+                          }}
                           class={`p-4 border-b border-gray-100 dark:border-gray-700 hover:bg-blue-50 dark:hover:bg-gray-700 cursor-pointer transition-colors ${notif.unread ? "bg-gray-50 dark:bg-blue-900/10" : ""}`}
                         >
                           <div class="flex items-start gap-3">

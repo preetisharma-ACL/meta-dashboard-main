@@ -1,4 +1,5 @@
 import { createSignal, createEffect, For, Show, on } from "solid-js";
+import { useNavigate } from "@solidjs/router";
 import Swal from "sweetalert2";
 import { fetchAlerts, acknowledgeAlert } from "../services/alert-service";
 import { asTeamMemberId } from "../stores/cmScope";
@@ -50,6 +51,7 @@ function timeAgo(iso) {
 }
 
 export default function AlertsPanel() {
+  const navigate = useNavigate();
   const [tab, setTab] = createSignal("false");
   const [items, setItems] = createSignal([]);
   const [loading, setLoading] = createSignal(true);
@@ -236,8 +238,16 @@ export default function AlertsPanel() {
             <For each={items()}>
               {(a) => {
                 const cfg = TYPE_CONFIG[a.type] || DEFAULT_CFG;
+                const isSuspension = a.category === "account_suspended";
                 return (
-                  <div class={`relative flex gap-4 p-4 rounded-xl border bg-white dark:bg-gray-900 ${cfg.wrap}`}>
+                  <div
+                    onClick={() => {
+                      // Account-suspension alerts deep-link to the disabled
+                      // ad-accounts view; other categories are unchanged.
+                      if (isSuspension) navigate("/ad-accounts?status=disabled");
+                    }}
+                    class={`relative flex gap-4 p-4 rounded-xl border bg-white dark:bg-gray-900 ${cfg.wrap} ${isSuspension ? "cursor-pointer hover:border-red-300 dark:hover:border-red-700" : ""}`}
+                  >
                     <div class={`absolute left-0 top-3 bottom-3 w-0.5 rounded-r-full ${cfg.bar}`} />
                     <div class={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${cfg.icon}`}>
                       <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -275,7 +285,7 @@ export default function AlertsPanel() {
                     </div>
                     <Show when={!a.is_acknowledged}>
                       <button
-                        onClick={() => acknowledge(a)}
+                        onClick={(e) => { e.stopPropagation(); acknowledge(a); }}
                         class="flex-shrink-0 self-start flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-800 hover:bg-gray-900 dark:bg-gray-700 dark:hover:bg-gray-600 text-white transition-colors"
                       >
                         <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">

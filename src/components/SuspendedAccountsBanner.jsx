@@ -1,10 +1,15 @@
 import { createSignal, createEffect, onMount, onCleanup, For, Show, on } from "solid-js";
+import { useNavigate } from "@solidjs/router";
 import Swal from "sweetalert2";
 import {
   fetchSuspendedAccountAlerts,
   acknowledgeAlert,
 } from "../services/alert-service";
 import { asTeamMemberId } from "../stores/cmScope";
+
+// Deep-link target — the Ad Accounts page pre-filtered to the disabled view,
+// where the suspended account(s) appear with a red badge, ready to be paused.
+const DISABLED_ACCOUNTS_URL = "/ad-accounts?status=disabled";
 
 // Poll cadence — a newly-suspended account surfaces without a manual reload.
 const POLL_MS = 60_000;
@@ -24,6 +29,7 @@ function accountNameFrom(message) {
 // entry calls the shared acknowledge endpoint and drops it; when all are gone the
 // banner disappears. Server-side role scoping means clients never see anything.
 export default function SuspendedAccountsBanner() {
+  const navigate = useNavigate();
   const [items, setItems] = createSignal([]);
 
   const load = async () => {
@@ -109,7 +115,12 @@ export default function SuspendedAccountsBanner() {
               {(a) => {
                 const name = accountNameFrom(a.message);
                 return (
-                  <div class="flex items-start justify-between gap-3 rounded-lg bg-white/60 dark:bg-red-950/30 border border-red-100 dark:border-red-800/40 px-3 py-2">
+                  <div
+                    onClick={() => navigate(DISABLED_ACCOUNTS_URL)}
+                    role="button"
+                    title="View disabled ad accounts"
+                    class="flex items-start justify-between gap-3 rounded-lg bg-white/60 dark:bg-red-950/30 border border-red-100 dark:border-red-800/40 px-3 py-2 cursor-pointer hover:bg-white dark:hover:bg-red-950/50 transition-colors"
+                  >
                     <p class="text-sm text-red-700 dark:text-red-200 leading-relaxed min-w-0">
                       <Show when={name} fallback={a.message}>
                         <span class="font-semibold">{name}</span>
@@ -117,7 +128,7 @@ export default function SuspendedAccountsBanner() {
                       </Show>
                     </p>
                     <button
-                      onClick={() => dismiss(a)}
+                      onClick={(e) => { e.stopPropagation(); dismiss(a); }}
                       title="Dismiss"
                       class="flex-shrink-0 flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg
                              bg-red-600 text-white hover:bg-red-700 transition-colors"

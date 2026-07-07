@@ -1,6 +1,14 @@
 import { createSignal, createMemo, For, Show, onMount, createEffect, untrack } from "solid-js";
+import { useNavigate } from "@solidjs/router";
 import { fetchAlerts } from "../services/alert-service";
 import { setHeaderCache, headerCache } from "../cacheStore/appStore";
+
+// Which alerts this panel surfaces: the existing info-only view, PLUS
+// account-suspension alerts (type "danger") so they're consistent with the
+// banner. categoryKey mirrors the API `category` field.
+const isPanelVisible = (n) =>
+  TYPE_CONFIG[n.type]?.label?.toLowerCase() === "info" ||
+  n.categoryKey === "account_suspended";
 
 
 const ICONS = {
@@ -110,6 +118,7 @@ function formatTime(dateStr) {
   return `${diffDays} day${diffDays > 1 ? "s" : ""} ago`;
 }
 export default function Notifications() {
+  const navigate = useNavigate();
   const [notifications, setNotifications] = createSignal([]);
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal(null);
@@ -271,7 +280,7 @@ export default function Notifications() {
   // All unique categories from current data for filter tabs
   const categories = createMemo(() => {
     const cats = new Map();
-    notifications().forEach((n) => {
+    notifications().filter(isPanelVisible).forEach((n) => {
       if (!cats.has(n.categoryKey)) {
         cats.set(n.categoryKey, n.category);
       }
@@ -280,12 +289,8 @@ export default function Notifications() {
   });
 
   const filteredNotifications = createMemo(() => {
-    let list = notifications();
-
-    // sirf info notifications show hongi
-    list = list.filter(
-      (n) => TYPE_CONFIG[n.type]?.label?.toLowerCase() === "info"
-    );
+    // Info alerts + account-suspension alerts (see isPanelVisible)
+    let list = notifications().filter(isPanelVisible);
 
     if (activeTab() === "unread") {
       list = list.filter((n) => !n.read);
@@ -298,17 +303,11 @@ export default function Notifications() {
     return list;
   });
   const infoTotal = createMemo(() =>
-    notifications().filter(
-      (n) => TYPE_CONFIG[n.type]?.label?.toLowerCase() === "info"
-    ).length
+    notifications().filter(isPanelVisible).length
   );
 
   const unreadCount = createMemo(() =>
-    notifications().filter(
-      (n) =>
-        !n.read &&
-        TYPE_CONFIG[n.type]?.label?.toLowerCase() === "info"
-    ).length
+    notifications().filter((n) => !n.read && isPanelVisible(n)).length
   );
 
   const markAsRead = (id) => {
@@ -569,9 +568,15 @@ export default function Notifications() {
               <For each={filteredNotifications()}>
                 {(item) => {
                   const cfg = TYPE_CONFIG[item.type] || DEFAULT_CONFIG;
+                  const isSuspension = item.categoryKey === "account_suspended";
                   return (
                     <div
-                      class={`group relative flex gap-4 px-5 py-4 transition-colors duration-150 ${!item.read
+                      onClick={() => {
+                        // Account-suspension alerts deep-link to the disabled
+                        // ad-accounts view; other categories are unchanged.
+                        if (isSuspension) navigate("/ad-accounts?status=disabled");
+                      }}
+                      class={`group relative flex gap-4 px-5 py-4 transition-colors duration-150 ${isSuspension ? "cursor-pointer" : ""} ${!item.read
                         ? "bg-red-50/30 dark:bg-red-500/[0.03] hover:bg-red-50/60 dark:hover:bg-red-500/[0.06]"
                         : "hover:bg-gray-50 dark:hover:bg-gray-800/40"
                         }`}
@@ -596,8 +601,8 @@ export default function Notifications() {
                             {item.project}
                           </p>
 
-                          {/* sirf info label show hoga */}
-                          <Show when={cfg.label?.toLowerCase() === "info"}>
+                          {/* Info label — plus the danger badge for suspensions */}
+                          <Show when={cfg.label?.toLowerCase() === "info" || isSuspension}>
                             <span class={`text-[10px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-wide ${cfg.badge}`}>
                               {cfg.label}
                             </span>
@@ -627,7 +632,7 @@ export default function Notifications() {
                       <div class="flex-shrink-0 flex items-start gap-1.5 pt-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
                         <Show when={!item.read}>
                           <button
-                            onClick={() => markAsRead(item.id)}
+                            onClick={(e) => { e.stopPropagation(); markAsRead(item.id); }}
                             class="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-gray-700 hover:bg-gray-800 dark:bg-gray-600 dark:hover:bg-gray-500 text-white transition-colors"
                           >
                             {ICONS.check}
@@ -635,7 +640,7 @@ export default function Notifications() {
                           </button>
                         </Show>
                         <button
-                          onClick={() => deleteNotification(item.id)}
+                          onClick={(e) => { e.stopPropagation(); deleteNotification(item.id); }}
                           class="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-gray-400 dark:text-gray-500 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-500/10 dark:hover:text-red-400 transition-colors"
                         >
                           {ICONS.trash}

@@ -1,18 +1,33 @@
-import { createSignal, createMemo, onMount, For, Show } from "solid-js";
-import { useNavigate } from "@solidjs/router";
+import { createSignal, createMemo, createEffect, onMount, For, Show } from "solid-js";
+import { useNavigate, useSearchParams } from "@solidjs/router";
 import { fetchAdAccounts } from "../services/adAccount";
 import { fetchAllAdminCampaigns, normAccountId } from "../services/campaigns";
 import Avatar from "../../../components/common/Avatar";
 
+// Meta's account_status codes: 1 = Active, anything else = Disabled/Suspended
+// (2 disabled, 3 unsettled, 7/8/9/100/101/… all unusable). Treat it as a binary.
+const isActive = (a) => Number(a?.account_status) === 1;
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function AdAccounts() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [allAccounts, setAllAccounts] = createSignal([]);
   const [loading, setLoading]         = createSignal(true);
   const [search, setSearch]           = createSignal("");
   const [sortKey, setSortKey]         = createSignal("id");
   const [sortDir, setSortDir]         = createSignal("asc");
+
+  // Status filter — "all" | "active" | "disabled". The URL is the source of
+  // truth so the suspension banner / notifications can deep-link here with
+  // ?status=disabled and land pre-filtered. An effect mirrors the URL into the
+  // signal (also catches navigations that arrive while already on this page).
+  const normStatus = (s) => (s === "active" || s === "disabled" ? s : "all");
+  const [statusFilter, setStatusFilter] = createSignal(normStatus(searchParams.status));
+  createEffect(() => setStatusFilter(normStatus(searchParams.status)));
+  const setStatus = (v) =>
+    setSearchParams({ status: v === "all" ? undefined : v });
 
   // Campaign counts per account (loaded in the background; non-blocking).
   // Tallied by Meta id first (names aren't unique), name only as a fallback —
@@ -29,11 +44,12 @@ export default function AdAccounts() {
       // API returns { success, data: [...] } — no pagination on this endpoint
       const raw = Array.isArray(res.data) ? res.data : [];
 
-      // Keep only the three fields we need
+      // Keep only the fields we need (incl. account_status for the status filter)
       const trimmed = raw.map((a) => ({
         id:              a.id,
         name:            a.name,
         meta_account_id: a.meta_account_id,
+        account_status:  a.account_status,
       }));
 
       setAllAccounts(trimmed);
@@ -116,18 +132,30 @@ export default function AdAccounts() {
   };
 
   // ── Client-side filter + sort ─────────────────────────────────────────────
-  const filtered = createMemo(() => {
-    let data = [...allAccounts()];
-
-    // Search by name or meta_account_id
+  // Search-only pass (no status filter) so the status chips can show accurate
+  // counts within the current search.
+  const searched = createMemo(() => {
     const q = search().trim().toLowerCase();
-    if (q) {
-      data = data.filter(
-        (a) =>
-          a.name?.toLowerCase().includes(q) ||
-          a.meta_account_id?.toLowerCase().includes(q),
-      );
-    }
+    if (!q) return allAccounts();
+    return allAccounts().filter(
+      (a) =>
+        a.name?.toLowerCase().includes(q) ||
+        a.meta_account_id?.toLowerCase().includes(q),
+    );
+  });
+
+  const statusCounts = createMemo(() => {
+    let active = 0;
+    for (const a of searched()) if (isActive(a)) active++;
+    return { all: searched().length, active, disabled: searched().length - active };
+  });
+
+  const filtered = createMemo(() => {
+    let data = [...searched()];
+
+    // Status filter — active = account_status 1, disabled = everything else
+    if (statusFilter() === "active") data = data.filter(isActive);
+    else if (statusFilter() === "disabled") data = data.filter((a) => !isActive(a));
 
     // Sort
     data.sort((a, b) => {
@@ -188,9 +216,36 @@ export default function AdAccounts() {
           />
         </div>
 
+        {/* Status filter chips */}
+        <div class="flex items-center gap-1 p-1 rounded-lg bg-gray-100 dark:bg-gray-800">
+          <For each={[
+            { key: "all",      label: "All" },
+            { key: "active",   label: "Active" },
+            { key: "disabled", label: "Disabled" },
+          ]}>
+            {(opt) => (
+              <button
+                onClick={() => setStatus(opt.key)}
+                class={`px-3 py-1.5 text-sm rounded-md font-medium transition-colors ${
+                  statusFilter() === opt.key
+                    ? opt.key === "disabled"
+                      ? "bg-red-600 text-white shadow-sm"
+                      : "bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm"
+                    : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                }`}
+              >
+                {opt.label}
+                <span class="ml-1.5 text-xs opacity-70">
+                  {statusCounts()[opt.key]}
+                </span>
+              </button>
+            )}
+          </For>
+        </div>
+
         {/* Clear */}
         <button
-          onClick={() => { setSearch(""); setSortKey("id"); setSortDir("asc"); }}
+          onClick={() => { setSearch(""); setSortKey("id"); setSortDir("asc"); setStatus("all"); }}
           class="px-3 py-2 text-sm rounded-lg
                  bg-red-50 text-red-600 border border-red-200
                  hover:bg-red-100 hover:border-red-300
@@ -233,6 +288,7 @@ export default function AdAccounts() {
               >
                 Meta Account ID {sortIcon("meta_account_id")}
               </th>
+              <th class="p-3 text-left whitespace-nowrap">Status</th>
               <th class="p-3 text-left whitespace-nowrap">Campaigns</th>
               <th class="p-3 text-right whitespace-nowrap" />
             </tr>
@@ -256,6 +312,9 @@ export default function AdAccounts() {
                         <div class="h-3 w-44 bg-gray-200 dark:bg-gray-700 rounded" />
                       </td>
                       <td class="p-3">
+                        <div class="h-3 w-16 bg-gray-200 dark:bg-gray-700 rounded" />
+                      </td>
+                      <td class="p-3">
                         <div class="h-3 w-8 bg-gray-200 dark:bg-gray-700 rounded" />
                       </td>
                       <td class="p-3">
@@ -274,7 +333,9 @@ export default function AdAccounts() {
                     onClick={() => openAccount(account)}
                     class={`border-b border-gray-100 dark:border-gray-800
                             hover:bg-purple-50/60 dark:hover:bg-gray-800/60 cursor-pointer transition-colors
-                            ${i() % 2 === 0
+                            ${!isActive(account)
+                              ? "bg-red-50/40 dark:bg-red-500/[0.06]"
+                              : i() % 2 === 0
                               ? "bg-white dark:bg-gray-900"
                               : "bg-gray-50/60 dark:bg-gray-800/30"}`}
                   >
@@ -296,6 +357,24 @@ export default function AdAccounts() {
                     {/* Meta Account ID */}
                     <td class="p-3 font-medium text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
                       {account.meta_account_id}
+                    </td>
+
+                    {/* Status */}
+                    <td class="p-3 whitespace-nowrap">
+                      <Show
+                        when={isActive(account)}
+                        fallback={
+                          <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300">
+                            <span class="w-1.5 h-1.5 rounded-full bg-red-500" />
+                            Disabled
+                          </span>
+                        }
+                      >
+                        <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-300">
+                          <span class="w-1.5 h-1.5 rounded-full bg-green-500" />
+                          Active
+                        </span>
+                      </Show>
                     </td>
 
                     {/* Campaign count */}
@@ -326,7 +405,7 @@ export default function AdAccounts() {
               {/* Empty State */}
               <Show when={filtered().length === 0}>
                 <tr>
-                  <td colspan="5" class="py-16 text-center text-gray-400 dark:text-gray-500">
+                  <td colspan="6" class="py-16 text-center text-gray-400 dark:text-gray-500">
                     <svg
                       class="w-10 h-10 mx-auto mb-3 opacity-30"
                       fill="none" viewBox="0 0 24 24" stroke="currentColor"
@@ -336,7 +415,7 @@ export default function AdAccounts() {
                         d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
                       />
                     </svg>
-                    No ad accounts match your search
+                    No ad accounts match your filters
                   </td>
                 </tr>
               </Show>
@@ -346,7 +425,7 @@ export default function AdAccounts() {
           {/* Table Footer */}
           <tfoot>
             <tr class="border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60">
-              <td colspan="5" class="px-4 py-2.5 text-xs text-gray-500 dark:text-gray-400">
+              <td colspan="6" class="px-4 py-2.5 text-xs text-gray-500 dark:text-gray-400">
                 {filtered().length} result{filtered().length !== 1 ? "s" : ""}
               </td>
             </tr>
