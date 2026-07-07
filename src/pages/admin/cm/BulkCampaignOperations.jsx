@@ -81,9 +81,28 @@ const relTime = (iso) => {
 };
 
 const ACTIONS = [
-  { key: "pause", label: "Pause", icon: Pause },
-  { key: "resume", label: "Resume", icon: Play },
-  { key: "budget", label: "Set budget", icon: null },
+  {
+    key: "pause",
+    label: "Pause",
+    icon: Pause,
+    hint: "Stop delivery",
+    // Icon-badge bg/text when the tile is not selected (mirrors STATUS_TONE).
+    tone: "bg-[#FBF3E2] text-[#B07A14] dark:bg-amber-900/30 dark:text-amber-300",
+  },
+  {
+    key: "resume",
+    label: "Resume",
+    icon: Play,
+    hint: "Reactivate",
+    tone: "bg-[#E9F7F1] text-[#15966A] dark:bg-green-900/30 dark:text-green-300",
+  },
+  {
+    key: "budget",
+    label: "Set budget",
+    icon: null,
+    hint: "Daily ₹",
+    tone: "bg-[#EEF2FB] text-[#3E6B8A] dark:bg-blue-900/30 dark:text-blue-300",
+  },
 ];
 
 const STATUS_TONE = {
@@ -159,10 +178,6 @@ function Masthead() {
         class="flex items-center gap-2 text-[11px] font-semibold tracking-[0.14em] uppercase text-gray-400 mb-3"
         aria-label="Breadcrumb"
       >
-        <span>Admin</span>
-        <span class="text-gray-300 dark:text-gray-600">/</span>
-        <span>Campaigns</span>
-        <span class="text-gray-300 dark:text-gray-600">/</span>
         <span class="text-[#AC2334]">Bulk Operations</span>
       </nav>
       <div>
@@ -613,31 +628,71 @@ function NewOperation(props) {
       {/* ── Action console ── */}
       <aside class="lg:sticky lg:top-5 space-y-4">
         <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-sm p-5">
-          <div class="text-[13px] font-semibold text-gray-600 dark:text-gray-200 mb-3">
-            Action
+          <div class="flex items-baseline justify-between mb-3">
+            <div class="text-[13px] font-semibold text-gray-600 dark:text-gray-200">
+              Action
+            </div>
+            <span class="text-[11px] font-medium text-gray-400 tabular-nums">
+              <b class="text-[#14233A] dark:text-white">{selected().size}</b>{" "}
+              selected
+            </span>
           </div>
           {/* Action selector */}
           <div class="grid grid-cols-3 gap-2 mb-4">
             <For each={ACTIONS}>
-              {(a) => (
-                <button
-                  onClick={() => chooseAction(a.key)}
-                  aria-pressed={action() === a.key}
-                  class={`flex flex-col items-center justify-center gap-1 py-3 rounded-xl border text-[12.5px] font-semibold transition-colors ${
-                    action() === a.key
-                      ? "border-[#14233A] bg-[#14233A] text-white"
-                      : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
-                  }`}
-                >
-                  <Show
-                    when={a.icon}
-                    fallback={<span class="text-[15px] leading-none">₹</span>}
+              {(a) => {
+                const active = () => action() === a.key;
+                return (
+                  <button
+                    onClick={() => chooseAction(a.key)}
+                    aria-pressed={active()}
+                    class={`group relative flex flex-col items-center gap-2 px-1.5 py-3.5 rounded-xl border transition-all duration-150 ${
+                      active()
+                        ? "border-[#14233A] bg-[#14233A] shadow-sm shadow-[#14233A]/25"
+                        : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-[#14233A]/40 hover:bg-gray-50 dark:hover:bg-gray-800"
+                    }`}
                   >
-                    <Dynamic component={a.icon} class="w-4 h-4" />
-                  </Show>
-                  {a.label}
-                </button>
-              )}
+                    {/* Selected check dot */}
+                    <Show when={active()}>
+                      <span class="absolute top-1.5 right-1.5 w-3.5 h-3.5 rounded-full bg-white grid place-items-center">
+                        <Check class="w-2.5 h-2.5 text-[#14233A]" stroke-width={3} />
+                      </span>
+                    </Show>
+                    <span
+                      class={`grid place-items-center w-8 h-8 rounded-lg transition-colors ${
+                        active() ? "bg-white/15 text-white" : a.tone
+                      }`}
+                    >
+                      <Show
+                        when={a.icon}
+                        fallback={
+                          <span class="text-[15px] leading-none font-semibold">₹</span>
+                        }
+                      >
+                        <Dynamic component={a.icon} class="w-4 h-4" />
+                      </Show>
+                    </span>
+                    <span class="flex flex-col items-center gap-0.5 leading-none">
+                      <span
+                        class={`text-[12.5px] font-semibold ${
+                          active()
+                            ? "text-white"
+                            : "text-gray-700 dark:text-gray-200"
+                        }`}
+                      >
+                        {a.label}
+                      </span>
+                      <span
+                        class={`text-[9.5px] font-medium ${
+                          active() ? "text-white/55" : "text-gray-400"
+                        }`}
+                      >
+                        {a.hint}
+                      </span>
+                    </span>
+                  </button>
+                );
+              }}
             </For>
           </div>
 
@@ -698,14 +753,23 @@ function NewOperation(props) {
           <button
             onClick={runPreview}
             disabled={!canPreview()}
-            class="w-full h-10 rounded-[10px] font-semibold text-[13.5px] text-white bg-[#14233A] hover:bg-[#1c2f4d] disabled:opacity-40 disabled:cursor-not-allowed transition-colors inline-flex items-center justify-center gap-2"
+            class="group w-full h-11 rounded-xl font-semibold text-[13.5px] text-white bg-[#14233A] hover:bg-[#1c2f4d] shadow-sm shadow-[#14233A]/20 disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none transition-all inline-flex items-center justify-center gap-2"
           >
-            <Show when={previewing()} fallback={<>Preview changes</>}>
+            <Show
+              when={previewing()}
+              fallback={
+                <>
+                  <Search class="w-4 h-4" />
+                  Preview changes
+                </>
+              }
+            >
               <Loader2 class="w-4 h-4 animate-spin" /> Previewing…
             </Show>
           </button>
           <Show when={selected().size === 0}>
-            <p class="mt-2 text-[11.5px] text-gray-400 text-center">
+            <p class="mt-2.5 flex items-center justify-center gap-1.5 text-[11.5px] text-gray-400">
+              <AlertTriangle class="w-3.5 h-3.5" />
               Select at least one campaign to continue.
             </p>
           </Show>

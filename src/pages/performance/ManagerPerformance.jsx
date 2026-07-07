@@ -256,10 +256,10 @@ export default function ManagerPerformance() {
             {/* Left — Profit by manager */}
             <div class="bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] p-5 sm:p-6">
               <h3 class="text-base font-bold text-[#14233A] dark:text-white">Profit by manager</h3>
-              <p class="text-xs text-[#8593A8] dark:text-gray-400 mt-0.5 mb-5">
+              <p class="text-xs text-[#8593A8] dark:text-gray-400 mt-0.5 mb-3">
                 Dashed line marks the average of {money0(avgProfit())} · {rows().length} managers
               </p>
-              <div class="relative pt-1.5">
+              <div class="relative pt-1">
                 <Show when={avgProfit() > 0}>
                   <div
                     class="hidden sm:block absolute top-0 bottom-5 border-l-2 border-dashed border-[#B9C5D6] dark:border-gray-600 pointer-events-none"
@@ -279,19 +279,19 @@ export default function ManagerPerformance() {
                     const avg = avgProfit();
                     const delta = avg ? Math.round(((p - avg) / Math.abs(avg)) * 100) : 0;
                     return (
-                      <div class="grid grid-cols-[1fr_auto] sm:grid-cols-[120px_1fr_104px] gap-x-3 gap-y-2 items-center py-2.5">
-                        <div class="text-sm font-bold text-[#54657E] dark:text-gray-300 text-left sm:text-right truncate sm:row-start-1 sm:col-start-1" title={r.manager_email}>
+                      <div class="grid grid-cols-[1fr_auto] sm:grid-cols-[120px_1fr_104px] gap-x-3 gap-y-1 items-center py-0.5">
+                        <div class="text-[13px] leading-tight font-bold text-[#54657E] dark:text-gray-300 text-left sm:text-right truncate sm:row-start-1 sm:col-start-1" title={r.manager_email}>
                           {labelFromEmail(r.manager_email)}
                         </div>
-                        <div class="col-span-2 sm:col-span-1 h-3 rounded-full bg-[#EDF1F7] dark:bg-gray-900 relative sm:row-start-1 sm:col-start-2">
+                        <div class="col-span-2 sm:col-span-1 h-1.5 rounded-full bg-[#EDF1F7] dark:bg-gray-900 relative sm:row-start-1 sm:col-start-2">
                           <div
                             class={"absolute inset-y-0 left-0 rounded-full transition-all duration-700 " + (p >= 0 ? "bg-[#15966A]" : "bg-[#AC2334]")}
                             style={`width:${width}%`}
                           ></div>
                         </div>
-                        <div class="row-start-1 col-start-2 sm:col-start-3 text-right">
-                          <span class={`text-sm font-bold ${profitTone(p)}`}>{money0(p)}</span>
-                          <span class="block text-[10px] font-medium text-[#8593A8]">
+                        <div class="row-start-1 col-start-2 sm:col-start-3 text-right leading-tight">
+                          <span class={`text-[13px] font-bold ${profitTone(p)}`}>{money0(p)}</span>
+                          <span class="block text-[9px] font-medium text-[#8593A8]">
                             {delta === 0 ? "at avg" : `${Math.abs(delta)}% ${delta > 0 ? "above" : "below"} avg`}
                           </span>
                         </div>
