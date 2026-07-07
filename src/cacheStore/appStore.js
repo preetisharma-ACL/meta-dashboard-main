@@ -38,19 +38,28 @@ const projectsDefault = {
   loading: false,
 };
 
-export const [projectsCache, setProjectsCacheRaw] = createStore(
-  hydrate("cache_projects", projectsDefault),
-);
+// Caching for projects is intentionally DISABLED (dashboard must always show
+// fresh data for both client and admin views). The store below is kept purely
+// as in-memory reactive state — it is never hydrated from nor persisted to
+// sessionStorage, so every page load / reload starts empty and refetches.
+export const [projectsCache, setProjectsCacheRaw] = createStore({
+  ...projectsDefault,
+});
 
-// Wrap setter to auto-persist on every write
+// Drop any projects cache written by an earlier build so a stale blob from
+// before caching was disabled can't be read back this session.
+try {
+  sessionStorage.removeItem("cache_projects");
+} catch {}
+
+// Wrap setter to keep the same call-site API. Persistence removed — writes only
+// update the in-memory store, so no project data survives across reloads.
 export const setProjectsCache = (keyOrPatch, value) => {
   if (typeof keyOrPatch === "string") {
     setProjectsCacheRaw(keyOrPatch, value);
   } else {
     setProjectsCacheRaw(keyOrPatch);
   }
-  // Persist after the tick so the store has updated
-  queueMicrotask(() => persist("cache_projects", projectsCache));
 };
 
 // ─── Dashboard date filter (persists across page navigation) ─────────────────
@@ -104,13 +113,16 @@ export const setBillingCache = (keyOrPatch, value) => {
 };
 
 // ─── Project Details (keyed by projectId) ────────────────────────────────────
-export const [projectDetailsCache, setProjectDetailsCacheRaw] = createStore(
-  hydrate("cache_project_details", {}) ?? {},
-);
+// Caching disabled — kept purely as in-memory reactive state (no hydration, no
+// persistence) so Project Details always fetches fresh data on every visit.
+try {
+  sessionStorage.removeItem("cache_project_details");
+} catch {}
+
+export const [projectDetailsCache, setProjectDetailsCacheRaw] = createStore({});
 
 export const setProjectDetailsCache = (...args) => {
   setProjectDetailsCacheRaw(...args);
-  queueMicrotask(() => persist("cache_project_details", projectDetailsCache));
 };
 
 export const clearClientDashboardContext = () => {
@@ -132,26 +144,28 @@ export const clearClientDashboardContext = () => {
   });
 };
 
-export const isProjectCacheStale = (projectId) =>
-  isCacheStale(projectDetailsCache[projectId]?.lastFetched ?? null);
+// Project Details caching disabled — always stale so it refetches every time.
+export const isProjectCacheStale = () => true;
 
-// And add a helper:
-export const isAllProjectsCacheStale = (maxAgeMs = 5 * 60 * 1000) => {
-  return Date.now() - (projectsCache.lastFetchedAll ?? 0) > maxAgeMs;
-};
+// Projects caching is disabled — always report stale so the dashboard refetches
+// fresh data on every mount (kept as a function so call sites stay unchanged).
+export const isAllProjectsCacheStale = () => true;
 
 // ─── Campaign Details (keyed by campaignId) ──────────────────────────────────
-export const [campaignDetailsCache, setCampaignDetailsCacheRaw] = createStore(
-  hydrate("cache_campaign_details", {}) ?? {},
-);
+// Caching disabled — kept purely as in-memory reactive state (no hydration, no
+// persistence) so Campaign Details always fetches fresh data on every visit.
+try {
+  sessionStorage.removeItem("cache_campaign_details");
+} catch {}
+
+export const [campaignDetailsCache, setCampaignDetailsCacheRaw] = createStore({});
 
 export const setCampaignDetailsCache = (...args) => {
   setCampaignDetailsCacheRaw(...args);
-  queueMicrotask(() => persist("cache_campaign_details", campaignDetailsCache));
 };
 
-export const isCampaignCacheStale = (campaignId) =>
-  isCacheStale(campaignDetailsCache[campaignId]?.lastFetched ?? null);
+// Campaign Details caching disabled — always stale so it refetches every time.
+export const isCampaignCacheStale = () => true;
 
 // ─── Header / User Cache ──────────────────────────────────────────────────────
 const headerDefault = {

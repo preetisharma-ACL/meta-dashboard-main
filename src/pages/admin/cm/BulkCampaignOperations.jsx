@@ -402,23 +402,42 @@ function NewOperation(props) {
   };
 
   // ── Poll status until terminal ──
+  // A resume op can legitimately run for MINUTES (Meta reviews each campaign on
+  // reactivation — 7-9 min each on prod). So we poll indefinitely until the
+  // status is terminal (never time out), and a transient status-fetch hiccup
+  // must NOT look like a failed operation — we tolerate a run of consecutive
+  // failures before giving up.
   let pollTimer;
+  let pollFails = 0;
+  const MAX_POLL_FAILS = 8;
   onCleanup(() => clearTimeout(pollTimer));
   const poll = async (opId) => {
     try {
       const s = await fetchBulkStatus(opId);
+      pollFails = 0;
       setExecStatus(s);
       const st = String(s?.status ?? "").toLowerCase();
       if (st === "running" || st === "pending") {
-        pollTimer = setTimeout(() => poll(opId), 2000);
+        pollTimer = setTimeout(() => poll(opId), 2500);
       } else {
         setExecDone(true);
         props.onExecuted?.();
       }
     } catch (err) {
-      // Keep the last known status; surface a soft note rather than crashing.
-      setExecDone(true);
-      toast("error", "Lost track of the operation", err?.message || "");
+      // Transient failure — keep the last known progress on screen and retry.
+      // Only surface an error after several consecutive misses so a long resume
+      // (or a brief network blip) doesn't read as a false failure.
+      pollFails += 1;
+      if (pollFails <= MAX_POLL_FAILS) {
+        pollTimer = setTimeout(() => poll(opId), 3000);
+      } else {
+        setExecDone(true);
+        toast(
+          "error",
+          "Lost track of the operation",
+          "Couldn't reach the status endpoint — check the History tab for the result.",
+        );
+      }
     }
   };
 
@@ -434,6 +453,7 @@ function NewOperation(props) {
         expectedCount: willChangeCount(),
       });
       // Kick off polling. Show an immediate optimistic "running" frame.
+      pollFails = 0;
       setExecStatus({
         operation_id: res.operation_id,
         status: res.status || "running",
@@ -621,6 +641,20 @@ function NewOperation(props) {
             </For>
           </div>
 
+          {/* Resume is slow: Meta reviews each campaign on reactivation (minutes
+              each). Set expectations up front so a long 0/N progress period
+              doesn't read as frozen. Pause/budget are fast — resume only. */}
+          <Show when={action() === "resume"}>
+            <div class="mb-4 flex gap-2.5 rounded-xl bg-[#FBF3E2] dark:bg-amber-900/20 border border-amber-200/70 dark:border-amber-800/50 px-3.5 py-2.5">
+              <Clock class="w-4 h-4 text-[#B07A14] dark:text-amber-300 flex-shrink-0 mt-0.5" />
+              <p class="text-[11.5px] leading-relaxed text-[#8a6410] dark:text-amber-200">
+                Resuming can take <b>several minutes per campaign</b> — Meta
+                reviews each one when it's reactivated. Keep this tab open;
+                progress updates as each campaign completes.
+              </p>
+            </div>
+          </Show>
+
           {/* Budget input */}
           <Show when={action() === "budget"}>
             <div class="mb-4">
@@ -703,6 +737,22 @@ function NewOperation(props) {
                   />
                 </div>
 
+                {/* Heads-up: a large resume batch will run for a while. */}
+                <Show
+                  when={
+                    action() === "resume" &&
+                    (pv().counts?.will_change ?? 0) > 10
+                  }
+                >
+                  <div class="mt-3 flex gap-2 rounded-xl bg-[#FBF3E2] dark:bg-amber-900/20 px-3.5 py-2 text-[11.5px] text-[#8a6410] dark:text-amber-200">
+                    <Clock class="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                    <span>
+                      Resuming {pv().counts.will_change} campaigns may take a
+                      while — Meta reviews each on activation.
+                    </span>
+                  </div>
+                </Show>
+
                 {/* Budget totals / delta */}
                 <Show when={action() === "budget" && pv().totals}>
                   <div class="mt-3 rounded-xl bg-[#14233A]/[0.04] dark:bg-gray-800 px-3.5 py-2.5 flex items-center justify-between">
@@ -739,9 +789,19 @@ function NewOperation(props) {
                     {(w) => (
                       <div class="flex items-center gap-2 px-2 py-1.5 rounded-lg">
                         <Check class="w-3.5 h-3.5 text-[#15966A] flex-shrink-0" />
-                        <span class="text-[12.5px] font-medium text-gray-700 dark:text-gray-200 truncate flex-1">
-                          {w.campaign_name}
-                        </span>
+                        <div class="min-w-0 flex-1">
+                          <div class="text-[12.5px] font-medium text-gray-700 dark:text-gray-200 truncate">
+                            {w.campaign_name}
+                          </div>
+                          <Show when={w.ad_account_name}>
+                            <div
+                              class="text-[10.5px] text-gray-400 truncate"
+                              title={w.ad_account_id || ""}
+                            >
+                              {w.ad_account_name}
+                            </div>
+                          </Show>
+                        </div>
                         <Show
                           when={action() === "budget"}
                           fallback={
@@ -773,9 +833,19 @@ function NewOperation(props) {
                     {(s) => (
                       <div class="flex items-center gap-2 px-2 py-1.5">
                         <X class="w-3.5 h-3.5 text-gray-300 flex-shrink-0" />
-                        <span class="text-[12px] text-gray-400 truncate flex-1">
-                          {s.campaign_name}
-                        </span>
+                        <div class="min-w-0 flex-1">
+                          <div class="text-[12px] text-gray-400 truncate">
+                            {s.campaign_name}
+                          </div>
+                          <Show when={s.ad_account_name}>
+                            <div
+                              class="text-[10px] text-gray-400/80 truncate"
+                              title={s.ad_account_id || ""}
+                            >
+                              {s.ad_account_name}
+                            </div>
+                          </Show>
+                        </div>
                         <span class="text-[10.5px] text-gray-400 italic whitespace-nowrap">
                           {s.reason}
                         </span>
@@ -793,6 +863,7 @@ function NewOperation(props) {
                     <ExecProgress
                       status={execStatus()}
                       done={execDone()}
+                      action={action()}
                       onStartOver={startOver}
                     />
                   }
@@ -866,8 +937,13 @@ function PickerRow(props) {
         <div class="text-[13.5px] font-semibold text-gray-900 dark:text-gray-100 truncate">
           {c().name}
         </div>
-        <div class="text-[11.5px] text-gray-400 truncate">
-          {c().client_nomen_name || c().project_name || "—"}
+        <div
+          class="text-[11.5px] text-gray-400 truncate"
+          title={c().ad_account_id || ""}
+        >
+          {[c().client_nomen_name || c().project_name, c().ad_account_name]
+            .filter(Boolean)
+            .join(" · ") || "—"}
         </div>
       </div>
       <span
@@ -914,6 +990,11 @@ function ExecProgress(props) {
     props.done && ["completed", "reverted", "failed"].includes(
       String(s().status).toLowerCase(),
     );
+  // Resume blocks on Meta's per-campaign ad-review (minutes each), so `done` can
+  // sit at 0 for a long time. Detect it to keep the wait reading as "working".
+  const isResume = () =>
+    props.action === "resume" ||
+    String(s().operation_type ?? "").toLowerCase() === "resume";
 
   return (
     <div>
@@ -923,17 +1004,41 @@ function ExecProgress(props) {
           <>
             <div class="flex items-center gap-2 text-[13px] font-semibold text-gray-700 dark:text-gray-200 mb-2">
               <Loader2 class="w-4 h-4 animate-spin text-[#14233A]" />
-              Executing on Meta…
+              Processing…{" "}
+              <span class="font-normal text-gray-500 dark:text-gray-400 tabular-nums">
+                {done()} of {total()} done
+              </span>
             </div>
             <div class="h-2 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+              {/* At 0% show a small pulsing sliver so a long wait never looks
+                  frozen; once real progress lands, track it exactly. */}
               <div
-                class="h-full bg-[#14233A] transition-all duration-500"
-                style={{ width: `${pct()}%` }}
+                class={`h-full bg-[#14233A] transition-all duration-500 ${
+                  done() === 0 ? "animate-pulse" : ""
+                }`}
+                style={{ width: `${done() === 0 ? 8 : pct()}%` }}
               />
             </div>
-            <div class="mt-1.5 text-[11.5px] text-gray-400 tabular-nums">
-              {done()} of {total()}
-            </div>
+            <Show
+              when={isResume()}
+              fallback={
+                <div class="mt-1.5 text-[11.5px] text-gray-400">
+                  Writing to Meta — keep this tab open.
+                </div>
+              }
+            >
+              <div class="mt-2 flex gap-2 text-[11.5px] text-[#8a6410] dark:text-amber-300">
+                <Clock class="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                <span>
+                  Meta reviews each campaign on reactivation — several minutes
+                  each
+                  {done() === 0
+                    ? "; the first result may take a few minutes to appear"
+                    : ""}
+                  . Keep this tab open.
+                </span>
+              </div>
+            </Show>
           </>
         }
       >
@@ -1359,8 +1464,18 @@ function DetailRow(props) {
   const ok = () => String(it().result ?? "").toLowerCase() === "success";
   return (
     <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/40">
-      <td class="px-4 py-2.5 text-[12.5px] font-medium text-gray-800 dark:text-gray-100 border-b border-gray-100 dark:border-gray-800 truncate max-w-[220px]">
-        {it().campaign_name}
+      <td class="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800 max-w-[220px]">
+        <div class="text-[12.5px] font-medium text-gray-800 dark:text-gray-100 truncate">
+          {it().campaign_name}
+        </div>
+        <Show when={it().ad_account_name}>
+          <div
+            class="text-[10.5px] text-gray-400 truncate"
+            title={it().ad_account_id || ""}
+          >
+            {it().ad_account_name}
+          </div>
+        </Show>
       </td>
       <td class="px-4 py-2.5 text-[12px] text-gray-400 tabular-nums border-b border-gray-100 dark:border-gray-800 whitespace-nowrap">
         {before()}
