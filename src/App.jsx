@@ -7,6 +7,7 @@ import { onMount, onCleanup } from "solid-js";
 import Sidebar from "./components/Sidebar";
 import Header from "./components/Header";
 import CMBanner from "./components/CMBanner";
+import SuspendedAccountsBanner from "./components/SuspendedAccountsBanner";
 import MainDashboard from "./pages/ClientDashboard";
 import AddProject from "./pages/AddProjects";
 import Billing from "./pages/Billing";
@@ -78,6 +79,7 @@ function Layout(props) {
       >
         <Header />
         <CMBanner />
+        <SuspendedAccountsBanner />
         <main class="min-h-[calc(100vh-4rem)]">{props.children}</main>
       </div>
     </div>

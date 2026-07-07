@@ -18,6 +18,19 @@ export const fetchAlerts = async (page = 1, acknowledged) => {
   return res;
 };
 
+// GET /alerts/?category=account_suspended&acknowledged=false
+// Account-suspension alerts surfaced as a prominent dashboard banner. Same Alert
+// shape as the normal list — these just get a more urgent surface. The endpoint
+// is role-scoped server-side (admin/CM/accounts see relevant ones; clients never
+// receive any), so no client-side role filtering is needed. scopeQuery() appends
+// as_team_member_id only for a switched Tier 1 CM (no-op otherwise).
+export const fetchSuspendedAccountAlerts = async () => {
+  const url = `/alerts/?category=account_suspended&acknowledged=false${scopeQuery()}`;
+  const res = await api(url, { method: "GET" });
+  applyMeta(res?.meta);
+  return res;
+};
+
 // PATCH /alerts/{id}/acknowledge/ → { id, is_acknowledged: true }
 // Acknowledging an alert outside your scope returns 404 (handle gracefully).
 export const acknowledgeAlert = async (id) => {
