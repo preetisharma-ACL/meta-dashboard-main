@@ -933,6 +933,12 @@ function PickerRow(props) {
         onChange={props.onToggle}
         class="w-4 h-4 rounded border-gray-300 text-[#14233A] focus:ring-[#14233A]/30 accent-[#14233A] flex-shrink-0"
       />
+      <Avatar
+        name={c().name || c().client_nomen_name || c().ad_account_name || "?"}
+        size="w-8 h-8"
+        textSize="text-[10px]"
+        class="ml-1"
+      />
       <div class="min-w-0 flex-1">
         <div class="text-[13.5px] font-semibold text-gray-900 dark:text-gray-100 truncate">
           {c().name}
