@@ -123,6 +123,18 @@ export default function DailyReports() {
         (c) => c.status?.toLowerCase() === "active",
       ).length;
       result[project.id].status = activeCampaigns > 0 ? "active" : "paused";
+
+      // Earliest campaign start_date for this project — the authoritative
+      // "when did this project start running" signal. Used by the date-range
+      // filter to drop projects that only started AFTER the selected range
+      // (e.g. a project that started this month must not appear under a
+      // "Last Month" filter). Stored as a "YYYY-MM-DD" string so it can be
+      // compared lexicographically against the range's `to` date.
+      const starts = camps
+        .map((c) => c.start_date)
+        .filter(Boolean)
+        .map((s) => String(s).slice(0, 10));
+      result[project.id].firstStart = starts.length ? starts.sort()[0] : null;
     }
 
     // 2. Build a campaign → {project, canonical id} lookup + the full ID list.
@@ -200,6 +212,19 @@ export default function DailyReports() {
         }
       }
 
+      // ── Started-after-range filter ─────────────────────────────────────
+      // Drop projects that started AFTER the selected range ended. Example:
+      // today is 7 Jul, filter = "Last Month" (1–30 Jun), and a project's
+      // earliest campaign started on 2 Jul → firstStart ("2026-07-02") > to
+      // ("2026-06-30") → the project did not exist during the range, so hide
+      // it. ISO "YYYY-MM-DD" strings compare correctly with `>`.
+      if (from && to) {
+        const firstStart = insightsMap()[project.id]?.firstStart;
+        if (firstStart && firstStart > to) {
+          continue;
+        }
+      }
+
       // ── Date filter ────────────────────────────────────────────────────
       const insights = insightsMap()[project.id]?.insights ?? []; // default [] so 0-row still emits
 
@@ -216,6 +241,17 @@ export default function DailyReports() {
               end.setHours(23, 59, 59, 999);
               return date >= start && date <= end;
             });
+
+      // ── "Running in range" filter ──────────────────────────────────────
+      // Only show projects that were actually active during the selected
+      // range. Each insight row is a day a campaign delivered, so a project
+      // with at least one row dated inside the range was running then. A
+      // project that started this month (or was otherwise inactive in the
+      // range) has zero rows in the range and is dropped. When no range is
+      // selected we skip this and show every project as before.
+      if (from && to && filtered.length === 0) {
+        continue;
+      }
 
       // ── Aggregate all filtered insight rows into one project total ─────
       const leads = filtered.reduce((s, d) => s + (d.leads || 0), 0);
