@@ -289,6 +289,12 @@ export default function Notifications() {
   });
 
   const filteredNotifications = createMemo(() => {
+    // Dedicated suspension tab: only account-suspension alerts, regardless of
+    // read/ack state so a critical suspension never hides.
+    if (activeTab() === "suspension") {
+      return notifications().filter((n) => n.categoryKey === "account_suspended");
+    }
+
     // Info alerts + account-suspension alerts (see isPanelVisible)
     let list = notifications().filter(isPanelVisible);
 
@@ -308,6 +314,11 @@ export default function Notifications() {
 
   const unreadCount = createMemo(() =>
     notifications().filter((n) => !n.read && isPanelVisible(n)).length
+  );
+
+  // Unacknowledged account-suspension alerts — drives the red count on the tab.
+  const suspensionCount = createMemo(() =>
+    notifications().filter((n) => n.categoryKey === "account_suspended" && !n.read).length
   );
 
   const markAsRead = (id) => {
@@ -480,24 +491,35 @@ export default function Notifications() {
           {/* ── Tabs row ── */}
           <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800 flex-wrap gap-3">
 
-            {/* Read / Unread tabs */}
+            {/* Read / Unread / Suspension tabs */}
             <div class="flex gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl">
-              {["all", "unread"].map((tab) => (
-                <button
-                  onClick={() => setActiveTab(tab)}
-                  class={`relative px-4 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 capitalize ${activeTab() === tab
-                    ? "bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm"
-                    : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
-                    }`}
-                >
-                  {tab}
-                  <Show when={tab === "unread" && unreadCount() > 0}>
-                    <span class="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-500 text-white">
-                      {unreadCount()}
-                    </span>
-                  </Show>
-                </button>
-              ))}
+              <For each={[
+                { key: "all", label: "All" },
+                { key: "unread", label: "Unread" },
+                { key: "suspension", label: "Ad Account Suspension" },
+              ]}>
+                {(t) => (
+                  <button
+                    onClick={() => setActiveTab(t.key)}
+                    class={`relative px-4 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${activeTab() === t.key
+                      ? "bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm"
+                      : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                      }`}
+                  >
+                    {t.label}
+                    <Show when={t.key === "unread" && unreadCount() > 0}>
+                      <span class="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-500 text-white">
+                        {unreadCount()}
+                      </span>
+                    </Show>
+                    <Show when={t.key === "suspension" && suspensionCount() > 0}>
+                      <span class="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-500 text-white">
+                        {suspensionCount()}
+                      </span>
+                    </Show>
+                  </button>
+                )}
+              </For>
             </div>
 
             {/* Mark all read */}
@@ -661,12 +683,18 @@ export default function Notifications() {
                 {ICONS.bell}
               </div>
               <p class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                {activeTab() === "unread" ? "No unread notifications" : "No notifications"}
+                {activeTab() === "unread"
+                  ? "No unread notifications"
+                  : activeTab() === "suspension"
+                    ? "No account suspensions"
+                    : "No notifications"}
               </p>
               <p class="text-xs text-gray-400 dark:text-gray-500 max-w-xs leading-relaxed">
                 {activeTab() === "unread"
                   ? "All caught up — nothing left to read."
-                  : "New alerts will appear here when they arrive."}
+                  : activeTab() === "suspension"
+                    ? "No ad accounts are currently suspended."
+                    : "New alerts will appear here when they arrive."}
               </p>
             </div>
           </Show>
