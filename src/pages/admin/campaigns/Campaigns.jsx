@@ -604,7 +604,13 @@ export default function Campaigns() {
                 Leads {sortIcon("leads_count")}
               </th>
               <Show when={canWriteCampaigns()}>
-                <th class="p-3 text-center whitespace-nowrap">Actions</th>
+                <th
+                  class="p-3 text-center whitespace-nowrap sticky right-0 z-20
+                         bg-gray-50 dark:bg-gray-800
+                         shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.18)]"
+                >
+                  Actions
+                </th>
               </Show>
             </tr>
           </thead>
@@ -615,16 +621,22 @@ export default function Campaigns() {
               <tbody>
                 <For each={Array(8).fill(0)}>
                   {() => (
-                    <tr class="border-b border-gray-100 dark:border-gray-800 animate-pulse">
+                    <tr class="border-b border-gray-100 dark:border-gray-800 animate-pulse bg-white dark:bg-gray-900">
                       {Array(canWriteCampaigns() ? 15 : 14)
                         .fill(0)
-                        .map((_, idx) => (
-                          <td class="p-3">
-                            <div
-                              class={`h-3 bg-gray-200 dark:bg-gray-700 rounded ${idx === 1 ? "w-48" : idx === 5 ? "w-16" : "w-20"}`}
-                            />
-                          </td>
-                        ))}
+                        .map((_, idx, arr) => {
+                          const isActions =
+                            canWriteCampaigns() && idx === arr.length - 1;
+                          return (
+                            <td
+                              class={`p-3 ${isActions ? "sticky right-0 z-10 bg-white dark:bg-gray-900 shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.18)]" : ""}`}
+                            >
+                              <div
+                                class={`h-3 bg-gray-200 dark:bg-gray-700 rounded ${idx === 1 ? "w-48" : idx === 5 ? "w-16" : "w-20"} ${isActions ? "mx-auto" : ""}`}
+                              />
+                            </td>
+                          );
+                        })}
                     </tr>
                   )}
                 </For>
@@ -717,7 +729,11 @@ export default function Campaigns() {
                         {c.leads_count ?? 0}
                       </td>
                       <Show when={canWriteCampaigns()}>
-                        <td class="p-3 text-center whitespace-nowrap">
+                        <td
+                          class={`p-3 text-center whitespace-nowrap sticky right-0 z-10
+                                  shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.18)]
+                                  ${i() % 2 === 0 ? "bg-white dark:bg-gray-900" : "bg-gray-50 dark:bg-gray-800"}`}
+                        >
                           <CampaignStatusControl
                             campaignId={c.id}
                             campaignName={c.name}

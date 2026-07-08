@@ -90,8 +90,25 @@ function Coverage(props) {
   );
 }
 
+// A manager has real data when the backend says so, or (fallback for older
+// backends) when they carry positive billable. No-data managers sink to the
+// bottom regardless of the chosen sort metric.
+const hasData = (r) => {
+  if (r?.has_data === false) return false;
+  if (r?.has_data === true) return true;
+  return (parseFloat(r?.net_billable) || 0) > 0;
+};
+// Numeric margin for sorting; null / non-numeric sinks (-Infinity).
+const marginVal = (r) => {
+  const n = parseFloat(r?.margin_pct);
+  return isFinite(n) ? n : -Infinity;
+};
+
 export default function ManagerPerformance() {
   const [month, setMonth] = createSignal(currentMonthKey());
+  // Ranking metric for the manager list. "profit" (default) preserves the API's
+  // profit-desc order; "margin" re-sorts client-side by margin_pct desc.
+  const [sortMode, setSortMode] = createSignal("profit"); // "profit" | "margin"
 
   const [data] = createResource(month, async (m) => {
     try {
@@ -107,6 +124,20 @@ export default function ManagerPerformance() {
   const rows = () => data()?.rows ?? [];
   const summary = () => data()?.summary ?? null;
   const isLive = () => month() === currentMonthKey() && summary()?.finalized !== true;
+
+  // Rows in the chosen ranking order. Profit mode returns the API order verbatim
+  // (already profit-desc, no-data last) so nothing changes on first load. Margin
+  // mode re-sorts by margin_pct desc client-side, keeping no-data managers last.
+  const displayRows = createMemo(() => {
+    const rs = rows();
+    if (sortMode() !== "margin") return rs;
+    const rank = (r) => (hasData(r) ? 0 : 1); // has-data first
+    return [...rs].sort((a, b) => {
+      const ra = rank(a), rb = rank(b);
+      if (ra !== rb) return ra - rb;
+      return marginVal(b) - marginVal(a);
+    });
+  });
 
   const cards = createMemo(() => {
     const s = summary();
@@ -272,7 +303,7 @@ export default function ManagerPerformance() {
                     avg
                   </span>
                 </Show>
-                <For each={rows()}>
+                <For each={displayRows()}>
                   {(r) => {
                     const p = parseFloat(r.profit) || 0;
                     const width = (Math.abs(p) / maxAbsProfit()) * 100;
@@ -350,6 +381,26 @@ export default function ManagerPerformance() {
           </div>
         </Show>
 
+        {/* Sort control — switch the ranking metric (Profit ↔ Margin %) */}
+        <Show when={!data.loading && rows().length > 0}>
+          <div class="flex items-center justify-end gap-2 mb-3">
+            <span class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">Rank by</span>
+            <div class="inline-flex items-center bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-[10px] p-[3px] gap-0.5">
+              <For each={[["profit", "Profit"], ["margin", "Margin %"]]}>
+                {([val, label]) => (
+                  <button
+                    onClick={() => setSortMode(val)}
+                    aria-pressed={sortMode() === val}
+                    class={`px-3.5 py-1.5 rounded-[7px] text-[12.5px] font-semibold transition-colors ${sortMode() === val ? "bg-[#14233A] text-white" : "text-[#54657E] dark:text-gray-300 hover:bg-[#F2F5FA] dark:hover:bg-gray-700"}`}
+                  >
+                    {label}
+                  </button>
+                )}
+              </For>
+            </div>
+          </div>
+        </Show>
+
         {/* Table — ClientDashboard theme */}
         <div class="overflow-auto max-h-[70vh] bg-gray-50 dark:bg-gray-800 rounded-xl border border-[#E2E8F1] dark:border-gray-700 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)]">
           <table class="w-full text-sm table-auto">
@@ -360,8 +411,26 @@ export default function ManagerPerformance() {
                 <th class="text-right">Clients</th>
                 <th class="text-right">Net Billable</th>
                 <th class="text-right">Spend</th>
-                <th class="text-right">Profit</th>
-                <th class="text-right">Margin</th>
+                <th
+                  class="text-right cursor-pointer select-none hover:text-[#AC2334] transition-colors"
+                  onClick={() => setSortMode("profit")}
+                  aria-sort={sortMode() === "profit" ? "descending" : "none"}
+                >
+                  <span class="inline-flex items-center gap-1 flex-row-reverse">
+                    Profit
+                    <span class={`text-[10px] leading-none ${sortMode() === "profit" ? "text-[#AC2334]" : "text-[#C3CDDB] dark:text-gray-600"}`}>{sortMode() === "profit" ? "▼" : "⇅"}</span>
+                  </span>
+                </th>
+                <th
+                  class="text-right cursor-pointer select-none hover:text-[#AC2334] transition-colors"
+                  onClick={() => setSortMode("margin")}
+                  aria-sort={sortMode() === "margin" ? "descending" : "none"}
+                >
+                  <span class="inline-flex items-center gap-1 flex-row-reverse">
+                    Margin
+                    <span class={`text-[10px] leading-none ${sortMode() === "margin" ? "text-[#AC2334]" : "text-[#C3CDDB] dark:text-gray-600"}`}>{sortMode() === "margin" ? "▼" : "⇅"}</span>
+                  </span>
+                </th>
                 <th class="text-right">Profit / Client</th>
                 <th class="text-center">Coverage</th>
               </tr>
@@ -372,7 +441,7 @@ export default function ManagerPerformance() {
               </tbody>
             }>
               <tbody>
-                <For each={rows()}>
+                <For each={displayRows()}>
                   {(r, i) => (
                     <tr class={`border-t border-[#E2E8F1] dark:border-gray-700 transition-colors [&_td]:p-3 [&_td]:whitespace-nowrap hover:bg-[#F3F6FA] dark:hover:bg-gray-800/60 ${i() % 2 === 0 ? "bg-gray-50 dark:bg-gray-800" : "bg-[#FAFBFD] dark:bg-gray-800"}`}>
                       <td class="text-center w-12">
