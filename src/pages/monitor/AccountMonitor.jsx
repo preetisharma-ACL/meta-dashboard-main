@@ -1,5 +1,5 @@
 import { createSignal, createResource, createMemo, For, Show } from "solid-js";
-import { fetchMonitorAccounts } from "../../services/monitor";
+import { fetchMonitorAccounts, fetchMonitorClients } from "../../services/monitor";
 import Avatar from "../../components/common/Avatar";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -120,6 +120,7 @@ function BalanceCell(props) {
 }
 
 export default function AccountMonitor() {
+  const [section, setSection] = createSignal("accounts"); // "accounts" | "clients"
   const [search, setSearch] = createSignal("");
   const [flaggedOnly, setFlaggedOnly] = createSignal(false);
   const [healthyOnly, setHealthyOnly] = createSignal(false);
@@ -265,6 +266,27 @@ export default function AccountMonitor() {
         </Show>
 
         <Show when={!forbidden()}>
+          {/* Section toggle — Accounts (§1) | Clients (§2) */}
+          <div class="mt-6 inline-flex items-center bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-[10px] p-[3px] gap-0.5">
+            <For each={[["accounts", "Accounts"], ["clients", "Clients"]]}>
+              {([val, label]) => (
+                <button
+                  onClick={() => setSection(val)}
+                  class={`px-4 py-1.5 rounded-[7px] text-[12.5px] font-semibold transition-colors ${section() === val ? "bg-[#14233A] text-white" : "text-[#54657E] dark:text-gray-300 hover:bg-[#F2F5FA] dark:hover:bg-gray-700"}`}
+                >
+                  {label}
+                </button>
+              )}
+            </For>
+          </div>
+        </Show>
+
+        {/* ─────────────── Section 2 — Client-wise budget & spend ─────────────── */}
+        <Show when={!forbidden() && section() === "clients"}>
+          <ClientRollup />
+        </Show>
+
+        <Show when={!forbidden() && section() === "accounts"}>
           {/* Overview — one card, all metrics inside */}
           <div class="mt-6">
             <Show
@@ -456,6 +478,249 @@ export default function AccountMonitor() {
         </Show>
       </main>
     </div>
+  );
+}
+
+// ── Section 2 helpers ─────────────────────────────────────────────────────────
+// Budget / spend arrive as rupee strings; tolerate a stray ₹ or thousands comma.
+const parseAmt = (v) => {
+  if (typeof v === "number") return v;
+  if (v == null) return NaN;
+  return parseFloat(String(v).replace(/[₹,\s]/g, ""));
+};
+const cRupees = (v) => {
+  const n = parseAmt(v);
+  return isFinite(n) ? `₹${n.toLocaleString("en-IN", { maximumFractionDigits: 0 })}` : "—";
+};
+const cRupees2 = (v) => {
+  const n = parseAmt(v);
+  return isFinite(n)
+    ? `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    : "—";
+};
+
+const MONITOR_WINDOWS = [
+  ["today", "Today"],
+  ["yesterday", "Yesterday"],
+  ["7d", "7d"],
+  ["30d", "30d"],
+];
+
+// CPL cell — coloured by band (green/amber/red), same palette as the account flags.
+function CplCell(props) {
+  const c = () => props.client;
+  return (
+    <Show
+      when={c().cpl != null}
+      fallback={<span class="text-[#8593A8] dark:text-gray-500">—</span>}
+    >
+      <span
+        class={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[12.5px] font-bold tabular-nums ${CHIP[c().cpl_band] ?? CHIP.grey}`}
+      >
+        {cRupees2(c().cpl)}
+      </span>
+    </Show>
+  );
+}
+
+// Client-wise budget & spend rollup. Own window toggle + search + summary tiles.
+function ClientRollup() {
+  const [win, setWin] = createSignal("yesterday"); // today | yesterday | 7d | 30d
+  const [search, setSearch] = createSignal("");
+
+  const [data] = createResource(win, async (w) => {
+    try {
+      const res = await fetchMonitorClients(w);
+      return {
+        rows: Array.isArray(res?.data) ? res.data : [],
+        summary: res?.meta?.summary ?? null,
+        forbidden: false,
+      };
+    } catch (err) {
+      if (err?.status === 403) return { rows: [], summary: null, forbidden: true };
+      throw err;
+    }
+  });
+
+  const forbidden = () => data()?.forbidden === true;
+  const clients = () => data()?.rows ?? [];
+  const summary = () => data()?.summary ?? null;
+
+  // Preserve API order (spend desc); only filter by client name.
+  const rows = createMemo(() => {
+    const q = search().trim().toLowerCase();
+    if (!q) return clients();
+    return clients().filter((c) => (c.client || "").toLowerCase().includes(q));
+  });
+
+  return (
+    <Show
+      when={!forbidden()}
+      fallback={
+        <div class="mt-6 bg-gray-50 dark:bg-gray-900 rounded-2xl border border-[#E2E8F1] dark:border-gray-700 py-16 px-6 text-center">
+          <h3 class="text-base font-bold text-[#14233A] dark:text-gray-100">Available to admins only</h3>
+          <p class="text-sm text-[#54657E] dark:text-gray-400 mt-1">This view is restricted to admin and global-read roles.</p>
+        </div>
+      }
+    >
+      {/* Summary tiles */}
+      <div class="mt-6">
+        <Show
+          when={!data.loading && summary()}
+          fallback={<div class="h-[96px] rounded-2xl bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_16px_rgba(16,29,49,.05)] animate-pulse" />}
+        >
+          <div class="bg-gray-50 dark:bg-gray-900 border border-[#E2E8F1] dark:border-gray-700 rounded-2xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_16px_rgba(16,29,49,.05)] overflow-hidden">
+            <div class="grid grid-cols-2 lg:grid-cols-4">
+              <SummarySeg
+                accent="#35507F"
+                label="Total daily budget"
+                value={cRupees(summary().total_daily_budget)}
+                valueClass="text-[#14233A] dark:text-white"
+                sub={`across ${num(summary().clients)} client${Number(summary().clients) === 1 ? "" : "s"}`}
+              />
+              <SummarySeg
+                class="border-l border-[#EEF1F6] dark:border-gray-800"
+                accent="#15966A"
+                label="Active campaigns"
+                value={num(summary().active_campaigns)}
+                valueClass="text-[#14233A] dark:text-white"
+                sub={`${num(summary().active_projects)} active project${Number(summary().active_projects) === 1 ? "" : "s"}`}
+              />
+              <SummarySeg
+                class="border-t lg:border-t-0 lg:border-l border-[#EEF1F6] dark:border-gray-800"
+                accent="#AC2334"
+                label="Blended CPL"
+                value={summary().blended_cpl == null ? "—" : cRupees2(summary().blended_cpl)}
+                valueClass="text-[#14233A] dark:text-white"
+                sub={`${num(summary().total_leads)} leads · ${cRupees(summary().total_spend)} spend`}
+              />
+              <SummarySeg
+                class="border-t lg:border-t-0 border-l border-[#EEF1F6] dark:border-gray-800"
+                accent="#C9871B"
+                label="Total spend"
+                value={cRupees(summary().total_spend)}
+                valueClass="text-[#14233A] dark:text-white"
+                sub="in selected window"
+              />
+            </div>
+          </div>
+        </Show>
+      </div>
+
+      {/* Toolbar — window toggle + search */}
+      <div class="mt-6 mb-4 flex flex-wrap items-center gap-3">
+        <div class="inline-flex items-center bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-[10px] p-[3px] gap-0.5">
+          <For each={MONITOR_WINDOWS}>
+            {([val, label]) => (
+              <button
+                onClick={() => setWin(val)}
+                class={`px-3.5 py-1.5 rounded-[7px] text-[12.5px] font-semibold transition-colors ${win() === val ? "bg-[#14233A] text-white" : "text-[#54657E] dark:text-gray-300 hover:bg-[#F2F5FA] dark:hover:bg-gray-700"}`}
+              >
+                {label}
+              </button>
+            )}
+          </For>
+        </div>
+        <div class="relative flex-1 min-w-[240px] max-w-[380px]">
+          <svg class="w-4 h-4 text-[#8593A8] absolute left-3 top-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" /></svg>
+          <input type="text" placeholder="Search by client name…" value={search()} onInput={(e) => setSearch(e.target.value)}
+            class="w-full h-[38px] pl-9 pr-3 text-sm rounded-[10px] border border-[#E2E8F1] dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-[#1A2B45] dark:text-white placeholder:text-[#8593A8] focus:outline-none focus:ring-2 focus:ring-[#14233A]/10 focus:border-[#14233A]" />
+        </div>
+        <span class="ml-auto text-[12.5px] text-[#8593A8] dark:text-gray-500 whitespace-nowrap"><b class="text-[#14233A] dark:text-white font-semibold tabular-nums">{rows().length}</b> shown</span>
+      </div>
+
+      <Show when={data.error}>
+        <div class="bg-[#FBEEF0] dark:bg-red-900/20 border border-[#AC2334]/25 dark:border-red-800 rounded-xl p-4 mb-4 text-sm font-medium text-[#AC2334] dark:text-red-400">Failed to load the client rollup. Please try again.</div>
+      </Show>
+
+      {/* Desktop ledger */}
+      <div class="hidden md:block bg-gray-50 dark:bg-gray-900 rounded-2xl border border-[#E2E8F1] dark:border-gray-700 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_16px_rgba(16,29,49,.05)] overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="min-w-full text-sm border-separate border-spacing-0">
+            <thead>
+              <tr class="bg-[#F2F5FA] dark:bg-gray-800 text-gray-600 dark:text-gray-400 uppercase text-[12px] font-bold tracking-[0.12em]">
+                <th class="p-4 text-center whitespace-nowrap w-16 border-b border-[#E3E8F0] dark:border-gray-700">#</th>
+                <th class="p-4 text-left whitespace-nowrap min-w-[220px] border-b border-[#E3E8F0] dark:border-gray-700">Client</th>
+                <th class="p-4 text-right whitespace-nowrap border-b border-[#E3E8F0] dark:border-gray-700">Projects</th>
+                <th class="p-4 text-right whitespace-nowrap border-b border-[#E3E8F0] dark:border-gray-700">Campaigns</th>
+                <th class="p-4 text-right whitespace-nowrap border-b border-[#E3E8F0] dark:border-gray-700">Daily Budget</th>
+                <th class="p-4 text-right whitespace-nowrap border-b border-[#E3E8F0] dark:border-gray-700">Spend</th>
+                <th class="p-4 text-right whitespace-nowrap border-b border-[#E3E8F0] dark:border-gray-700">Leads</th>
+                <th class="p-4 text-right whitespace-nowrap border-b border-[#E3E8F0] dark:border-gray-700">CPL</th>
+              </tr>
+            </thead>
+            <Show when={!data.loading} fallback={
+              <tbody>
+                <For each={Array(8).fill(0)}>{() => <tr class="animate-pulse"><For each={Array(8).fill(0)}>{(_, idx) => <td class="p-4 border-b border-[#EEF1F6] dark:border-gray-800"><div class={`h-3 bg-gray-200 dark:bg-gray-700 rounded ${idx() === 1 ? "w-40" : "w-16 ml-auto"}`} /></td>}</For></tr>}</For>
+              </tbody>
+            }>
+              <tbody>
+                <For each={rows()}>
+                  {(c, i) => (
+                    <tr class="group transition-colors hover:bg-[#F2F5FA] dark:hover:bg-gray-800/40">
+                      <td class="p-4 text-center align-middle border-b border-[#EEF1F6] dark:border-gray-800"><span class="text-[11.5px] text-[#7A849A] dark:text-gray-500 tabular-nums">{String(i() + 1).padStart(2, "0")}</span></td>
+                      <td class="p-4 align-middle border-b border-[#EEF1F6] dark:border-gray-800">
+                        <div class="flex items-center gap-3.5">
+                          <Avatar name={c.client} />
+                          <span class="block text-[#1B2437] dark:text-gray-100 font-semibold truncate" title={c.client}>{c.client}</span>
+                        </div>
+                      </td>
+                      <td class="p-4 text-right align-middle text-[#4B5568] dark:text-gray-300 font-semibold tabular-nums border-b border-[#EEF1F6] dark:border-gray-800">{num(c.projects)}</td>
+                      <td class="p-4 text-right align-middle text-[#4B5568] dark:text-gray-300 font-semibold tabular-nums border-b border-[#EEF1F6] dark:border-gray-800">{num(c.campaigns)}</td>
+                      <td class="p-4 text-right align-middle text-[#1B2437] dark:text-gray-300 whitespace-nowrap tabular-nums border-b border-[#EEF1F6] dark:border-gray-800">{cRupees(c.daily_budget)}</td>
+                      <td class="p-4 text-right align-middle text-[#1B2437] dark:text-gray-300 whitespace-nowrap tabular-nums font-semibold border-b border-[#EEF1F6] dark:border-gray-800">{cRupees(c.spend)}</td>
+                      <td class="p-4 text-right align-middle text-[#4B5568] dark:text-gray-300 tabular-nums border-b border-[#EEF1F6] dark:border-gray-800">{num(c.leads)}</td>
+                      <td class="p-4 text-right align-middle whitespace-nowrap border-b border-[#EEF1F6] dark:border-gray-800"><CplCell client={c} /></td>
+                    </tr>
+                  )}
+                </For>
+                <Show when={rows().length === 0}>
+                  <tr><td colspan="8" class="py-16 text-center text-[#8593A8] dark:text-gray-500">{search().trim() ? "No clients match your search." : "No clients to show for this window."}</td></tr>
+                </Show>
+              </tbody>
+            </Show>
+          </table>
+        </div>
+        <Show when={!data.loading}>
+          <div class="flex items-center justify-between gap-2 flex-wrap px-[22px] py-3 border-t border-[#E3E8F0] dark:border-gray-700 bg-[#F2F5FA] dark:bg-gray-800 text-[12px] text-[#7A849A] dark:text-gray-500">
+            <span>Showing <b class="text-[#4B5568] dark:text-gray-300 font-semibold tabular-nums">{rows().length}</b> of <b class="text-[#4B5568] dark:text-gray-300 font-semibold tabular-nums">{clients().length}</b> clients · sorted by spend</span>
+            <div class="flex gap-4 flex-wrap">
+              <span class="inline-flex items-center gap-1.5"><span class="w-[7px] h-[7px] rounded-full bg-[#15966A]" />CPL healthy</span>
+              <span class="inline-flex items-center gap-1.5"><span class="w-[7px] h-[7px] rounded-full bg-[#C9871B]" />CPL watch</span>
+              <span class="inline-flex items-center gap-1.5"><span class="w-[7px] h-[7px] rounded-full bg-[#AC2334]" />CPL high</span>
+            </div>
+          </div>
+        </Show>
+      </div>
+
+      {/* Mobile cards */}
+      <div class="md:hidden space-y-3">
+        <Show when={!data.loading} fallback={<For each={Array(5).fill(0)}>{() => <div class="h-32 rounded-xl bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 animate-pulse" />}</For>}>
+          <For each={rows()}>
+            {(c, i) => (
+              <div class="rounded-xl border border-[#E2E8F1] dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
+                <div class="flex items-center gap-3">
+                  <span class="text-[11px] text-[#7A849A] dark:text-gray-500 tabular-nums flex-none">{String(i() + 1).padStart(2, "0")}</span>
+                  <Avatar name={c.client} size="w-9 h-9" />
+                  <span class="font-semibold text-[#1B2437] dark:text-gray-100 truncate flex-1">{c.client}</span>
+                  <CplCell client={c} />
+                </div>
+                <div class="mt-3 pt-3 border-t border-[#E2E8F1] dark:border-gray-700 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                  <div class="flex justify-between"><span class="text-[#8593A8]">Daily budget</span><span class="font-semibold text-[#1B2437] dark:text-gray-300 tabular-nums">{cRupees(c.daily_budget)}</span></div>
+                  <div class="flex justify-between"><span class="text-[#8593A8]">Spend</span><span class="font-semibold text-[#1B2437] dark:text-gray-300 tabular-nums">{cRupees(c.spend)}</span></div>
+                  <div class="flex justify-between"><span class="text-[#8593A8]">Projects</span><span class="font-semibold text-[#1B2437] dark:text-gray-300 tabular-nums">{num(c.projects)}</span></div>
+                  <div class="flex justify-between"><span class="text-[#8593A8]">Campaigns</span><span class="font-semibold text-[#1B2437] dark:text-gray-300 tabular-nums">{num(c.campaigns)}</span></div>
+                  <div class="flex justify-between"><span class="text-[#8593A8]">Leads</span><span class="font-semibold text-[#1B2437] dark:text-gray-300 tabular-nums">{num(c.leads)}</span></div>
+                </div>
+              </div>
+            )}
+          </For>
+          <Show when={rows().length === 0}>
+            <div class="py-16 text-center text-[#8593A8] dark:text-gray-500">{search().trim() ? "No clients match your search." : "No clients to show for this window."}</div>
+          </Show>
+        </Show>
+      </div>
+    </Show>
   );
 }
 

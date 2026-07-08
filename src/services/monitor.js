@@ -8,3 +8,14 @@ import { api } from "../api/api";
 export const fetchMonitorAccounts = async () => {
   return await api(`/cm/monitor/accounts/`, { method: "GET" });
 };
+
+// ─── Section 2 — client-wise budget & spend rollup (admin-only) ───────────────
+// One row per client for the chosen window. Rows arrive pre-sorted by spend
+// (highest first) — preserve that order. meta.summary carries the roll-up totals
+// (daily budget, active campaigns/projects, blended CPL) used by the tiles.
+// Default window is "yesterday" (the key daily check; today is a partial day).
+const MONITOR_WINDOWS = ["today", "yesterday", "7d", "30d"];
+export const fetchMonitorClients = async (window = "yesterday") => {
+  const w = MONITOR_WINDOWS.includes(window) ? window : "yesterday";
+  return await api(`/cm/monitor/clients/?window=${w}`, { method: "GET" });
+};

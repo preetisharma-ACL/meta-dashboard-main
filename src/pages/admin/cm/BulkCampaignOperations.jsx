@@ -30,9 +30,52 @@ import {
   BUDGET_MIN,
   BUDGET_MAX,
 } from "../../../services/bulkCampaignOps";
-import { fetchAllAdminCampaigns } from "../services/campaigns";
+import { fetchAllAdminCampaigns, normAccountId } from "../services/campaigns";
+import { fetchAdAccounts } from "../services/adAccount";
 import { canWriteCampaigns } from "../../../stores/currentUser";
 import Avatar from "../../../components/common/Avatar";
+
+// ── Meta ad-account id resolution ────────────────────────────────────────────
+// A campaign's `ad_account_id` is usually the internal ad-account ROW id (a small
+// int like 31), NOT the 16-digit Meta id. The Meta id lives on the ad-account
+// record (`meta_account_id`). We fetch the ad accounts once and build a lookup so
+// each campaign row can show its real Meta id in full (e.g. act_8714825085229398).
+const [accountMetaMap, setAccountMetaMap] = createSignal(new Map());
+let _accountsLoaded = false;
+
+const ensureAccountsLoaded = async () => {
+  if (_accountsLoaded) return;
+  _accountsLoaded = true;
+  try {
+    const res = await fetchAdAccounts();
+    const raw = Array.isArray(res?.data)
+      ? res.data
+      : Array.isArray(res)
+        ? res
+        : [];
+    const map = new Map();
+    for (const a of raw) {
+      const meta = normAccountId(a.meta_account_id);
+      if (meta == null) continue;
+      if (a.id != null) map.set(String(a.id), meta); // row id → meta id
+      map.set(meta, meta); // meta id resolves to itself
+    }
+    setAccountMetaMap(map);
+  } catch {
+    _accountsLoaded = false; // allow a later retry
+  }
+};
+
+// Resolve a campaign's ad_account_id to its full Meta id, formatted "act_<digits>".
+// Returns "" when the id can't be resolved (better blank than a wrong "act_31").
+const fmtMetaAccountId = (adAccountId) => {
+  if (adAccountId == null || adAccountId === "") return "";
+  const map = accountMetaMap();
+  const norm = normAccountId(adAccountId);
+  const meta =
+    map.get(String(adAccountId)) ?? (norm != null ? map.get(norm) : null);
+  return meta ? `act_${meta}` : "";
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ADMIN · Bulk Campaign Operations  (route: /bulk-campaign-operations)
@@ -250,6 +293,7 @@ function TabButton(props) {
 function NewOperation(props) {
   // ── Campaign source (cached admin sweep; backend scopes for CMs) ──
   const [campaigns] = createResource(async () => {
+    ensureAccountsLoaded(); // fire-and-forget: resolves Meta ids for the rows
     try {
       const rows = await fetchAllAdminCampaigns();
       return Array.isArray(rows) ? rows : [];
@@ -294,7 +338,9 @@ function NewOperation(props) {
       if (!q) return true;
       const hay = `${c.name ?? ""} ${c.client_nomen_name ?? ""} ${
         c.project_name ?? ""
-      } ${c.ad_account_name ?? ""} ${c.ad_account_id ?? ""}`.toLowerCase();
+      } ${c.ad_account_name ?? ""} ${c.ad_account_id ?? ""} ${fmtMetaAccountId(
+        c.ad_account_id,
+      )}`.toLowerCase();
       return hay.includes(q);
     });
   });
@@ -858,11 +904,13 @@ function NewOperation(props) {
                             {w.campaign_name}
                           </div>
                           <Show when={w.ad_account_name}>
-                            <div
-                              class="text-[10.5px] text-gray-400 truncate"
-                              title={w.ad_account_id || ""}
-                            >
+                            <div class="text-[10.5px] text-gray-400 truncate">
                               {w.ad_account_name}
+                            </div>
+                          </Show>
+                          <Show when={fmtMetaAccountId(w.ad_account_id)}>
+                            <div class="text-[10.5px] text-gray-400/70 font-mono tabular-nums break-all">
+                              {fmtMetaAccountId(w.ad_account_id)}
                             </div>
                           </Show>
                         </div>
@@ -902,11 +950,13 @@ function NewOperation(props) {
                             {s.campaign_name}
                           </div>
                           <Show when={s.ad_account_name}>
-                            <div
-                              class="text-[10px] text-gray-400/80 truncate"
-                              title={s.ad_account_id || ""}
-                            >
+                            <div class="text-[10px] text-gray-400/80 truncate">
                               {s.ad_account_name}
+                            </div>
+                          </Show>
+                          <Show when={fmtMetaAccountId(s.ad_account_id)}>
+                            <div class="text-[10px] text-gray-400/70 font-mono tabular-nums break-all">
+                              {fmtMetaAccountId(s.ad_account_id)}
                             </div>
                           </Show>
                         </div>
@@ -1007,14 +1057,16 @@ function PickerRow(props) {
         <div class="text-[13.5px] font-semibold text-gray-900 dark:text-gray-100 truncate">
           {c().name}
         </div>
-        <div
-          class="text-[11.5px] text-gray-400 truncate"
-          title={c().ad_account_id || ""}
-        >
+        <div class="text-[11.5px] text-gray-400 truncate">
           {[c().client_nomen_name || c().project_name, c().ad_account_name]
             .filter(Boolean)
             .join(" · ") || "—"}
         </div>
+        <Show when={fmtMetaAccountId(c().ad_account_id)}>
+          <div class="text-[11px] text-gray-400 font-mono tabular-nums break-all">
+            {fmtMetaAccountId(c().ad_account_id)}
+          </div>
+        </Show>
       </div>
       <span
         class={`inline-flex items-center gap-1 text-[10.5px] font-bold uppercase tracking-[0.05em] px-2 py-[3px] rounded-full whitespace-nowrap ${statusTone(
@@ -1167,6 +1219,7 @@ function HistoryPanel(props) {
   const [ops] = createResource(
     () => props.nonce,
     async () => {
+      ensureAccountsLoaded(); // resolves Meta ids for the detail rows
       try {
         const data = await fetchBulkHistory(50);
         return Array.isArray(data) ? data : [];
@@ -1539,11 +1592,13 @@ function DetailRow(props) {
           {it().campaign_name}
         </div>
         <Show when={it().ad_account_name}>
-          <div
-            class="text-[10.5px] text-gray-400 truncate"
-            title={it().ad_account_id || ""}
-          >
+          <div class="text-[10.5px] text-gray-400 truncate">
             {it().ad_account_name}
+          </div>
+        </Show>
+        <Show when={fmtMetaAccountId(it().ad_account_id)}>
+          <div class="text-[10.5px] text-gray-400/70 font-mono tabular-nums break-all">
+            {fmtMetaAccountId(it().ad_account_id)}
           </div>
         </Show>
       </td>
