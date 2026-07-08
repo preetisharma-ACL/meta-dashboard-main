@@ -7,6 +7,7 @@ import {
 } from "../services/campaigns";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
+import * as XLSX from "xlsx";
 import useRole, { clientRole } from "./../hooks/useRole";
 import { createResource } from "solid-js"; // add to existing solid-js import
 import { fetchBillingOverview } from "../services/billing-service";
@@ -48,6 +49,7 @@ export default function DailyReports() {
   const [toDate, setToDate] = createSignal("");
   const [showPreview, setShowPreview] = createSignal(false);
   const [previewGenerating, setPreviewGenerating] = createSignal(false);
+  const [exportOpen, setExportOpen] = createSignal(false); // download-report format menu
   const { isRetainer, iscpl, ishybrid, isAdmin } = clientRole();
 
   // inside DailyReports(), near the other state:
@@ -404,6 +406,86 @@ export default function DailyReports() {
     pdf.save("daily-report.pdf");
   };
 
+  // ─── CSV / Excel export ────────────────────────────────────────────────────
+  // Mirrors exactly what's in the table: the same columns (Spent columns only
+  // for non-CPL clients, with their dynamic S.C / GST labels) plus the totals
+  // row. Money leaves as plain numbers so a spreadsheet can sum/sort.
+  const exportDateLabel = () =>
+    fromDate() && toDate()
+      ? `${new Date(fromDate()).toLocaleDateString("en-IN", { day: "numeric", month: "short" })} - ${new Date(toDate()).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}`
+      : new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+  const exportColumns = () => {
+    const cols = ["Date", "Project", "Leads", "CPL"];
+    if (!iscpl()) cols.push("Amount Spent", scColLabel(), finalColLabel());
+    return cols;
+  };
+  const exportRow = (r) => {
+    const base = [exportDateLabel(), r.projectName, r.leads, r.cpl];
+    if (!iscpl()) base.push(r.spent, r.spentwithServiceCharge, r.spentwithservice_gst);
+    return base;
+  };
+  const exportTotalsRow = () => {
+    const t = totals();
+    const base = ["TOTAL", "", t.totalLeads, t.avgCPL];
+    if (!iscpl()) base.push(t.totalSpent, t.totalspentwithServiceCharge, t.totalspentwithservice_gst);
+    return base;
+  };
+  const exportFileDate = () => new Date().toISOString().split("T")[0];
+  const triggerDownload = (blob, filename) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadCSV = () => {
+    const rows = reportRows();
+    if (!rows.length) return;
+    const esc = (v) => {
+      const s = v == null ? "" : String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const lines = [
+      exportColumns().join(","),
+      ...rows.map((r) => exportRow(r).map(esc).join(",")),
+      exportTotalsRow().map(esc).join(","),
+    ];
+    const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
+    triggerDownload(blob, `daily-report-${exportFileDate()}.csv`);
+  };
+
+  const downloadExcel = () => {
+    const rows = reportRows();
+    if (!rows.length) return;
+    const meta = [
+      ["Daily Report"],
+      ["Range", rangeLabel()],
+      ["Generated", new Date().toLocaleString("en-IN")],
+      [],
+    ];
+    const ws = XLSX.utils.aoa_to_sheet([
+      ...meta,
+      exportColumns(),
+      ...rows.map(exportRow),
+      exportTotalsRow(),
+    ]);
+    ws["!cols"] = exportColumns().map((_, i) => ({ wch: i === 1 ? 28 : 16 }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Daily Report");
+    XLSX.writeFile(wb, `daily-report-${exportFileDate()}.xlsx`);
+  };
+
+  const runExport = (fmt) => {
+    setExportOpen(false);
+    if (fmt === "csv") downloadCSV();
+    else if (fmt === "excel") downloadExcel();
+    else if (fmt === "pdf") downloadPDF();
+  };
+
   const handlePreview = () => {
     setPreviewGenerating(true);
     // small delay so the button state renders first
@@ -743,33 +825,76 @@ export default function DailyReports() {
           {showPreview() ? "Hide Preview" : "Preview Report"}
         </button>
 
-        {/* Download */}
-        <button
-          onClick={downloadPDF}
-          disabled={reportRows().length === 0}
-          class={
-            "flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 shadow-sm " +
-            (reportRows().length === 0
-              ? "opacity-40 cursor-not-allowed bg-blue-900 text-white"
-              : "bg-purple-900 hover:bg-purple-700 border dark:border-gray-600  dark:bg-gray-800  dark:text-gray-200 text-white hover:shadow-md")
-          }
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="w-4 h-4"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            stroke-width="2"
+        {/* Download report — PDF / CSV / Excel dropdown */}
+        <div class="relative">
+          <button
+            onClick={() => setExportOpen((v) => !v)}
+            disabled={reportRows().length === 0}
+            aria-haspopup="true"
+            aria-expanded={exportOpen()}
+            class={
+              "flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 shadow-sm " +
+              (reportRows().length === 0
+                ? "opacity-40 cursor-not-allowed bg-blue-900 text-white"
+                : "bg-purple-900 hover:bg-purple-700 border dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 text-white hover:shadow-md")
+            }
           >
-            <path
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="w-4 h-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V4"
+              />
+            </svg>
+            Download Report
+            <svg
+              class={`w-3.5 h-3.5 transition-transform duration-200 ${exportOpen() ? "rotate-180" : ""}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              stroke-width="2.4"
               stroke-linecap="round"
               stroke-linejoin="round"
-              d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V4"
-            />
-          </svg>
-          Download Report
-        </button>
+            >
+              <path d="M6 9l6 6 6-6" />
+            </svg>
+          </button>
+
+          <Show when={exportOpen()}>
+            {/* click-away catcher */}
+            <div class="fixed inset-0 z-40" onClick={() => setExportOpen(false)} />
+            <div class="absolute left-0 bottom-full mb-2 w-60 z-50 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-[0_10px_40px_rgba(16,29,49,0.18)] overflow-hidden py-1.5">
+              <p class="px-3.5 pt-1.5 pb-2 text-[12px] font-bold uppercase tracking-wider text-gray-700 dark:text-gray-500">
+                Export {reportRows().length} row{reportRows().length !== 1 ? "s" : ""} as
+              </p>
+              <For each={[
+                { fmt: "pdf", label: "PDF", sub: "Branded A4 document", tint: "#6B21A8" },
+                { fmt: "csv", label: "CSV", sub: "Comma-separated values", tint: "#15966A" },
+                { fmt: "excel", label: "Excel", sub: "Formatted .xlsx workbook", tint: "#1D7044" },
+              ]}>
+                {(o) => (
+                  <button
+                    onClick={() => runExport(o.fmt)}
+                    class="w-full flex items-center gap-3 px-3.5 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                  >
+                    <span class="w-8 h-8 flex-none rounded-lg grid place-items-center text-[11px] font-extrabold text-white" style={`background:${o.tint}`}>{o.label.slice(0, 3).toUpperCase()}</span>
+                    <span class="min-w-0">
+                      <span class="block text-[13px] font-bold text-gray-900 dark:text-gray-100">{o.label}</span>
+                      <span class="block text-[11px] text-gray-400 dark:text-gray-500">{o.sub}</span>
+                    </span>
+                  </button>
+                )}
+              </For>
+            </div>
+          </Show>
+        </div>
 
         {/* row count */}
         <Show when={reportRows().length > 0}>

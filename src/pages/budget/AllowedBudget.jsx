@@ -1,5 +1,7 @@
 import { createSignal, createResource, createMemo, For, Show, onMount } from "solid-js";
 import Swal from "sweetalert2";
+import * as XLSX from "xlsx";
+import jsPDF from "jspdf";
 import {
   fetchAllowedBudgetClients,
   setAllowedBudget,
@@ -454,6 +456,7 @@ export default function AllowedBudget() {
   const [search, setSearch] = createSignal("");
   const [statusFilter, setStatusFilter] = createSignal("all"); // all | over | near | capped | uncapped
   const [clientTypes, setClientTypes] = createSignal(DEFAULT_CLIENT_TYPES); // multi-select
+  const [exportOpen, setExportOpen] = createSignal(false); // download-report format menu
 
   const toggleClientType = (key) => {
     setClientTypes((prev) => {
@@ -572,6 +575,178 @@ export default function AllowedBudget() {
   });
   const anyFilter = () => search().trim() || statusFilter() !== "all" || !typesAreDefault();
 
+  // ─── Download report (CSV / Excel / PDF) ────────────────────────────────────
+  // Exports exactly what's on screen (current client-type + search + status
+  // filters). Money leaves as plain numbers for CSV/Excel so a spreadsheet can
+  // sum/sort; the null-vs-zero distinction is preserved as blanks, never ₹0.
+  const REPORT_COLUMNS = [
+    "Client", "Type", "Status",
+    "Daily Allowed", "Daily Allocated", "Daily Headroom", "Daily % Used",
+    "Monthly Allowed", "Monthly Spent", "Monthly Headroom", "Monthly % Used",
+    "Pending Requests",
+  ];
+  const num = (v) => { if (v == null) return null; const n = parseFloat(v); return isFinite(n) ? n : null; };
+  const reportRows = () =>
+    visibleClients().map((c) => {
+      const dPct = legPct(c.allowed_daily_budget, c.daily_allocated);
+      const mPct = legPct(c.allowed_monthly_budget, c.monthly_spent);
+      return {
+        name: c.name ?? "",
+        type: TYPE_LABELS[c.client_type] ?? (c.client_type ?? ""),
+        status: STATUS_META[clientStatus(c)].label,
+        dAllowed: num(c.allowed_daily_budget),
+        dAllocated: num(c.daily_allocated),
+        dHeadroom: num(c.daily_headroom),
+        dPct: dPct == null ? null : Math.round(dPct),
+        mAllowed: num(c.allowed_monthly_budget),
+        mSpent: num(c.monthly_spent),
+        mHeadroom: num(c.monthly_headroom),
+        mPct: mPct == null ? null : Math.round(mPct),
+        pending: pendingCount(c),
+      };
+    });
+  const reportDate = () => new Date().toISOString().split("T")[0];
+  const reportFilterBits = () => {
+    const bits = [];
+    if (search().trim()) bits.push(`search: "${search().trim()}"`);
+    if (statusFilter() !== "all") bits.push(`status: ${statusFilter()}`);
+    if (!typesAreDefault()) bits.push(`types: ${clientTypes().map((k) => TYPE_LABELS[k] ?? k).join(", ")}`);
+    return bits;
+  };
+  const triggerDownload = (blob, filename) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+  const rowValues = (r) => [
+    r.name, r.type, r.status,
+    r.dAllowed, r.dAllocated, r.dHeadroom, r.dPct,
+    r.mAllowed, r.mSpent, r.mHeadroom, r.mPct, r.pending,
+  ];
+
+  const downloadCSV = () => {
+    const rows = reportRows();
+    if (!rows.length) return;
+    const esc = (v) => {
+      const s = v == null ? "" : String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const lines = [
+      REPORT_COLUMNS.join(","),
+      ...rows.map((r) => rowValues(r).map((v) => esc(v ?? "")).join(",")),
+    ];
+    const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
+    triggerDownload(blob, `allowed-budget-${reportDate()}.csv`);
+  };
+
+  const downloadExcel = () => {
+    const rows = reportRows();
+    if (!rows.length) return;
+    const blank = (v) => (v == null ? "" : v);
+    const body = rows.map((r) => rowValues(r).map((v, i) => (i < 3 || i === 11 ? v : blank(v))));
+    const meta = [
+      ["Allowed Budget Report"],
+      ["Generated", new Date().toLocaleString("en-IN")],
+      ...(reportFilterBits().length ? [["Filter", reportFilterBits().join(" · ")]] : []),
+      ["Clients", rows.length],
+      [],
+    ];
+    const ws = XLSX.utils.aoa_to_sheet([...meta, REPORT_COLUMNS, ...body]);
+    ws["!cols"] = [
+      { wch: 26 }, { wch: 10 }, { wch: 11 },
+      { wch: 13 }, { wch: 14 }, { wch: 14 }, { wch: 12 },
+      { wch: 14 }, { wch: 14 }, { wch: 15 }, { wch: 13 }, { wch: 16 },
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Allowed Budget");
+    XLSX.writeFile(wb, `allowed-budget-${reportDate()}.xlsx`);
+  };
+
+  const downloadPDF = () => {
+    const rows = reportRows();
+    if (!rows.length) return;
+    const pdf = new jsPDF({ orientation: "l", unit: "mm", format: "a4" });
+    const pageW = 297, pageH = 210, margin = 10;
+    const usable = pageW - margin * 2;
+    // jsPDF's standard fonts don't carry the ₹ glyph, so amounts go out as plain
+    // grouped numbers with an "amounts in INR" note in the header.
+    const moneyPlain = (v) => (v == null ? "—" : Math.round(v).toLocaleString("en-IN"));
+    const pctPlain = (v) => (v == null ? "—" : `${v}%`);
+    const cols = [
+      { label: "Client", w: 16, align: "left", get: (r) => r.name },
+      { label: "Type", w: 6, align: "left", get: (r) => r.type },
+      { label: "Status", w: 8, align: "left", get: (r) => r.status },
+      { label: "Daily Allowed", w: 9, align: "right", get: (r) => moneyPlain(r.dAllowed) },
+      { label: "Daily Alloc.", w: 9, align: "right", get: (r) => moneyPlain(r.dAllocated) },
+      { label: "Daily Head.", w: 9, align: "right", get: (r) => moneyPlain(r.dHeadroom) },
+      { label: "Daily %", w: 6, align: "right", get: (r) => pctPlain(r.dPct) },
+      { label: "Mo. Allowed", w: 9, align: "right", get: (r) => moneyPlain(r.mAllowed) },
+      { label: "Mo. Spent", w: 9, align: "right", get: (r) => moneyPlain(r.mSpent) },
+      { label: "Mo. Head.", w: 9, align: "right", get: (r) => moneyPlain(r.mHeadroom) },
+      { label: "Mo. %", w: 6, align: "right", get: (r) => pctPlain(r.mPct) },
+      { label: "Pending", w: 7, align: "right", get: (r) => String(r.pending) },
+    ];
+    const totalW = cols.reduce((s, c) => s + c.w, 0);
+    let acc = margin;
+    cols.forEach((c) => { c.mm = (c.w / totalW) * usable; c.x = acc; acc += c.mm; });
+
+    let y = margin;
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(14);
+    pdf.text("Allowed Budget Report", margin, y + 4);
+    y += 9;
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(8);
+    pdf.setTextColor(90, 100, 120);
+    pdf.text(`Generated ${new Date().toLocaleString("en-IN")}  ·  ${rows.length} client${rows.length !== 1 ? "s" : ""}  ·  All amounts in INR`, margin, y + 3);
+    if (reportFilterBits().length) { y += 4.5; pdf.text(`Filter: ${reportFilterBits().join("  ·  ")}`, margin, y + 3); }
+    y += 8;
+
+    const headerH = 7, rowH = 6;
+    const drawHeader = () => {
+      pdf.setFillColor(20, 35, 58);
+      pdf.rect(margin, y, usable, headerH, "F");
+      pdf.setTextColor(255, 255, 255);
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(7);
+      cols.forEach((c) => {
+        const tx = c.align === "right" ? c.x + c.mm - 1.5 : c.x + 1.5;
+        pdf.text(c.label, tx, y + 4.7, { align: c.align });
+      });
+      y += headerH;
+    };
+    const bodyFont = () => { pdf.setFont("helvetica", "normal"); pdf.setFontSize(7); };
+
+    drawHeader();
+    bodyFont();
+    rows.forEach((r, i) => {
+      if (y + rowH > pageH - margin) { pdf.addPage(); y = margin; drawHeader(); bodyFont(); }
+      if (i % 2 === 1) { pdf.setFillColor(244, 247, 250); pdf.rect(margin, y, usable, rowH, "F"); }
+      pdf.setTextColor(30, 35, 45);
+      cols.forEach((c) => {
+        let txt = String(c.get(r) ?? "");
+        const maxChars = Math.max(3, Math.floor(c.mm / 1.5));
+        if (txt.length > maxChars) txt = txt.slice(0, maxChars - 1) + "...";
+        const tx = c.align === "right" ? c.x + c.mm - 1.5 : c.x + 1.5;
+        pdf.text(txt, tx, y + 4.2, { align: c.align });
+      });
+      y += rowH;
+    });
+    pdf.save(`allowed-budget-${reportDate()}.pdf`);
+  };
+
+  const runExport = (fmt) => {
+    setExportOpen(false);
+    if (fmt === "csv") downloadCSV();
+    else if (fmt === "excel") downloadExcel();
+    else if (fmt === "pdf") downloadPDF();
+  };
+
   const review = async (req, decision) => {
     const { value: note, isConfirmed } = await Swal.fire({
       title: `${decision === "approve" ? "Approve" : "Reject"} request`,
@@ -607,13 +782,69 @@ export default function AllowedBudget() {
 
   return (
     <div class="font-sans min-h-screen bg-gray-50 dark:bg-gray-900 p-4 md:p-6 lg:p-8">
-      <div class="mb-5">
-        <p class="text-xs font-bold uppercase tracking-[0.12em] text-[#AC2334] mb-1.5">Coordination · Controls</p>
-        <h1 class="text-2xl font-bold text-[#14233A] dark:text-white tracking-tight">Allowed Budget</h1>
-        <p class="text-sm text-[#54657E] dark:text-gray-400 mt-1">
-          Per-client spending budgets.{" "}
-          {admin() ? "Set budgets directly and review increase requests." : "Request an increase when you need more delivery."}
-        </p>
+      <div class="mb-5 flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <p class="text-xs font-bold uppercase tracking-[0.12em] text-[#AC2334] mb-1.5">Coordination · Controls</p>
+          <h1 class="text-2xl font-bold text-[#14233A] dark:text-white tracking-tight">Allowed Budget</h1>
+          <p class="text-sm text-[#54657E] dark:text-gray-400 mt-1">
+            Per-client spending budgets.{" "}
+            {admin() ? "Set budgets directly and review increase requests." : "Request an increase when you need more delivery."}
+          </p>
+        </div>
+
+        {/* Download report — CSV / Excel / PDF (Clients tab only) */}
+        <Show when={tab() === "clients"}>
+          <div class="relative">
+            <button
+              onClick={() => setExportOpen((v) => !v)}
+              disabled={clients.loading || visibleClients().length === 0}
+              title="Download the current client list as a report"
+              aria-haspopup="true"
+              aria-expanded={exportOpen()}
+              class="group inline-flex items-center gap-2.5 pl-2.5 pr-3.5 py-2.5 rounded-xl text-sm font-bold text-white
+                     bg-[#14233A] hover:bg-[#1f3553] shadow-[0_1px_2px_rgba(16,29,49,.18),0_6px_16px_rgba(16,29,49,.14)]
+                     hover:shadow-[0_2px_4px_rgba(16,29,49,.22),0_10px_22px_rgba(16,29,49,.18)] active:scale-[0.97]
+                     disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none disabled:active:scale-100
+                     transition-all duration-200"
+            >
+              <span class="flex items-center justify-center w-6 h-6 rounded-lg bg-white/15 group-hover:bg-white/25 transition-colors">
+                <svg class="w-4 h-4 transition-transform duration-200 group-hover:translate-y-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" />
+                </svg>
+              </span>
+              Download report
+              <svg class={`w-3.5 h-3.5 transition-transform duration-200 ${exportOpen() ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6" /></svg>
+            </button>
+
+            <Show when={exportOpen()}>
+              {/* click-away catcher */}
+              <div class="fixed inset-0 z-40" onClick={() => setExportOpen(false)} />
+              <div class="absolute right-0 mt-2 w-60 z-50 rounded-xl bg-white dark:bg-gray-900 border border-[#E2E8F1] dark:border-gray-700 shadow-[0_10px_40px_rgba(16,29,49,0.18)] overflow-hidden py-1.5">
+                <p class="px-3.5 pt-1.5 pb-2 text-[10px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-500">
+                  Export {visibleClients().length} client{visibleClients().length !== 1 ? "s" : ""} as
+                </p>
+                <For each={[
+                  { fmt: "csv", label: "CSV", sub: "Comma-separated values", tint: "#15966A" },
+                  { fmt: "excel", label: "Excel", sub: "Formatted .xlsx workbook", tint: "#1D7044" },
+                  { fmt: "pdf", label: "PDF", sub: "Printable A4 document", tint: "#AC2334" },
+                ]}>
+                  {(o) => (
+                    <button
+                      onClick={() => runExport(o.fmt)}
+                      class="w-full flex items-center gap-3 px-3.5 py-2.5 text-left hover:bg-[#F6F9FC] dark:hover:bg-gray-800 transition-colors"
+                    >
+                      <span class="w-8 h-8 flex-none rounded-lg grid place-items-center text-[11px] font-extrabold text-white" style={`background:${o.tint}`}>{o.label.slice(0, 3).toUpperCase()}</span>
+                      <span class="min-w-0">
+                        <span class="block text-[13px] font-bold text-[#14233A] dark:text-gray-100">{o.label}</span>
+                        <span class="block text-[11px] text-[#8593A8] dark:text-gray-500">{o.sub}</span>
+                      </span>
+                    </button>
+                  )}
+                </For>
+              </div>
+            </Show>
+          </div>
+        </Show>
       </div>
 
       {/* Client-type filter — moved above the tabs so it's always visible */}
