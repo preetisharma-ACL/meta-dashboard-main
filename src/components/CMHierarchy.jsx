@@ -120,6 +120,41 @@ function LoadingRow(props) {
   );
 }
 
+// A 404 with code "not_found" from the hierarchy endpoints is intentional and
+// neutral: the backend returns the SAME 404 whether the client/project genuinely
+// doesn't exist OR exists but isn't in the CM's visible set (a deliberate choice
+// so it never leaks another CM's client). So this treats it as a distinct,
+// calm state — never a hard error, never wording that implies ownership.
+const isNotFound = (err) => err?.status === 404 && (err?.code === "not_found" || !err?.code);
+
+// Neutral "not available to you / doesn't exist" panel. Deliberately does NOT
+// distinguish the two — the backend hides the difference and the UI must too.
+function NotAvailablePanel(props) {
+  return (
+    <div class="flex items-start gap-3 px-3 py-6 text-gray-500 dark:text-gray-400">
+      <svg
+        class="w-5 h-5 flex-shrink-0 mt-0.5 text-gray-400 dark:text-gray-500"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 8v4M12 16h.01" />
+      </svg>
+      <div class="min-w-0">
+        <p class="text-sm font-semibold text-gray-700 dark:text-gray-200">{props.heading}</p>
+        <p class="text-xs mt-0.5 max-w-md leading-relaxed">
+          This {props.kind} isn't in your assigned accounts, or doesn't exist. If you
+          think you should have access, contact your manager.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main: lazy clients → projects → campaigns tree ───────────────────────────
 // Props: startDate, endDate (values; may be undefined → server 14-day default)
 export default function CMHierarchy(props) {
@@ -167,7 +202,11 @@ export default function CMHierarchy(props) {
       }));
     } catch (err) {
       console.error("[CMHierarchy] projects failed:", err);
-      setProjectsByClient((p) => ({ ...p, [clientNomenId]: { loading: false, error: true, data: [] } }));
+      const notFound = isNotFound(err);
+      setProjectsByClient((p) => ({
+        ...p,
+        [clientNomenId]: { loading: false, error: !notFound, notFound, data: [] },
+      }));
     }
   };
 
@@ -181,7 +220,11 @@ export default function CMHierarchy(props) {
       }));
     } catch (err) {
       console.error("[CMHierarchy] campaigns failed:", err);
-      setCampaignsByProject((p) => ({ ...p, [projectId]: { loading: false, error: true, data: [] } }));
+      const notFound = isNotFound(err);
+      setCampaignsByProject((p) => ({
+        ...p,
+        [projectId]: { loading: false, error: !notFound, notFound, data: [] },
+      }));
     }
   };
 
@@ -298,13 +341,16 @@ export default function CMHierarchy(props) {
                     <Show when={projState()?.loading}>
                       <LoadingRow label="Loading projects…" />
                     </Show>
+                    <Show when={projState()?.notFound}>
+                      <NotAvailablePanel heading="Client not available" kind="client" />
+                    </Show>
                     <Show when={projState()?.error}>
                       <div class="px-3 py-2 text-sm text-red-600 dark:text-red-400 flex items-center gap-2">
                         Failed to load projects.
                         <button onClick={() => loadProjects(id)} class="underline font-medium">Retry</button>
                       </div>
                     </Show>
-                    <Show when={projState() && !projState().loading && !projState().error && projState().data.length === 0}>
+                    <Show when={projState() && !projState().loading && !projState().error && !projState().notFound && projState().data.length === 0}>
                       <div class="px-3 py-4 text-sm text-gray-400 dark:text-gray-500">No data in this range.</div>
                     </Show>
 
@@ -341,13 +387,16 @@ export default function CMHierarchy(props) {
                                   <Show when={campState()?.loading}>
                                     <LoadingRow label="Loading campaigns…" />
                                   </Show>
+                                  <Show when={campState()?.notFound}>
+                                    <NotAvailablePanel heading="Project not available" kind="project" />
+                                  </Show>
                                   <Show when={campState()?.error}>
                                     <div class="px-3 py-2 text-sm text-red-600 dark:text-red-400 flex items-center gap-2">
                                       Failed to load campaigns.
                                       <button onClick={() => loadCampaigns(pid, id)} class="underline font-medium">Retry</button>
                                     </div>
                                   </Show>
-                                  <Show when={campState() && !campState().loading && !campState().error && campState().data.length === 0}>
+                                  <Show when={campState() && !campState().loading && !campState().error && !campState().notFound && campState().data.length === 0}>
                                     <div class="px-3 py-4 text-sm text-gray-400 dark:text-gray-500">No data in this range.</div>
                                   </Show>
 
