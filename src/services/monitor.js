@@ -19,3 +19,15 @@ export const fetchMonitorClients = async (window = "yesterday") => {
   const w = MONITOR_WINDOWS.includes(window) ? window : "yesterday";
   return await api(`/cm/monitor/clients/?window=${w}`, { method: "GET" });
 };
+
+// ─── Section 2 drill — one client's projects (admin-only) ─────────────────────
+// Expands a client row in the rollup to its per-project breakdown for the SAME
+// window the table is on. Rows arrive pre-sorted by spend desc (preserve order),
+// one row per project: { project_id, project, campaigns, daily_budget, spend,
+// leads, cpl, cpl_band } — the client columns, one level down.
+export const fetchMonitorClientProjects = async (clientId, window = "yesterday") => {
+  const w = MONITOR_WINDOWS.includes(window) ? window : "yesterday";
+  return await api(`/cm/monitor/clients/${clientId}/projects/?window=${w}`, {
+    method: "GET",
+  });
+};

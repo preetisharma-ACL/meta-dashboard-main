@@ -27,6 +27,7 @@ import {
 import useRole from "../hooks/useRole";
 import AIInsightButton from "../components/AIInsightButton";
 import CampaignStatusControl from "../components/CampaignStatusControl";
+import CampaignBudgetControl from "../components/CampaignBudgetControl";
 import { DateRangeFilter } from "../components/DateRangeFilter";
 export default function CampaignDetails() {
   const { userRole, isAdmin, isClient } = useRole();
@@ -168,6 +169,16 @@ export default function CampaignDetails() {
                     status: s,
                     status_label: s === "active" ? "Active" : "Paused",
                   },
+                })
+              }
+            />
+            <CampaignBudgetControl
+              campaignId={campaignId}
+              campaignName={campaign()?.name}
+              currentBudget={campaign()?.daily_budget ?? campaign()?.budget}
+              onChanged={(b) =>
+                setCampaignCache({
+                  data: { ...campaign(), daily_budget: b, budget: b },
                 })
               }
             />

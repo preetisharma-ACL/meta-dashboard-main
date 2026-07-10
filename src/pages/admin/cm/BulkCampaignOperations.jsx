@@ -19,6 +19,8 @@ import {
   Search,
   Clock,
   ArrowRight,
+  Users,
+  ChevronDown,
 } from "lucide-solid";
 import {
   previewBulk,
@@ -386,6 +388,66 @@ function NewOperation(props) {
     resetFlow();
   };
 
+  // ── Client-wise quick select ────────────────────────────────────────────────
+  // Speeds up SELECTION only — the existing preview → confirm → execute flow runs
+  // unchanged on the result. Admin campaign rows carry client_nomen (id) +
+  // client_nomen_name; we group by those. Picking a client REPLACES the selection
+  // with all of that client's campaigns, keeping it scoped to one client at a time
+  // (safer, easy to verify/revert). No backend change — bulk endpoints already
+  // accept any list of campaign ids.
+  const clientList = createMemo(() => {
+    const map = new Map();
+    for (const c of campaigns() ?? []) {
+      if (c.client_nomen == null) continue;
+      const key = String(c.client_nomen);
+      const e =
+        map.get(key) ??
+        {
+          id: c.client_nomen,
+          name: c.client_nomen_name || `Client #${c.client_nomen}`,
+          count: 0,
+        };
+      e.count += 1;
+      map.set(key, e);
+    }
+    return [...map.values()].sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
+    );
+  });
+
+  const selectClient = async (client) => {
+    const ids = (campaigns() ?? [])
+      .filter((c) => String(c.client_nomen) === String(client.id))
+      .map((c) => c.id);
+    if (ids.length === 0) {
+      toast("info", "Nothing to select", `No campaigns found for ${client.name}.`);
+      return;
+    }
+    const { isConfirmed } = await Swal.fire({
+      title: `Select ${client.name}'s campaigns?`,
+      html: `<div style="text-align:left;font-size:13px;line-height:1.6">
+        This will change <b>${ids.length}</b> campaign${ids.length === 1 ? "" : "s"} for
+        <b>${escapeHtml(client.name)}</b>. Proceed?<br/>
+        <span style="color:#8593A8;font-size:12px">You'll still preview and type-confirm before anything is written to Meta.</span>
+      </div>`,
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonText: `Select ${ids.length}`,
+      cancelButtonText: "Cancel",
+      confirmButtonColor: NAVY,
+      reverseButtons: true,
+    });
+    if (!isConfirmed) return;
+    // Replace (not merge) — scoped to a single client.
+    setSelected(new Set(ids));
+    resetFlow();
+    toast(
+      "success",
+      "Client selected",
+      `${ids.length} campaign${ids.length === 1 ? "" : "s"} for ${client.name} selected.`,
+    );
+  };
+
   const chooseAction = (a) => {
     setAction(a);
     resetFlow();
@@ -608,6 +670,8 @@ function NewOperation(props) {
                 )}
               </For>
             </div>
+            {/* One-click: select all of one client's campaigns. */}
+            <ClientQuickSelect clients={clientList()} onPick={selectClient} />
           </div>
         </div>
 
@@ -1034,6 +1098,100 @@ function NewOperation(props) {
       </aside>
     </div>
   );
+}
+
+// ── Client quick-select dropdown ─────────────────────────────────────────────
+// A searchable list of clients (name + campaign count). Picking one hands the
+// client up to onPick, which selects all of that client's campaigns. Purely a
+// selection shortcut — the write flow that follows is unchanged.
+function ClientQuickSelect(props) {
+  const [open, setOpen] = createSignal(false);
+  const [q, setQ] = createSignal("");
+
+  const filtered = createMemo(() => {
+    const needle = q().trim().toLowerCase();
+    const list = props.clients ?? [];
+    if (!needle) return list;
+    return list.filter((c) => c.name.toLowerCase().includes(needle));
+  });
+
+  const pick = async (client) => {
+    setOpen(false);
+    setQ("");
+    await props.onPick?.(client);
+  };
+
+  return (
+    <div class="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        disabled={(props.clients ?? []).length === 0}
+        aria-expanded={open()}
+        class="inline-flex items-center gap-1.5 h-[35px] px-3 rounded-[9px] border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-[12px] font-semibold text-gray-600 dark:text-gray-300 hover:border-[#14233A]/40 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+      >
+        <Users class="w-3.5 h-3.5" />
+        Select client
+        <ChevronDown class={`w-3.5 h-3.5 transition-transform ${open() ? "rotate-180" : ""}`} />
+      </button>
+
+      <Show when={open()}>
+        {/* Click-away backdrop */}
+        <div class="fixed inset-0 z-[40]" onClick={() => setOpen(false)} />
+        <div class="absolute right-0 mt-1.5 w-[280px] z-[50] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl overflow-hidden">
+          <div class="p-2 border-b border-gray-100 dark:border-gray-800">
+            <div class="relative">
+              <Search class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+              <input
+                type="search"
+                autofocus
+                value={q()}
+                onInput={(e) => setQ(e.target.value)}
+                placeholder="Search clients…"
+                class="w-full h-[32px] rounded-[8px] border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 pl-[30px] pr-2.5 text-[12.5px] text-gray-800 dark:text-gray-100 placeholder:text-gray-400 focus:outline-none focus:border-[#14233A] focus:ring-2 focus:ring-[#14233A]/10"
+              />
+            </div>
+          </div>
+          <div class="max-h-[280px] overflow-y-auto py-1">
+            <Show
+              when={filtered().length > 0}
+              fallback={
+                <div class="px-3 py-6 text-center text-[12px] text-gray-400">
+                  No clients match.
+                </div>
+              }
+            >
+              <For each={filtered()}>
+                {(c) => (
+                  <button
+                    type="button"
+                    onClick={() => pick(c)}
+                    class="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors"
+                  >
+                    <span class="text-[12.5px] font-medium text-gray-800 dark:text-gray-100 truncate flex-1">
+                      {c.name}
+                    </span>
+                    <span class="text-[10.5px] font-bold tabular-nums text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 rounded-full px-2 py-[2px]">
+                      {c.count}
+                    </span>
+                  </button>
+                )}
+              </For>
+            </Show>
+          </div>
+        </div>
+      </Show>
+    </div>
+  );
+}
+
+// Minimal HTML escape — client names go into Swal's html option.
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 // ── Picker row ───────────────────────────────────────────────────────────────

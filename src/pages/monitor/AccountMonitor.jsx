@@ -1,5 +1,10 @@
-import { createSignal, createResource, createMemo, For, Show } from "solid-js";
-import { fetchMonitorAccounts, fetchMonitorClients } from "../../services/monitor";
+import { createSignal, createResource, createMemo, createEffect, For, Show } from "solid-js";
+import { ChevronRight } from "lucide-solid";
+import {
+  fetchMonitorAccounts,
+  fetchMonitorClients,
+  fetchMonitorClientProjects,
+} from "../../services/monitor";
 import Avatar from "../../components/common/Avatar";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -523,10 +528,98 @@ function CplCell(props) {
   );
 }
 
+// ── Section 2 drill — one client's projects (nested, subordinate table) ───────
+// Fetched on expand for the SAME window the Clients table is on. Mirrors the
+// client columns one level down, reusing the CPL-band pill. Read-only, admin-only.
+function ProjectDrill(props) {
+  // Keyed by (client_id, window) so a window change (which re-mounts via the
+  // collapse-all effect) refetches for the right window.
+  const [data] = createResource(
+    () => [props.clientId, props.window],
+    async ([clientId, window]) => {
+      try {
+        const res = await fetchMonitorClientProjects(clientId, window);
+        return { rows: Array.isArray(res?.data) ? res.data : [], error: false };
+      } catch {
+        return { rows: [], error: true };
+      }
+    },
+  );
+
+  const projects = () => data()?.rows ?? [];
+
+  return (
+    <div class="px-4 md:px-6 py-3 md:pl-16">
+      <div class="text-[10.5px] font-bold tracking-[0.12em] uppercase text-[#8593A8] dark:text-gray-500 mb-2">
+        Projects · {props.clientName}
+      </div>
+
+      <Show
+        when={!data.loading}
+        fallback={
+          <div class="space-y-1.5">
+            <For each={Array(3).fill(0)}>{() => <div class="h-8 rounded bg-[#EAEFF6] dark:bg-gray-800 animate-pulse" />}</For>
+          </div>
+        }
+      >
+        <Show when={!data()?.error} fallback={<div class="py-4 text-[12.5px] text-[#AC2334] dark:text-red-400">Couldn't load this client's projects. Collapse and try again.</div>}>
+          <Show when={projects().length > 0} fallback={<div class="py-4 text-[12.5px] text-[#8593A8] dark:text-gray-500">No projects to show for this window.</div>}>
+            <div class="overflow-x-auto rounded-lg border border-[#E2E8F1] dark:border-gray-700 bg-white dark:bg-gray-900">
+              <table class="min-w-full text-[13px] border-separate border-spacing-0">
+                <thead>
+                  <tr class="bg-[#F2F5FA] dark:bg-gray-800 text-gray-600 dark:text-gray-400 uppercase text-[10.5px] font-bold tracking-[0.1em]">
+                    <th class="px-3 py-2 text-left whitespace-nowrap min-w-[200px] border-b border-[#E3E8F0] dark:border-gray-700">Project</th>
+                    <th class="px-3 py-2 text-right whitespace-nowrap border-b border-[#E3E8F0] dark:border-gray-700">Campaigns</th>
+                    <th class="px-3 py-2 text-right whitespace-nowrap border-b border-[#E3E8F0] dark:border-gray-700">Daily Budget</th>
+                    <th class="px-3 py-2 text-right whitespace-nowrap border-b border-[#E3E8F0] dark:border-gray-700">Spend</th>
+                    <th class="px-3 py-2 text-right whitespace-nowrap border-b border-[#E3E8F0] dark:border-gray-700">Leads</th>
+                    <th class="px-3 py-2 text-right whitespace-nowrap border-b border-[#E3E8F0] dark:border-gray-700">CPL</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <For each={projects()}>
+                    {(p) => (
+                      <tr class="hover:bg-[#F7F9FC] dark:hover:bg-gray-800/40">
+                        <td class="px-3 py-2 align-middle text-[#1B2437] dark:text-gray-200 font-medium border-b border-[#EEF1F6] dark:border-gray-800 last:border-0"><span class="truncate block max-w-[280px]" title={p.project}>{p.project}</span></td>
+                        <td class="px-3 py-2 text-right align-middle text-[#4B5568] dark:text-gray-300 tabular-nums border-b border-[#EEF1F6] dark:border-gray-800">{num(p.campaigns)}</td>
+                        <td class="px-3 py-2 text-right align-middle text-[#1B2437] dark:text-gray-300 whitespace-nowrap tabular-nums border-b border-[#EEF1F6] dark:border-gray-800">{cRupees(p.daily_budget)}</td>
+                        <td class="px-3 py-2 text-right align-middle text-[#1B2437] dark:text-gray-300 whitespace-nowrap tabular-nums font-semibold border-b border-[#EEF1F6] dark:border-gray-800">{cRupees(p.spend)}</td>
+                        <td class="px-3 py-2 text-right align-middle text-[#4B5568] dark:text-gray-300 tabular-nums border-b border-[#EEF1F6] dark:border-gray-800">{num(p.leads)}</td>
+                        <td class="px-3 py-2 text-right align-middle whitespace-nowrap border-b border-[#EEF1F6] dark:border-gray-800"><CplCell client={p} /></td>
+                      </tr>
+                    )}
+                  </For>
+                </tbody>
+              </table>
+            </div>
+          </Show>
+        </Show>
+      </Show>
+    </div>
+  );
+}
+
 // Client-wise budget & spend rollup. Own window toggle + search + summary tiles.
 function ClientRollup() {
   const [win, setWin] = createSignal("yesterday"); // today | yesterday | 7d | 30d
   const [search, setSearch] = createSignal("");
+  // Expanded client rows (by client_id) → each shows that client's projects.
+  const [expanded, setExpanded] = createSignal(new Set());
+
+  // When the window toggle changes, collapse all drills — the open ones would be
+  // showing stale-window data otherwise (re-expanding refetches the new window).
+  createEffect(() => {
+    win();
+    setExpanded(new Set());
+  });
+
+  const toggleExpand = (id) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
 
   const [data] = createResource(win, async (w) => {
     try {
@@ -656,23 +749,47 @@ function ClientRollup() {
             }>
               <tbody>
                 <For each={rows()}>
-                  {(c, i) => (
-                    <tr class="group transition-colors hover:bg-[#F2F5FA] dark:hover:bg-gray-800/40">
-                      <td class="p-4 text-center align-middle border-b border-[#EEF1F6] dark:border-gray-800"><span class="text-[11.5px] text-[#7A849A] dark:text-gray-500 tabular-nums">{String(i() + 1).padStart(2, "0")}</span></td>
-                      <td class="p-4 align-middle border-b border-[#EEF1F6] dark:border-gray-800">
-                        <div class="flex items-center gap-3.5">
-                          <Avatar name={c.client} />
-                          <span class="block text-[#1B2437] dark:text-gray-100 font-semibold truncate" title={c.client}>{c.client}</span>
-                        </div>
-                      </td>
-                      <td class="p-4 text-right align-middle text-[#4B5568] dark:text-gray-300 font-semibold tabular-nums border-b border-[#EEF1F6] dark:border-gray-800">{num(c.projects)}</td>
-                      <td class="p-4 text-right align-middle text-[#4B5568] dark:text-gray-300 font-semibold tabular-nums border-b border-[#EEF1F6] dark:border-gray-800">{num(c.campaigns)}</td>
-                      <td class="p-4 text-right align-middle text-[#1B2437] dark:text-gray-300 whitespace-nowrap tabular-nums border-b border-[#EEF1F6] dark:border-gray-800">{cRupees(c.daily_budget)}</td>
-                      <td class="p-4 text-right align-middle text-[#1B2437] dark:text-gray-300 whitespace-nowrap tabular-nums font-semibold border-b border-[#EEF1F6] dark:border-gray-800">{cRupees(c.spend)}</td>
-                      <td class="p-4 text-right align-middle text-[#4B5568] dark:text-gray-300 tabular-nums border-b border-[#EEF1F6] dark:border-gray-800">{num(c.leads)}</td>
-                      <td class="p-4 text-right align-middle whitespace-nowrap border-b border-[#EEF1F6] dark:border-gray-800"><CplCell client={c} /></td>
-                    </tr>
-                  )}
+                  {(c, i) => {
+                    const canExpand = () => c.client_id != null;
+                    const isOpen = () => expanded().has(c.client_id);
+                    return (
+                      <>
+                        <tr
+                          class={`group transition-colors hover:bg-[#F2F5FA] dark:hover:bg-gray-800/40 ${canExpand() ? "cursor-pointer" : ""} ${isOpen() ? "bg-[#F2F5FA] dark:bg-gray-800/40" : ""}`}
+                          onClick={canExpand() ? () => toggleExpand(c.client_id) : undefined}
+                        >
+                          <td class="p-4 text-center align-middle border-b border-[#EEF1F6] dark:border-gray-800"><span class="text-[11.5px] text-[#7A849A] dark:text-gray-500 tabular-nums">{String(i() + 1).padStart(2, "0")}</span></td>
+                          <td class="p-4 align-middle border-b border-[#EEF1F6] dark:border-gray-800">
+                            <div class="flex items-center gap-2.5">
+                              <Show
+                                when={canExpand()}
+                                fallback={<span class="w-5 flex-none" />}
+                              >
+                                <ChevronRight
+                                  class={`w-4 h-4 flex-none text-[#8593A8] transition-transform ${isOpen() ? "rotate-90 text-[#14233A] dark:text-gray-200" : ""}`}
+                                />
+                              </Show>
+                              <Avatar name={c.client} />
+                              <span class="block text-[#1B2437] dark:text-gray-100 font-semibold truncate" title={c.client}>{c.client}</span>
+                            </div>
+                          </td>
+                          <td class="p-4 text-right align-middle text-[#4B5568] dark:text-gray-300 font-semibold tabular-nums border-b border-[#EEF1F6] dark:border-gray-800">{num(c.projects)}</td>
+                          <td class="p-4 text-right align-middle text-[#4B5568] dark:text-gray-300 font-semibold tabular-nums border-b border-[#EEF1F6] dark:border-gray-800">{num(c.campaigns)}</td>
+                          <td class="p-4 text-right align-middle text-[#1B2437] dark:text-gray-300 whitespace-nowrap tabular-nums border-b border-[#EEF1F6] dark:border-gray-800">{cRupees(c.daily_budget)}</td>
+                          <td class="p-4 text-right align-middle text-[#1B2437] dark:text-gray-300 whitespace-nowrap tabular-nums font-semibold border-b border-[#EEF1F6] dark:border-gray-800">{cRupees(c.spend)}</td>
+                          <td class="p-4 text-right align-middle text-[#4B5568] dark:text-gray-300 tabular-nums border-b border-[#EEF1F6] dark:border-gray-800">{num(c.leads)}</td>
+                          <td class="p-4 text-right align-middle whitespace-nowrap border-b border-[#EEF1F6] dark:border-gray-800"><CplCell client={c} /></td>
+                        </tr>
+                        <Show when={isOpen()}>
+                          <tr>
+                            <td colspan="8" class="p-0 border-b border-[#EEF1F6] dark:border-gray-800 bg-[#F8FAFD] dark:bg-gray-800/20">
+                              <ProjectDrill clientId={c.client_id} clientName={c.client} window={win()} />
+                            </td>
+                          </tr>
+                        </Show>
+                      </>
+                    );
+                  }}
                 </For>
                 <Show when={rows().length === 0}>
                   <tr><td colspan="8" class="py-16 text-center text-[#8593A8] dark:text-gray-500">{search().trim() ? "No clients match your search." : "No clients to show for this window."}</td></tr>
@@ -697,23 +814,38 @@ function ClientRollup() {
       <div class="md:hidden space-y-3">
         <Show when={!data.loading} fallback={<For each={Array(5).fill(0)}>{() => <div class="h-32 rounded-xl bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 animate-pulse" />}</For>}>
           <For each={rows()}>
-            {(c, i) => (
-              <div class="rounded-xl border border-[#E2E8F1] dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
-                <div class="flex items-center gap-3">
-                  <span class="text-[11px] text-[#7A849A] dark:text-gray-500 tabular-nums flex-none">{String(i() + 1).padStart(2, "0")}</span>
-                  <Avatar name={c.client} size="w-9 h-9" />
-                  <span class="font-semibold text-[#1B2437] dark:text-gray-100 truncate flex-1">{c.client}</span>
-                  <CplCell client={c} />
+            {(c, i) => {
+              const canExpand = () => c.client_id != null;
+              const isOpen = () => expanded().has(c.client_id);
+              return (
+                <div class="rounded-xl border border-[#E2E8F1] dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
+                  <div
+                    class={`flex items-center gap-3 ${canExpand() ? "cursor-pointer" : ""}`}
+                    onClick={canExpand() ? () => toggleExpand(c.client_id) : undefined}
+                  >
+                    <span class="text-[11px] text-[#7A849A] dark:text-gray-500 tabular-nums flex-none">{String(i() + 1).padStart(2, "0")}</span>
+                    <Show when={canExpand()}>
+                      <ChevronRight class={`w-4 h-4 flex-none text-[#8593A8] transition-transform ${isOpen() ? "rotate-90 text-[#14233A] dark:text-gray-200" : ""}`} />
+                    </Show>
+                    <Avatar name={c.client} size="w-9 h-9" />
+                    <span class="font-semibold text-[#1B2437] dark:text-gray-100 truncate flex-1">{c.client}</span>
+                    <CplCell client={c} />
+                  </div>
+                  <div class="mt-3 pt-3 border-t border-[#E2E8F1] dark:border-gray-700 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                    <div class="flex justify-between"><span class="text-[#8593A8]">Daily budget</span><span class="font-semibold text-[#1B2437] dark:text-gray-300 tabular-nums">{cRupees(c.daily_budget)}</span></div>
+                    <div class="flex justify-between"><span class="text-[#8593A8]">Spend</span><span class="font-semibold text-[#1B2437] dark:text-gray-300 tabular-nums">{cRupees(c.spend)}</span></div>
+                    <div class="flex justify-between"><span class="text-[#8593A8]">Projects</span><span class="font-semibold text-[#1B2437] dark:text-gray-300 tabular-nums">{num(c.projects)}</span></div>
+                    <div class="flex justify-between"><span class="text-[#8593A8]">Campaigns</span><span class="font-semibold text-[#1B2437] dark:text-gray-300 tabular-nums">{num(c.campaigns)}</span></div>
+                    <div class="flex justify-between"><span class="text-[#8593A8]">Leads</span><span class="font-semibold text-[#1B2437] dark:text-gray-300 tabular-nums">{num(c.leads)}</span></div>
+                  </div>
+                  <Show when={isOpen()}>
+                    <div class="mt-3 pt-3 border-t border-[#E2E8F1] dark:border-gray-700">
+                      <ProjectDrill clientId={c.client_id} clientName={c.client} window={win()} />
+                    </div>
+                  </Show>
                 </div>
-                <div class="mt-3 pt-3 border-t border-[#E2E8F1] dark:border-gray-700 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
-                  <div class="flex justify-between"><span class="text-[#8593A8]">Daily budget</span><span class="font-semibold text-[#1B2437] dark:text-gray-300 tabular-nums">{cRupees(c.daily_budget)}</span></div>
-                  <div class="flex justify-between"><span class="text-[#8593A8]">Spend</span><span class="font-semibold text-[#1B2437] dark:text-gray-300 tabular-nums">{cRupees(c.spend)}</span></div>
-                  <div class="flex justify-between"><span class="text-[#8593A8]">Projects</span><span class="font-semibold text-[#1B2437] dark:text-gray-300 tabular-nums">{num(c.projects)}</span></div>
-                  <div class="flex justify-between"><span class="text-[#8593A8]">Campaigns</span><span class="font-semibold text-[#1B2437] dark:text-gray-300 tabular-nums">{num(c.campaigns)}</span></div>
-                  <div class="flex justify-between"><span class="text-[#8593A8]">Leads</span><span class="font-semibold text-[#1B2437] dark:text-gray-300 tabular-nums">{num(c.leads)}</span></div>
-                </div>
-              </div>
-            )}
+              );
+            }}
           </For>
           <Show when={rows().length === 0}>
             <div class="py-16 text-center text-[#8593A8] dark:text-gray-500">{search().trim() ? "No clients match your search." : "No clients to show for this window."}</div>
