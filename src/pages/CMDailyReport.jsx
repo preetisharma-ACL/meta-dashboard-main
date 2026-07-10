@@ -59,6 +59,8 @@ export default function CMDailyReport() {
   const [fromDate, setFromDate] = createSignal("");
   const [toDate, setToDate] = createSignal("");
   const [selectedClientId, setSelectedClientId] = createSignal("");
+  const [clientQuery, setClientQuery] = createSignal(""); // searchable dropdown text
+  const [clientOpen, setClientOpen] = createSignal(false);
   const [statusFilter, setStatusFilter] = createSignal("all"); // all | active | paused
   const [activePreset, setActivePreset] = createSignal(null);
 
@@ -93,6 +95,32 @@ export default function CMDailyReport() {
       (c) => String(c.client_nomen_id) === String(selectedClientId()),
     ),
   );
+
+  // ── Searchable client dropdown (combobox) ─────────────────────────────────
+  const filteredClients = createMemo(() => {
+    const q = clientQuery().trim().toLowerCase();
+    const list = clients();
+    if (!q) return list;
+    return list.filter((c) =>
+      (c.client_name || "").toLowerCase().includes(q),
+    );
+  });
+
+  const selectClientOption = (c) => {
+    batch(() => {
+      setSelectedClientId(c.client_nomen_id);
+      setClientQuery(c.client_name || "");
+      setClientOpen(false);
+    });
+  };
+
+  const clearClient = () => {
+    batch(() => {
+      setSelectedClientId("");
+      setClientQuery("");
+      setClientOpen(true);
+    });
+  };
 
   // ── Scoped campaigns (once per switch scope) ──────────────────────────────
   // The hierarchy project node has no status, so we derive each project's
@@ -226,6 +254,8 @@ export default function CMDailyReport() {
   const reset = () => {
     batch(() => {
       setSelectedClientId("");
+      setClientQuery("");
+      setClientOpen(false);
       setFromDate("");
       setToDate("");
       setStatusFilter("all");
@@ -469,34 +499,63 @@ export default function CMDailyReport() {
       {/* ── Filter card ── */}
       <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-5 sm:p-6 mb-6">
         <div class="flex flex-col lg:flex-row lg:items-end gap-4">
-          {/* Client dropdown */}
+          {/* Client dropdown — searchable combobox */}
           <div class="flex-1 min-w-[220px]">
             <label class="block text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1.5">
               Client
             </label>
             <div class="relative">
-              <select
-                value={selectedClientId()}
-                onChange={(e) => setSelectedClientId(e.target.value)}
+              <input
+                type="text"
+                value={clientQuery()}
                 disabled={clientsRes.loading}
-                class="w-full border border-gray-300 dark:border-gray-600 px-3 py-2.5 pr-10 rounded-lg bg-white dark:bg-gray-900 text-sm text-gray-800 dark:text-gray-200 appearance-none focus:outline-none focus:ring-2 focus:ring-[#AC2334]/25 focus:border-[#AC2334] cursor-pointer disabled:opacity-60"
-              >
-                <option value="">
-                  {clientsRes.loading
+                placeholder={
+                  clientsRes.loading
                     ? "Loading your clients…"
                     : clients().length === 0
                       ? "No assigned clients"
-                      : "Select a client…"}
-                </option>
-                <For each={clients()}>
-                  {(c) => (
-                    <option value={c.client_nomen_id}>{c.client_name}</option>
-                  )}
-                </For>
-              </select>
-              <div class="pointer-events-none absolute inset-y-0 right-3 flex items-center">
+                      : "Search a client…"
+                }
+                onInput={(e) => {
+                  setClientQuery(e.currentTarget.value);
+                  setClientOpen(true);
+                  if (selectedClientId()) setSelectedClientId("");
+                }}
+                onFocus={() => setClientOpen(true)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setClientOpen(false);
+                  else if (e.key === "Enter") {
+                    const f = filteredClients();
+                    if (f.length > 0) selectClientOption(f[0]);
+                  }
+                }}
+                class="w-full border border-gray-300 dark:border-gray-600 px-3 py-2.5 pr-16 rounded-lg bg-white dark:bg-gray-900 text-sm text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#AC2334]/25 focus:border-[#AC2334] disabled:opacity-60 placeholder:text-gray-400"
+              />
+              <div class="absolute inset-y-0 right-2.5 flex items-center gap-1">
+                <Show when={clientQuery()}>
+                  <button
+                    type="button"
+                    onClick={clearClient}
+                    aria-label="Clear client"
+                    class="p-0.5 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                  >
+                    <svg
+                      class="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      stroke-width="2"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </Show>
                 <svg
-                  class="w-4 h-4 text-gray-500"
+                  class="w-4 h-4 text-gray-500 pointer-events-none"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -509,6 +568,50 @@ export default function CMDailyReport() {
                   />
                 </svg>
               </div>
+
+              {/* Options */}
+              <Show when={clientOpen() && !clientsRes.loading}>
+                <div
+                  class="fixed inset-0 z-40"
+                  onClick={() => setClientOpen(false)}
+                />
+                <div class="absolute left-0 right-0 top-full mt-1 z-50 max-h-64 overflow-y-auto rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-[0_10px_40px_rgba(16,29,49,0.18)] py-1">
+                  <Show
+                    when={filteredClients().length > 0}
+                    fallback={
+                      <div class="px-3 py-3 text-sm text-gray-400 dark:text-gray-500">
+                        {clients().length === 0
+                          ? "No assigned clients"
+                          : "No clients match your search"}
+                      </div>
+                    }
+                  >
+                    <For each={filteredClients()}>
+                      {(c) => (
+                        <button
+                          type="button"
+                          onClick={() => selectClientOption(c)}
+                          class={
+                            "w-full text-left px-3 py-2 text-sm flex items-center justify-between gap-2 transition-colors " +
+                            (String(c.client_nomen_id) === String(selectedClientId())
+                              ? "bg-[#FBEEF0] dark:bg-red-900/20 text-[#AC2334] dark:text-red-300 font-semibold"
+                              : "text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800")
+                          }
+                        >
+                          <span class="truncate">{c.client_name}</span>
+                          <Show when={c.client_type}>
+                            <span
+                              class={`flex-none text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize ${TYPE_CHIP[(c.client_type || "").toLowerCase()] ?? TYPE_CHIP.retainer}`}
+                            >
+                              {c.client_type}
+                            </span>
+                          </Show>
+                        </button>
+                      )}
+                    </For>
+                  </Show>
+                </div>
+              </Show>
             </div>
           </div>
 
