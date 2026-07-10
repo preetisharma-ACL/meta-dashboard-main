@@ -175,3 +175,28 @@ export const fetchAIInsight = async (
   applyMeta(res?.meta);
   return res;
 };
+
+// ─── I(b). AI CLIENT insight (admin + Tier 1 only) ────────────────────────────
+// Client-level analogue of fetchAIInsight: one narrative summarizing ALL of the
+// client's campaigns. Same contract — live LLM call (2–4s), callers render a
+// loading state and never block. data.insight may be null (AI unavailable) — NOT
+// an error; render the grounding metrics + a quiet note. A 403 means the caller
+// isn't allowed; a 404 with code "no_data" means the client had no activity in
+// the range. `id` is the client nomen id (localStorage `selectedClientNomenId`).
+// The metrics shape differs from the campaign call: it carries a `projects`
+// array (per-project spend/leads/cpl) instead of a single campaign's numbers,
+// and its money/CPL values are pre-formatted ₹ strings.
+export const fetchClientAIInsight = async (
+  clientId,
+  { startDate, endDate, refresh = false } = {},
+) => {
+  let url = `/insights/ai/client/${clientId}/?1=1`;
+  if (startDate) url += `&start_date=${startDate}`;
+  if (endDate) url += `&end_date=${endDate}`;
+  if (refresh) url += `&refresh=1`;
+  url += scopeQuery();
+
+  const res = await api(url, { method: "GET" });
+  applyMeta(res?.meta);
+  return res;
+};

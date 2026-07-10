@@ -45,6 +45,7 @@ import { fetchBulkCampaignInsights } from "../services/campaigns";
 import { fetchAllCampaigns } from "../services/campaigns";
 import Avatar from "../components/common/Avatar";
 import CountUp from "../components/CountUp";
+import ClientAIInsightButton from "../components/ClientAIInsightButton";
 import {
   projectsCache,
   setProjectsCache,
@@ -141,6 +142,14 @@ export default function MainDashboard() {
   const selectedClientNomen = () => {
     location.pathname; // track route changes
     return localStorage.getItem("selectedClientNomen");
+  };
+
+  // Client nomen id for the client-level AI insight call. Tracks route changes
+  // (same as selectedClientNomen above) so it clears when the client context is
+  // removed on the Main Dashboard.
+  const selectedClientNomenId = () => {
+    location.pathname; // track route changes
+    return localStorage.getItem("selectedClientNomenId");
   };
 
   const { isRetainer, iscpl, ishybrid, isAdmin } = clientRole();
@@ -1891,6 +1900,17 @@ export default function MainDashboard() {
           Clear
         </button>
       </div>
+
+      {/* Client-level AI insight (admin + Tier 1 only; self-gates on canUseAI).
+          Only rendered when a specific client is in context — its narrative
+          summarizes ALL of that client's campaigns for the selected range. */}
+      <Show when={selectedClientNomenId()}>
+        <ClientAIInsightButton
+          clientId={selectedClientNomenId()}
+          startDate={fromDate()}
+          endDate={toDate()}
+        />
+      </Show>
 
       {/* ════════ HERO LEDGER ════════
           Replaces the two KPI card rows; every old metric is mapped here:
