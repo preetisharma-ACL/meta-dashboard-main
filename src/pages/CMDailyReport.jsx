@@ -1,0 +1,1258 @@
+import {
+  createSignal,
+  createResource,
+  createMemo,
+  For,
+  Show,
+  batch,
+} from "solid-js";
+import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
+import * as XLSX from "xlsx";
+import { DateRangeFilter } from "../components/DateRangeFilter";
+import {
+  fetchHierarchyClients,
+  fetchHierarchyProjects,
+  fetchAllCampaignsScoped,
+} from "../services/cm";
+import { scopeKey } from "../stores/cmScope";
+import { currentUser } from "../stores/currentUser";
+
+const logoUrl = "/logo.webp";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers (mirror the client-facing DailyReports page)
+// ─────────────────────────────────────────────────────────────────────────────
+const fmt = (val) =>
+  `₹${Number(val || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+const num = (v) => (Number(v) || 0).toLocaleString("en-IN");
+
+const fmtDate = (dateStr) => {
+  if (!dateStr) return "—";
+  const d = new Date(dateStr.includes("T") ? dateStr : dateStr + "T00:00:00");
+  return d.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+};
+
+const today = () => new Date().toISOString().split("T")[0];
+
+// A far-back window so the dropdown lists every client the CM is assigned to,
+// not just ones active in the server's default 14-day window.
+const CLIENT_LOOKBACK = "2020-01-01";
+
+// project nodes expose avg_cpl; campaign leaves expose cpl.
+const cplOf = (g) => (g?.cpl != null ? g.cpl : g?.avg_cpl);
+
+const TYPE_CHIP = {
+  hybrid:
+    "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300",
+  cpl: "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300",
+  retainer: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300",
+};
+
+export default function CMDailyReport() {
+  // ── Filter state ──────────────────────────────────────────────────────────
+  const [fromDate, setFromDate] = createSignal("");
+  const [toDate, setToDate] = createSignal("");
+  const [selectedClientId, setSelectedClientId] = createSignal("");
+  const [statusFilter, setStatusFilter] = createSignal("all"); // all | active | paused
+  const [activePreset, setActivePreset] = createSignal(null);
+
+  // ── Report state ──────────────────────────────────────────────────────────
+  const [report, setReport] = createSignal(null); // { client, projects, from, to }
+  const [generating, setGenerating] = createSignal(false);
+  const [genError, setGenError] = createSignal(false);
+  const [showPreview, setShowPreview] = createSignal(false);
+  const [previewGenerating, setPreviewGenerating] = createSignal(false);
+  const [exportOpen, setExportOpen] = createSignal(false);
+
+  // ── Assigned clients for the dropdown ─────────────────────────────────────
+  // Server-scoped + switch-mode aware: the backend only returns clients this CM
+  // is authorised to see, so we never filter by role on the client. Keyed on
+  // scopeKey so the list refreshes if the CM changes switch scope.
+  const [clientsRes] = createResource(scopeKey, async () => {
+    try {
+      const res = await fetchHierarchyClients({
+        startDate: CLIENT_LOOKBACK,
+        endDate: today(),
+      });
+      return Array.isArray(res?.data) ? res.data : [];
+    } catch (err) {
+      console.error("[CMDailyReport] clients failed:", err);
+      return [];
+    }
+  });
+
+  const clients = () => clientsRes() ?? [];
+  const selectedClient = createMemo(() =>
+    clients().find(
+      (c) => String(c.client_nomen_id) === String(selectedClientId()),
+    ),
+  );
+
+  // ── Scoped campaigns (once per switch scope) ──────────────────────────────
+  // The hierarchy project node has no status, so we derive each project's
+  // active/paused state from the CM's campaigns (a project is "active" if it
+  // has ≥1 active campaign — same rule the client Daily Report uses). Fetched
+  // once and reused across generates; date-independent because status is a
+  // current attribute, not a per-day value.
+  const [campaignsRes] = createResource(scopeKey, async () => {
+    try {
+      const res = await fetchAllCampaignsScoped({});
+      return Array.isArray(res?.data) ? res.data : [];
+    } catch (err) {
+      console.error("[CMDailyReport] campaigns failed:", err);
+      return [];
+    }
+  });
+
+  // Per-project active/paused lookup for the currently-generated client. Keyed
+  // by project_id AND normalised project_name so it matches the hierarchy rows
+  // regardless of which key the campaign list carries.
+  const statusInfo = createMemo(() => {
+    const r = report();
+    const camps = campaignsRes();
+    if (!r || !camps) return null;
+    const cid = String(r.client.client_nomen_id);
+    const byId = {};
+    const byName = {};
+    for (const c of camps) {
+      if (String(c.client_nomen) !== cid) continue;
+      const idk = c.project_id != null ? String(c.project_id) : null;
+      const nk = (c.project_name || "").trim().toLowerCase();
+      const active = String(c.status).toLowerCase() === "active";
+      if (idk) {
+        if (!byId[idk]) byId[idk] = { active: 0, total: 0 };
+        byId[idk].total += 1;
+        if (active) byId[idk].active += 1;
+      }
+      if (nk) {
+        if (!byName[nk]) byName[nk] = { active: 0, total: 0 };
+        byName[nk].total += 1;
+        if (active) byName[nk].active += 1;
+      }
+    }
+    return { byId, byName };
+  });
+
+  // "active" | "paused" | null (null = no campaign data matched → not filtered).
+  const statusOfProject = (p) => {
+    const info = statusInfo();
+    if (!info) return null;
+    const e =
+      info.byId[String(p.project_id)] ||
+      info.byName[(p.project_name || "").trim().toLowerCase()];
+    if (!e) return null;
+    return e.active > 0 ? "active" : "paused";
+  };
+
+  const canGenerate = () =>
+    !!selectedClientId() && !!fromDate() && !!toDate() && !generating();
+
+  // ── Client-type gate (drives which columns show, exactly like the client's
+  //    own Daily Report where iscpl() hides the spend columns). Keyed to the
+  //    SELECTED client's type, not the logged-in user's. ─────────────────────
+  const clientType = () => (report()?.client?.client_type || "").toLowerCase();
+  const iscpl = () => clientType() === "cpl";
+
+  // ── Quick-pick presets (same semantics as the CM dashboard pills) ─────────
+  const setPreset = (value) => {
+    const now = new Date();
+    const toStr = (d) => {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const dd = String(d.getDate()).padStart(2, "0");
+      return `${y}-${m}-${dd}`;
+    };
+    let from = new Date();
+    let to = new Date();
+    switch (value) {
+      case "today":
+        break;
+      case "yesterday":
+        from.setDate(now.getDate() - 1);
+        to = new Date(from);
+        break;
+      case "last7":
+        to.setDate(now.getDate() - 1);
+        from.setDate(now.getDate() - 7);
+        break;
+      case "thisMonth":
+        from = new Date(now.getFullYear(), now.getMonth(), 1);
+        break;
+      case "lastMonth":
+        from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        to = new Date(now.getFullYear(), now.getMonth(), 0);
+        break;
+      default:
+        break;
+    }
+    batch(() => {
+      setActivePreset(value);
+      setFromDate(toStr(from));
+      setToDate(toStr(to));
+    });
+  };
+
+  // ── Generate ──────────────────────────────────────────────────────────────
+  const generate = async () => {
+    if (!canGenerate()) return;
+    const client = selectedClient();
+    const from = fromDate();
+    const to = toDate();
+    setGenerating(true);
+    setGenError(false);
+    setShowPreview(false);
+    try {
+      const res = await fetchHierarchyProjects(client.client_nomen_id, {
+        startDate: from,
+        endDate: to,
+      });
+      const projects = Array.isArray(res?.data) ? res.data : [];
+      setReport({ client, projects, from, to });
+    } catch (err) {
+      console.error("[CMDailyReport] project report failed:", err);
+      setGenError(true);
+      setReport(null);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const reset = () => {
+    batch(() => {
+      setSelectedClientId("");
+      setFromDate("");
+      setToDate("");
+      setStatusFilter("all");
+      setActivePreset(null);
+      setReport(null);
+      setGenError(false);
+      setShowPreview(false);
+    });
+  };
+
+  // ── Report rows ────────────────────────────────────────────────────────────
+  // Leads/CPL/Amount-Spent come from the raw (actual) figures, exactly like the
+  // client report. "Client Billed" is the client-facing total (spend + service
+  // charge + GST, applied server-side) — the equivalent of the client report's
+  // final "Amt Spent + S.C + GST" column.
+  const reportRows = createMemo(() => {
+    const sf = statusFilter();
+    return (report()?.projects ?? [])
+      .map((p) => {
+        const raw = p.raw ?? {};
+        const billed = p.client_facing ?? {};
+        const leads = Number(raw.leads) || 0;
+        const spent = parseFloat(raw.spend) || 0;
+        const cpl = leads > 0 ? parseFloat((spent / leads).toFixed(2)) : 0;
+        const billedSpend = parseFloat(billed.spend) || 0;
+        return {
+          projectId: p.project_id,
+          projectName: p.project_name,
+          campaigns: Number(p.campaign_count) || 0,
+          leads,
+          cpl,
+          spent,
+          billed: billedSpend,
+          status: statusOfProject(p),
+        };
+      })
+      .filter((r) => {
+        // ── Date-range visibility (matches the client Daily Report) ──────────
+        // The hierarchy call is date-windowed server-side, so a project's
+        // figures already reflect ONLY the selected range. A project that
+        // wasn't running in the range therefore has zero leads AND zero spend —
+        // drop it so, e.g., "This Month" never shows last month's projects and
+        // "Last Month" shows only last-month activity.
+        if (r.leads === 0 && r.spent === 0) return false;
+
+        // ── Status filter (active / paused) ─────────────────────────────────
+        // Unknown status (no matched campaign data) is kept so we never hide
+        // real activity behind a missing-status gap.
+        if (sf !== "all" && r.status != null && r.status !== sf) return false;
+
+        return true;
+      });
+  });
+
+  const totals = createMemo(() => {
+    const rows = reportRows();
+    const totalLeads = rows.reduce((s, r) => s + r.leads, 0);
+    const totalSpent = parseFloat(
+      rows.reduce((s, r) => s + r.spent, 0).toFixed(2),
+    );
+    const totalBilled = parseFloat(
+      rows.reduce((s, r) => s + r.billed, 0).toFixed(2),
+    );
+    const totalCampaigns = rows.reduce((s, r) => s + r.campaigns, 0);
+    const avgCPL =
+      totalLeads > 0 ? parseFloat((totalSpent / totalLeads).toFixed(2)) : 0;
+    return { totalLeads, totalSpent, totalBilled, totalCampaigns, avgCPL };
+  });
+
+  // ── Labels ─────────────────────────────────────────────────────────────────
+  const rangeLabel = () => {
+    const r = report();
+    if (!r) return "All Dates";
+    if (r.from === r.to) return fmtDate(r.from);
+    return `${fmtDate(r.from)} – ${fmtDate(r.to)}`;
+  };
+
+  // Short "10 Jul - 12 Jul" label used inside each table Date cell.
+  const dateCellLabel = () => {
+    const r = report();
+    if (!r) return "";
+    const short = (d) =>
+      new Date(d + "T00:00:00").toLocaleDateString("en-IN", {
+        day: "numeric",
+        month: "short",
+      });
+    return r.from === r.to ? short(r.from) : `${short(r.from)} - ${short(r.to)}`;
+  };
+
+  // ── Exports ───────────────────────────────────────────────────────────────
+  const exportFileBase = () => {
+    const name = (report()?.client?.client_name || "client")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "");
+    return `daily-report-${name}-${today()}`;
+  };
+
+  const exportColumns = () => {
+    const cols = ["Date", "Project", "Leads", "CPL"];
+    if (!iscpl()) cols.push("Amount Spent", "Client Billed");
+    return cols;
+  };
+  const exportRow = (r) => {
+    const base = [dateCellLabel(), r.projectName, r.leads, r.cpl];
+    if (!iscpl()) base.push(r.spent, r.billed);
+    return base;
+  };
+  const exportTotalsRow = () => {
+    const t = totals();
+    const base = ["TOTAL", "", t.totalLeads, t.avgCPL];
+    if (!iscpl()) base.push(t.totalSpent, t.totalBilled);
+    return base;
+  };
+
+  const triggerDownload = (blob, filename) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadCSV = () => {
+    const rows = reportRows();
+    if (!rows.length) return;
+    const esc = (v) => {
+      const s = v == null ? "" : String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const lines = [
+      exportColumns().join(","),
+      ...rows.map((r) => exportRow(r).map(esc).join(",")),
+      exportTotalsRow().map(esc).join(","),
+    ];
+    const blob = new Blob(["﻿" + lines.join("\r\n")], {
+      type: "text/csv;charset=utf-8;",
+    });
+    triggerDownload(blob, `${exportFileBase()}.csv`);
+  };
+
+  const downloadExcel = () => {
+    const rows = reportRows();
+    if (!rows.length) return;
+    const meta = [
+      ["Daily Report"],
+      ["Client", report()?.client?.client_name || ""],
+      ["Range", rangeLabel()],
+      ["Generated", new Date().toLocaleString("en-IN")],
+      [],
+    ];
+    const ws = XLSX.utils.aoa_to_sheet([
+      ...meta,
+      exportColumns(),
+      ...rows.map(exportRow),
+      exportTotalsRow(),
+    ]);
+    ws["!cols"] = exportColumns().map((_, i) => ({ wch: i === 1 ? 28 : 16 }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Daily Report");
+    XLSX.writeFile(wb, `${exportFileBase()}.xlsx`);
+  };
+
+  const downloadPDF = async () => {
+    const el = document.getElementById("cm-pdf-daily-report");
+    if (!el) return;
+    const canvas = await html2canvas(el, {
+      scale: 2,
+      backgroundColor: "#ffffff",
+      useCORS: true,
+    });
+    const imgData = canvas.toDataURL("image/jpeg", 0.85);
+    const pdf = new jsPDF({
+      orientation: "p",
+      unit: "mm",
+      format: "a4",
+      compress: true,
+    });
+    const pageW = 210;
+    const pageH = 297;
+    const imgW = pageW;
+    const imgH = (canvas.height * imgW) / canvas.width;
+    let position = 0;
+    pdf.addImage(imgData, "JPEG", 0, position, imgW, imgH, undefined, "FAST");
+    let remaining = imgH - pageH;
+    while (remaining > 0) {
+      position -= pageH;
+      pdf.addPage();
+      pdf.addImage(imgData, "JPEG", 0, position, imgW, imgH, undefined, "FAST");
+      remaining -= pageH;
+    }
+    pdf.save(`${exportFileBase()}.pdf`);
+  };
+
+  const runExport = (f) => {
+    setExportOpen(false);
+    if (f === "csv") downloadCSV();
+    else if (f === "excel") downloadExcel();
+    else if (f === "pdf") downloadPDF();
+  };
+
+  const handlePreview = () => {
+    setPreviewGenerating(true);
+    setTimeout(() => {
+      setShowPreview((p) => !p);
+      setPreviewGenerating(false);
+    }, 80);
+  };
+
+  // Column span for empty/placeholder table rows.
+  const colCount = () => (iscpl() ? 4 : 6);
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // RENDER
+  // ══════════════════════════════════════════════════════════════════════════
+  return (
+    <section class="w-full px-4 sm:px-6 lg:px-8 py-6">
+      {/* ── Header ── */}
+      <div class="mb-6">
+        <p class="text-xs font-bold uppercase tracking-[0.12em] text-[#AC2334] mb-1.5">
+          Campaign manager · Reporting
+        </p>
+        <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">
+          Daily Report
+        </h1>
+        <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+          Pick one of your assigned clients and a date range, then generate the
+          client's daily report.
+          <Show when={currentUser.email}>
+            <span class="text-gray-400 dark:text-gray-500">
+              {" "}
+              · {currentUser.email}
+            </span>
+          </Show>
+        </p>
+      </div>
+
+      {/* ── Filter card ── */}
+      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-5 sm:p-6 mb-6">
+        <div class="flex flex-col lg:flex-row lg:items-end gap-4">
+          {/* Client dropdown */}
+          <div class="flex-1 min-w-[220px]">
+            <label class="block text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1.5">
+              Client
+            </label>
+            <div class="relative">
+              <select
+                value={selectedClientId()}
+                onChange={(e) => setSelectedClientId(e.target.value)}
+                disabled={clientsRes.loading}
+                class="w-full border border-gray-300 dark:border-gray-600 px-3 py-2.5 pr-10 rounded-lg bg-white dark:bg-gray-900 text-sm text-gray-800 dark:text-gray-200 appearance-none focus:outline-none focus:ring-2 focus:ring-[#AC2334]/25 focus:border-[#AC2334] cursor-pointer disabled:opacity-60"
+              >
+                <option value="">
+                  {clientsRes.loading
+                    ? "Loading your clients…"
+                    : clients().length === 0
+                      ? "No assigned clients"
+                      : "Select a client…"}
+                </option>
+                <For each={clients()}>
+                  {(c) => (
+                    <option value={c.client_nomen_id}>{c.client_name}</option>
+                  )}
+                </For>
+              </select>
+              <div class="pointer-events-none absolute inset-y-0 right-3 flex items-center">
+                <svg
+                  class="w-4 h-4 text-gray-500"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M19 9l-7 7-7-7"
+                  />
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          {/* Status filter */}
+          <div>
+            <label class="block text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1.5">
+              Status
+            </label>
+            <div class="relative">
+              <select
+                value={statusFilter()}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                class="border border-gray-300 dark:border-gray-600 px-3 py-2.5 pr-10 rounded-lg bg-white dark:bg-gray-900 text-sm text-gray-800 dark:text-gray-200 appearance-none focus:outline-none focus:ring-2 focus:ring-[#AC2334]/25 focus:border-[#AC2334] cursor-pointer"
+              >
+                <option value="all">All Status</option>
+                <option value="active">Active</option>
+                <option value="paused">Paused</option>
+              </select>
+              <div class="pointer-events-none absolute inset-y-0 right-3 flex items-center">
+                <svg
+                  class="w-4 h-4 text-gray-500"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M19 9l-7 7-7-7"
+                  />
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          {/* Date range */}
+          <div>
+            <label class="block text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1.5">
+              Date range
+            </label>
+            <DateRangeFilter
+              fromDate={fromDate}
+              toDate={toDate}
+              setFromDate={setFromDate}
+              setToDate={setToDate}
+            />
+          </div>
+
+          {/* Actions */}
+          <div class="flex items-center gap-2">
+            <button
+              onClick={generate}
+              disabled={!canGenerate()}
+              class={
+                "flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold transition-all shadow-sm " +
+                (canGenerate()
+                  ? "bg-[#AC2334] text-white hover:bg-[#8f1c2b]"
+                  : "bg-[#AC2334]/40 text-white cursor-not-allowed")
+              }
+            >
+              <Show
+                when={!generating()}
+                fallback={
+                  <span class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                }
+              >
+                <svg
+                  class="w-4 h-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                  />
+                </svg>
+              </Show>
+              {generating() ? "Generating…" : "Generate Report"}
+            </button>
+            <button
+              onClick={reset}
+              class="px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 text-sm font-medium transition"
+            >
+              Reset
+            </button>
+          </div>
+        </div>
+
+        {/* Quick presets */}
+        <div class="flex flex-wrap gap-2 mt-4">
+          <For
+            each={[
+              { label: "Today", value: "today" },
+              { label: "Yesterday", value: "yesterday" },
+              { label: "Last 7 Days", value: "last7" },
+              { label: "This Month", value: "thisMonth" },
+              { label: "Last Month", value: "lastMonth" },
+            ]}
+          >
+            {(item) => (
+              <button
+                onClick={() => setPreset(item.value)}
+                class={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-all border ${
+                  activePreset() === item.value
+                    ? "bg-[#AC2334] text-white border-[#AC2334] shadow-sm"
+                    : "bg-gray-50 text-gray-600 border-gray-200 hover:border-[#AC2334]/40 hover:text-[#AC2334] dark:bg-gray-900 dark:text-gray-300 dark:border-gray-600"
+                }`}
+              >
+                {item.label}
+              </button>
+            )}
+          </For>
+        </div>
+      </div>
+
+      {/* ── Generate error ── */}
+      <Show when={genError()}>
+        <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4 mb-6 text-sm font-medium text-red-600 dark:text-red-400">
+          Couldn't generate the report. Please try again.
+        </div>
+      </Show>
+
+      {/* ── Empty prompt (before first generate) ── */}
+      <Show when={!report() && !genError()}>
+        <div class="bg-white dark:bg-gray-800 border border-dashed border-gray-300 dark:border-gray-700 rounded-xl p-12 text-center">
+          <svg
+            class="w-12 h-12 mx-auto text-gray-300 dark:text-gray-600"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            stroke-width="1.5"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+            />
+          </svg>
+          <p class="mt-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
+            No report yet
+          </p>
+          <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+            Select a client and a date range, then choose{" "}
+            <span class="font-semibold text-[#AC2334]">Generate Report</span>.
+          </p>
+        </div>
+      </Show>
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          REPORT
+         ══════════════════════════════════════════════════════════════════════ */}
+      <Show when={report()}>
+        {/* Client + range banner */}
+        <div class="flex items-center gap-2 flex-wrap mb-4">
+          <span class="font-bold text-gray-900 dark:text-white">
+            {report().client.client_name}
+          </span>
+          <Show when={report().client.client_type}>
+            <span
+              class={`text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize ${TYPE_CHIP[clientType()] ?? TYPE_CHIP.retainer}`}
+            >
+              {report().client.client_type}
+            </span>
+          </Show>
+          <span class="text-gray-300">·</span>
+          <span class="px-3 py-1 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs font-medium border border-blue-200 dark:border-blue-700">
+            {rangeLabel()}
+          </span>
+          <Show when={statusFilter() !== "all"}>
+            <span
+              class={
+                "px-3 py-1 rounded-full text-xs font-medium border capitalize " +
+                (statusFilter() === "active"
+                  ? "bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-700"
+                  : "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700")
+              }
+            >
+              {statusFilter()} only
+            </span>
+          </Show>
+        </div>
+
+        {/* On-screen table (same look as the client Daily Report) */}
+        <div class="overflow-x-auto overflow-y-auto max-h-[500px] bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+          <table class="w-full text-sm table-auto">
+            <thead class="bg-gray-100 dark:bg-gray-800 sticky top-0 z-10">
+              <tr class="[&_th]:text-center [&_th:first-child]:text-left text-gray-700 dark:text-gray-200 [&_th]:whitespace-nowrap [&_th]:font-semibold">
+                <th class="p-3 pl-4">Date</th>
+                <th class="p-3">Project</th>
+                <th class="p-3">Leads</th>
+                <th class="p-3">CPL</th>
+                <Show when={!iscpl()}>
+                  <th class="p-3">Amount Spent</th>
+                  <th class="p-3">Client Billed</th>
+                </Show>
+              </tr>
+            </thead>
+
+            <Show
+              when={reportRows().length > 0}
+              fallback={
+                <tbody>
+                  <tr>
+                    <td colspan={colCount()} class="py-20 text-center">
+                      <div class="flex flex-col items-center gap-2">
+                        <svg
+                          class="w-12 h-12 text-gray-300 dark:text-gray-600"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="1.5"
+                            d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                          />
+                        </svg>
+                        <p class="text-gray-500 dark:text-gray-400 font-medium">
+                          No activity for this client in the selected range
+                        </p>
+                        <p class="text-gray-400 dark:text-gray-500 text-xs">
+                          {statusFilter() === "all"
+                            ? "Try a different date range."
+                            : "Try a different date range or set Status to All."}
+                        </p>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              }
+            >
+              <tbody>
+                <For each={reportRows()}>
+                  {(row, i) => (
+                    <tr
+                      class={
+                        "border-t [&_td]:text-center [&_td:first-child]:text-left [&_td]:whitespace-nowrap transition-colors " +
+                        (i() % 2 === 0
+                          ? "bg-white dark:bg-gray-900 hover:bg-blue-50/40 dark:hover:bg-gray-800/60"
+                          : "bg-purple-50 dark:bg-gray-900 hover:bg-purple-100/60 dark:hover:bg-gray-800/60")
+                      }
+                    >
+                      <td class="p-3 pl-4 text-left">
+                        <span class="font-medium text-gray-700 dark:text-gray-300">
+                          {dateCellLabel()}
+                        </span>
+                      </td>
+                      <td class="p-3">
+                        <span class="font-medium text-purple-700 dark:text-purple-300">
+                          {row.projectName}
+                        </span>
+                      </td>
+                      <td class="p-3 font-bold text-gray-800 dark:text-gray-100">
+                        {row.leads}
+                      </td>
+                      <td class="p-3 text-purple-700 dark:text-purple-300">
+                        {fmt(row.cpl)}
+                      </td>
+                      <Show when={!iscpl()}>
+                        <td class="p-3 text-green-700 dark:text-green-400">
+                          {fmt(row.spent)}
+                        </td>
+                        <td class="p-3 text-green-900 dark:text-green-400">
+                          {fmt(row.billed)}
+                        </td>
+                      </Show>
+                    </tr>
+                  )}
+                </For>
+              </tbody>
+
+              <tfoot class="sticky bottom-0 z-10">
+                <tr class="bg-gradient-to-r from-purple-100 to-purple-50 dark:from-gray-800 dark:to-gray-900 border-t-2 border-purple-300 dark:border-gray-600 shadow-[0_-2px_10px_rgba(0,0,0,0.06)] [&_td]:text-center [&_td:first-child]:text-left font-semibold">
+                  <td class="p-3 pl-4">
+                    <span class="px-3 py-1 bg-purple-600 text-white rounded-lg text-xs font-bold tracking-wide">
+                      TOTAL
+                    </span>
+                  </td>
+                  <td class="p-3" />
+                  <td class="p-3 text-green-700 dark:text-green-300 font-bold text-base">
+                    {totals().totalLeads}
+                  </td>
+                  <td class="p-3 text-purple-700 dark:text-purple-300 font-bold">
+                    {fmt(totals().avgCPL)}
+                  </td>
+                  <Show when={!iscpl()}>
+                    <td class="p-3 text-green-700 dark:text-green-300 font-bold">
+                      {fmt(totals().totalSpent)}
+                    </td>
+                    <td class="p-3 text-green-900 dark:text-green-400 font-bold">
+                      {fmt(totals().totalBilled)}
+                    </td>
+                  </Show>
+                </tr>
+              </tfoot>
+            </Show>
+          </table>
+        </div>
+
+        {/* ── Action Buttons (Preview + Download PDF/CSV/Excel) ── */}
+        <div class="flex items-center gap-3 mt-6 flex-wrap">
+          {/* Preview */}
+          <button
+            onClick={handlePreview}
+            disabled={previewGenerating() || reportRows().length === 0}
+            class={
+              "flex items-center gap-2 px-5 py-2.5 rounded-lg border text-sm font-medium transition-all duration-200 shadow-sm " +
+              (reportRows().length === 0
+                ? "opacity-40 cursor-not-allowed border-purple-300 text-purple-500 bg-purple-50 dark:bg-purple-900/10"
+                : showPreview()
+                  ? "bg-white text-purple-900 dark:text-gray-200 border-purple-900 dark:border-gray-600 dark:bg-gray-800"
+                  : "border-purple-600 text-purple-700 dark:text-gray-100 bg-purple-50 dark:border-gray-600 dark:bg-gray-800")
+            }
+          >
+            <Show
+              when={!previewGenerating()}
+              fallback={
+                <div class="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              }
+            >
+              <svg
+                class="w-4 h-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                />
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                />
+              </svg>
+            </Show>
+            {showPreview() ? "Hide Preview" : "Preview Report"}
+          </button>
+
+          {/* Download dropdown — PDF / CSV / Excel */}
+          <div class="relative">
+            <button
+              onClick={() => setExportOpen((v) => !v)}
+              disabled={reportRows().length === 0}
+              aria-haspopup="true"
+              aria-expanded={exportOpen()}
+              class={
+                "flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 shadow-sm " +
+                (reportRows().length === 0
+                  ? "opacity-40 cursor-not-allowed bg-purple-900 text-white"
+                  : "bg-purple-900 hover:bg-purple-700 border dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 text-white hover:shadow-md")
+              }
+            >
+              <svg
+                class="w-4 h-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V4"
+                />
+              </svg>
+              Download Report
+              <svg
+                class={`w-3.5 h-3.5 transition-transform duration-200 ${exportOpen() ? "rotate-180" : ""}`}
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                stroke-width="2.4"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </button>
+
+            <Show when={exportOpen()}>
+              <div
+                class="fixed inset-0 z-40"
+                onClick={() => setExportOpen(false)}
+              />
+              <div class="absolute left-0 top-full mt-2 w-60 z-50 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-[0_10px_40px_rgba(16,29,49,0.18)] overflow-hidden py-1.5">
+                <p class="px-3.5 pt-1.5 pb-2 text-[12px] font-bold uppercase tracking-wider text-gray-700 dark:text-gray-500">
+                  Export {reportRows().length} row
+                  {reportRows().length !== 1 ? "s" : ""} as
+                </p>
+                <For
+                  each={[
+                    { fmt: "pdf", label: "PDF", sub: "Branded A4 document", tint: "#7B1C1C" },
+                    { fmt: "csv", label: "CSV", sub: "Comma-separated values", tint: "#15966A" },
+                    { fmt: "excel", label: "Excel", sub: "Formatted .xlsx workbook", tint: "#1D7044" },
+                  ]}
+                >
+                  {(o) => (
+                    <button
+                      onClick={() => runExport(o.fmt)}
+                      class="w-full flex items-center gap-3 px-3.5 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                    >
+                      <span
+                        class="w-8 h-8 flex-none rounded-lg grid place-items-center text-[11px] font-extrabold text-white"
+                        style={`background:${o.tint}`}
+                      >
+                        {o.label.slice(0, 3).toUpperCase()}
+                      </span>
+                      <span class="min-w-0">
+                        <span class="block text-[13px] font-bold text-gray-900 dark:text-gray-100">
+                          {o.label}
+                        </span>
+                        <span class="block text-[11px] text-gray-400 dark:text-gray-500">
+                          {o.sub}
+                        </span>
+                      </span>
+                    </button>
+                  )}
+                </For>
+              </div>
+            </Show>
+          </div>
+
+          <span class="text-xs text-gray-400 dark:text-gray-500 ml-1">
+            {reportRows().length} row{reportRows().length !== 1 ? "s" : ""}
+          </span>
+        </div>
+
+        {/* ════════════════════════════════════════════════════════
+              PREVIEW PANEL (in-page white + minimal maroon report)
+           ════════════════════════════════════════════════════════ */}
+        <Show when={showPreview()}>
+          <div class="mt-8 rounded-2xl border border-[rgba(123,28,28,0.15)] overflow-hidden shadow-lg bg-white">
+            {/* HEADER */}
+            <div class="relative bg-white px-8 py-6 border-b-[3px] border-[#7B1C1C]">
+              <div class="absolute top-0 left-0 right-0 h-[4px] bg-[#7B1C1C]" />
+              <div class="flex items-center gap-5 relative">
+                <div class="w-[120px] flex items-center justify-center flex-shrink-0">
+                  <img
+                    src={logoUrl}
+                    alt="Aajneeti Connect"
+                    class="w-full h-full object-contain p-1"
+                  />
+                </div>
+                <div class="flex-1">
+                  <p class="text-[#7B1C1C] text-[14px] tracking-[0.18em] uppercase font-semibold mb-1">
+                    Aajneeti Connect Ltd.
+                  </p>
+                  <h2 class="text-[#1a1a1a] text-2xl font-bold tracking-[0.05em] uppercase font-serif">
+                    Daily Report
+                  </h2>
+                  <p class="text-[#555] text-[13px] font-semibold mt-0.5">
+                    {report().client.client_name}
+                  </p>
+                  <p class="text-[#888] text-xs mt-0.5 tracking-wide">
+                    {rangeLabel()} &nbsp;·&nbsp; Generated on{" "}
+                    {new Date().toLocaleDateString("en-GB", {
+                      day: "numeric",
+                      month: "long",
+                      year: "numeric",
+                    })}
+                  </p>
+                </div>
+                <div class="bg-[#f9f0f0] border border-[rgba(123,28,28,0.15)] rounded-lg px-4 py-2 text-center">
+                  <p class="text-[10px] text-[#999] tracking-[0.1em] uppercase">
+                    Period
+                  </p>
+                  <p class="text-[13px] font-semibold text-[#7B1C1C] mt-0.5">
+                    {new Date().toLocaleDateString("en-GB", {
+                      month: "short",
+                      year: "numeric",
+                    })}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* TABLE */}
+            <div class="overflow-x-auto bg-white">
+              <table class="w-full text-sm border-collapse">
+                <thead>
+                  <tr class="bg-[#7B1C1C]">
+                    <th class="px-4 py-3 text-left text-white text-md uppercase font-semibold border-r border-white/10">
+                      Date
+                    </th>
+                    <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
+                      Project
+                    </th>
+                    <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
+                      Leads
+                    </th>
+                    <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
+                      CPL
+                    </th>
+                    <Show when={!iscpl()}>
+                      <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
+                        Amount Spent
+                      </th>
+                      <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
+                        Client Billed
+                      </th>
+                    </Show>
+                  </tr>
+                </thead>
+                <tbody>
+                  <For each={reportRows()}>
+                    {(row, i) => (
+                      <tr
+                        class="border-b border-[rgba(123,28,28,0.1)]"
+                        style={{
+                          background: i() % 2 === 0 ? "#ffffff" : "#fafafa",
+                        }}
+                      >
+                        <td class="px-4 py-3 text-left relative whitespace-nowrap border-r border-[rgba(123,28,28,0.1)]">
+                          <span class="absolute left-0 top-0 bottom-0 w-[3px] bg-[#7B1C1C]" />
+                          <span class="font-semibold text-[#1a1a1a] text-md">
+                            {dateCellLabel()}
+                          </span>
+                        </td>
+                        <td class="px-4 py-3 text-center text-[#333] font-medium text-md whitespace-nowrap border-r border-[rgba(123,28,28,0.1)]">
+                          {row.projectName}
+                        </td>
+                        <td class="px-4 py-3 text-center font-bold text-[#7B1C1C] text-md border-r border-[rgba(123,28,28,0.1)]">
+                          {row.leads}
+                        </td>
+                        <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
+                          {fmt(row.cpl)}
+                        </td>
+                        <Show when={!iscpl()}>
+                          <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
+                            {fmt(row.spent)}
+                          </td>
+                          <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
+                            {fmt(row.billed)}
+                          </td>
+                        </Show>
+                      </tr>
+                    )}
+                  </For>
+                </tbody>
+                <tfoot>
+                  <tr class="bg-[#7B1C1C]">
+                    <td class="px-4 py-3 text-left text-white font-bold text-[10.5px] tracking-widest uppercase border-r border-white/10">
+                      Total
+                    </td>
+                    <td class="px-4 py-3 border-r border-white/10" />
+                    <td class="px-4 py-3 text-center text-white font-bold text-sm border-r border-white/10">
+                      {totals().totalLeads}
+                    </td>
+                    <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
+                      {fmt(totals().avgCPL)}
+                    </td>
+                    <Show when={!iscpl()}>
+                      <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
+                        {fmt(totals().totalSpent)}
+                      </td>
+                      <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
+                        {fmt(totals().totalBilled)}
+                      </td>
+                    </Show>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+
+            {/* FOOTER */}
+            <div class="bg-white border-t border-[rgba(123,28,28,0.15)] px-8 py-3 flex items-center justify-between">
+              <div class="w-[6px] h-[6px] bg-[#7B1C1C] rotate-45" />
+              <p class="text-[#aaa] text-[10.5px] tracking-[0.18em] uppercase font-medium">
+                © {new Date().getFullYear()} Project Analytics · Aajneeti Connect
+                Ltd.
+              </p>
+              <div class="w-[6px] h-[6px] bg-[#7B1C1C] rotate-45" />
+            </div>
+          </div>
+        </Show>
+      </Show>
+
+      {/* ════════════════════════════════════════════════════════
+            HIDDEN PDF TEMPLATE (off-screen, captured by html2canvas)
+         ════════════════════════════════════════════════════════ */}
+      <Show when={report()}>
+        <div
+          id="cm-pdf-daily-report"
+          style="position:absolute;left:-9999px;top:0;width:900px;"
+        >
+          <div style="width:900px;background:#ffffff;font-family:Arial,sans-serif;position:relative;box-sizing:border-box;border:1px solid rgba(123,28,28,0.15);border-radius:12px;overflow:hidden;">
+            {/* HEADER */}
+            <div style="background:#ffffff;border-bottom:3px solid #7B1C1C;padding:28px 40px 24px;position:relative;display:flex;align-items:center;gap:20px;">
+              <div style="position:absolute;top:0;left:0;right:0;height:4px;background:#7B1C1C;" />
+              <div style="width:120px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                <img
+                  src={logoUrl}
+                  alt="Aajneeti Connect"
+                  style="width:100%;height:100%;object-fit:contain;padding:4px;"
+                />
+              </div>
+              <div style="flex:1;">
+                <p style="color:#7B1C1C;font-size:11px;letter-spacing:2.5px;text-transform:uppercase;font-weight:600;margin:0 0 4px;">
+                  Aajneeti Connect Ltd.
+                </p>
+                <h1 style="color:#1a1a1a;font-size:26px;font-family:Georgia,serif;letter-spacing:2px;margin:0 0 4px;font-weight:700;text-transform:uppercase;">
+                  Daily Report
+                </h1>
+                <p style="color:#555;font-size:13px;margin:0 0 2px;font-weight:600;">
+                  {report().client.client_name}
+                </p>
+                <p style="color:#888;font-size:12px;margin:0;letter-spacing:1px;">
+                  {rangeLabel()} &nbsp;·&nbsp; Generated on:{" "}
+                  {new Date().toLocaleDateString("en-GB", {
+                    day: "numeric",
+                    month: "long",
+                    year: "numeric",
+                  })}
+                </p>
+              </div>
+              <div style="background:#f9f0f0;border:1px solid rgba(123,28,28,0.15);border-radius:8px;padding:8px 16px;text-align:center;">
+                <p style="font-size:10px;color:#999;letter-spacing:1.5px;text-transform:uppercase;margin:0 0 2px;">
+                  Period
+                </p>
+                <p style="font-size:13px;font-weight:600;color:#7B1C1C;margin:0;">
+                  {new Date().toLocaleDateString("en-GB", {
+                    month: "short",
+                    year: "numeric",
+                  })}
+                </p>
+              </div>
+            </div>
+
+            {/* TABLE */}
+            <div style="padding:28px 36px 0;">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+                <div style="width:6px;height:6px;background:#7B1C1C;transform:rotate(45deg);flex-shrink:0;" />
+                <div style="flex:1;height:1px;background:rgba(123,28,28,0.2);" />
+                <div style="background:#7B1C1C;padding:5px 14px;padding-bottom:20px;border-radius:20px;">
+                  <span style="color:#fff;font-size:10px;font-family:Arial;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;">
+                    DETAILED BREAKDOWN
+                  </span>
+                </div>
+                <div style="flex:1;height:1px;background:rgba(123,28,28,0.2);" />
+                <div style="width:6px;height:6px;background:#7B1C1C;transform:rotate(45deg);flex-shrink:0;" />
+              </div>
+
+              <div style="border-radius:8px;overflow:hidden;border:1px solid rgba(123,28,28,0.2);box-shadow:3px 3px 0 rgba(123,28,28,0.08);">
+                <table style="width:100%;border-collapse:collapse;font-family:Arial;">
+                  <thead>
+                    <tr style="background:#7B1C1C;">
+                      <th style="padding:11px 14px;text-align:left;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
+                        Date
+                      </th>
+                      <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
+                        Project
+                      </th>
+                      <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
+                        Leads
+                      </th>
+                      <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
+                        CPL
+                      </th>
+                      <Show when={!iscpl()}>
+                        <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
+                          Amt Spent
+                        </th>
+                        <th style="padding:11px 14px;text-align:center;color:#f5d9a0;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;">
+                          Client Billed
+                        </th>
+                      </Show>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reportRows().map((row, i) => (
+                      <tr
+                        style={{
+                          background: i % 2 === 0 ? "#ffffff" : "#fafafa",
+                          borderBottom: "1px solid rgba(123,28,28,0.08)",
+                        }}
+                      >
+                        <td style="padding:10px 14px;font-size:14px;font-weight:600;color:#1a1a1a;border-right:1px solid rgba(123,28,28,0.1);border-left:3px solid #7B1C1C;">
+                          {dateCellLabel()}
+                        </td>
+                        <td style="padding:10px 14px;text-align:center;font-size:14px;color:#333;font-weight:500;border-right:1px solid rgba(123,28,28,0.1);">
+                          {row.projectName}
+                        </td>
+                        <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:700;color:#7B1C1C;border-right:1px solid rgba(123,28,28,0.1);">
+                          {row.leads}
+                        </td>
+                        <td style="padding:10px 14px;text-align:center;font-size:14px;color:#333;border-right:1px solid rgba(123,28,28,0.1);">
+                          {fmt(row.cpl)}
+                        </td>
+                        <Show when={!iscpl()}>
+                          <td style="padding:10px 14px;text-align:center;font-size:14px;color:#333;border-right:1px solid rgba(123,28,28,0.1);">
+                            {fmt(row.spent)}
+                          </td>
+                          <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:600;color:#6b4c10;background:rgba(201,168,76,0.10);">
+                            {fmt(row.billed)}
+                          </td>
+                        </Show>
+                      </tr>
+                    ))}
+                    <tr style="background:#7B1C1C;">
+                      <td style="padding:11px 14px;text-align:left;color:#fff;font-size:10.5px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
+                        Total
+                      </td>
+                      <td style="padding:11px 14px;border-right:1px solid rgba(255,255,255,0.12);" />
+                      <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
+                        {totals().totalLeads}
+                      </td>
+                      <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
+                        {fmt(totals().avgCPL)}
+                      </td>
+                      <Show when={!iscpl()}>
+                        <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
+                          {fmt(totals().totalSpent)}
+                        </td>
+                        <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;">
+                          {fmt(totals().totalBilled)}
+                        </td>
+                      </Show>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* FOOTER */}
+            <div style="margin:20px 36px 28px;padding-top:12px;border-top:1px solid rgba(123,28,28,0.2);display:flex;align-items:center;justify-content:space-between;">
+              <div style="width:6px;height:6px;background:#7B1C1C;transform:rotate(45deg);" />
+              <p style="color:#aaa;font-size:10.5px;font-family:Arial;letter-spacing:2px;text-align:center;margin:0;text-transform:uppercase;">
+                © {new Date().getFullYear()} Project Analytics · Aajneeti Connect
+                Ltd.
+              </p>
+              <div style="width:6px;height:6px;background:#7B1C1C;transform:rotate(45deg);" />
+            </div>
+          </div>
+        </div>
+      </Show>
+    </section>
+  );
+}

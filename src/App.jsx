@@ -37,6 +37,7 @@ import Projects from "./pages/admin/projects/Projects";
 import AdminRoute from "./utils/AdminRoute";
 import CoordinationDashboard from "./pages/coordination/pages/CoordinationDashboard";
 import CMDashboard from "./pages/CMDashboard";
+import CMDailyReport from "./pages/CMDailyReport";
 import AccountFunding from "./pages/funding/AccountFunding";
 import SpendSegregation from "./pages/spend/SpendSegregation";
 import AllowedBudget from "./pages/budget/AllowedBudget";
@@ -133,6 +134,16 @@ function App() {
           <Route path="/" component={ProtectedLayout}>
             <Route path="/" component={RoleHome} />
             <Route path="/cm-alerts" component={AlertsPanel} />
+            {/* CM daily report — page-gated to campaign managers; the backend
+                scopes clients to the CM's own assigned accounts. */}
+            <Route
+              path="/cm-daily-report"
+              component={() => (
+                <AdminRoute roles={["campaign_manager", "admin"]}>
+                  <CMDailyReport />
+                </AdminRoute>
+              )}
+            />
             <Route path="/account-funding" component={AccountFunding} />
             <Route path="/spend-segregation" component={SpendSegregation} />
             <Route path="/allowed-budget" component={AllowedBudget} />
@@ -192,10 +203,12 @@ function App() {
                 </AdminRoute>
               )}
             />
+            {/* Project Display Config — admin-only for now; CM backend
+                scoping is still in progress. */}
             <Route
               path="/project-display-config"
               component={() => (
-                <AdminRoute roles={["admin", "campaign_manager"]}>
+                <AdminRoute>
                   <ProjectDisplayConfig />
                 </AdminRoute>
               )}

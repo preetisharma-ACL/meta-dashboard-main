@@ -188,6 +188,14 @@ export default function Sidebar() {
         path: "/cm-alerts",
       },
       {
+        name: "Daily Report",
+        roles: ["campaign_manager"],
+        icon: () => (
+          <Icon d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        ),
+        path: "/cm-daily-report",
+      },
+      {
         name: "Accounts & Funding",
         roles: ["admin", "campaign_manager"],
         icon: () => (
@@ -254,7 +262,7 @@ export default function Sidebar() {
           {
             name: "Project Display Config",
             path: "/project-display-config",
-            roles: ["admin","campaign_manager"],
+            roles: ["admin"], // admin-only for now (backend CM-scoping in progress)
             icon: () => (
               <SmallIcon d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
             ),
@@ -333,6 +341,7 @@ export default function Sidebar() {
         ),
         path: "/campaigns",
       },
+
       // {
       //   name: "Campaigns",
       //   roles: ["admin"],
