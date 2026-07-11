@@ -203,12 +203,10 @@ function App() {
                 </AdminRoute>
               )}
             />
-            {/* Project Display Config — admin-only for now; CM backend
-                scoping is still in progress. */}
             <Route
               path="/project-display-config"
               component={() => (
-                <AdminRoute>
+                <AdminRoute roles={["admin", "campaign_manager"]}>
                   <ProjectDisplayConfig />
                 </AdminRoute>
               )}

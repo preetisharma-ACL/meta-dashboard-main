@@ -10,6 +10,7 @@ import {
 } from "../services/projectDisplayConfig";
 import Avatar from "../../../components/common/Avatar";
 import { fetchProjectsByClient } from "../services/fetchProjectsByClient"; // ← NEW
+import { fetchAllowedBudgetClients } from "../../../services/allowedBudget"; // ← CM-scoped client source
 import SuccessToast, {
   showToast,
 } from "../../../components/common/SuccessToast";
@@ -29,6 +30,19 @@ const formatDate = (iso) => {
   });
 };
 
+// Caller's role, read from the same auth blob the route guards use. CMs can't
+// read the admin all-clients endpoint (403), so the client picker is sourced
+// from the CM-scoped allowed-budget list instead (same client-account id the
+// config endpoints expect). Admins keep the admin endpoint.
+const authRole = (() => {
+  try {
+    return JSON.parse(localStorage.getItem("auth") || "{}")?.role ?? null;
+  } catch {
+    return null;
+  }
+})();
+const isCampaignManager = () => authRole === "campaign_manager";
+
 export default function ProjectDisplayConfig() {
   const [configs, setConfigs] = createSignal([]);
   const [loading, setLoading] = createSignal(true);
@@ -40,6 +54,9 @@ export default function ProjectDisplayConfig() {
   const [sidebarMounted, setSidebarMounted] = createSignal(false);
   const [sidebarVisible, setSidebarVisible] = createSignal(false);
   const [submitting, setSubmitting] = createSignal(false);
+  // Save-time error (e.g. a scoped-out CM hitting a 403 with
+  // "This client is not in your scope."). Rendered as a red box in the modal.
+  const [submitError, setSubmitError] = createSignal("");
   const [clients, setClients] = createSignal([]);
   const [projects, setProjects] = createSignal([]);
   const [projectsLoading, setProjectsLoading] = createSignal(false); // ← NEW
@@ -136,17 +153,36 @@ export default function ProjectDisplayConfig() {
   // ── CHANGED: removed fetchProjects() — projects are loaded on demand ──────
   onMount(async () => {
     try {
+      const cm = isCampaignManager();
       const [configRes, clientRes] = await Promise.all([
         fetchProjectDisplayConfig(),
-        fetchClients(1, 500),
+        // CMs 403 on the admin all-clients endpoint — source their own clients
+        // from the CM-scoped allowed-budget list instead.
+        cm ? fetchAllowedBudgetClients() : fetchClients(1, 500),
       ]);
 
       setConfigs(configRes.data ?? []);
-      setClients(
-        Array.isArray(clientRes?.data?.results)
-          ? clientRes.data.results
-          : clientRes.data || [],
-      );
+
+      if (cm) {
+        // Allowed-budget rows carry the config-compatible client_id + a display
+        // name. Normalise onto the { id, email } shape the picker reads (it
+        // displays/searches on `email`; the client name stands in for it).
+        const rows = Array.isArray(clientRes?.data) ? clientRes.data : [];
+        setClients(
+          rows
+            .filter((c) => c.client_id != null)
+            .map((c) => ({
+              id: c.client_id,
+              email: c.name ?? `Client #${c.client_id}`,
+            })),
+        );
+      } else {
+        setClients(
+          Array.isArray(clientRes?.data?.results)
+            ? clientRes.data.results
+            : clientRes.data || [],
+        );
+      }
     } catch (err) {
       console.error("Failed to load configs:", err);
     } finally {
@@ -360,6 +396,7 @@ export default function ProjectDisplayConfig() {
     setResolvedUnit(null);
     clearPreview(); // ← NEW: drop any stale CPL preview
     setPreviewLoading(false);
+    setSubmitError(""); // drop any stale save error
 
     setTimeout(() => {
       setSidebarMounted(false);
@@ -379,6 +416,8 @@ export default function ProjectDisplayConfig() {
     if (["client_id", "project_id", "rule_type", "rule_value"].includes(field)) {
       clearPreview();
     }
+    // Editing the form clears a prior save error — the user is retrying.
+    if (submitError()) setSubmitError("");
   };
 
   const handleSubmitConfig = async () => {
@@ -393,6 +432,7 @@ export default function ProjectDisplayConfig() {
     }
     try {
       setSubmitting(true);
+      setSubmitError("");
       const payload = {
         client_id: Number(formData().client_id),
         project_id: Number(formData().project_id),
@@ -429,6 +469,11 @@ export default function ProjectDisplayConfig() {
       );
     } catch (err) {
       console.error("Failed to save config:", err);
+      // Surface the backend message (e.g. a CM's out-of-scope 403) instead of
+      // failing silently. Falls back to a generic line if none was provided.
+      setSubmitError(
+        err?.message || "Failed to save configuration. Please try again.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -1237,6 +1282,13 @@ export default function ProjectDisplayConfig() {
                 />
               </div>
             </div>
+
+            {/* Save error (e.g. a CM's out-of-scope 403) */}
+            <Show when={submitError()}>
+              <div class="mx-6 mb-1 mt-3 rounded-md border border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-800 px-3 py-2 text-sm text-red-600 dark:text-red-400">
+                {submitError()}
+              </div>
+            </Show>
 
             {/* Footer — unchanged */}
             <div class="px-6 py-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex gap-3">
