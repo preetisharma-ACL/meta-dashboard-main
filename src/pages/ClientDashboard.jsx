@@ -2560,9 +2560,9 @@ export default function MainDashboard() {
             </tbody>
             <tfoot class="bg-[#F8FAFC] dark:bg-gray-800 font-semibold text-gray-700 dark:text-white border-t-2 border-[#D4DDE9] dark:border-gray-600">
               <tr class="[&_td]:text-center [&_td]:px-6 [&_td]:py-3">
-                <td class="sticky left-0 bg-[#F8FAFC] dark:bg-gray-800 z-20"></td>
+                <td class="md:sticky md:left-0 md:z-20 bg-[#F8FAFC] dark:bg-gray-800"></td>
 
-                <td class="sticky left-[57px] bg-[#F8FAFC] dark:bg-gray-800 z-20 text-left text-xs uppercase tracking-wider text-[#54657E] dark:text-gray-300">
+                <td class="md:sticky md:left-[57px] md:z-20 bg-[#F8FAFC] dark:bg-gray-800 text-left text-xs uppercase tracking-wider text-[#54657E] dark:text-gray-300">
                   Total
                 </td>
 
