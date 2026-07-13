@@ -2987,25 +2987,22 @@ export default function MainDashboard() {
             class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 mt-5"
             classList={{ "opacity-50": !funnelStats().hasData }}
           >
-            {funnelCells().map((f, i) => (
-              <div
-                class={
-                  "py-3 lg:py-0 lg:px-5 border-t lg:border-t-0 lg:border-l border-[#E2E8F1] dark:border-gray-700 first:border-t-0 first:border-l-0 first:pl-0 flex lg:block items-center justify-between gap-3" +
-                  (i === 0 ? "" : "")
-                }
-              >
-                <div>
+            {funnelCells().map((f) => (
+              <div class="py-3 lg:py-0 lg:px-5 border-t lg:border-t-0 lg:border-l border-[#E2E8F1] dark:border-gray-700 first:border-t-0 first:border-l-0 first:pl-0 flex lg:block items-center justify-between gap-3">
+                {/* Label — with subtext stacked beneath on mobile */}
+                <div class="min-w-0">
                   <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
                     {f.l}
                   </p>
-                  <p class="hidden lg:block text-xs text-[#54657E] dark:text-gray-400 mt-1 order-3">
+                  <p class="lg:hidden text-xs text-[#54657E] dark:text-gray-400 mt-0.5">
                     {f.s}
                   </p>
                 </div>
-                <p class="text-2xl font-bold text-[#14233A] dark:text-white lg:mt-1">
+                <p class="flex-none text-right lg:text-left text-xl sm:text-2xl font-bold text-[#14233A] dark:text-white lg:mt-1">
                   {f.v}
                 </p>
-                <p class="lg:hidden text-xs text-[#54657E] dark:text-gray-400">
+                {/* Subtext — sits under the value on desktop */}
+                <p class="hidden lg:block text-xs text-[#54657E] dark:text-gray-400 mt-1">
                   {f.s}
                 </p>
               </div>
