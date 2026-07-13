@@ -850,37 +850,40 @@ export default function AllowedBudget() {
       {/* Client-type filter — moved above the tabs so it's always visible */}
       <div class="flex flex-wrap items-center gap-1.5 mb-4">
         <span class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400 mr-1">Client type</span>
-        <For each={CLIENT_TYPE_CHIPS}>
-          {(t) => {
-            const on = () => clientTypes().includes(t.key);
-            return (
-              <button
-                onClick={() => toggleClientType(t.key)}
-                aria-pressed={on()}
-                class={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[13px] font-semibold border transition-colors ${
-                  on()
-                    ? "bg-[#14233A] text-white border-[#14233A]"
-                    : "bg-[#F8FAFC] dark:bg-gray-800 text-[#54657E] dark:text-gray-300 border-[#E2E8F1] dark:border-gray-700 hover:border-[#14233A]/40"
-                }`}
-              >
-                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                  <Show when={on()} fallback={<circle cx="12" cy="12" r="9" stroke-width="1.6" />}>
-                    <path d="M20 6L9 17l-5-5" />
-                  </Show>
-                </svg>
-                {t.label}
-              </button>
-            );
-          }}
-        </For>
+        {/* Keep CPL/Hybrid/Retainer together on a single line */}
+        <div class="flex items-center gap-1.5">
+          <For each={CLIENT_TYPE_CHIPS}>
+            {(t) => {
+              const on = () => clientTypes().includes(t.key);
+              return (
+                <button
+                  onClick={() => toggleClientType(t.key)}
+                  aria-pressed={on()}
+                  class={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[13px] font-semibold border transition-colors whitespace-nowrap ${
+                    on()
+                      ? "bg-[#14233A] text-white border-[#14233A]"
+                      : "bg-[#F8FAFC] dark:bg-gray-800 text-[#54657E] dark:text-gray-300 border-[#E2E8F1] dark:border-gray-700 hover:border-[#14233A]/40"
+                  }`}
+                >
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <Show when={on()} fallback={<circle cx="12" cy="12" r="9" stroke-width="1.6" />}>
+                      <path d="M20 6L9 17l-5-5" />
+                    </Show>
+                  </svg>
+                  {t.label}
+                </button>
+              );
+            }}
+          </For>
+        </div>
       </div>
 
-      {/* Tabs */}
-      <div class="inline-flex gap-1 p-1 bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] mb-5">
+      {/* Tabs — scroll horizontally on narrow screens instead of overflowing */}
+      <div class="flex max-w-full overflow-x-auto gap-1 p-1 bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] mb-5 w-full sm:w-fit">
         <For each={tabs()}>
           {(t) => (
             <button onClick={() => setTab(t.k)}
-              class={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${tab() === t.k ? "bg-[#14233A] text-white" : "text-[#54657E] dark:text-gray-400 hover:text-[#14233A] dark:hover:text-gray-300"}`}>
+              class={`shrink-0 whitespace-nowrap px-4 py-1.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${tab() === t.k ? "bg-[#14233A] text-white" : "text-[#54657E] dark:text-gray-400 hover:text-[#14233A] dark:hover:text-gray-300"}`}>
               {t.l}
               <Show when={t.k === "queue" && totalPendingRequests() > 0}>
                 <span class={`text-[11px] font-extrabold px-1.5 py-px rounded-full ${tab() === t.k ? "bg-white/20 text-white" : "bg-[#FBEEF0] text-[#AC2334]"}`}>{totalPendingRequests()}</span>

@@ -365,7 +365,7 @@ export default function CampaignManagerClients() {
         <Show when={ready()}>
           <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-sm px-4 py-3 mb-6 flex items-center gap-4 flex-wrap">
             {/* Search */}
-            <div class="relative flex-1 min-w-[220px] max-w-[380px]">
+            <div class="relative w-full sm:flex-1 sm:min-w-[220px] sm:max-w-[380px]">
               <svg
                 class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"
                 viewBox="0 0 24 24"
@@ -388,11 +388,11 @@ export default function CampaignManagerClients() {
             </div>
 
             {/* Client-type filter */}
-            <div class="flex items-center gap-2.5">
+            <div class="flex items-center gap-2.5 w-full sm:w-auto min-w-0">
               <span class="hidden sm:inline text-[10.5px] font-bold uppercase tracking-[0.12em] text-gray-400">
                 Client type
               </span>
-              <div class="inline-flex bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-[11px] p-[3px] gap-0.5">
+              <div class="flex flex-wrap bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-[11px] p-[3px] gap-0.5">
                 <FilterPill
                   active={allTypesSelected()}
                   onClick={() => setClientTypes(DEFAULT_CLIENT_TYPES)}
@@ -414,7 +414,7 @@ export default function CampaignManagerClients() {
             </div>
 
             {/* Month */}
-            <div class="relative ml-auto">
+            <div class="relative w-full sm:w-auto sm:ml-auto">
               <svg
                 class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500 dark:text-gray-400 pointer-events-none"
                 viewBox="0 0 24 24"
@@ -431,7 +431,7 @@ export default function CampaignManagerClients() {
                 value={month()}
                 onChange={(e) => setMonth(e.target.value)}
                 aria-label="Reporting month"
-                class="appearance-none h-10 pl-9 pr-9 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-[13px] font-semibold text-gray-800 dark:text-gray-100 cursor-pointer focus:outline-none focus:border-[#14233A] focus:ring-2 focus:ring-[#14233A]/10"
+                class="appearance-none w-full sm:w-auto h-10 pl-9 pr-9 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-[13px] font-semibold text-gray-800 dark:text-gray-100 cursor-pointer focus:outline-none focus:border-[#14233A] focus:ring-2 focus:ring-[#14233A]/10"
               >
                 <For each={monthOptions()}>
                   {(o) => <option value={o.key}>{o.label}</option>}

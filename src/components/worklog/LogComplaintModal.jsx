@@ -71,6 +71,7 @@ export default function LogComplaintModal(props) {
 
   return (
     <Modal
+      brand={props.brand}
       title="Log complaint"
       subtitle={
         props.clientName

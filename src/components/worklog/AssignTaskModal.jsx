@@ -123,6 +123,7 @@ export default function AssignTaskModal(props) {
 
   return (
     <Modal
+      brand={props.brand}
       title={props.sourceComplaint ? "Resolve as task" : "Assign task"}
       subtitle={
         props.sourceComplaint

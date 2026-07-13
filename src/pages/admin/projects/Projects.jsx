@@ -135,7 +135,7 @@ export default function Projects() {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div class="min-h-screen bg-gray-50 dark:bg-gray-900 p-6 lg:p-8">
+    <div class="min-h-screen bg-gray-50 dark:bg-gray-900 p-3 lg:p-8">
       {/* Page Header */}
       <div class="mb-6">
         <h1 class="text-2xl font-semibold text-gray-900 dark:text-white tracking-tight">

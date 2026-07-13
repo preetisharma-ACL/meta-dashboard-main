@@ -53,6 +53,34 @@
 .wl button { font-family: inherit; cursor: pointer; }
 .wl ::selection { background: var(--gold-soft); }
 
+/* ── My Work brand recolor ──────────────────────────────────────────────────
+ * Scoped to `.wl.wl-brand` (My Work only — the Client Workspace keeps the
+ * approved forest/gold/clay theme). Restricts every accent to the two project
+ * theme colours: blue-900 (#1e3a8a) for brand/active/positive states and
+ * #AC2334 for alert/overdue/high states. Neutral greys are retained. */
+.wl.wl-brand {
+  --ink: #14233a;
+  --forest: #1e3a8a;
+  --forest-2: #172e6b;
+  --forest-3: #122452;
+  --gold: #1e3a8a;
+  --gold-2: #1e3a8a;
+  --gold-soft: #e7ecf6;
+  --clay: #ac2334;
+  --clay-soft: #fbeef0;
+  --blue: #1e3a8a;
+  --blue-soft: #e7ecf6;
+  --ok: #1e3a8a;
+  --ok-bg: #e7ecf6;
+  --warn: #1e3a8a;
+  --warn-bg: #e7ecf6;
+  --red: #ac2334;
+  --red-bg: #fbeef0;
+  --green-soft: #e7ecf6;
+}
+.wl.wl-brand .btn-primary:hover { background: #172e6b; }
+.wl.wl-brand .pill.camp { color: #1e3a8a; }
+
 .wl .content { padding: 22px 26px 60px; max-width: 960px; width: 100%; margin: 0 auto; }
 
 /* head / lead */

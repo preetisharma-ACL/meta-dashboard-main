@@ -407,7 +407,7 @@ export default function Clients() {
 
   // ─── render ───────────────────────────────────────────────────────────────
   return (
-    <div class="min-h-screen bg-gray-50 dark:bg-gray-900 p-6 lg:p-8">
+    <div class="min-h-screen bg-gray-50 dark:bg-gray-900 p-2 sm:p-6 lg:p-8">
       {/* ── Page header ── */}
       <div class="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div>
@@ -425,30 +425,33 @@ export default function Clients() {
         <span class="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mr-1">
           Client type
         </span>
-        <For each={CLIENT_TYPE_CHIPS}>
-          {(t) => {
-            const on = () => clientTypes().includes(t.key);
-            return (
-              <button
-                type="button"
-                onClick={() => toggleClientType(t.key)}
-                aria-pressed={on()}
-                class={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[13px] font-semibold border transition-colors ${
-                  on()
-                    ? "bg-[#14233A] text-white border-[#14233A]"
-                    : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-[#14233A]/40"
-                }`}
-              >
-                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                  <Show when={on()} fallback={<circle cx="12" cy="12" r="9" stroke-width="1.6" />}>
-                    <path d="M20 6L9 17l-5-5" />
-                  </Show>
-                </svg>
-                {t.label}
-              </button>
-            );
-          }}
-        </For>
+        {/* Keep CPL/Hybrid/Retainer together on a single line */}
+        <div class="flex items-center gap-1.5">
+          <For each={CLIENT_TYPE_CHIPS}>
+            {(t) => {
+              const on = () => clientTypes().includes(t.key);
+              return (
+                <button
+                  type="button"
+                  onClick={() => toggleClientType(t.key)}
+                  aria-pressed={on()}
+                  class={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[13px] font-semibold border transition-colors whitespace-nowrap ${
+                    on()
+                      ? "bg-[#14233A] text-white border-[#14233A]"
+                      : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-[#14233A]/40"
+                  }`}
+                >
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <Show when={on()} fallback={<circle cx="12" cy="12" r="9" stroke-width="1.6" />}>
+                      <path d="M20 6L9 17l-5-5" />
+                    </Show>
+                  </svg>
+                  {t.label}
+                </button>
+              );
+            }}
+          </For>
+        </div>
       </div>
 
       {/* ── Filters ── */}
@@ -457,7 +460,7 @@ export default function Clients() {
                         dark:border-gray-700 p-4 mb-4 flex flex-wrap items-center gap-3"
       >
         {/* Search */}
-        <div class="relative flex w-[360px]">
+        <div class="relative flex w-full sm:w-[360px]">
           <svg
             class="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2"
             fill="none"
@@ -484,7 +487,7 @@ export default function Clients() {
         <select
           value={activeFilter()}
           onChange={(e) => setActiveFilter(e.target.value)}
-          class="px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700
+          class="w-full sm:w-auto px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700
          bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300
          focus:outline-none focus:ring-1 focus:ring-purple-400 dark:focus:ring-gray-600 cursor-pointer"
         >
@@ -496,7 +499,7 @@ export default function Clients() {
         {/* Assignment + Campaign-manager filters are admin-only: they depend on
             the manager roster, which CMs can't read. Hidden for CMs. */}
         <Show when={!isCampaignManager()}>
-        <div class="inline-flex items-center gap-1 p-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+        <div class="flex w-full sm:w-auto sm:inline-flex items-stretch sm:items-center gap-1 p-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
           <For each={ASSIGN_OPTIONS}>
             {(o) => {
               const on = () => assignFilter() === o.value;
@@ -505,7 +508,7 @@ export default function Clients() {
                   type="button"
                   onClick={() => setAssignFilter(o.value)}
                   aria-pressed={on()}
-                  class={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap ${
+                  class={`flex-1 sm:flex-none min-w-0 sm:min-w-fit flex items-center justify-center text-center px-3 py-1.5 text-sm font-medium rounded-md transition-colors sm:whitespace-nowrap ${
                     on()
                       ? "bg-blue-900 text-white shadow-sm"
                       : "text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-700"
@@ -524,7 +527,7 @@ export default function Clients() {
           value={cmFilter()}
           onChange={(e) => setCmFilter(e.target.value)}
           disabled={!cmReady() || managerOptions().length === 0}
-          class="px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700
+          class="w-full sm:w-auto px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700
          bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300
          focus:outline-none focus:ring-1 focus:ring-purple-400 dark:focus:ring-gray-600 cursor-pointer
          disabled:opacity-60 disabled:cursor-not-allowed"

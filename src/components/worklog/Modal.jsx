@@ -15,7 +15,7 @@ export default function Modal(props) {
   });
 
   return (
-    <div class="wl">
+    <div class={props.brand ? "wl wl-brand" : "wl"}>
       <div class="overlay" onClick={props.onClose} />
       <div class="modal" role="dialog" aria-modal="true">
         <button class="xbtn" onClick={props.onClose} aria-label="Close" style="position:absolute;top:16px;right:16px">

@@ -10,9 +10,18 @@ import {
   fmtDate,
   levelClassOf,
   statusClassOf,
-  avatarColor,
   initialsOf,
 } from "../../components/worklog/worklogTokens";
+
+// My Work uses only the two project theme colours, so its avatars are drawn
+// from blue-900 / #AC2334 instead of the shared forest/gold/clay palette.
+const BRAND_AVATAR = ["#1e3a8a", "#AC2334"];
+const brandAvatar = (seed) => {
+  const s = String(seed ?? "");
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) & 0xffff;
+  return BRAND_AVATAR[h % BRAND_AVATAR.length];
+};
 
 // ─── My Work — unified task + complaint queue ─────────────────────────────────
 // Renders GET /worklog/my-work/?view=own|all exactly as the backend sorts it
@@ -98,7 +107,7 @@ export default function MyWork() {
   );
 
   return (
-    <section class="wl">
+    <section class="wl wl-brand">
       <div class="content">
         {/* ════════ LEAD ════════ */}
         <div class="lead">
@@ -225,7 +234,7 @@ export default function MyWork() {
                     <div class="card clickable" onClick={() => openItem(it)}>
                       <div class="card-top">
                         <span class="actor">
-                          <span class="av" style={`background:${avatarColor(name)}`}>
+                          <span class="av" style={`background:${brandAvatar(name)}`}>
                             {initialsOf(name)}
                           </span>
                           <b>{name}</b>
@@ -275,10 +284,10 @@ export default function MyWork() {
 
       {/* ════════ CREATE OVERLAYS ════════ */}
       <Show when={overlay() === "log"}>
-        <LogComplaintModal onClose={closeOverlay} onCreated={() => refetch()} />
+        <LogComplaintModal brand onClose={closeOverlay} onCreated={() => refetch()} />
       </Show>
       <Show when={overlay() === "assign"}>
-        <AssignTaskModal onClose={closeOverlay} onCreated={() => refetch()} />
+        <AssignTaskModal brand onClose={closeOverlay} onCreated={() => refetch()} />
       </Show>
     </section>
   );

@@ -574,7 +574,7 @@ export default function AdminCampaignManagers() {
 
             {/* Controls — grouped into a single grounded stat bar so the right
                 side reads as one solid block, not scattered text. */}
-            <div class="flex items-stretch rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-800/40 divide-x divide-gray-200 dark:divide-gray-700 self-start lg:self-auto overflow-hidden">
+            <div class="flex flex-col sm:flex-row items-stretch rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-800/40 divide-y sm:divide-y-0 sm:divide-x divide-gray-200 dark:divide-gray-700 self-stretch sm:self-start lg:self-auto overflow-hidden">
               {/* Own/team toggle — scopes THIS manager to their own clients or full
                   team. Defaults to Own clients on select. */}
               <Show when={allowed()}>
@@ -600,7 +600,7 @@ export default function AdminCampaignManagers() {
               </Show>
 
               {/* Allocated-budget stat — read straight off the roster row. */}
-              <div class="px-5 py-3 flex flex-col justify-center text-right whitespace-nowrap">
+              <div class="px-5 py-3 flex flex-col justify-center text-left sm:text-right whitespace-nowrap">
                 <p class="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-1">Allocated budget</p>
                 <Show
                   when={selected().allocated_budget != null}

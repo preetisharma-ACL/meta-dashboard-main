@@ -381,42 +381,45 @@ export default function CoordinationDashboard() {
         <span class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400 mr-1">
           Client type
         </span>
-        <For each={CLIENT_TYPES}>
-          {(t) => {
-            const on = () => clientTypes().includes(t.key);
-            return (
-              <button
-                onClick={() => toggleClientType(t.key)}
-                aria-pressed={on()}
-                class={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[13px] font-semibold border transition-colors ${
-                  on()
-                    ? "bg-[#14233A] text-white border-[#14233A]"
-                    : "bg-gray-50 dark:bg-gray-800 text-[#54657E] dark:text-gray-300 border-[#E2E8F1] dark:border-gray-700 hover:border-[#14233A]/40"
-                }`}
-              >
-                <svg
-                  class="w-3.5 h-3.5"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2.5"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
+        {/* Keep CPL/Hybrid/Retainer together on a single line */}
+        <div class="flex items-center gap-2">
+          <For each={CLIENT_TYPES}>
+            {(t) => {
+              const on = () => clientTypes().includes(t.key);
+              return (
+                <button
+                  onClick={() => toggleClientType(t.key)}
+                  aria-pressed={on()}
+                  class={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[13px] font-semibold border transition-colors whitespace-nowrap ${
+                    on()
+                      ? "bg-[#14233A] text-white border-[#14233A]"
+                      : "bg-gray-50 dark:bg-gray-800 text-[#54657E] dark:text-gray-300 border-[#E2E8F1] dark:border-gray-700 hover:border-[#14233A]/40"
+                  }`}
                 >
-                  <Show
-                    when={on()}
-                    fallback={
-                      <circle cx="12" cy="12" r="9" stroke-width="1.6" />
-                    }
+                  <svg
+                    class="w-3.5 h-3.5"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
                   >
-                    <path d="M20 6L9 17l-5-5" />
-                  </Show>
-                </svg>
-                {t.label}
-              </button>
-            );
-          }}
-        </For>
+                    <Show
+                      when={on()}
+                      fallback={
+                        <circle cx="12" cy="12" r="9" stroke-width="1.6" />
+                      }
+                    >
+                      <path d="M20 6L9 17l-5-5" />
+                    </Show>
+                  </svg>
+                  {t.label}
+                </button>
+              );
+            }}
+          </For>
+        </div>
         <span class="text-xs text-[#8593A8] dark:text-gray-500 ml-1">
           Retainer accounts are client-funded; excluded by default.
         </span>

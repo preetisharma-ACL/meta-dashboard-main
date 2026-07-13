@@ -480,7 +480,7 @@ export default function ProjectDisplayConfig() {
   };
 
   return (
-    <div class="min-h-screen bg-gray-50 dark:bg-gray-900 p-6 lg:p-8">
+    <div class="min-h-screen bg-gray-50 dark:bg-gray-900 p-3 lg:p-8">
       {/* Page Header */}
       <div class="mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div class="mb-6">

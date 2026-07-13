@@ -109,7 +109,7 @@ export default function Activity() {
   const hasNext = () => pagination()?.has_next ?? false;
 
   return (
-    <div class="min-h-screen bg-gray-50 dark:bg-gray-900 p-6 lg:p-8">
+    <div class="min-h-screen bg-gray-50 dark:bg-gray-900 p-3 lg:p-8">
 
       {/* Header */}
       <div class="mb-4">
