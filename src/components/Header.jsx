@@ -282,7 +282,7 @@ export default function Header() {
             </button>
 
             <Show when={showNotifications()}>
-              <div class="absolute right-0 mt-4 w-80 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden z-50">
+              <div class="absolute right-0 mt-4 w-80 max-w-[calc(100vw-1.5rem)] bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden z-50">
                 <div class="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
                   <h3 class="font-semibold text-gray-900 dark:text-white">
                     Notifications

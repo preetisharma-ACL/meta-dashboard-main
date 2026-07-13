@@ -28,6 +28,10 @@ const fmt = (val) =>
 
 const num = (v) => (Number(v) || 0).toLocaleString("en-IN");
 
+// Premium CPL (marked-up) may be absent for a project → render an em dash
+// rather than "₹0.00" so it reads as "no premium attribution" not "free".
+const fmtPrem = (v) => (v == null ? "—" : fmt(v));
+
 const fmtDate = (dateStr) => {
   if (!dateStr) return "—";
   const d = new Date(dateStr.includes("T") ? dateStr : dateStr + "T00:00:00");
@@ -43,6 +47,12 @@ const today = () => new Date().toISOString().split("T")[0];
 // A far-back window so the dropdown lists every client the CM is assigned to,
 // not just ones active in the server's default 14-day window.
 const CLIENT_LOOKBACK = "2020-01-01";
+
+// Premium (marked-up) attribution only exists from this date on — the markup
+// config didn't exist before it, so premium_metrics is empty for earlier days.
+// We clamp the premium campaign fetch's start to this floor, exactly like the
+// ClientDashboard / ProjectDetails ledgers, so the numbers line up.
+const PREMIUM_FLOOR = "2026-04-01";
 
 // project nodes expose avg_cpl; campaign leaves expose cpl.
 const cplOf = (g) => (g?.cpl != null ? g.cpl : g?.avg_cpl);
@@ -178,6 +188,52 @@ export default function CMDailyReport() {
     return e.active > 0 ? "active" : "paused";
   };
 
+  // ── Per-project premium (marked-up) spend/leads lookup ──────────────────────
+  // Aggregated from the range-scoped premium campaigns captured at generate
+  // time. Keyed by project_id AND normalised project_name, mirroring statusInfo,
+  // so it matches the hierarchy rows regardless of which key the campaign carries.
+  const premiumInfo = createMemo(() => {
+    const r = report();
+    if (!r) return null;
+    const camps = r.premiumCampaigns || [];
+    const cid = String(r.client.client_nomen_id);
+    const byId = {};
+    const byName = {};
+    for (const c of camps) {
+      if (String(c.client_nomen) !== cid) continue;
+      const pm = c.premium_metrics;
+      if (!pm || pm.spend == null || pm.leads_count == null) continue;
+      const spend = Number(pm.spend) || 0;
+      const leads = Number(pm.leads_count) || 0;
+      const idk = c.project_id != null ? String(c.project_id) : null;
+      const nk = (c.project_name || "").trim().toLowerCase();
+      if (idk) {
+        if (!byId[idk]) byId[idk] = { spend: 0, leads: 0 };
+        byId[idk].spend += spend;
+        byId[idk].leads += leads;
+      }
+      if (nk) {
+        if (!byName[nk]) byName[nk] = { spend: 0, leads: 0 };
+        byName[nk].spend += spend;
+        byName[nk].leads += leads;
+      }
+    }
+    return { byId, byName };
+  });
+
+  // { spend, leads } of premium attribution for a project (zeros = none matched).
+  const premiumOfProject = (p) => {
+    const info = premiumInfo();
+    if (!info) return { spend: 0, leads: 0 };
+    return (
+      info.byId[String(p.project_id)] ||
+      info.byName[(p.project_name || "").trim().toLowerCase()] || {
+        spend: 0,
+        leads: 0,
+      }
+    );
+  };
+
   const canGenerate = () =>
     !!selectedClientId() && !!fromDate() && !!toDate() && !generating();
 
@@ -241,7 +297,27 @@ export default function CMDailyReport() {
         endDate: to,
       });
       const projects = Array.isArray(res?.data) ? res.data : [];
-      setReport({ client, projects, from, to });
+
+      // ── Premium (marked-up) campaigns for the SAME range ──────────────────
+      // premium_metrics is server-computed per date window, so it must be
+      // fetched for the report's own range (NOT reused from campaignsRes, which
+      // is lifetime-scoped for status only). Start is clamped to PREMIUM_FLOOR;
+      // if the whole range predates the floor there's no premium to fetch.
+      // A premium failure must NOT sink the report — fall back to no premium.
+      let premiumCampaigns = [];
+      if (to >= PREMIUM_FLOOR) {
+        try {
+          const premRes = await fetchAllCampaignsScoped({
+            startDate: from > PREMIUM_FLOOR ? from : PREMIUM_FLOOR,
+            endDate: to,
+          });
+          premiumCampaigns = Array.isArray(premRes?.data) ? premRes.data : [];
+        } catch (err) {
+          console.error("[CMDailyReport] premium campaigns failed:", err);
+        }
+      }
+
+      setReport({ client, projects, from, to, premiumCampaigns });
     } catch (err) {
       console.error("[CMDailyReport] project report failed:", err);
       setGenError(true);
@@ -281,12 +357,23 @@ export default function CMDailyReport() {
         const spent = parseFloat(raw.spend) || 0;
         const cpl = leads > 0 ? parseFloat((spent / leads).toFixed(2)) : 0;
         const billedSpend = parseFloat(billed.spend) || 0;
+        // Premium CPL = Σ premium spend ÷ Σ premium leads for this project
+        // (aggregated, never an average of per-campaign CPLs). null when the
+        // project has no premium attribution in the range.
+        const prem = premiumOfProject(p);
+        const premiumCpl =
+          prem.leads > 0
+            ? parseFloat((prem.spend / prem.leads).toFixed(2))
+            : null;
         return {
           projectId: p.project_id,
           projectName: p.project_name,
           campaigns: Number(p.campaign_count) || 0,
           leads,
           cpl,
+          premiumCpl,
+          premiumSpend: prem.spend,
+          premiumLeads: prem.leads,
           spent,
           billed: billedSpend,
           status: statusOfProject(p),
@@ -322,7 +409,22 @@ export default function CMDailyReport() {
     const totalCampaigns = rows.reduce((s, r) => s + r.campaigns, 0);
     const avgCPL =
       totalLeads > 0 ? parseFloat((totalSpent / totalLeads).toFixed(2)) : 0;
-    return { totalLeads, totalSpent, totalBilled, totalCampaigns, avgCPL };
+    // Premium CPL total: Σ premium spend ÷ Σ premium leads across all rows
+    // (aggregated, matching the per-row rule). null when nothing premium-matched.
+    const premiumSpend = rows.reduce((s, r) => s + (r.premiumSpend || 0), 0);
+    const premiumLeads = rows.reduce((s, r) => s + (r.premiumLeads || 0), 0);
+    const avgPremiumCPL =
+      premiumLeads > 0
+        ? parseFloat((premiumSpend / premiumLeads).toFixed(2))
+        : null;
+    return {
+      totalLeads,
+      totalSpent,
+      totalBilled,
+      totalCampaigns,
+      avgCPL,
+      avgPremiumCPL,
+    };
   });
 
   // ── Labels ─────────────────────────────────────────────────────────────────
@@ -355,18 +457,24 @@ export default function CMDailyReport() {
   };
 
   const exportColumns = () => {
-    const cols = ["Date", "Project", "Leads", "CPL"];
-    if (!iscpl()) cols.push("Amount Spent", "Client Billed");
+    const cols = ["Date", "Project", "Leads", "Raw CPL", "Premium CPL"];
+    if (!iscpl()) cols.push("Raw Amount Spent", "Client Billed (ex- S.C & GST)");
     return cols;
   };
   const exportRow = (r) => {
-    const base = [dateCellLabel(), r.projectName, r.leads, r.cpl];
+    const base = [
+      dateCellLabel(),
+      r.projectName,
+      r.leads,
+      r.cpl,
+      r.premiumCpl ?? "",
+    ];
     if (!iscpl()) base.push(r.spent, r.billed);
     return base;
   };
   const exportTotalsRow = () => {
     const t = totals();
-    const base = ["TOTAL", "", t.totalLeads, t.avgCPL];
+    const base = ["TOTAL", "", t.totalLeads, t.avgCPL, t.avgPremiumCPL ?? ""];
     if (!iscpl()) base.push(t.totalSpent, t.totalBilled);
     return base;
   };
@@ -469,7 +577,7 @@ export default function CMDailyReport() {
   };
 
   // Column span for empty/placeholder table rows.
-  const colCount = () => (iscpl() ? 4 : 6);
+  const colCount = () => (iscpl() ? 5 : 7);
 
   // ══════════════════════════════════════════════════════════════════════════
   // RENDER
@@ -806,10 +914,11 @@ export default function CMDailyReport() {
                 <th class="p-3 pl-4">Date</th>
                 <th class="p-3">Project</th>
                 <th class="p-3">Leads</th>
-                <th class="p-3">CPL</th>
+                <th class="p-3">Raw CPL</th>
+                <th class="p-3">Premium CPL</th>
                 <Show when={!iscpl()}>
-                  <th class="p-3">Amount Spent</th>
-                  <th class="p-3">Client Billed</th>
+                  <th class="p-3">Raw Amount Spent</th>
+                  <th class="p-3">Client Billed (ex- S.C & GST)</th>
                 </Show>
               </tr>
             </thead>
@@ -875,6 +984,9 @@ export default function CMDailyReport() {
                       <td class="p-3 text-purple-700 dark:text-purple-300">
                         {fmt(row.cpl)}
                       </td>
+                      <td class="p-3 font-medium text-amber-700 dark:text-amber-400">
+                        {fmtPrem(row.premiumCpl)}
+                      </td>
                       <Show when={!iscpl()}>
                         <td class="p-3 text-green-700 dark:text-green-400">
                           {fmt(row.spent)}
@@ -901,6 +1013,9 @@ export default function CMDailyReport() {
                   </td>
                   <td class="p-3 text-purple-700 dark:text-purple-300 font-bold">
                     {fmt(totals().avgCPL)}
+                  </td>
+                  <td class="p-3 text-amber-700 dark:text-amber-400 font-bold">
+                    {fmtPrem(totals().avgPremiumCPL)}
                   </td>
                   <Show when={!iscpl()}>
                     <td class="p-3 text-green-700 dark:text-green-300 font-bold">
@@ -1112,14 +1227,17 @@ export default function CMDailyReport() {
                       Leads
                     </th>
                     <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
-                      CPL
+                      Raw CPL
+                    </th>
+                    <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
+                      Premium CPL
                     </th>
                     <Show when={!iscpl()}>
                       <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
-                        Amount Spent
+                        Raw Amount Spent
                       </th>
                       <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
-                        Client Billed
+                        Client Billed (ex- S.C &amp; GST)
                       </th>
                     </Show>
                   </tr>
@@ -1148,6 +1266,9 @@ export default function CMDailyReport() {
                         <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
                           {fmt(row.cpl)}
                         </td>
+                        <td class="px-4 py-3 text-center text-[#8a5a00] font-semibold text-md border-r border-[rgba(123,28,28,0.1)]">
+                          {fmtPrem(row.premiumCpl)}
+                        </td>
                         <Show when={!iscpl()}>
                           <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
                             {fmt(row.spent)}
@@ -1171,6 +1292,9 @@ export default function CMDailyReport() {
                     </td>
                     <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
                       {fmt(totals().avgCPL)}
+                    </td>
+                    <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
+                      {fmtPrem(totals().avgPremiumCPL)}
                     </td>
                     <Show when={!iscpl()}>
                       <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
@@ -1277,14 +1401,17 @@ export default function CMDailyReport() {
                         Leads
                       </th>
                       <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
-                        CPL
+                        Raw CPL
+                      </th>
+                      <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
+                        Premium CPL
                       </th>
                       <Show when={!iscpl()}>
                         <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
-                          Amt Spent
+                          Raw Amount Spent
                         </th>
                         <th style="padding:11px 14px;text-align:center;color:#f5d9a0;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;">
-                          Client Billed
+                          Client Billed (ex- S.C &amp; GST)
                         </th>
                       </Show>
                     </tr>
@@ -1309,6 +1436,9 @@ export default function CMDailyReport() {
                         <td style="padding:10px 14px;text-align:center;font-size:14px;color:#333;border-right:1px solid rgba(123,28,28,0.1);">
                           {fmt(row.cpl)}
                         </td>
+                        <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:600;color:#8a5a00;border-right:1px solid rgba(123,28,28,0.1);">
+                          {fmtPrem(row.premiumCpl)}
+                        </td>
                         <Show when={!iscpl()}>
                           <td style="padding:10px 14px;text-align:center;font-size:14px;color:#333;border-right:1px solid rgba(123,28,28,0.1);">
                             {fmt(row.spent)}
@@ -1329,6 +1459,9 @@ export default function CMDailyReport() {
                       </td>
                       <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
                         {fmt(totals().avgCPL)}
+                      </td>
+                      <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
+                        {fmtPrem(totals().avgPremiumCPL)}
                       </td>
                       <Show when={!iscpl()}>
                         <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
