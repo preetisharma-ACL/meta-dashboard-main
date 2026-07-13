@@ -50,10 +50,16 @@ export default function DailyReports() {
   const [showPreview, setShowPreview] = createSignal(false);
   const [previewGenerating, setPreviewGenerating] = createSignal(false);
   const [exportOpen, setExportOpen] = createSignal(false); // download-report format menu
-  const { isRetainer, iscpl, ishybrid, isAdmin } = clientRole();
+  const { isRetainer, iscpl: iscplRole, ishybrid, isAdmin } = clientRole();
 
   // inside DailyReports(), near the other state:
   const [billingOverview] = createResource(() => fetchBillingOverview());
+
+  // The daily-report response carries a per-client `meta.report_summary` block
+  // with the client's own service-charge rate + type. This is the source of
+  // truth for the S.C column (see scPct/iscplReport below) — NOT the viewer's
+  // overview, which is wrong when an admin/CM is looking at a client.
+  const [reportSummary, setReportSummary] = createSignal(null);
   /* ── lifecycle ── */
   onMount(() => {
     loadAllData();
@@ -72,6 +78,15 @@ export default function DailyReports() {
         const res = await fetchProjects(page, "");
         const apiData = res?.data || [];
         const meta = res?.meta?.pagination;
+        // The per-client service-charge / client-type live in the response's
+        // `meta.report_summary` block. Capture it once (page 1); it's identical
+        // across pages. `/projects/` is client-scoped (client_nomen for admins),
+        // so this is the SELECTED client's rate even in the admin/CM view. It's
+        // absent when not scoped to one client (admin viewing all) → null, and
+        // scPct()/iscplReport() fall back to the billing overview / role flag.
+        if (page === 1) {
+          setReportSummary(res?.meta?.report_summary ?? null);
+        }
         const mapped = apiData.map((item) => ({
           id: item.id,
           name: item.name,
@@ -177,17 +192,40 @@ export default function DailyReports() {
     setInsightsMap(result);
   };
 
-  // Same defaults as the Billing page: SC 0 unless API says otherwise, GST 18.
+  // ── Service charge + client type — from the report's `summary`, per client ──
+  // The S.C rate is the SELECTED client's own rate (set by the admin at
+  // onboarding), read from summary.service_charge — a percentage string like
+  // "13.00", or null when the client has no service charge (CPL). We never
+  // hardcode it. Until the report response lands, fall back to the viewer's
+  // billing overview so a logged-in client still sees their rate immediately.
+  // GST stays 18% (applied on top of the with-S.C figure) per the Billing page.
   const monthSpendInfo = () => billingOverview()?.data?.month_spend || {};
-  const scPct = () => Number(monthSpendInfo().service_charge_pct ?? 0);
+  const scPct = () => {
+    const s = reportSummary();
+    if (s) return Number(s.service_charge ?? 0);
+    return Number(monthSpendInfo().service_charge_pct ?? 0);
+  };
   const gstPctNum = () => Number(monthSpendInfo().gst_pct ?? 18);
   const scMult = () => 1 + scPct() / 100;
   const gstMult = () => 1 + gstPctNum() / 100;
   const scColLabel = () => `Amt Spent + ${scPct()}% S.C`;
   const finalColLabel = () =>
-    iscpl()
+    iscplReport()
       ? `Amt Spent + ${gstPctNum()}% GST`
       : `Amt Spent + ${scPct()}% S.C + ${gstPctNum()}% GST`;
+
+  // CPL clients (service_charge null / client_type "cpl") pay per lead — no
+  // service-charge or GST markup, so their S.C/GST columns are hidden. Keyed to
+  // the REPORTED client's type (summary), not the viewer's role — this is what
+  // stops the admin/CM view from showing S.C/GST columns for a CPL client.
+  // Falls back to the viewer's role flag until the report response lands.
+  const iscplReport = () => {
+    const s = reportSummary();
+    if (s)
+      return (s.client_type || "").toLowerCase() === "cpl" ||
+        s.service_charge == null;
+    return iscplRole();
+  };
 
   /* ── derived: ONE row per project (aggregated over selected date range) ── */
   const reportRows = createMemo(() => {
@@ -263,7 +301,7 @@ export default function DailyReports() {
       const cpl = leads > 0 ? parseFloat((spent / leads).toFixed(2)) : 0;
       const spentwithServiceCharge = parseFloat((spent * scMult()).toFixed(2));
       const spentwithservice_gst = parseFloat(
-        (iscpl() ? spent * gstMult() : spent * scMult() * gstMult()).toFixed(2),
+        (iscplReport() ? spent * gstMult() : spent * scMult() * gstMult()).toFixed(2),
       );
 
       // Always push — even when leads === 0 and spent === 0
@@ -416,18 +454,18 @@ export default function DailyReports() {
       : new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short" });
   const exportColumns = () => {
     const cols = ["Date", "Project", "Leads", "CPL"];
-    if (!iscpl()) cols.push("Amount Spent", scColLabel(), finalColLabel());
+    if (!iscplReport()) cols.push("Amount Spent", scColLabel(), finalColLabel());
     return cols;
   };
   const exportRow = (r) => {
     const base = [exportDateLabel(), r.projectName, r.leads, r.cpl];
-    if (!iscpl()) base.push(r.spent, r.spentwithServiceCharge, r.spentwithservice_gst);
+    if (!iscplReport()) base.push(r.spent, r.spentwithServiceCharge, r.spentwithservice_gst);
     return base;
   };
   const exportTotalsRow = () => {
     const t = totals();
     const base = ["TOTAL", "", t.totalLeads, t.avgCPL];
-    if (!iscpl()) base.push(t.totalSpent, t.totalspentwithServiceCharge, t.totalspentwithservice_gst);
+    if (!iscplReport()) base.push(t.totalSpent, t.totalspentwithServiceCharge, t.totalspentwithservice_gst);
     return base;
   };
   const exportFileDate = () => new Date().toISOString().split("T")[0];
@@ -633,7 +671,7 @@ export default function DailyReports() {
                 <th class="p-3">Project</th>
                 <th class="p-3">Leads</th>
                 <th class="p-3">CPL</th>
-                <Show when={!iscpl()}>
+                <Show when={!iscplReport()}>
                   <th class="p-3">Amount Spent</th>
                   <th class="p-3">{scColLabel()}</th>
                   <th class="p-3">{finalColLabel()}</th>
@@ -728,7 +766,7 @@ export default function DailyReports() {
                         </td>
 
                         {/* Spent */}
-                        <Show when={!iscpl()}>
+                        <Show when={!iscplReport()}>
                           <td class="p-3 text-green-700 dark:text-green-400">
                             {fmt(row.spent)}
                           </td>
@@ -762,7 +800,7 @@ export default function DailyReports() {
                     <td class="p-3 text-purple-700 dark:text-purple-300 font-bold">
                       {fmt(totals().avgCPL)}
                     </td>
-                    <Show when={!iscpl()}>
+                    <Show when={!iscplReport()}>
                       <td class="p-3 text-green-700 dark:text-green-300 font-bold">
                         {fmt(totals().totalSpent)}
                       </td>
@@ -977,7 +1015,7 @@ export default function DailyReports() {
                   <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
                     CPL
                   </th>
-                  <Show when={!iscpl()}>
+                  <Show when={!iscplReport()}>
                     <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
                       Amount Spent
                     </th>
@@ -1022,7 +1060,7 @@ export default function DailyReports() {
                       <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
                         {fmt(row.cpl)}
                       </td>
-                      <Show when={!iscpl()}>
+                      <Show when={!iscplReport()}>
                         <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
                           {fmt(row.spent)}
                         </td>
@@ -1051,7 +1089,7 @@ export default function DailyReports() {
                   <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
                     {fmt(totals().avgCPL)}
                   </td>
-                  <Show when={!iscpl()}>
+                  <Show when={!iscplReport()}>
                     <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
                       {fmt(totals().totalSpent)}
                     </td>
@@ -1164,7 +1202,7 @@ export default function DailyReports() {
                     <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
                       CPL
                     </th>
-                    <Show when={!iscpl()}>
+                    <Show when={!iscplReport()}>
                       <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
                         Amt Spent
                       </th>
@@ -1202,7 +1240,7 @@ export default function DailyReports() {
                       <td style="padding:10px 14px;text-align:center;font-size:14px;color:#333;border-right:1px solid rgba(123,28,28,0.1);">
                         {fmt(row.cpl)}
                       </td>
-                      <Show when={!iscpl()}>
+                      <Show when={!iscplReport()}>
                         <td style="padding:10px 14px;text-align:center;font-size:14px;color:#333;border-right:1px solid rgba(123,28,28,0.1);">
                           {fmt(row.spent)}
                         </td>
@@ -1227,7 +1265,7 @@ export default function DailyReports() {
                     <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
                       {fmt(totals().avgCPL)}
                     </td>
-                    <Show when={!iscpl()}>
+                    <Show when={!iscplReport()}>
                       <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
                         {fmt(totals().totalSpent)}
                       </td>
