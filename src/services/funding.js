@@ -38,6 +38,30 @@ export const startFundingRefresh = async () => {
   return res?.data ?? null;
 };
 
+// ─── "Funds Added by Date" — money loaded into ad accounts on a chosen day ────
+// GET /cm/funding/funds-added/?date=YYYY-MM-DD  (BASE_URL already includes /api).
+// A SEPARATE, additive feed from the main funding table: how much was loaded into
+// each ad account on the picked date. Same auth/scope as the funding page — admins
+// see all accounts, CMs see their scoped accounts (handled server-side). Switch-
+// mode aware: threads the active scope via scopeQuery (supportsOwn like the accounts
+// endpoint). `date` optional; omit to let the backend default to today (local).
+//
+// Response (envelope-unwrapped by api()):
+//   { date, total_added, per_account:[{ account_id, name, meta_account_id, added,
+//     available_start, available_end, spend, reason }], accounts_with_data,
+//     accounts_without_data }
+// per_account[].added is null when an account lacks snapshot history for that day
+// (show "no data"/"—", never 0). Backend already sorts most-added first.
+export const fetchFundsAdded = async (date) => {
+  let url = `/cm/funding/funds-added/?1=1`;
+  if (date) url += `&date=${encodeURIComponent(date)}`;
+  url += scopeQuery({ supportsOwn: true });
+
+  const res = await api(url, { method: "GET" });
+  applyMeta(res?.meta);
+  return res?.data ?? res ?? null;
+};
+
 // GET the status of an in-flight refresh. data.status is
 // "running" | "done" | "idle"; `summary` is present once "done":
 //   { synced, failed, total_available_balance, duration_seconds }

@@ -972,7 +972,7 @@ export default function ProjectDisplayConfig() {
             style={{ opacity: sidebarVisible() ? "1" : "0" }}
           />
           <div
-            class="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-700 shadow-2xl flex flex-col transition-transform duration-300 ease-in-out"
+            class="fixed inset-y-0 right-0 z-50 w-full max-w-xl bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-700 shadow-2xl flex flex-col transition-transform duration-300 ease-in-out"
             style={{
               transform: sidebarVisible()
                 ? "translateX(0)"

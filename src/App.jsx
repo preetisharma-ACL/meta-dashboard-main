@@ -39,6 +39,7 @@ import CoordinationDashboard from "./pages/coordination/pages/CoordinationDashbo
 import CMDashboard from "./pages/CMDashboard";
 import CMDailyReport from "./pages/CMDailyReport";
 import AccountFunding from "./pages/funding/AccountFunding";
+import FundsAdded from "./pages/funding/FundsAdded";
 import SpendSegregation from "./pages/spend/SpendSegregation";
 import AllowedBudget from "./pages/budget/AllowedBudget";
 import ManagerPerformance from "./pages/performance/ManagerPerformance";
@@ -145,6 +146,7 @@ function App() {
               )}
             />
             <Route path="/account-funding" component={AccountFunding} />
+            <Route path="/funds-added" component={FundsAdded} />
             <Route path="/spend-segregation" component={SpendSegregation} />
             <Route path="/allowed-budget" component={AllowedBudget} />
             <Route path="/manager-performance" component={ManagerPerformance} />
