@@ -11,6 +11,7 @@ import {
 import Avatar from "../../../components/common/Avatar";
 import { fetchProjectsByClient } from "../services/fetchProjectsByClient"; // ← NEW
 import { fetchAllowedBudgetClients } from "../../../services/allowedBudget"; // ← CM-scoped client source
+import { isAdmin, isTier1 } from "../../../stores/currentUser"; // ← validity-window gate
 import SuccessToast, {
   showToast,
 } from "../../../components/common/SuccessToast";
@@ -28,6 +29,42 @@ const formatDate = (iso) => {
     month: "short",
     day: "numeric",
   });
+};
+
+// ── Validity-window datetime helpers ──────────────────────────────────────────
+// <input type="datetime-local"> works in local wall-clock with the value shape
+// "YYYY-MM-DDTHH:mm" (no timezone). These convert between that and the ISO
+// datetime the backend expects.
+const pad2 = (n) => String(n).padStart(2, "0");
+
+// Format a Date as a datetime-local input value in LOCAL time.
+const dateToLocalInput = (d) =>
+  `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}` +
+  `T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+
+// "now" as a datetime-local value — used to default valid_from on create.
+const nowLocalInput = () => dateToLocalInput(new Date());
+
+// ISO (possibly with offset/Z) → datetime-local value in the viewer's local
+// wall-clock. Empty/invalid → "".
+const isoToLocalInput = (iso) => {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "" : dateToLocalInput(d);
+};
+
+// datetime-local value ("YYYY-MM-DDTHH:mm") → ISO string WITH the local UTC
+// offset appended, e.g. "2026-07-07T14:30:00+05:30". Carrying the offset keeps
+// the exact wall-clock the user picked regardless of how the backend interprets
+// a naive datetime.
+const localInputToIso = (val) => {
+  if (!val) return null;
+  const d = new Date(val); // parsed as local time
+  if (Number.isNaN(d.getTime())) return null;
+  const offMin = -d.getTimezoneOffset(); // e.g. +330 for IST
+  const sign = offMin >= 0 ? "+" : "-";
+  const abs = Math.abs(offMin);
+  return `${val}:00${sign}${pad2(Math.floor(abs / 60))}:${pad2(abs % 60)}`;
 };
 
 // Caller's role, read from the same auth blob the route guards use. CMs can't
@@ -68,6 +105,11 @@ export default function ProjectDisplayConfig() {
     rule_type: "cpl_markup_pct",
     rule_value: "",
     notes: "",
+    // Optional validity window — only admins + Tier-1 CMs may set these
+    // (see canSetValidity). Blank valid_from → backend auto-stamps "now,
+    // open-ended"; blank valid_to → open-ended from valid_from onward.
+    valid_from: "",
+    valid_to: "",
   });
   const [clientSearch, setClientSearch] = createSignal("");
   const [showClientDropdown, setShowClientDropdown] = createSignal(false);
@@ -93,6 +135,11 @@ export default function ProjectDisplayConfig() {
   // and the backend rejects a config for them. Used to disable the rule section
   // and block the save.
   const isRetainer = createMemo(() => resolvedClientType() === "retainer");
+
+  // Only admins and Tier-1 CMs may pick a custom validity window. Tier-2 CMs
+  // keep the existing behavior (no date fields → backend auto-stamps "starts
+  // now, open-ended"). The backend also 403s a Tier-2 that sends dates.
+  const canSetValidity = createMemo(() => isAdmin() || isTier1());
 
   // ── NEW: CPL preview state ──────────────────────────────────────────────
   const [previewLoading, setPreviewLoading] = createSignal(false);
@@ -340,6 +387,15 @@ export default function ProjectDisplayConfig() {
   const openSidebar = () => {
     setShowClientDropdown(false);
     setShowProjectDropdown(false);
+    // Privileged users get valid_from defaulted to now (required, but editable
+    // incl. past). Tier-2 CMs never see the fields, so leave theirs blank.
+    if (canSetValidity()) {
+      setFormData((prev) => ({
+        ...prev,
+        valid_from: nowLocalInput(),
+        valid_to: "",
+      }));
+    }
     setSidebarMounted(true);
     requestAnimationFrame(() => {
       requestAnimationFrame(() => setSidebarVisible(true));
@@ -355,6 +411,10 @@ export default function ProjectDisplayConfig() {
       rule_type: cfg.rule_type,
       rule_value: cfg.rule_value,
       notes: cfg.notes ?? "",
+      // Pre-fill the existing window as local datetime-local values. valid_to
+      // may be null (open-ended) → "".
+      valid_from: isoToLocalInput(cfg.valid_from),
+      valid_to: isoToLocalInput(cfg.valid_to),
     });
     setClientSearch(cfg.client_email);
     setProjectSearch(cfg.project_name ?? "");
@@ -406,6 +466,8 @@ export default function ProjectDisplayConfig() {
         rule_type: "cpl_markup_pct",
         rule_value: "",
         notes: "",
+        valid_from: "",
+        valid_to: "",
       });
     }, 300);
   };
@@ -430,6 +492,23 @@ export default function ProjectDisplayConfig() {
       );
       return;
     }
+    // Validity-window rules (privileged users only). Match the backend so we
+    // fail fast in the UI instead of surfacing a 422/403.
+    if (canSetValidity()) {
+      const vf = formData().valid_from;
+      const vt = formData().valid_to;
+      // valid_from is required for admin/Tier-1 — block submit without it.
+      if (!vf) {
+        setSubmitError("Start date/time (valid from) is required.");
+        return;
+      }
+      // If both are set, valid_from must be strictly before valid_to. String
+      // compare is safe — both are fixed-width "YYYY-MM-DDTHH:mm".
+      if (vt && vf >= vt) {
+        setSubmitError("Start date/time must be before the end date/time.");
+        return;
+      }
+    }
     try {
       setSubmitting(true);
       setSubmitError("");
@@ -440,6 +519,16 @@ export default function ProjectDisplayConfig() {
         rule_value: formData().rule_value,
         notes: formData().notes,
       };
+
+      // Attach the validity window for privileged users. valid_from is required
+      // (validated above) and sent as an ISO datetime carrying the local offset
+      // so the exact time chosen is preserved. valid_to is optional; omit it →
+      // open-ended. Tier-2 CMs send no dates → backend auto-stamps.
+      if (canSetValidity()) {
+        payload.valid_from = localInputToIso(formData().valid_from);
+        if (formData().valid_to)
+          payload.valid_to = localInputToIso(formData().valid_to);
+      }
 
       // Capture for the toast before the sidebar reset wipes them. Show the
       // value with the correct unit (₹ for amount rules, % for markup pct).
@@ -1269,6 +1358,72 @@ export default function ProjectDisplayConfig() {
                   </div>
                 </Show>
               </div>
+
+              {/* ── Validity window — admins + Tier-1 CMs only ── */}
+              <Show when={canSetValidity()}>
+                <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 p-4 space-y-3">
+                  <div>
+                    <h3 class="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                      Validity window
+                    </h3>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      Set when this config starts applying (date &amp; time). A
+                      past start is allowed for backdated reports.
+                    </p>
+                  </div>
+
+                  <div class="grid grid-cols-2 gap-3">
+                    {/* Start datetime — required */}
+                    <div>
+                      <label class="block text-xs font-medium mb-1 text-gray-600 dark:text-gray-400">
+                        Start (valid from){" "}
+                        <span class="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="datetime-local"
+                        value={formData().valid_from}
+                        max={formData().valid_to || undefined}
+                        onInput={(e) => {
+                          handleInputChange("valid_from", e.target.value);
+                          // Clearing the start drops the (now-orphaned) end so we
+                          // never submit an end-without-start.
+                          if (!e.target.value && formData().valid_to) {
+                            handleInputChange("valid_to", "");
+                          }
+                        }}
+                        class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-purple-500 outline-none"
+                      />
+                    </div>
+
+                    {/* End datetime — optional, requires a start first */}
+                    <div>
+                      <label class="block text-xs font-medium mb-1 text-gray-600 dark:text-gray-400">
+                        End{" "}
+                        <span class="text-gray-400 font-normal">(optional)</span>
+                      </label>
+                      <input
+                        type="datetime-local"
+                        value={formData().valid_to}
+                        min={formData().valid_from || undefined}
+                        disabled={!formData().valid_from}
+                        onInput={(e) =>
+                          handleInputChange("valid_to", e.target.value)
+                        }
+                        placeholder="Leave blank to apply until changed"
+                        class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-purple-500 outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                      />
+                    </div>
+                  </div>
+
+                  <p class="text-xs text-gray-400 dark:text-gray-500">
+                    {!formData().valid_from
+                      ? "A start date/time is required."
+                      : formData().valid_to
+                        ? "Applies within the selected window."
+                        : "Open-ended — applies from the start until a newer config replaces it."}
+                  </p>
+                </div>
+              </Show>
 
               {/* Notes — unchanged */}
               <div>
