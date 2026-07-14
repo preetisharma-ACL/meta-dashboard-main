@@ -1,4 +1,4 @@
-import { For, Show, createSignal, createMemo, onMount, batch } from "solid-js";
+import { For, Show, createSignal, createMemo, createEffect, batch } from "solid-js";
 import { DateRangeFilter } from "../components/DateRangeFilter";
 import { fetchProjects } from "../services/dashboard";
 import {
@@ -11,6 +11,7 @@ import * as XLSX from "xlsx";
 import useRole, { clientRole } from "./../hooks/useRole";
 import { createResource } from "solid-js"; // add to existing solid-js import
 import { fetchBillingOverview } from "../services/billing-service";
+import { fetchAllAdminClients } from "./admin/services/fetchClients";
 const logoUrl = "/logo.webp";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -45,6 +46,8 @@ export default function DailyReports() {
   const [loading, setLoading] = createSignal(false);
   const [loadingInsights, setLoadingInsights] = createSignal(false);
   const [statusFilter, setStatusFilter] = createSignal("all");
+  // No default range — the report shows nothing until the user picks a range
+  // (avoids the all-time dump). Gated by ready()/the empty-state prompt below.
   const [fromDate, setFromDate] = createSignal("");
   const [toDate, setToDate] = createSignal("");
   const [showPreview, setShowPreview] = createSignal(false);
@@ -60,22 +63,111 @@ export default function DailyReports() {
   // truth for the S.C column (see scPct/iscplReport below) — NOT the viewer's
   // overview, which is wrong when an admin/CM is looking at a client.
   const [reportSummary, setReportSummary] = createSignal(null);
-  /* ── lifecycle ── */
-  onMount(() => {
-    loadAllData();
+
+  // Include raw (agency-cost) columns — Raw Spend + Raw CPL — in the on-screen
+  // table AND all downloads. ON by default = internal report (shows the agency's
+  // cost/margin); untick for a client-facing report (safe to share). Admin/CM
+  // only (there's no raw data for a client's own login).
+  const [includeRaw, setIncludeRaw] = createSignal(true);
+
+  // ── Admin client picker ────────────────────────────────────────────────────
+  // Admin `/daily-reports` is otherwise an all-clients aggregate that can't show
+  // a correct service charge (S.C is per-client, and some projects span clients)
+  // → it read "0% S.C". So admins pick ONE client; passing its id as client_id
+  // scopes the report and returns that client's meta.report_summary. Non-admins
+  // never see this — their own scoped data loads on mount as before.
+  const [selectedAdminClientId, setSelectedAdminClientId] = createSignal("");
+  const [adminClientQuery, setAdminClientQuery] = createSignal("");
+  const [adminClientOpen, setAdminClientOpen] = createSignal(false);
+  const [adminClientsRes] = createResource(
+    () => (isAdmin() ? "admin" : null),
+    async () => {
+      try {
+        return await fetchAllAdminClients();
+      } catch (err) {
+        console.error("DailyReports: failed to load admin clients", err);
+        return [];
+      }
+    },
+  );
+  const adminClients = () => adminClientsRes() ?? [];
+  const filteredAdminClients = createMemo(() => {
+    const q = adminClientQuery().trim().toLowerCase();
+    const list = adminClients();
+    if (!q) return list;
+    return list.filter(
+      (c) =>
+        (c.client_nomen_name || "").toLowerCase().includes(q) ||
+        (c.organization_name || "").toLowerCase().includes(q),
+    );
+  });
+  const selectAdminClient = (c) => {
+    batch(() => {
+      setSelectedAdminClientId(String(c.id));
+      setAdminClientQuery(c.client_nomen_name || c.organization_name || "");
+      setAdminClientOpen(false);
+    });
+    // The projects call is scoped by client_id — the Client PK (c.id), NOT the
+    // nomen (a nomen value collides with a different client). The campaigns /
+    // insights sweep, though, scopes off localStorage.selectedClientNomen (see
+    // getClientNomen in services/campaigns), so also set the global selection to
+    // the same client — the exact pattern the admin Clients page uses — so leads
+    // / spend line up with the scoped projects instead of summing all clients.
+    if (c.client_nomen_name)
+      localStorage.setItem("selectedClientNomen", c.client_nomen_name);
+    if (c.client_nomen != null)
+      localStorage.setItem("selectedClientNomenId", String(c.client_nomen));
+    // NOTE: loading is triggered by the ready() effect below (needs a date range
+    // too), NOT here — picking a client alone doesn't load data (FIX 2).
+  };
+  const clearAdminClient = () => {
+    batch(() => {
+      setSelectedAdminClientId("");
+      setAdminClientQuery("");
+      setAdminClientOpen(true);
+      setProjects([]);
+      setInsightsMap({});
+      setReportSummary(null);
+      setShowPreview(false);
+    });
+    loadedKey = null; // allow a fresh load when a client is re-picked
+  };
+  // Admin must pick a client before the report is meaningful.
+  const adminNeedsClient = () => isAdmin() && !selectedAdminClientId();
+
+  // FIX 2: nothing loads until a date range is chosen (everyone) and, for
+  // admins, a client too. ready() gates both the fetch (effect below) and the
+  // report display; otherwise the empty-state prompt shows.
+  const needsRange = () => !fromDate() || !toDate();
+  const ready = () => !adminNeedsClient() && !needsRange();
+
+  // Fetch when the selection becomes complete. Guarded so changing ONLY the date
+  // range re-filters client-side (reportRows) without refetching; changing the
+  // client refetches. Reset / clear reset the guard.
+  let loadedKey = null;
+  createEffect(() => {
+    const admin = isAdmin();
+    const cid = selectedAdminClientId();
+    const hasRange = !!fromDate() && !!toDate();
+    if (!hasRange || (admin && !cid)) return;
+    const key = admin ? `client:${cid}` : "self";
+    if (loadedKey === key) return;
+    loadedKey = key;
+    loadAllData(admin ? cid : null);
   });
 
   /* ── data fetching ── */
-  const loadAllData = async () => {
+  const loadAllData = async (clientId = null) => {
     try {
       setLoading(true);
 
-      // ① fetch projects (all pages)
+      // ① fetch projects (all pages). clientId (admin picker) scopes the list to
+      //    one client and makes the backend return meta.report_summary for it.
       let allProjects = [];
       let page = 1;
       let hasMore = true;
       while (hasMore) {
-        const res = await fetchProjects(page, "");
+        const res = await fetchProjects(page, "", 20, clientId);
         const apiData = res?.data || [];
         const meta = res?.meta?.pagination;
         // The per-client service-charge / client-type live in the response's
@@ -99,9 +191,13 @@ export default function DailyReports() {
       }
       setProjects(allProjects);
 
-      // ② fetch insights (fire-and-forget — table shows skeleton until done)
+      // ② fetch insights (fire-and-forget — table shows skeleton until done).
+      //    Pass clientId so the bulk-insights call sends as_client_id and the
+      //    backend returns marked-up `spend` (Client Billed) vs raw `spend_raw`.
       setLoadingInsights(true);
-      loadAllInsights(allProjects).finally(() => setLoadingInsights(false));
+      loadAllInsights(allProjects, clientId).finally(() =>
+        setLoadingInsights(false),
+      );
     } catch (err) {
       console.error("DailyReports: loadAllData error", err);
     } finally {
@@ -109,7 +205,7 @@ export default function DailyReports() {
     }
   };
 
-  const loadAllInsights = async (projectList) => {
+  const loadAllInsights = async (projectList, clientId = null) => {
     const result = {};
     // Seed every project so it always emits a row, even with no campaigns.
     for (const project of projectList) {
@@ -168,7 +264,12 @@ export default function DailyReports() {
     //    (replaces the old per-campaign fetch loop — same fix as the dashboard).
     if (allCampaignIds.length > 0) {
       try {
-        const bulk = await fetchBulkCampaignInsights(allCampaignIds);
+        // as_client_id (Client PK) makes the backend apply the client's markup
+        // to `spend` (Client Billed); `spend_raw` stays raw. Only set for admin/
+        // CM previewing a client — null for a client's own login (already scoped).
+        const bulk = await fetchBulkCampaignInsights(allCampaignIds, {
+          asClientId: clientId,
+        });
         const rows = bulk.data || [];
 
         // 4. Group rows back onto their project. Synthetic (is_manual) rows are
@@ -225,6 +326,42 @@ export default function DailyReports() {
       return (s.client_type || "").toLowerCase() === "cpl" ||
         s.service_charge == null;
     return iscplRole();
+  };
+
+  // Raw (agency-cost) spend rides on the per-day bulk-insights rows as
+  // `spend_raw`, added by the backend ONLY for admin/CM (absent for a client's
+  // own login). Its presence on any row gates the internal-only "Raw Spend"
+  // column — a client login never renders it. Same windowed source as the
+  // client-billed `spend`, so the Raw column is range-reactive too.
+  const hasRawSpend = () => {
+    const m = insightsMap();
+    for (const k in m) {
+      if ((m[k]?.insights ?? []).some((d) => d.spend_raw != null)) return true;
+    }
+    return false;
+  };
+
+  // Raw columns (Raw Spend + Raw CPL) render — on-screen AND in every download —
+  // only when raw data exists (admin/CM) AND the user opted in via the toggle.
+  // OFF → client-facing report (no raw anywhere, safe to share).
+  const showRaw = () => hasRawSpend() && includeRaw();
+
+  // True when from/to span exactly one whole calendar month (1st → last day).
+  // Billing is strictly monthly, so a partial range gets an extra "indicative"
+  // line under the table. No range selected → also not a month.
+  const isFullMonthRange = () => {
+    const from = fromDate();
+    const to = toDate();
+    if (!from || !to) return false;
+    const f = new Date(from + "T00:00:00");
+    const t = new Date(to + "T00:00:00");
+    const lastDay = new Date(t.getFullYear(), t.getMonth() + 1, 0).getDate();
+    return (
+      f.getFullYear() === t.getFullYear() &&
+      f.getMonth() === t.getMonth() &&
+      f.getDate() === 1 &&
+      t.getDate() === lastDay
+    );
   };
 
   /* ── derived: ONE row per project (aggregated over selected date range) ── */
@@ -304,6 +441,21 @@ export default function DailyReports() {
         (iscplReport() ? spent * gstMult() : spent * scMult() * gstMult()).toFixed(2),
       );
 
+      // Raw (agency-cost) spend — INTERNAL, admin/CM only. Aggregated from the
+      // SAME filtered per-day rows as `spent` (the marked-up client-billed
+      // figure), but from each row's `spend_raw`. null when the rows carry no
+      // spend_raw (client login) → the Raw column stays hidden.
+      const anyRaw = filtered.some((d) => d.spend_raw != null);
+      const rawSpent = anyRaw
+        ? parseFloat(
+            filtered
+              .reduce((s, d) => s + parseFloat(d.spend_raw || 0), 0)
+              .toFixed(2),
+          )
+        : null;
+      const rawCpl =
+        anyRaw && leads > 0 ? parseFloat((rawSpent / leads).toFixed(2)) : null;
+
       // Always push — even when leads === 0 and spent === 0
       rows.push({
         projectId: project.id,
@@ -314,6 +466,8 @@ export default function DailyReports() {
         spent,
         spentwithServiceCharge,
         spentwithservice_gst,
+        rawSpent,
+        rawCpl,
       });
     }
 
@@ -336,12 +490,23 @@ export default function DailyReports() {
     );
     const avgCPL =
       totalLeads > 0 ? parseFloat((totalSpent / totalLeads).toFixed(2)) : 0;
+    // Raw (agency-cost) totals — internal only; null unless the rows carried
+    // spend_raw (admin/CM). Same per-row rule: Σ raw spend ÷ total leads.
+    const totalRawSpent = hasRawSpend()
+      ? parseFloat(rows.reduce((s, r) => s + (r.rawSpent || 0), 0).toFixed(2))
+      : null;
+    const avgRawCPL =
+      hasRawSpend() && totalLeads > 0
+        ? parseFloat((totalRawSpent / totalLeads).toFixed(2))
+        : null;
     return {
       totalLeads,
       totalSpent,
       avgCPL,
       totalspentwithServiceCharge,
       totalspentwithservice_gst,
+      totalRawSpent,
+      avgRawCPL,
     };
   });
 
@@ -451,21 +616,34 @@ export default function DailyReports() {
   const exportDateLabel = () =>
     fromDate() && toDate()
       ? `${new Date(fromDate()).toLocaleDateString("en-IN", { day: "numeric", month: "short" })} - ${new Date(toDate()).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}`
-      : new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+      : "All Dates";
   const exportColumns = () => {
     const cols = ["Date", "Project", "Leads", "CPL"];
-    if (!iscplReport()) cols.push("Amount Spent", scColLabel(), finalColLabel());
+    if (!iscplReport()) {
+      if (showRaw()) cols.push("Raw CPL", "Raw Spend");
+      cols.push(
+        showRaw() ? "Client Billed" : "Amount Spent",
+        scColLabel(),
+        finalColLabel(),
+      );
+    }
     return cols;
   };
   const exportRow = (r) => {
     const base = [exportDateLabel(), r.projectName, r.leads, r.cpl];
-    if (!iscplReport()) base.push(r.spent, r.spentwithServiceCharge, r.spentwithservice_gst);
+    if (!iscplReport()) {
+      if (showRaw()) base.push(r.rawCpl ?? "", r.rawSpent ?? "");
+      base.push(r.spent, r.spentwithServiceCharge, r.spentwithservice_gst);
+    }
     return base;
   };
   const exportTotalsRow = () => {
     const t = totals();
     const base = ["TOTAL", "", t.totalLeads, t.avgCPL];
-    if (!iscplReport()) base.push(t.totalSpent, t.totalspentwithServiceCharge, t.totalspentwithservice_gst);
+    if (!iscplReport()) {
+      if (showRaw()) base.push(t.avgRawCPL ?? "", t.totalRawSpent ?? "");
+      base.push(t.totalSpent, t.totalspentwithServiceCharge, t.totalspentwithservice_gst);
+    }
     return base;
   };
   const exportFileDate = () => new Date().toISOString().split("T")[0];
@@ -592,6 +770,117 @@ export default function DailyReports() {
 
       {/* ── Filters ── */}
       <div class="flex flex-wrap items-center gap-3 mb-5">
+        {/* Admin-only client selector — scopes the report + its service charge
+            to one client (see selectedAdminClientId). */}
+        <Show when={isAdmin()}>
+          <div class="relative w-full sm:w-72">
+            <input
+              type="text"
+              value={adminClientQuery()}
+              disabled={adminClientsRes.loading}
+              placeholder={
+                adminClientsRes.loading
+                  ? "Loading clients…"
+                  : "Select a client…"
+              }
+              onInput={(e) => {
+                setAdminClientQuery(e.currentTarget.value);
+                setAdminClientOpen(true);
+                if (selectedAdminClientId()) setSelectedAdminClientId("");
+              }}
+              onFocus={() => setAdminClientOpen(true)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") setAdminClientOpen(false);
+                else if (e.key === "Enter") {
+                  const f = filteredAdminClients();
+                  if (f.length > 0) selectAdminClient(f[0]);
+                }
+              }}
+              class="w-full border border-gray-300 dark:border-gray-600 px-3 py-2 pr-16 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-500/25 focus:border-purple-500 disabled:opacity-60 placeholder:text-gray-400"
+            />
+            <div class="absolute inset-y-0 right-2.5 flex items-center gap-1">
+              <Show when={adminClientQuery()}>
+                <button
+                  type="button"
+                  onClick={clearAdminClient}
+                  aria-label="Clear client"
+                  class="p-0.5 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                >
+                  <svg
+                    class="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    stroke-width="2"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </Show>
+              <svg
+                class="w-4 h-4 text-gray-500 pointer-events-none"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M19 9l-7 7-7-7"
+                />
+              </svg>
+            </div>
+
+            <Show when={adminClientOpen() && !adminClientsRes.loading}>
+              <div
+                class="fixed inset-0 z-40"
+                onClick={() => setAdminClientOpen(false)}
+              />
+              <div class="absolute left-0 right-0 top-full mt-1 z-50 max-h-64 overflow-y-auto rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-[0_10px_40px_rgba(16,29,49,0.18)] py-1">
+                <Show
+                  when={filteredAdminClients().length > 0}
+                  fallback={
+                    <div class="px-3 py-3 text-sm text-gray-400 dark:text-gray-500">
+                      {adminClients().length === 0
+                        ? "No clients"
+                        : "No clients match your search"}
+                    </div>
+                  }
+                >
+                  <For each={filteredAdminClients()}>
+                    {(c) => (
+                      <button
+                        type="button"
+                        onClick={() => selectAdminClient(c)}
+                        class={
+                          "w-full text-left px-3 py-2 text-sm flex items-center justify-between gap-2 transition-colors " +
+                          (String(c.id) === String(selectedAdminClientId())
+                            ? "bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300 font-semibold"
+                            : "text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800")
+                        }
+                      >
+                        <span class="truncate">
+                          {c.client_nomen_name || c.organization_name || "—"}
+                        </span>
+                        <Show when={c.client_type}>
+                          <span class="flex-none text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                            {c.client_type}
+                          </span>
+                        </Show>
+                      </button>
+                    )}
+                  </For>
+                </Show>
+              </div>
+            </Show>
+          </div>
+        </Show>
+
         {/* Status Filter */}
         <div class="relative inline-block">
           <select
@@ -631,12 +920,24 @@ export default function DailyReports() {
         {/* Reset */}
         <button
           onClick={() => {
+            // FIX 3: return to the initial empty state — clear the range (no
+            // default), and for admins the picked client, plus any loaded data,
+            // so the prompt(s) show again with no stale rows.
             batch(() => {
               setStatusFilter("all");
               setFromDate("");
               setToDate("");
               setShowPreview(false);
+              setProjects([]);
+              setInsightsMap({});
+              setReportSummary(null);
+              if (isAdmin()) {
+                setSelectedAdminClientId("");
+                setAdminClientQuery("");
+                setAdminClientOpen(false);
+              }
             });
+            loadedKey = null; // let a fresh selection load again
           }}
           class="px-4 py-2 rounded-lg border bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600 text-sm font-medium transition border-gray-300 dark:border-gray-600"
         >
@@ -649,12 +950,68 @@ export default function DailyReports() {
             {rangeLabel()}
           </span>
         </Show>
+
+        {/* Client-vs-internal toggle — only when raw data exists (admin/CM).
+            OFF → client-facing report (no raw); ON → internal (Raw Spend +
+            Raw CPL shown AND included in every download). */}
+        <Show when={hasRawSpend()}>
+          <label class="flex items-center gap-2 cursor-pointer select-none sm:ml-auto text-sm text-gray-700 dark:text-gray-300">
+            <input
+              type="checkbox"
+              checked={includeRaw()}
+              onChange={(e) => setIncludeRaw(e.currentTarget.checked)}
+              class="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-purple-600 focus:ring-purple-500"
+            />
+            <span>
+              Include raw spend / CPL
+              <span class="text-gray-400 dark:text-gray-500">
+                {" "}
+                — internal (off = client-facing)
+              </span>
+            </span>
+          </label>
+        </Show>
       </div>
 
-      {/* ── Main Table ── */}
-      <Show
-        when={!loading()}
-        fallback={
+      {/* ── Empty state: prompt until the selection is complete ──
+             Admins need a client first, then everyone needs a date range.
+             Nothing loads until ready() (FIX 2). ── */}
+      <Show when={!ready()}>
+        <div class="bg-white dark:bg-gray-800 border border-dashed border-gray-300 dark:border-gray-700 rounded-xl p-12 text-center">
+          <svg
+            class="w-12 h-12 mx-auto text-gray-300 dark:text-gray-600"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            stroke-width="1.5"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d={
+                adminNeedsClient()
+                  ? "M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4z"
+                  : "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+              }
+            />
+          </svg>
+          <p class="mt-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
+            {adminNeedsClient() ? "Select a client" : "Select a date range"}
+          </p>
+          <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+            {adminNeedsClient()
+              ? "Pick a client above, then choose a date range to load their report — the report is per-client."
+              : "Choose a date range above to load the report. Nothing is shown until a range is selected."}
+          </p>
+        </div>
+      </Show>
+
+      {/* ── Report body (hidden until client + date range are selected) ── */}
+      <Show when={ready()}>
+        {/* ── Main Table ── */}
+        <Show
+          when={!loading()}
+          fallback={
           <div class="flex items-center justify-center py-24">
             <div class="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
             <span class="ml-3 text-gray-500 dark:text-gray-400">
@@ -672,7 +1029,15 @@ export default function DailyReports() {
                 <th class="p-3">Leads</th>
                 <th class="p-3">CPL</th>
                 <Show when={!iscplReport()}>
-                  <th class="p-3">Amount Spent</th>
+                  {/* Raw (agency cost) — admin/CM only, shown + exported only
+                      when the "Include raw" toggle is on (showRaw). */}
+                  <Show when={showRaw()}>
+                    <th class="p-3">Raw CPL</th>
+                    <th class="p-3">Raw Spend</th>
+                  </Show>
+                  <th class="p-3">
+                    {showRaw() ? "Client Billed" : "Amount Spent"}
+                  </th>
                   <th class="p-3">{scColLabel()}</th>
                   <th class="p-3">{finalColLabel()}</th>
                 </Show>
@@ -741,10 +1106,7 @@ export default function DailyReports() {
                                     month: "short",
                                   },
                                 )}`
-                              : new Date().toLocaleDateString("en-IN", {
-                                  day: "numeric",
-                                  month: "short",
-                                })}
+                              : "All Dates"}
                           </span>
                         </td>
 
@@ -767,6 +1129,15 @@ export default function DailyReports() {
 
                         {/* Spent */}
                         <Show when={!iscplReport()}>
+                          {/* Raw (agency cost) — admin/CM, toggle on */}
+                          <Show when={showRaw()}>
+                            <td class="p-3 text-amber-700 dark:text-amber-400">
+                              {fmt(row.rawCpl ?? 0)}
+                            </td>
+                            <td class="p-3 text-amber-700 dark:text-amber-400">
+                              {fmt(row.rawSpent ?? 0)}
+                            </td>
+                          </Show>
                           <td class="p-3 text-green-700 dark:text-green-400">
                             {fmt(row.spent)}
                           </td>
@@ -801,6 +1172,14 @@ export default function DailyReports() {
                       {fmt(totals().avgCPL)}
                     </td>
                     <Show when={!iscplReport()}>
+                      <Show when={showRaw()}>
+                        <td class="p-3 text-amber-700 dark:text-amber-400 font-bold">
+                          {fmt(totals().avgRawCPL ?? 0)}
+                        </td>
+                        <td class="p-3 text-amber-700 dark:text-amber-400 font-bold">
+                          {fmt(totals().totalRawSpent ?? 0)}
+                        </td>
+                      </Show>
                       <td class="p-3 text-green-700 dark:text-green-300 font-bold">
                         {fmt(totals().totalSpent)}
                       </td>
@@ -817,7 +1196,42 @@ export default function DailyReports() {
             </Show>
           </table>
         </div>
-      </Show>
+        </Show>
+
+        {/* Indicative-figures footnote — only when the S.C/GST columns show
+            (hybrid/retainer) and there's data. The report computes S.C/GST per
+            project (rounded per row) while Billing rounds once on the whole
+            month, so the two can differ by a few paise; Billing is the source
+            of truth. Purely explanatory — the numbers above are unchanged. */}
+        <Show when={!iscplReport() && reportRows().length > 0}>
+          <p class="mt-3 text-xs text-gray-400 dark:text-gray-500 leading-relaxed">
+            <svg
+              class="inline-block w-3.5 h-3.5 -mt-0.5 mr-1 text-gray-400 dark:text-gray-500"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+            Service charge and GST shown are indicative, computed per project.
+            The authoritative billed amount (rounded at the client/month level)
+            appears on the{" "}
+            <span class="font-medium text-gray-500 dark:text-gray-400">
+              Billing
+            </span>{" "}
+            page.
+            <Show when={!isFullMonthRange()}>
+              {" "}
+              Billing is calculated monthly; figures for a partial range are
+              indicative.
+            </Show>
+          </p>
+        </Show>
 
       {/* ── Action Buttons ── */}
       <div class="sticky bottom-0 z-20 flex items-center gap-3 mt-6 flex-wrap -mx-4 px-4 py-3 bg-white/90 dark:bg-gray-900/90 backdrop-blur border-t border-gray-200 dark:border-gray-700">
@@ -1016,8 +1430,16 @@ export default function DailyReports() {
                     CPL
                   </th>
                   <Show when={!iscplReport()}>
+                    <Show when={showRaw()}>
+                      <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
+                        Raw CPL
+                      </th>
+                      <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
+                        Raw Spend
+                      </th>
+                    </Show>
                     <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
-                      Amount Spent
+                      {showRaw() ? "Client Billed" : "Amount Spent"}
                     </th>
                     <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
                       {scColLabel()}
@@ -1043,10 +1465,7 @@ export default function DailyReports() {
                         <span class="font-semibold text-[#1a1a1a] text-md">
                           {fromDate() && toDate()
                             ? `${new Date(fromDate()).toLocaleDateString("en-IN", { day: "numeric", month: "short" })} - ${new Date(toDate()).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}`
-                            : new Date().toLocaleDateString("en-IN", {
-                                day: "numeric",
-                                month: "short",
-                              })}
+                            : "All Dates"}
                         </span>
                       </td>
                       {/* Project */}
@@ -1061,6 +1480,14 @@ export default function DailyReports() {
                         {fmt(row.cpl)}
                       </td>
                       <Show when={!iscplReport()}>
+                        <Show when={showRaw()}>
+                          <td class="px-4 py-3 text-center text-[#8a5a00] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
+                            {fmt(row.rawCpl ?? 0)}
+                          </td>
+                          <td class="px-4 py-3 text-center text-[#8a5a00] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
+                            {fmt(row.rawSpent ?? 0)}
+                          </td>
+                        </Show>
                         <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
                           {fmt(row.spent)}
                         </td>
@@ -1090,6 +1517,14 @@ export default function DailyReports() {
                     {fmt(totals().avgCPL)}
                   </td>
                   <Show when={!iscplReport()}>
+                    <Show when={showRaw()}>
+                      <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
+                        {fmt(totals().avgRawCPL ?? 0)}
+                      </td>
+                      <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
+                        {fmt(totals().totalRawSpent ?? 0)}
+                      </td>
+                    </Show>
                     <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
                       {fmt(totals().totalSpent)}
                     </td>
@@ -1203,8 +1638,16 @@ export default function DailyReports() {
                       CPL
                     </th>
                     <Show when={!iscplReport()}>
+                      <Show when={showRaw()}>
+                        <th style="padding:11px 14px;text-align:center;color:#f5d9a0;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
+                          Raw CPL
+                        </th>
+                        <th style="padding:11px 14px;text-align:center;color:#f5d9a0;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
+                          Raw Spend
+                        </th>
+                      </Show>
                       <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
-                        Amt Spent
+                        {showRaw() ? "Client Billed" : "Amt Spent"}
                       </th>
                       <th style="padding:11px 14px;text-align:center;color:#f5d9a0;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;">
                         {scColLabel()}
@@ -1226,10 +1669,7 @@ export default function DailyReports() {
                       <td style="padding:10px 14px;font-size:14px;font-weight:600;color:#1a1a1a;border-right:1px solid rgba(123,28,28,0.1);border-left:3px solid #7B1C1C;">
                         {fromDate() && toDate()
                           ? `${new Date(fromDate()).toLocaleDateString("en-IN", { day: "numeric", month: "short" })} - ${new Date(toDate()).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}`
-                          : new Date().toLocaleDateString("en-IN", {
-                              day: "numeric",
-                              month: "short",
-                            })}
+                          : "All Dates"}
                       </td>
                       <td style="padding:10px 14px;text-align:center;font-size:14px;color:#333;font-weight:500;border-right:1px solid rgba(123,28,28,0.1);">
                         {row.projectName}
@@ -1241,6 +1681,14 @@ export default function DailyReports() {
                         {fmt(row.cpl)}
                       </td>
                       <Show when={!iscplReport()}>
+                        <Show when={showRaw()}>
+                          <td style="padding:10px 14px;text-align:center;font-size:14px;color:#8a5a00;font-weight:600;border-right:1px solid rgba(123,28,28,0.1);">
+                            {fmt(row.rawCpl ?? 0)}
+                          </td>
+                          <td style="padding:10px 14px;text-align:center;font-size:14px;color:#8a5a00;font-weight:600;border-right:1px solid rgba(123,28,28,0.1);">
+                            {fmt(row.rawSpent ?? 0)}
+                          </td>
+                        </Show>
                         <td style="padding:10px 14px;text-align:center;font-size:14px;color:#333;border-right:1px solid rgba(123,28,28,0.1);">
                           {fmt(row.spent)}
                         </td>
@@ -1266,6 +1714,14 @@ export default function DailyReports() {
                       {fmt(totals().avgCPL)}
                     </td>
                     <Show when={!iscplReport()}>
+                      <Show when={showRaw()}>
+                        <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
+                          {fmt(totals().avgRawCPL ?? 0)}
+                        </td>
+                        <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
+                          {fmt(totals().totalRawSpent ?? 0)}
+                        </td>
+                      </Show>
                       <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
                         {fmt(totals().totalSpent)}
                       </td>
@@ -1293,6 +1749,7 @@ export default function DailyReports() {
           </div>
         </div>
       </div>
+      </Show>
     </section>
   );
 }

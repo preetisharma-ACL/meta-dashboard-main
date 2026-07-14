@@ -15,6 +15,7 @@ import {
   fetchHierarchyProjects,
   fetchAllCampaignsScoped,
 } from "../services/cm";
+import { fetchProjects } from "../services/dashboard";
 import { scopeKey } from "../stores/cmScope";
 import { currentUser } from "../stores/currentUser";
 
@@ -81,6 +82,12 @@ export default function CMDailyReport() {
   const [showPreview, setShowPreview] = createSignal(false);
   const [previewGenerating, setPreviewGenerating] = createSignal(false);
   const [exportOpen, setExportOpen] = createSignal(false);
+
+  // Include the raw (agency-cost) columns — Raw CPL + Raw Amount Spent — in the
+  // on-screen table AND all downloads. ON by default = internal report (shows
+  // cost/margin); untick for a client-facing report (Premium CPL + Client Billed
+  // only), safe to share with the client.
+  const [includeRaw, setIncludeRaw] = createSignal(true);
 
   // ── Assigned clients for the dropdown ─────────────────────────────────────
   // Server-scoped + switch-mode aware: the backend only returns clients this CM
@@ -243,6 +250,20 @@ export default function CMDailyReport() {
   const clientType = () => (report()?.client?.client_type || "").toLowerCase();
   const iscpl = () => clientType() === "cpl";
 
+  // Raw (agency-cost) columns render — on-screen AND in every download — only
+  // when the "Include raw" toggle is on. Off → client-facing report (no raw).
+  const showRaw = () => includeRaw();
+
+  // Per-client service charge (fetched at generate → report.serviceCharge) drives
+  // the fully-loaded "Client Billed (incl S.C & GST)" column: Premium Spent ×
+  // (1 + S.C%) × 1.18. GST is a flat 18%. Never hardcoded — falls back to 0% S.C
+  // only if the rate couldn't be fetched (shows GST-only, not a fabricated rate).
+  const scRate = () => Number(report()?.serviceCharge ?? 0);
+  const billedInclLabel = () =>
+    `Client Billed (incl ${scRate()}% S.C + 18% GST)`;
+  const billedIncl = (billed) =>
+    parseFloat((billed * (1 + scRate() / 100) * 1.18).toFixed(2));
+
   // ── Quick-pick presets (same semantics as the CM dashboard pills) ─────────
   const setPreset = (value) => {
     const now = new Date();
@@ -317,7 +338,24 @@ export default function CMDailyReport() {
         }
       }
 
-      setReport({ client, projects, from, to, premiumCampaigns });
+      // Per-client service charge for the "Client Billed (incl S.C & GST)"
+      // column. The hierarchy response carries no S.C rate, so fetch it the way
+      // the admin daily report does: /projects/?client_id=<Client PK> →
+      // meta.report_summary.service_charge. The Client PK isn't on report.client
+      // (only client_nomen_id) — it rides on premium_metrics.client_id.
+      let serviceCharge = null;
+      const clientPK =
+        premiumCampaigns.find((c) => c?.premium_metrics?.client_id != null)
+          ?.premium_metrics?.client_id ?? null;
+      if (clientPK != null) {
+        try {
+          const projRes = await fetchProjects(1, "", 20, clientPK);
+          serviceCharge = projRes?.meta?.report_summary?.service_charge ?? null;
+        } catch (err) {
+          console.error("[CMDailyReport] service charge fetch failed:", err);
+        }
+      }
+      setReport({ client, projects, from, to, premiumCampaigns, serviceCharge });
     } catch (err) {
       console.error("[CMDailyReport] project report failed:", err);
       setGenError(true);
@@ -406,6 +444,11 @@ export default function CMDailyReport() {
     const totalBilled = parseFloat(
       rows.reduce((s, r) => s + r.billed, 0).toFixed(2),
     );
+    // Fully-loaded total = Σ per-row (Premium Spent + S.C + GST), so it matches
+    // the sum of the displayed rows.
+    const totalBilledIncl = parseFloat(
+      rows.reduce((s, r) => s + billedIncl(r.billed), 0).toFixed(2),
+    );
     const totalCampaigns = rows.reduce((s, r) => s + r.campaigns, 0);
     const avgCPL =
       totalLeads > 0 ? parseFloat((totalSpent / totalLeads).toFixed(2)) : 0;
@@ -421,6 +464,7 @@ export default function CMDailyReport() {
       totalLeads,
       totalSpent,
       totalBilled,
+      totalBilledIncl,
       totalCampaigns,
       avgCPL,
       avgPremiumCPL,
@@ -457,25 +501,34 @@ export default function CMDailyReport() {
   };
 
   const exportColumns = () => {
-    const cols = ["Date", "Project", "Leads", "Raw CPL", "Premium CPL"];
-    if (!iscpl()) cols.push("Raw Amount Spent", "Client Billed (ex- S.C & GST)");
+    const cols = ["Date", "Project", "Leads"];
+    if (showRaw()) cols.push("Raw CPL");
+    cols.push("Premium CPL");
+    if (!iscpl()) {
+      if (showRaw()) cols.push("Raw Amount Spent");
+      cols.push("Premium Spent", billedInclLabel());
+    }
     return cols;
   };
   const exportRow = (r) => {
-    const base = [
-      dateCellLabel(),
-      r.projectName,
-      r.leads,
-      r.cpl,
-      r.premiumCpl ?? "",
-    ];
-    if (!iscpl()) base.push(r.spent, r.billed);
+    const base = [dateCellLabel(), r.projectName, r.leads];
+    if (showRaw()) base.push(r.cpl);
+    base.push(r.premiumCpl ?? "");
+    if (!iscpl()) {
+      if (showRaw()) base.push(r.spent);
+      base.push(r.billed, billedIncl(r.billed));
+    }
     return base;
   };
   const exportTotalsRow = () => {
     const t = totals();
-    const base = ["TOTAL", "", t.totalLeads, t.avgCPL, t.avgPremiumCPL ?? ""];
-    if (!iscpl()) base.push(t.totalSpent, t.totalBilled);
+    const base = ["TOTAL", "", t.totalLeads];
+    if (showRaw()) base.push(t.avgCPL);
+    base.push(t.avgPremiumCPL ?? "");
+    if (!iscpl()) {
+      if (showRaw()) base.push(t.totalSpent);
+      base.push(t.totalBilled, t.totalBilledIncl);
+    }
     return base;
   };
 
@@ -577,7 +630,14 @@ export default function CMDailyReport() {
   };
 
   // Column span for empty/placeholder table rows.
-  const colCount = () => (iscpl() ? 5 : 7);
+  // Base: Date, Project, Leads, Premium CPL (+ Premium Spent + Client Billed
+  // incl S.C & GST when !cpl). Raw CPL / Raw Amount Spent add columns only when
+  // showRaw().
+  const colCount = () => {
+    let n = iscpl() ? 4 : 6;
+    if (showRaw()) n += iscpl() ? 1 : 2;
+    return n;
+  };
 
   // ══════════════════════════════════════════════════════════════════════════
   // RENDER
@@ -836,6 +896,25 @@ export default function CMDailyReport() {
               </button>
             )}
           </For>
+
+          {/* Client-vs-internal toggle — ON shows Raw CPL + Raw Amount Spent in
+              the table AND all downloads; OFF = client-facing (Premium CPL +
+              Client Billed only), safe to share. */}
+          <label class="flex items-center gap-2 cursor-pointer select-none ml-auto text-sm text-gray-600 dark:text-gray-300">
+            <input
+              type="checkbox"
+              checked={includeRaw()}
+              onChange={(e) => setIncludeRaw(e.currentTarget.checked)}
+              class="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-[#AC2334] focus:ring-[#AC2334]"
+            />
+            <span>
+              Include raw CPL / spend
+              <span class="text-gray-400 dark:text-gray-500">
+                {" "}
+                — internal (off = client-facing)
+              </span>
+            </span>
+          </label>
         </div>
       </div>
 
@@ -914,11 +993,16 @@ export default function CMDailyReport() {
                 <th class="p-3 pl-4">Date</th>
                 <th class="p-3">Project</th>
                 <th class="p-3">Leads</th>
-                <th class="p-3">Raw CPL</th>
+                <Show when={showRaw()}>
+                  <th class="p-3">Raw CPL</th>
+                </Show>
                 <th class="p-3">Premium CPL</th>
                 <Show when={!iscpl()}>
-                  <th class="p-3">Raw Amount Spent</th>
-                  <th class="p-3">Client Billed (ex- S.C & GST)</th>
+                  <Show when={showRaw()}>
+                    <th class="p-3">Raw Amount Spent</th>
+                  </Show>
+                  <th class="p-3">Premium Spent</th>
+                  <th class="p-3">{billedInclLabel()}</th>
                 </Show>
               </tr>
             </thead>
@@ -981,18 +1065,25 @@ export default function CMDailyReport() {
                       <td class="p-3 font-bold text-gray-800 dark:text-gray-100">
                         {row.leads}
                       </td>
-                      <td class="p-3 text-purple-700 dark:text-purple-300">
-                        {fmt(row.cpl)}
-                      </td>
+                      <Show when={showRaw()}>
+                        <td class="p-3 text-purple-700 dark:text-purple-300">
+                          {fmt(row.cpl)}
+                        </td>
+                      </Show>
                       <td class="p-3 font-medium text-amber-700 dark:text-amber-400">
                         {fmtPrem(row.premiumCpl)}
                       </td>
                       <Show when={!iscpl()}>
+                        <Show when={showRaw()}>
+                          <td class="p-3 text-green-700 dark:text-green-400">
+                            {fmt(row.spent)}
+                          </td>
+                        </Show>
                         <td class="p-3 text-green-700 dark:text-green-400">
-                          {fmt(row.spent)}
-                        </td>
-                        <td class="p-3 text-green-900 dark:text-green-400">
                           {fmt(row.billed)}
+                        </td>
+                        <td class="p-3 text-green-900 dark:text-green-400 font-semibold">
+                          {fmt(billedIncl(row.billed))}
                         </td>
                       </Show>
                     </tr>
@@ -1011,18 +1102,25 @@ export default function CMDailyReport() {
                   <td class="p-3 text-green-700 dark:text-green-300 font-bold text-base">
                     {totals().totalLeads}
                   </td>
-                  <td class="p-3 text-purple-700 dark:text-purple-300 font-bold">
-                    {fmt(totals().avgCPL)}
-                  </td>
+                  <Show when={showRaw()}>
+                    <td class="p-3 text-purple-700 dark:text-purple-300 font-bold">
+                      {fmt(totals().avgCPL)}
+                    </td>
+                  </Show>
                   <td class="p-3 text-amber-700 dark:text-amber-400 font-bold">
                     {fmtPrem(totals().avgPremiumCPL)}
                   </td>
                   <Show when={!iscpl()}>
+                    <Show when={showRaw()}>
+                      <td class="p-3 text-green-700 dark:text-green-300 font-bold">
+                        {fmt(totals().totalSpent)}
+                      </td>
+                    </Show>
                     <td class="p-3 text-green-700 dark:text-green-300 font-bold">
-                      {fmt(totals().totalSpent)}
+                      {fmt(totals().totalBilled)}
                     </td>
                     <td class="p-3 text-green-900 dark:text-green-400 font-bold">
-                      {fmt(totals().totalBilled)}
+                      {fmt(totals().totalBilledIncl)}
                     </td>
                   </Show>
                 </tr>
@@ -1226,18 +1324,25 @@ export default function CMDailyReport() {
                     <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
                       Leads
                     </th>
-                    <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
-                      Raw CPL
-                    </th>
+                    <Show when={showRaw()}>
+                      <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
+                        Raw CPL
+                      </th>
+                    </Show>
                     <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
                       Premium CPL
                     </th>
                     <Show when={!iscpl()}>
+                      <Show when={showRaw()}>
+                        <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
+                          Raw Amount Spent
+                        </th>
+                      </Show>
                       <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
-                        Raw Amount Spent
+                        Premium Spent
                       </th>
                       <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
-                        Client Billed (ex- S.C &amp; GST)
+                        {billedInclLabel()}
                       </th>
                     </Show>
                   </tr>
@@ -1263,18 +1368,25 @@ export default function CMDailyReport() {
                         <td class="px-4 py-3 text-center font-bold text-[#7B1C1C] text-md border-r border-[rgba(123,28,28,0.1)]">
                           {row.leads}
                         </td>
-                        <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
-                          {fmt(row.cpl)}
-                        </td>
+                        <Show when={showRaw()}>
+                          <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
+                            {fmt(row.cpl)}
+                          </td>
+                        </Show>
                         <td class="px-4 py-3 text-center text-[#8a5a00] font-semibold text-md border-r border-[rgba(123,28,28,0.1)]">
                           {fmtPrem(row.premiumCpl)}
                         </td>
                         <Show when={!iscpl()}>
-                          <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
-                            {fmt(row.spent)}
-                          </td>
+                          <Show when={showRaw()}>
+                            <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
+                              {fmt(row.spent)}
+                            </td>
+                          </Show>
                           <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
                             {fmt(row.billed)}
+                          </td>
+                          <td class="px-4 py-3 text-center text-[#1a1a1a] font-semibold text-md border-r border-[rgba(123,28,28,0.1)]">
+                            {fmt(billedIncl(row.billed))}
                           </td>
                         </Show>
                       </tr>
@@ -1290,18 +1402,25 @@ export default function CMDailyReport() {
                     <td class="px-4 py-3 text-center text-white font-bold text-sm border-r border-white/10">
                       {totals().totalLeads}
                     </td>
-                    <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
-                      {fmt(totals().avgCPL)}
-                    </td>
+                    <Show when={showRaw()}>
+                      <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
+                        {fmt(totals().avgCPL)}
+                      </td>
+                    </Show>
                     <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
                       {fmtPrem(totals().avgPremiumCPL)}
                     </td>
                     <Show when={!iscpl()}>
-                      <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
-                        {fmt(totals().totalSpent)}
-                      </td>
+                      <Show when={showRaw()}>
+                        <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
+                          {fmt(totals().totalSpent)}
+                        </td>
+                      </Show>
                       <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
                         {fmt(totals().totalBilled)}
+                      </td>
+                      <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
+                        {fmt(totals().totalBilledIncl)}
                       </td>
                     </Show>
                   </tr>
@@ -1400,18 +1519,25 @@ export default function CMDailyReport() {
                       <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
                         Leads
                       </th>
-                      <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
-                        Raw CPL
-                      </th>
+                      <Show when={showRaw()}>
+                        <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
+                          Raw CPL
+                        </th>
+                      </Show>
                       <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
                         Premium CPL
                       </th>
                       <Show when={!iscpl()}>
+                        <Show when={showRaw()}>
+                          <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
+                            Raw Amount Spent
+                          </th>
+                        </Show>
                         <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
-                          Raw Amount Spent
+                          Premium Spent
                         </th>
                         <th style="padding:11px 14px;text-align:center;color:#f5d9a0;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;">
-                          Client Billed (ex- S.C &amp; GST)
+                          {billedInclLabel()}
                         </th>
                       </Show>
                     </tr>
@@ -1433,18 +1559,25 @@ export default function CMDailyReport() {
                         <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:700;color:#7B1C1C;border-right:1px solid rgba(123,28,28,0.1);">
                           {row.leads}
                         </td>
-                        <td style="padding:10px 14px;text-align:center;font-size:14px;color:#333;border-right:1px solid rgba(123,28,28,0.1);">
-                          {fmt(row.cpl)}
-                        </td>
+                        <Show when={showRaw()}>
+                          <td style="padding:10px 14px;text-align:center;font-size:14px;color:#333;border-right:1px solid rgba(123,28,28,0.1);">
+                            {fmt(row.cpl)}
+                          </td>
+                        </Show>
                         <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:600;color:#8a5a00;border-right:1px solid rgba(123,28,28,0.1);">
                           {fmtPrem(row.premiumCpl)}
                         </td>
                         <Show when={!iscpl()}>
+                          <Show when={showRaw()}>
+                            <td style="padding:10px 14px;text-align:center;font-size:14px;color:#333;border-right:1px solid rgba(123,28,28,0.1);">
+                              {fmt(row.spent)}
+                            </td>
+                          </Show>
                           <td style="padding:10px 14px;text-align:center;font-size:14px;color:#333;border-right:1px solid rgba(123,28,28,0.1);">
-                            {fmt(row.spent)}
+                            {fmt(row.billed)}
                           </td>
                           <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:600;color:#6b4c10;background:rgba(201,168,76,0.10);">
-                            {fmt(row.billed)}
+                            {fmt(billedIncl(row.billed))}
                           </td>
                         </Show>
                       </tr>
@@ -1457,18 +1590,25 @@ export default function CMDailyReport() {
                       <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
                         {totals().totalLeads}
                       </td>
-                      <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
-                        {fmt(totals().avgCPL)}
-                      </td>
+                      <Show when={showRaw()}>
+                        <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
+                          {fmt(totals().avgCPL)}
+                        </td>
+                      </Show>
                       <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
                         {fmtPrem(totals().avgPremiumCPL)}
                       </td>
                       <Show when={!iscpl()}>
+                        <Show when={showRaw()}>
+                          <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
+                            {fmt(totals().totalSpent)}
+                          </td>
+                        </Show>
                         <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
-                          {fmt(totals().totalSpent)}
+                          {fmt(totals().totalBilled)}
                         </td>
                         <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;">
-                          {fmt(totals().totalBilled)}
+                          {fmt(totals().totalBilledIncl)}
                         </td>
                       </Show>
                     </tr>

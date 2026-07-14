@@ -101,7 +101,7 @@ export const fetchCampaignInsights = async (campaignId, pageSize = 1000) => {
 //   • scoping identical to single endpoint (client_nomen)
 export const fetchBulkCampaignInsights = async (
   campaignIds,
-  { startDate, endDate, pageSize = 10000, clientNomen } = {},
+  { startDate, endDate, pageSize = 10000, clientNomen, asClientId } = {},
 ) => {
   const ids = [...new Set((campaignIds || []).filter((id) => id != null))];
   if (ids.length === 0) return { data: [] };
@@ -125,7 +125,18 @@ export const fetchBulkCampaignInsights = async (
         `&page=${page}&page_size=${pageSize}`;
       if (startDate) url += `&start_date=${startDate}`;
       if (endDate) url += `&end_date=${endDate}`;
-      if (nomen) url += `&client_nomen=${nomen}`;
+      // Admin/CM previewing a client: as_client_id (Client PK) puts the backend
+      // in "preview as client" mode — it scopes to that client AND applies the
+      // markup (`spend` = marked-up, `spend_raw` = raw). It REPLACES client_nomen
+      // here; sending both together returns no rows. Without as_client_id we fall
+      // back to the normal client_nomen scoping (a client's own login, `spend`
+      // already marked-up for them).
+      const previewAs = asClientId != null && asClientId !== "";
+      if (previewAs) {
+        url += `&as_client_id=${encodeURIComponent(asClientId)}`;
+      } else if (nomen) {
+        url += `&client_nomen=${nomen}`;
+      }
 
       const res = await api(url, { method: "GET" });
 
