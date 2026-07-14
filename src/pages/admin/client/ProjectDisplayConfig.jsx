@@ -129,6 +129,7 @@ export default function ProjectDisplayConfig() {
     { value: "cpl_markup_pct", label: "cpl_markup_pct (% markup)" },
     { value: "cpl_markup_flat", label: "cpl_markup_flat (₹ flat markup)" },
     { value: "target_cpl", label: "target_cpl (flat ₹, ignores raw)" },
+    { value: "fixed_cpl", label: "fixed_cpl (fixed ₹, ignores raw)" },
   ];
 
   // Retainer clients bill on raw passthrough — no per-lead display rule applies,
@@ -806,9 +807,13 @@ export default function ProjectDisplayConfig() {
                       {cfg.project_name}
                     </td>
 
-                    {/* Markup — maps to rule_value */}
+                    {/* Markup — maps to rule_value. Unit depends on rule_type:
+                        only cpl_markup_pct is a percentage; fixed_cpl,
+                        cpl_markup_flat and target_cpl are rupee amounts. */}
                     <td class="p-3 text-center text-blue-800 dark:text-blue-400 font-semibold">
-                      +{parseFloat(cfg.rule_value ?? 0).toFixed(2)}%
+                      {cfg.rule_type === "cpl_markup_pct"
+                        ? `+${parseFloat(cfg.rule_value ?? 0).toFixed(2)}%`
+                        : `₹${parseFloat(cfg.rule_value ?? 0).toFixed(2)}`}
                     </td>
 
                     {/* Status — maps to is_active */}
