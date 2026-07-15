@@ -996,12 +996,12 @@ export default function CMDailyReport() {
                 <Show when={showRaw()}>
                   <th class="p-3">Raw CPL</th>
                 </Show>
-                <th class="p-3">Premium CPL</th>
+                <th class="p-3">CPL</th>
                 <Show when={!iscpl()}>
                   <Show when={showRaw()}>
                     <th class="p-3">Raw Amount Spent</th>
                   </Show>
-                  <th class="p-3">Premium Spent</th>
+                  <th class="p-3">Spent</th>
                   <th class="p-3">{billedInclLabel()}</th>
                 </Show>
               </tr>
@@ -1330,7 +1330,7 @@ export default function CMDailyReport() {
                       </th>
                     </Show>
                     <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
-                      Premium CPL
+                      CPL
                     </th>
                     <Show when={!iscpl()}>
                       <Show when={showRaw()}>
@@ -1339,7 +1339,7 @@ export default function CMDailyReport() {
                         </th>
                       </Show>
                       <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
-                        Premium Spent
+                        Spent
                       </th>
                       <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
                         {billedInclLabel()}
@@ -1525,7 +1525,7 @@ export default function CMDailyReport() {
                         </th>
                       </Show>
                       <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
-                        Premium CPL
+                        CPL
                       </th>
                       <Show when={!iscpl()}>
                         <Show when={showRaw()}>
@@ -1534,7 +1534,7 @@ export default function CMDailyReport() {
                           </th>
                         </Show>
                         <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
-                          Premium Spent
+                          Spent
                         </th>
                         <th style="padding:11px 14px;text-align:center;color:#f5d9a0;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;">
                           {billedInclLabel()}
