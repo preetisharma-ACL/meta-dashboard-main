@@ -65,6 +65,17 @@ import useRole, { clientRole } from "./../hooks/useRole";
 let activeLoadToken = 0;
 const bumpLoadToken = () => ++activeLoadToken;
 
+// Admin/CM "preview as client" insight rows (returned when the bulk call is sent
+// with as_client_id) carry BOTH `spend` (client-facing — markup / fixed-CPL
+// applied) and `spend_raw` (the actual Meta charge). The ledger's "Total Spent"
+// / "AVG CPL" columns are the RAW Meta figures — the marked-up number lives in
+// the separate Premium CPL column — so read `spend_raw` whenever it is present.
+// A client's own rows have no `spend_raw`, so fall back to `spend` (which is
+// already their billed figure). This keeps the raw columns at the Meta charge
+// even after we start sending as_client_id (which flips `spend` to marked-up).
+const rawSpendOf = (row) =>
+  parseFloat((row?.spend_raw != null ? row.spend_raw : row?.spend) || 0);
+
 // ── Design-section toggles (UI only) ─────────────────────────────────────────
 // The funnel needs impressions/CTR/CPM (not fetched anywhere yet) and the AI
 // brief's issue timestamps need the diagnostics service. Until those exist,
@@ -158,6 +169,20 @@ export default function MainDashboard() {
   const params = useParams();
   const location = useLocation();
 
+  // ── Gate for the campaign/insights sweep (mirrors DailyReports' ready()) ─────
+  // When an admin is "Viewing Client: X", the ledger's leads/spend MUST be
+  // scoped to that client's Client PK (selectedClientNomenId). Firing the sweep
+  // before the PK is resolved sends an unscoped bulk-insights call that sums
+  // EVERY client's spend on shared/multi-client projects — the all-clients bug.
+  // This is true only while previewing a client: the admin's own "/" dashboard
+  // (no client selected) is meant to be all-clients, and real client logins are
+  // force-scoped server-side by their own nomen — so both return ready = true.
+  const clientContextReady = () => {
+    if (userRole() !== "admin") return true; // clients are server-scoped
+    if (location.pathname === "/") return true; // admin's own dashboard
+    return !!selectedClientNomenId(); // previewing a client → need the PK
+  };
+
   // ── Reactively clear client context when navigating back to the Main Dashboard ──
   // Both "/" and "/:client-nomen-name" render THIS same component, so SolidJS
   // reuses the instance on navigation and onMount does NOT re-run. Without this
@@ -241,10 +266,38 @@ export default function MainDashboard() {
     // (fresh timestamp but empty insightsMap — see hasRenderedCampaignData).
     // This guarantees data loads on every reload while still skipping the
     // refetch when valid data is already present (cache benefit preserved).
-    if (isAllProjectsCacheStale() || !hasRenderedCampaignData()) {
+    // Gated on clientContextReady() so an admin previewing a client never fires
+    // the sweep before the client PK resolves (the createEffect below re-fires it
+    // the moment the context becomes ready, so it is never permanently skipped).
+    if (
+      clientContextReady() &&
+      (isAllProjectsCacheStale() || !hasRenderedCampaignData())
+    ) {
       loadAllProjects();
     }
   });
+
+  // Safety net for the viewing-client hydration race: if onMount gated the sweep
+  // because the selected-client PK was not resolved yet, fire it as soon as the
+  // context becomes ready. clientContextReady() reads selectedClientNomenId(),
+  // which tracks location.pathname, so this re-runs on navigation. defer:true
+  // skips the initial run (onMount already covers the ready-at-mount case), so a
+  // client already resolved at mount does not double-load.
+  createEffect(
+    on(
+      clientContextReady,
+      (ready, wasReady) => {
+        if (
+          ready &&
+          !wasReady &&
+          (isAllProjectsCacheStale() || !hasRenderedCampaignData())
+        ) {
+          loadAllProjects();
+        }
+      },
+      { defer: true },
+    ),
+  );
 
   const auth = JSON.parse(localStorage.getItem("auth") || "{}");
 
@@ -505,7 +558,7 @@ export default function MainDashboard() {
         to,
       );
       const totalSpent = filtered.reduce(
-        (s, d) => s + parseFloat(d.spend || 0),
+        (s, d) => s + rawSpendOf(d),
         0,
       );
       const avgCPL =
@@ -860,7 +913,17 @@ export default function MainDashboard() {
     // 4. ONE bulk insights call for all campaigns (raw, date-filtered later)
     if (allCampaignIds.length > 0) {
       try {
-        const bulk = await fetchBulkCampaignInsights(allCampaignIds);
+        // Admin/CM previewing a client: send the Client PK as as_client_id so the
+        // backend enters "preview as client" mode — it enables the Phase-4 history
+        // filter (correct per-day attribution, drops any foreign campaign's rows)
+        // and returns both `spend` (marked-up) and `spend_raw` (Meta charge). Null
+        // for the admin's own dashboard / a client's own login (already scoped),
+        // where the call falls back to the normal client_nomen scoping. Raw
+        // columns read spend_raw via rawSpendOf(), so the displayed figure is
+        // unchanged even though `spend` now carries the markup.
+        const bulk = await fetchBulkCampaignInsights(allCampaignIds, {
+          asClientId: selectedClientNomenId(),
+        });
         const rows = bulk.data || [];
 
         for (const row of rows) {
@@ -1078,7 +1141,7 @@ export default function MainDashboard() {
         to,
       );
       const totalSpent = filtered.reduce(
-        (s, d) => s + parseFloat(d.spend || 0),
+        (s, d) => s + rawSpendOf(d),
         0,
       );
       const avgCPL =
@@ -1452,7 +1515,7 @@ export default function MainDashboard() {
         reach += Number(d.reach || 0);
         clicks += Number(d.clicks || 0);
         leads += Number(d.leads || 0);
-        spend += parseFloat(d.spend || 0);
+        spend += rawSpendOf(d);
       }
     }
 
