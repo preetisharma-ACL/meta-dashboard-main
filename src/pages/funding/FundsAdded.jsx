@@ -1,7 +1,8 @@
-import { createSignal, createResource, For, Show } from "solid-js";
+import { createSignal, createResource, createMemo, For, Show } from "solid-js";
 import { fetchFundsAdded } from "../../services/funding";
 import { scopeKey } from "../../stores/cmScope";
 import Avatar from "../../components/common/Avatar";
+import useColumnSort from "../../components/Columnsorting";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // "Funds Added by Date" — a SEPARATE page (sidebar submenu under Accounts &
@@ -108,6 +109,67 @@ export default function FundsAdded() {
   const withData = () => Number(funds()?.accounts_with_data) || 0;
   const withoutData = () => Number(funds()?.accounts_without_data) || 0;
   const totalAdded = () => funds()?.total_added ?? "0.00";
+
+  // ─── Search by account name + column sorting ────────────────────────────────
+  const [search, setSearch] = createSignal("");
+
+  // Same hook + ⇅/↑/↓ icons as the rest of the project. No column selected → API
+  // order (funds-added desc) is preserved.
+  const { columnSort, handleSort, getSortIcon } = useColumnSort();
+
+  // Sort arrow next to a header label: brand-red when active, slate when idle.
+  const SortIcon = (props) => (
+    <span
+      class={`ml-1 text-xs font-bold ${columnSort().key === props.col ? "text-[#AC2334] dark:text-red-400" : "text-[#8593A8] dark:text-gray-400"}`}
+    >
+      {getSortIcon(props.col)}
+    </span>
+  );
+
+  // Sort accessor — money fields are strings, so parse them; no-data rows resolve
+  // to null and are pushed to the bottom either way.
+  const sortValue = (r, key) => {
+    switch (key) {
+      case "name":
+        return (r.name || "").toLowerCase();
+      case "available_start":
+      case "available_end":
+      case "spend":
+      case "added": {
+        const n = parseFloat(r[key]);
+        return isFinite(n) ? n : null;
+      }
+      default:
+        return null;
+    }
+  };
+
+  // Display filter (search by account name) + optional sort. API order preserved
+  // until a header is clicked.
+  const rows = createMemo(() => {
+    const q = search().trim().toLowerCase();
+    const filtered = q
+      ? perAccount().filter((r) => r.name?.toLowerCase().includes(q))
+      : perAccount();
+
+    const { key, direction } = columnSort();
+    if (!key) return filtered; // preserve the API's funds-added-desc order
+
+    const empty = (v) => v == null || (typeof v === "number" && !isFinite(v));
+    return [...filtered].sort((a, b) => {
+      const va = sortValue(a, key);
+      const vb = sortValue(b, key);
+      if (empty(va) && empty(vb)) return 0;
+      if (empty(va)) return 1; // nulls/no-data always last
+      if (empty(vb)) return -1;
+      if (typeof va === "number" && typeof vb === "number") {
+        return direction === "asc" ? va - vb : vb - va;
+      }
+      return direction === "asc"
+        ? String(va).localeCompare(String(vb), undefined, { sensitivity: "base" })
+        : String(vb).localeCompare(String(va), undefined, { sensitivity: "base" });
+    });
+  });
 
   // "Still collecting" — snapshots haven't spanned a full day yet, so no account
   // can compute an "added" figure. total_added is "0.00" and nothing has data.
@@ -249,6 +311,47 @@ export default function FundsAdded() {
 
       {/* ════ PER-ACCOUNT BREAKDOWN ════ */}
       <Show when={!funds.loading && !collecting() && perAccount().length > 0}>
+        {/* Search by account name */}
+        <div class="mb-4 flex items-center gap-3 flex-wrap">
+          <div class="relative flex-1 min-w-[220px] max-w-md">
+            <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8593A8] dark:text-gray-500 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8" />
+              <path d="M21 21l-4.3-4.3" />
+            </svg>
+            <input
+              type="text"
+              value={search()}
+              onInput={(e) => setSearch(e.target.value)}
+              placeholder="Search account by name…"
+              class="w-full border border-[#E2E8F1] dark:border-gray-700 bg-[#F8FAFC] dark:bg-gray-800 rounded-lg pl-9 pr-8 py-2 text-[13px] font-medium text-[#1A2B45] dark:text-gray-200 placeholder:text-[#8593A8] dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#AC2334]/25 focus:border-[#AC2334]"
+            />
+            <Show when={search()}>
+              <button
+                onClick={() => setSearch("")}
+                title="Clear search"
+                class="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded text-[#8593A8] dark:text-gray-500 hover:text-[#AC2334] dark:hover:text-red-400"
+              >
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </Show>
+          </div>
+          <Show when={search()}>
+            <span class="text-[13px] font-medium text-[#54657E] dark:text-gray-400">
+              {num(rows().length)} of {num(perAccount().length)} account{perAccount().length !== 1 ? "s" : ""}
+            </span>
+          </Show>
+        </div>
+
+        <Show
+          when={rows().length > 0}
+          fallback={
+            <div class="bg-gray-50 dark:bg-gray-900 rounded-2xl border border-[#E2E8F1] dark:border-gray-700 py-16 text-center text-[#8593A8] dark:text-gray-500">
+              No accounts match “{search()}”.
+            </div>
+          }
+        >
         <div class="block bg-gray-50 dark:bg-gray-900 rounded-2xl border border-[#E2E8F1] dark:border-gray-700 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] overflow-auto">
           <table class="min-w-full text-sm border-separate border-spacing-0">
             <thead>
@@ -256,25 +359,45 @@ export default function FundsAdded() {
                 <th class="p-4 text-center whitespace-nowrap w-16 border-b border-[#D4DDE9] dark:border-gray-700">
                   S.No
                 </th>
-                <th class="p-4 text-left whitespace-nowrap min-w-[220px] border-b border-[#D4DDE9] dark:border-gray-700">
+                <th
+                  onClick={() => handleSort("name")}
+                  class="p-4 text-left whitespace-nowrap min-w-[220px] border-b border-[#D4DDE9] dark:border-gray-700 cursor-pointer select-none hover:text-[#14233A] dark:hover:text-gray-200"
+                >
                   Account
+                  <SortIcon col="name" />
                 </th>
-                <th class="p-4 text-right whitespace-nowrap border-b border-[#D4DDE9] dark:border-gray-700">
+                <th
+                  onClick={() => handleSort("available_start")}
+                  class="p-4 text-right whitespace-nowrap border-b border-[#D4DDE9] dark:border-gray-700 cursor-pointer select-none hover:text-[#14233A] dark:hover:text-gray-200"
+                >
                   Balance Start
+                  <SortIcon col="available_start" />
                 </th>
-                <th class="p-4 text-right whitespace-nowrap border-b border-[#D4DDE9] dark:border-gray-700">
+                <th
+                  onClick={() => handleSort("available_end")}
+                  class="p-4 text-right whitespace-nowrap border-b border-[#D4DDE9] dark:border-gray-700 cursor-pointer select-none hover:text-[#14233A] dark:hover:text-gray-200"
+                >
                   Balance End
+                  <SortIcon col="available_end" />
                 </th>
-                <th class="p-4 text-right whitespace-nowrap border-b border-[#D4DDE9] dark:border-gray-700">
+                <th
+                  onClick={() => handleSort("spend")}
+                  class="p-4 text-right whitespace-nowrap border-b border-[#D4DDE9] dark:border-gray-700 cursor-pointer select-none hover:text-[#14233A] dark:hover:text-gray-200"
+                >
                   Spend
+                  <SortIcon col="spend" />
                 </th>
-                <th class="p-4 text-right whitespace-nowrap border-b border-[#D4DDE9] dark:border-gray-700">
+                <th
+                  onClick={() => handleSort("added")}
+                  class="p-4 text-right whitespace-nowrap border-b border-[#D4DDE9] dark:border-gray-700 cursor-pointer select-none hover:text-[#14233A] dark:hover:text-gray-200"
+                >
                   Funds Added
+                  <SortIcon col="added" />
                 </th>
               </tr>
             </thead>
             <tbody>
-              <For each={perAccount()}>
+              <For each={rows()}>
                 {(r, i) => {
                   const hasData = () => r.added != null;
                   return (
@@ -349,6 +472,7 @@ export default function FundsAdded() {
             </tfoot>
           </table>
         </div>
+        </Show>
       </Show>
 
       {/* No accounts at all (in scope) for this date, but not the collecting state */}
