@@ -346,6 +346,14 @@ export default function DailyReports() {
   // OFF → client-facing report (no raw anywhere, safe to share).
   const showRaw = () => hasRawSpend() && includeRaw();
 
+  // The Amount Spent / Client Billed column (the spend the client is charged)
+  // shows for admin/CM (raw data present → any client type, incl. CPL) OR when
+  // the client has a service charge (hybrid/retainer — covers a hybrid client's
+  // own login). Only the S.C + GST columns stay gated on service_charge (i.e.
+  // !iscplReport). This is what lets CPL clients show Raw/Client-Billed while
+  // still hiding S.C/GST.
+  const showBilled = () => hasRawSpend() || !iscplReport();
+
   // True when from/to span exactly one whole calendar month (1st → last day).
   // Billing is strictly monthly, so a partial range gets an extra "indicative"
   // line under the table. No range selected → also not a month.
@@ -619,31 +627,26 @@ export default function DailyReports() {
       : "All Dates";
   const exportColumns = () => {
     const cols = ["Date", "Project", "Leads", "CPL"];
-    if (!iscplReport()) {
-      if (showRaw()) cols.push("Raw CPL", "Raw Spend");
-      cols.push(
-        showRaw() ? "Client Billed" : "Amount Spent",
-        scColLabel(),
-        finalColLabel(),
-      );
-    }
+    if (showRaw()) cols.push("Raw CPL", "Raw Spend");
+    if (showBilled()) cols.push(showRaw() ? "Client Billed" : "Amount Spent");
+    if (!iscplReport()) cols.push(scColLabel(), finalColLabel());
     return cols;
   };
   const exportRow = (r) => {
     const base = [exportDateLabel(), r.projectName, r.leads, r.cpl];
-    if (!iscplReport()) {
-      if (showRaw()) base.push(r.rawCpl ?? "", r.rawSpent ?? "");
-      base.push(r.spent, r.spentwithServiceCharge, r.spentwithservice_gst);
-    }
+    if (showRaw()) base.push(r.rawCpl ?? "", r.rawSpent ?? "");
+    if (showBilled()) base.push(r.spent);
+    if (!iscplReport())
+      base.push(r.spentwithServiceCharge, r.spentwithservice_gst);
     return base;
   };
   const exportTotalsRow = () => {
     const t = totals();
     const base = ["TOTAL", "", t.totalLeads, t.avgCPL];
-    if (!iscplReport()) {
-      if (showRaw()) base.push(t.avgRawCPL ?? "", t.totalRawSpent ?? "");
-      base.push(t.totalSpent, t.totalspentwithServiceCharge, t.totalspentwithservice_gst);
-    }
+    if (showRaw()) base.push(t.avgRawCPL ?? "", t.totalRawSpent ?? "");
+    if (showBilled()) base.push(t.totalSpent);
+    if (!iscplReport())
+      base.push(t.totalspentwithServiceCharge, t.totalspentwithservice_gst);
     return base;
   };
   const exportFileDate = () => new Date().toISOString().split("T")[0];
@@ -1028,16 +1031,18 @@ export default function DailyReports() {
                 <th class="p-3">Project</th>
                 <th class="p-3">Leads</th>
                 <th class="p-3">CPL</th>
-                <Show when={!iscplReport()}>
-                  {/* Raw (agency cost) — admin/CM only, shown + exported only
-                      when the "Include raw" toggle is on (showRaw). */}
-                  <Show when={showRaw()}>
-                    <th class="p-3">Raw CPL</th>
-                    <th class="p-3">Raw Spend</th>
-                  </Show>
+                {/* Raw (agency cost) — admin/CM, toggle on; all client types */}
+                <Show when={showRaw()}>
+                  <th class="p-3">Raw CPL</th>
+                  <th class="p-3">Raw Spend</th>
+                </Show>
+                <Show when={showBilled()}>
                   <th class="p-3">
                     {showRaw() ? "Client Billed" : "Amount Spent"}
                   </th>
+                </Show>
+                {/* S.C + GST only when the client has a service charge */}
+                <Show when={!iscplReport()}>
                   <th class="p-3">{scColLabel()}</th>
                   <th class="p-3">{finalColLabel()}</th>
                 </Show>
@@ -1128,24 +1133,24 @@ export default function DailyReports() {
                         </td>
 
                         {/* Spent */}
-                        <Show when={!iscplReport()}>
-                          {/* Raw (agency cost) — admin/CM, toggle on */}
-                          <Show when={showRaw()}>
-                            <td class="p-3 text-amber-700 dark:text-amber-400">
-                              {fmt(row.rawCpl ?? 0)}
-                            </td>
-                            <td class="p-3 text-amber-700 dark:text-amber-400">
-                              {fmt(row.rawSpent ?? 0)}
-                            </td>
-                          </Show>
+                        {/* Raw (agency cost) — admin/CM, toggle on */}
+                        <Show when={showRaw()}>
+                          <td class="p-3 text-amber-700 dark:text-amber-400">
+                            {fmt(row.rawCpl ?? 0)}
+                          </td>
+                          <td class="p-3 text-amber-700 dark:text-amber-400">
+                            {fmt(row.rawSpent ?? 0)}
+                          </td>
+                        </Show>
+                        <Show when={showBilled()}>
                           <td class="p-3 text-green-700 dark:text-green-400">
                             {fmt(row.spent)}
                           </td>
-
+                        </Show>
+                        <Show when={!iscplReport()}>
                           <td class="p-3 text-green-700 dark:text-green-400">
                             {fmt(row.spentwithServiceCharge)}
                           </td>
-
                           {/* spent + service charge + GST  */}
                           <td class="p-3 text-green-900 dark:text-green-400">
                             {fmt(row.spentwithservice_gst)}
@@ -1171,18 +1176,20 @@ export default function DailyReports() {
                     <td class="p-3 text-purple-700 dark:text-purple-300 font-bold">
                       {fmt(totals().avgCPL)}
                     </td>
-                    <Show when={!iscplReport()}>
-                      <Show when={showRaw()}>
-                        <td class="p-3 text-amber-700 dark:text-amber-400 font-bold">
-                          {fmt(totals().avgRawCPL ?? 0)}
-                        </td>
-                        <td class="p-3 text-amber-700 dark:text-amber-400 font-bold">
-                          {fmt(totals().totalRawSpent ?? 0)}
-                        </td>
-                      </Show>
+                    <Show when={showRaw()}>
+                      <td class="p-3 text-amber-700 dark:text-amber-400 font-bold">
+                        {fmt(totals().avgRawCPL ?? 0)}
+                      </td>
+                      <td class="p-3 text-amber-700 dark:text-amber-400 font-bold">
+                        {fmt(totals().totalRawSpent ?? 0)}
+                      </td>
+                    </Show>
+                    <Show when={showBilled()}>
                       <td class="p-3 text-green-700 dark:text-green-300 font-bold">
                         {fmt(totals().totalSpent)}
                       </td>
+                    </Show>
+                    <Show when={!iscplReport()}>
                       <td class="p-3 text-green-700 dark:text-green-300 font-bold">
                         {fmt(totals().totalspentwithServiceCharge)}
                       </td>
@@ -1429,18 +1436,20 @@ export default function DailyReports() {
                   <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
                     CPL
                   </th>
-                  <Show when={!iscplReport()}>
-                    <Show when={showRaw()}>
-                      <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
-                        Raw CPL
-                      </th>
-                      <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
-                        Raw Spend
-                      </th>
-                    </Show>
+                  <Show when={showRaw()}>
+                    <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
+                      Raw CPL
+                    </th>
+                    <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
+                      Raw Spend
+                    </th>
+                  </Show>
+                  <Show when={showBilled()}>
                     <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
                       {showRaw() ? "Client Billed" : "Amount Spent"}
                     </th>
+                  </Show>
+                  <Show when={!iscplReport()}>
                     <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
                       {scColLabel()}
                     </th>
@@ -1479,18 +1488,20 @@ export default function DailyReports() {
                       <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
                         {fmt(row.cpl)}
                       </td>
-                      <Show when={!iscplReport()}>
-                        <Show when={showRaw()}>
-                          <td class="px-4 py-3 text-center text-[#8a5a00] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
-                            {fmt(row.rawCpl ?? 0)}
-                          </td>
-                          <td class="px-4 py-3 text-center text-[#8a5a00] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
-                            {fmt(row.rawSpent ?? 0)}
-                          </td>
-                        </Show>
+                      <Show when={showRaw()}>
+                        <td class="px-4 py-3 text-center text-[#8a5a00] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
+                          {fmt(row.rawCpl ?? 0)}
+                        </td>
+                        <td class="px-4 py-3 text-center text-[#8a5a00] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
+                          {fmt(row.rawSpent ?? 0)}
+                        </td>
+                      </Show>
+                      <Show when={showBilled()}>
                         <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
                           {fmt(row.spent)}
                         </td>
+                      </Show>
+                      <Show when={!iscplReport()}>
                         {/* GST — warm gold tint */}
                         <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
                           {fmt(row.spentwithServiceCharge)}
@@ -1516,18 +1527,20 @@ export default function DailyReports() {
                   <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
                     {fmt(totals().avgCPL)}
                   </td>
-                  <Show when={!iscplReport()}>
-                    <Show when={showRaw()}>
-                      <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
-                        {fmt(totals().avgRawCPL ?? 0)}
-                      </td>
-                      <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
-                        {fmt(totals().totalRawSpent ?? 0)}
-                      </td>
-                    </Show>
+                  <Show when={showRaw()}>
+                    <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
+                      {fmt(totals().avgRawCPL ?? 0)}
+                    </td>
+                    <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
+                      {fmt(totals().totalRawSpent ?? 0)}
+                    </td>
+                  </Show>
+                  <Show when={showBilled()}>
                     <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
                       {fmt(totals().totalSpent)}
                     </td>
+                  </Show>
+                  <Show when={!iscplReport()}>
                     <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
                       {fmt(totals().totalspentwithServiceCharge)}
                     </td>
@@ -1637,18 +1650,20 @@ export default function DailyReports() {
                     <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
                       CPL
                     </th>
-                    <Show when={!iscplReport()}>
-                      <Show when={showRaw()}>
-                        <th style="padding:11px 14px;text-align:center;color:#f5d9a0;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
-                          Raw CPL
-                        </th>
-                        <th style="padding:11px 14px;text-align:center;color:#f5d9a0;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
-                          Raw Spend
-                        </th>
-                      </Show>
+                    <Show when={showRaw()}>
+                      <th style="padding:11px 14px;text-align:center;color:#f5d9a0;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
+                        Raw CPL
+                      </th>
+                      <th style="padding:11px 14px;text-align:center;color:#f5d9a0;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
+                        Raw Spend
+                      </th>
+                    </Show>
+                    <Show when={showBilled()}>
                       <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
                         {showRaw() ? "Client Billed" : "Amt Spent"}
                       </th>
+                    </Show>
+                    <Show when={!iscplReport()}>
                       <th style="padding:11px 14px;text-align:center;color:#f5d9a0;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;">
                         {scColLabel()}
                       </th>
@@ -1680,18 +1695,20 @@ export default function DailyReports() {
                       <td style="padding:10px 14px;text-align:center;font-size:14px;color:#333;border-right:1px solid rgba(123,28,28,0.1);">
                         {fmt(row.cpl)}
                       </td>
-                      <Show when={!iscplReport()}>
-                        <Show when={showRaw()}>
-                          <td style="padding:10px 14px;text-align:center;font-size:14px;color:#8a5a00;font-weight:600;border-right:1px solid rgba(123,28,28,0.1);">
-                            {fmt(row.rawCpl ?? 0)}
-                          </td>
-                          <td style="padding:10px 14px;text-align:center;font-size:14px;color:#8a5a00;font-weight:600;border-right:1px solid rgba(123,28,28,0.1);">
-                            {fmt(row.rawSpent ?? 0)}
-                          </td>
-                        </Show>
+                      <Show when={showRaw()}>
+                        <td style="padding:10px 14px;text-align:center;font-size:14px;color:#8a5a00;font-weight:600;border-right:1px solid rgba(123,28,28,0.1);">
+                          {fmt(row.rawCpl ?? 0)}
+                        </td>
+                        <td style="padding:10px 14px;text-align:center;font-size:14px;color:#8a5a00;font-weight:600;border-right:1px solid rgba(123,28,28,0.1);">
+                          {fmt(row.rawSpent ?? 0)}
+                        </td>
+                      </Show>
+                      <Show when={showBilled()}>
                         <td style="padding:10px 14px;text-align:center;font-size:14px;color:#333;border-right:1px solid rgba(123,28,28,0.1);">
                           {fmt(row.spent)}
                         </td>
+                      </Show>
+                      <Show when={!iscplReport()}>
                         <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:600;color:#6b4c10;background:rgba(201,168,76,0.10);">
                           {fmt(row.spentwithServiceCharge)}
                         </td>
@@ -1713,18 +1730,20 @@ export default function DailyReports() {
                     <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
                       {fmt(totals().avgCPL)}
                     </td>
-                    <Show when={!iscplReport()}>
-                      <Show when={showRaw()}>
-                        <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
-                          {fmt(totals().avgRawCPL ?? 0)}
-                        </td>
-                        <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
-                          {fmt(totals().totalRawSpent ?? 0)}
-                        </td>
-                      </Show>
+                    <Show when={showRaw()}>
+                      <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
+                        {fmt(totals().avgRawCPL ?? 0)}
+                      </td>
+                      <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
+                        {fmt(totals().totalRawSpent ?? 0)}
+                      </td>
+                    </Show>
+                    <Show when={showBilled()}>
                       <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
                         {fmt(totals().totalSpent)}
                       </td>
+                    </Show>
+                    <Show when={!iscplReport()}>
                       <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;">
                         {fmt(totals().totalspentwithServiceCharge)}
                       </td>
