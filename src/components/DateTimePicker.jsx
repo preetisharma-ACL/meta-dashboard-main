@@ -34,6 +34,25 @@ export default function DateTimePicker(props) {
   const [tempDate, setTempDate] = createSignal(""); // "YYYY-MM-DD"
   const [tempHour, setTempHour] = createSignal(0);
   const [tempMin, setTempMin] = createSignal(0);
+  const [quickOpen, setQuickOpen] = createSignal(false); // "Choose a time" menu
+
+  // Quick-pick presets mirroring the browser's native time chooser.
+  const quickTimes = [
+    { label: "Now", get: () => { const n = new Date(); return [n.getHours(), n.getMinutes()]; } },
+    { label: "Midnight", get: () => [0, 0] },
+    { label: "6 a.m.", get: () => [6, 0] },
+    { label: "Noon", get: () => [12, 0] },
+    { label: "6 p.m.", get: () => [18, 0] },
+  ];
+
+  const applyQuick = (opt) => {
+    const [h, m] = opt.get();
+    batch(() => {
+      setTempHour(h);
+      setTempMin(m);
+      setQuickOpen(false);
+    });
+  };
 
   // Human-readable trigger label: "DD-MM-YYYY HH:mm".
   const displayLabel = () => {
@@ -139,6 +158,7 @@ export default function DateTimePicker(props) {
   const handleOpen = () => {
     if (props.disabled) return;
     seedFromValue();
+    setQuickOpen(false);
     setIsOpen(true);
   };
 
@@ -186,7 +206,17 @@ export default function DateTimePicker(props) {
 
       {/* Popup */}
       <Show when={isOpen()}>
-        <div class="absolute z-50 mt-2 w-[300px] bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 p-3">
+        <div
+          ref={(el) =>
+            requestAnimationFrame(() =>
+              el?.scrollIntoView({ block: "nearest", behavior: "smooth" })
+            )
+          }
+          class="absolute z-50 mt-2 w-[500px] bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 p-3"
+        >
+          <div class="flex gap-3">
+            {/* Left: calendar */}
+            <div class="w-[300px] shrink-0">
           {/* Month navigation */}
           <div class="flex items-center justify-between mb-3">
             <button
@@ -270,34 +300,95 @@ export default function DateTimePicker(props) {
             </For>
           </div>
 
-          {/* Time selectors */}
-          <div class="flex items-center gap-2 mb-3 pt-3 border-t border-gray-200 dark:border-gray-700">
-            <span class="text-xs text-gray-500 dark:text-gray-400">Time</span>
-            <div class="flex items-center gap-1 ml-auto">
-              <input
-                type="number"
-                min="0"
-                max="23"
-                value={pad2(tempHour())}
-                onInput={(e) => setTempHour(clampHour(parseInt(e.target.value, 10)))}
-                class="w-14 px-2 py-1 text-sm text-center rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-purple-500 outline-none"
-                aria-label="Hour"
-              />
-              <span class="text-gray-500">:</span>
-              <input
-                type="number"
-                min="0"
-                max="59"
-                value={pad2(tempMin())}
-                onInput={(e) => setTempMin(clampMin(parseInt(e.target.value, 10)))}
-                class="w-14 px-2 py-1 text-sm text-center rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-purple-500 outline-none"
-                aria-label="Minute"
-              />
+            </div>
+
+            {/* Right: time panel */}
+            <div class="flex-1 border-l border-gray-200 dark:border-gray-700 pl-3 flex flex-col">
+              <span class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">
+                Time
+              </span>
+
+              {/* Hour / minute inputs */}
+              <div class="flex items-center gap-1 mb-3">
+                <input
+                  type="number"
+                  min="0"
+                  max="23"
+                  value={pad2(tempHour())}
+                  onInput={(e) =>
+                    setTempHour(clampHour(parseInt(e.target.value, 10)))
+                  }
+                  class="w-14 px-2 py-1 text-sm text-center rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-purple-500 outline-none"
+                  aria-label="Hour"
+                />
+                <span class="text-gray-500">:</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="59"
+                  value={pad2(tempMin())}
+                  onInput={(e) =>
+                    setTempMin(clampMin(parseInt(e.target.value, 10)))
+                  }
+                  class="w-14 px-2 py-1 text-sm text-center rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-purple-500 outline-none"
+                  aria-label="Minute"
+                />
+              </div>
+
+              {/* Choose a time — quick presets */}
+              <div class="relative">
+                <button
+                  type="button"
+                  onClick={() => setQuickOpen((v) => !v)}
+                  class="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                >
+                  <svg
+                    class="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  Choose a time
+                </button>
+
+                <Show when={quickOpen()}>
+                  <div class="absolute left-0 right-0 mt-1 z-10 bg-white dark:bg-gray-800 rounded-md shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+                    <div class="px-3 py-1.5 text-[11px] font-semibold text-gray-400 border-b border-gray-100 dark:border-gray-700">
+                      Choose a time
+                    </div>
+                    <For each={quickTimes}>
+                      {(opt) => (
+                        <button
+                          type="button"
+                          onClick={() => applyQuick(opt)}
+                          class="w-full text-center px-3 py-1.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-blue-50 dark:hover:bg-gray-700"
+                        >
+                          {opt.label}
+                        </button>
+                      )}
+                    </For>
+                    <button
+                      type="button"
+                      onClick={() => setQuickOpen(false)}
+                      class="w-full text-center px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </Show>
+              </div>
             </div>
           </div>
 
           {/* Actions */}
-          <div class="flex items-center justify-between gap-2">
+          <div class="flex items-center justify-between gap-2 mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
             <div class="flex gap-2">
               <button
                 type="button"

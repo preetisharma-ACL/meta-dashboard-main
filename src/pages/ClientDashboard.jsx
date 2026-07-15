@@ -296,9 +296,12 @@ export default function MainDashboard() {
             item.property_type.slice(1).toLowerCase()
           : "N/A",
         uploaddocument: item.upload_document ?? null,
-        activeCampaigns: item.campaign_count ?? 0,
-        completedCampaigns: item.completed_campaigns ?? 0,
-        pausedCampaigns: item.paused_campaigns ?? 0,
+        // Seed status counts to 0 — deriveProjectStatuses fills them from c.status.
+        // campaign_count is a TOTAL, not an active count; seeding it here flashed
+        // the whole project total in the "Active Campaigns" column until derive ran.
+        activeCampaigns: 0,
+        completedCampaigns: 0,
+        pausedCampaigns: 0,
         status: item.status,
         clientRequest: item.client_request ?? null,
         priority: item.priority_label ?? "Standard",
@@ -359,9 +362,11 @@ export default function MainDashboard() {
             ? item.property_type.charAt(0).toUpperCase() +
               item.property_type.slice(1).toLowerCase()
             : "N/A",
-          activeCampaigns: item.campaign_count ?? 0,
-          completedCampaigns: item.completed_campaigns ?? 0,
-          pausedCampaigns: item.paused_campaigns ?? 0,
+          // Seed status counts to 0 — deriveProjectStatuses fills them from
+          // c.status. campaign_count is a TOTAL, not an active count.
+          activeCampaigns: 0,
+          completedCampaigns: 0,
+          pausedCampaigns: 0,
           status: item.status,
           cpl: parseFloat(item.cpl) || 0,
           modifiedCpl: item.modified_cpl ?? null,
@@ -509,28 +514,21 @@ export default function MainDashboard() {
       const resolvedCpl = totalLeads > 0 ? Number(avgCPL) : 1500;
 
       // ✅ Date-range aware campaign counts
-      let activeCampaigns, pausedCampaigns, completedCampaigns;
-      if (!from || !to) {
-        activeCampaigns = project.activeCampaigns ?? 0;
-        completedCampaigns = project.completedCampaigns ?? 0;
-        pausedCampaigns = project.pausedCampaigns ?? 0;
-      } else {
-        // Completed campaigns are tracked on their own — never as active/paused.
-        const completedIds = new Set(
-          campaigns.filter((c) => c.status === "completed").map((c) => c.id),
-        );
-        const activeCampaignIds = new Set(
-          filtered
-            .filter((d) => d.spend > 0 || d.leads > 0)
-            .map((d) => d.campaignId),
-        );
-        for (const id of completedIds) activeCampaignIds.delete(id);
-        activeCampaigns = activeCampaignIds.size;
-        completedCampaigns = completedIds.size;
-        pausedCampaigns = campaigns.filter(
-          (c) => !activeCampaignIds.has(c.id) && !completedIds.has(c.id),
-        ).length;
-      }
+      // Campaign status counts are classified by c.status — a campaign's
+      // active/paused/completed state is NOT date-dependent, so the date range
+      // must not drive it. The old range path counted "active" as "had spend or
+      // leads in range", which mislabelled a now-paused campaign that spent
+      // earlier in the range as active (e.g. DholeraEvent: 11 paused → 11 active).
+      // Same rule as deriveProjectStatuses: live = not paused and not completed.
+      const activeCampaigns = campaigns.filter(
+        (c) => c.status !== "paused" && c.status !== "completed",
+      ).length;
+      const completedCampaigns = campaigns.filter(
+        (c) => c.status === "completed",
+      ).length;
+      const pausedCampaigns = campaigns.filter(
+        (c) => c.status === "paused",
+      ).length;
 
       // Same rule as the table (allProjectStats): clients fold synthetic leads
       // into Total Leads via the client-accessible campaign.extra_leads field;
@@ -1108,28 +1106,21 @@ export default function MainDashboard() {
           : null;
       // ─────────────────────────────────────────────────────────────────────
 
-      let activeCampaigns, pausedCampaigns, completedCampaigns;
-      if (!from || !to) {
-        activeCampaigns = project.activeCampaigns ?? 0;
-        completedCampaigns = project.completedCampaigns ?? 0;
-        pausedCampaigns = project.pausedCampaigns ?? 0;
-      } else {
-        // Completed campaigns are tracked on their own — never as active/paused.
-        const completedIds = new Set(
-          campaigns.filter((c) => c.status === "completed").map((c) => c.id),
-        );
-        const activeCampaignIds = new Set(
-          filtered
-            .filter((d) => d.spend > 0 || d.leads > 0)
-            .map((d) => d.campaignId),
-        );
-        for (const id of completedIds) activeCampaignIds.delete(id);
-        activeCampaigns = activeCampaignIds.size;
-        completedCampaigns = completedIds.size;
-        pausedCampaigns = campaigns.filter(
-          (c) => !activeCampaignIds.has(c.id) && !completedIds.has(c.id),
-        ).length;
-      }
+      // Campaign status counts are classified by c.status — a campaign's
+      // active/paused/completed state is NOT date-dependent, so the date range
+      // must not drive it. The old range path counted "active" as "had spend or
+      // leads in range", which mislabelled a now-paused campaign that spent
+      // earlier in the range as active (e.g. DholeraEvent: 11 paused → 11 active).
+      // Same rule as deriveProjectStatuses: live = not paused and not completed.
+      const activeCampaigns = campaigns.filter(
+        (c) => c.status !== "paused" && c.status !== "completed",
+      ).length;
+      const completedCampaigns = campaigns.filter(
+        (c) => c.status === "completed",
+      ).length;
+      const pausedCampaigns = campaigns.filter(
+        (c) => c.status === "paused",
+      ).length;
 
       // Synthetic/extra leads for the CLIENT total come from the backend-
       // computed campaign.extra_leads (client-accessible, authoritative, matches
