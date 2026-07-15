@@ -37,6 +37,15 @@ import Chart from "chart.js/auto";
 import Avatar from "../components/common/Avatar";
 import useRole, { clientRole } from "./../hooks/useRole";
 
+// Admin/CM "preview as client" insight rows (returned when the bulk call is sent
+// with as_client_id) carry BOTH `spend` (client-facing — markup / fixed-CPL
+// applied) and `spend_raw` (the actual Meta charge). This footer's raw "Total
+// Spent" / CPL is the Meta figure — the Premium CPL is computed separately from
+// premium_metrics — so read `spend_raw` when present. A client's own rows have no
+// `spend_raw`, so fall back to `spend` (already their billed figure).
+const rawSpendOf = (row) =>
+  parseFloat((row?.spend_raw != null ? row.spend_raw : row?.spend) || 0);
+
 export default function ProjectDetails() {
   const location = useLocation();
   const project = location.state?.project;
@@ -255,6 +264,16 @@ export default function ProjectDetails() {
   const hasPrev = () => cachedProject().meta?.has_prev ?? false;
   const { isRetainer, iscpl, ishybrid, isAdmin } = clientRole();
 
+  // Admin/CM previewing a client → the selected Client PK, sent as as_client_id so
+  // the bulk-insights call is scoped/marked-up in preview-as-client mode (matches
+  // the ledger + DailyReports). Null for a client's own login and for an admin
+  // viewing a project outside a selected-client context, where the call falls back
+  // to the normal client_nomen scoping.
+  const previewClientId = () =>
+    userRole() === "admin"
+      ? localStorage.getItem("selectedClientNomenId")
+      : null;
+
   // ── Write helper — merges into this project's cache slot ────────────────────
   const setProjectCache = (patch) =>
     setProjectDetailsCache(projectId, (prev) => ({ ...prev, ...patch }));
@@ -361,6 +380,7 @@ export default function ProjectDetails() {
       try {
         const bulk = await fetchBulkCampaignInsights(
           apiData.map((item) => item.id),
+          { asClientId: previewClientId() },
         );
         for (const row of bulk.data || []) {
           if (row.is_manual) continue; // manual leads come from a separate path
@@ -449,6 +469,7 @@ export default function ProjectDetails() {
         try {
           const bulk = await fetchBulkCampaignInsights(
             apiData.map((item) => item.id),
+            { asClientId: previewClientId() },
           );
           for (const row of bulk.data || []) {
             if (row.is_manual) continue; // manual leads come from a separate path
@@ -540,7 +561,7 @@ export default function ProjectDetails() {
       totalLeads += d.leads || 0;
       totalClicks += d.clicks || 0;
       totalReach += d.impressions || 0;
-      totalSpent += parseFloat(d.spend || 0);
+      totalSpent += rawSpendOf(d);
     }
 
     const cpl =
