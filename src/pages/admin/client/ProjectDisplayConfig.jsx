@@ -9,6 +9,7 @@ import {
   // ← CHANGED: removed fetchProjects, added this
 } from "../services/projectDisplayConfig";
 import Avatar from "../../../components/common/Avatar";
+import DateTimePicker from "../../../components/DateTimePicker";
 import { fetchProjectsByClient } from "../services/fetchProjectsByClient"; // ← NEW
 import { fetchAllowedBudgetClients } from "../../../services/allowedBudget"; // ← CM-scoped client source
 import { isAdmin, isTier1 } from "../../../stores/currentUser"; // ← validity-window gate
@@ -1384,19 +1385,18 @@ export default function ProjectDisplayConfig() {
                         Start (valid from){" "}
                         <span class="text-red-500">*</span>
                       </label>
-                      <input
-                        type="datetime-local"
+                      <DateTimePicker
                         value={formData().valid_from}
                         max={formData().valid_to || undefined}
-                        onInput={(e) => {
-                          handleInputChange("valid_from", e.target.value);
+                        placeholder="Select start date & time"
+                        onChange={(val) => {
+                          handleInputChange("valid_from", val);
                           // Clearing the start drops the (now-orphaned) end so we
                           // never submit an end-without-start.
-                          if (!e.target.value && formData().valid_to) {
+                          if (!val && formData().valid_to) {
                             handleInputChange("valid_to", "");
                           }
                         }}
-                        class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-purple-500 outline-none"
                       />
                     </div>
 
@@ -1406,16 +1406,12 @@ export default function ProjectDisplayConfig() {
                         End{" "}
                         <span class="text-gray-400 font-normal">(optional)</span>
                       </label>
-                      <input
-                        type="datetime-local"
+                      <DateTimePicker
                         value={formData().valid_to}
                         min={formData().valid_from || undefined}
                         disabled={!formData().valid_from}
-                        onInput={(e) =>
-                          handleInputChange("valid_to", e.target.value)
-                        }
-                        placeholder="Leave blank to apply until changed"
-                        class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-purple-500 outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                        placeholder="date & time (optional)"
+                        onChange={(val) => handleInputChange("valid_to", val)}
                       />
                     </div>
                   </div>
