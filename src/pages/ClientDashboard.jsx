@@ -490,8 +490,8 @@ export default function MainDashboard() {
 
       const filtered = inRange(insights, from, to);
 
-      // Real leads filtered by the stamped campaign range so they stay in
-      // lockstep with extra_leads (no flicker during a date-change refetch).
+      // Leads filtered by the stamped campaign range so they stay in lockstep
+      // with the bulk-insights window (no flicker during a date-change refetch).
       const leadsRange = range ?? { from, to };
       const totalLeads = inRange(
         insights,
@@ -530,16 +530,14 @@ export default function MainDashboard() {
         (c) => c.status === "paused",
       ).length;
 
-      // Same rule as the table (allProjectStats): clients fold synthetic leads
-      // into Total Leads via the client-accessible campaign.extra_leads field;
-      // admins keep real-only here (synthetic in the separate column).
-      const extraFromCampaigns = campaigns.reduce(
-        (s, c) => s + Number(c.extra_leads ?? 0),
-        0,
-      );
-
+      // Total Leads = Σ leads across the in-range bulk rows. For clients that
+      // sum is already INCLUSIVE of synthetic leads — the bulk endpoint merges
+      // them into normal rows and the standalone is_manual row is now counted in
+      // `insights` too — so we must NOT add campaign.extra_leads on top (that
+      // double-counted the merged portion: 108 → 122). Admin is raw/exclusive
+      // and shows synthetic separately in the Extra Leads column.
       result[project.id] = {
-        totalLeads: isAdmin() ? totalLeads : totalLeads + extraFromCampaigns,
+        totalLeads,
         extraLeads,
         totalSpent,
         avgCPL,
@@ -827,23 +825,19 @@ export default function MainDashboard() {
 
     // Build the per-project result entry for every project (same shape as
     // before): mapped campaigns + empty insights (filled by the bulk call) +
-    // the date range these campaigns/extra_leads belong to.
+    // the date range these campaigns belong to.
     for (const project of projectList) {
       const allCampaigns = projectCampaigns[project.id] || [];
       result[project.id] = {
         campaigns: allCampaigns.map((c) => ({
           id: c.id,
           status: c.status,
-          // Backend-computed synthetic/extra leads, client-accessible via the
-          // /api/campaigns/ endpoint (same field Project Details uses). Used to
-          // fold synthetic leads into the client's Total Leads.
-          extra_leads: Number(c.extra_leads ?? 0),
           // server-computed premium (marked-up) figures for this campaign
           premium_metrics: c.premium_metrics,
         })),
         insights: [],
-        // Date range these campaigns/extra_leads were fetched for. Real leads
-        // are filtered by this so they stay in lockstep with extra_leads.
+        // Date range these campaigns were fetched for. Real leads are filtered
+        // by this so they stay in lockstep with the bulk insights window.
         range: { from: fromDate(), to: toDate() },
       };
     }
@@ -870,9 +864,21 @@ export default function MainDashboard() {
         const rows = bulk.data || [];
 
         for (const row of rows) {
-          if (row.is_manual) continue;
           const entry = campaignById[String(row.campaign_id)];
           if (!entry) continue;
+          if (row.is_manual && isAdmin()) {
+            // Admin is raw/exclusive: synthetic leads are shown separately in the
+            // Extra Leads column, so standalone synthetic rows are dropped here.
+            continue;
+          }
+          // For CLIENTS the bulk endpoint is inclusive of synthetic leads (most
+          // merged into normal rows; the remainder on standalone is_manual rows).
+          // Count is_manual rows the same as any other — leads AND their actual
+          // spend, which is the client-facing figure the API already computed and
+          // is internally consistent with the leads (₹1500 batch ÷ 15 = ₹100/lead).
+          // Zeroing it would drop the standalone lead's cost and skew CPL, and the
+          // merged/standalone split shifts with the date range. This replaces the
+          // old campaign.extra_leads add, which double-counted the merged portion.
           result[entry.projectId].insights.push({
             ...row,
             campaignId: entry.campaign.id,
@@ -925,7 +931,6 @@ export default function MainDashboard() {
         campsByProject[pid].push({
           id: c.id,
           status: c.status,
-          extra_leads: Number(c.extra_leads ?? 0),
           premium_metrics: c.premium_metrics,
         });
       }
@@ -976,10 +981,6 @@ export default function MainDashboard() {
           const camps = all.map((c) => ({
             id: c.id,
             status: c.status,
-            // Preserve date-scoped synthetic leads so the client's Total Leads
-            // stays correct after a date-filter change (these campaigns replace
-            // the ones loaded at mount).
-            extra_leads: Number(c.extra_leads ?? 0),
             premium_metrics: c.premium_metrics,
           }));
 
@@ -1061,10 +1062,9 @@ export default function MainDashboard() {
 
       const filtered = inRange(insights, from, to);
 
-      // Real leads are filtered by the range the loaded campaigns/extra_leads
-      // belong to (stamped in the cache), so the real (insights) and synthetic
-      // (extra_leads) halves of Total Leads always move together — no flicker
-      // while a date-change campaign refetch is in flight.
+      // Leads are filtered by the range the loaded campaigns belong to (stamped
+      // in the cache), so Total Leads stays in lockstep with the bulk-insights
+      // window — no flicker while a date-change campaign refetch is in flight.
       const leadsRange = range ?? { from, to };
       const totalLeads = inRange(
         insights,
@@ -1122,19 +1122,14 @@ export default function MainDashboard() {
         (c) => c.status === "paused",
       ).length;
 
-      // Synthetic/extra leads for the CLIENT total come from the backend-
-      // computed campaign.extra_leads (client-accessible, authoritative, matches
-      // billing) — NOT the admin-only manual-batches endpoint.
-      const extraFromCampaigns = campaigns.reduce(
-        (s, c) => s + Number(c.extra_leads ?? 0),
-        0,
-      );
-
       result[project.id] = {
-        // Admin sees real leads here (synthetic in its own "Extra Leads"
-        // column, sourced from manualBatches). Clients have no such column, so
-        // synthetic leads are folded into Total Leads via campaign.extra_leads.
-        totalLeads: isAdmin() ? totalLeads : totalLeads + extraFromCampaigns,
+        // Total Leads = Σ leads across the in-range bulk rows. For CLIENTS this
+        // is already INCLUSIVE of synthetic leads (the bulk endpoint merges them
+        // into normal rows, and the standalone is_manual row is now counted in
+        // `insights`), so we must NOT add campaign.extra_leads on top — doing so
+        // double-counted the merged portion (108 → 122). Admin is raw/exclusive
+        // and shows synthetic separately in its own Extra Leads column.
+        totalLeads,
         extraLeads,
         totalSpent,
         avgCPL,
