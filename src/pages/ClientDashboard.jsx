@@ -45,7 +45,6 @@ import { fetchBulkCampaignInsights } from "../services/campaigns";
 import { fetchAllCampaigns } from "../services/campaigns";
 import Avatar from "../components/common/Avatar";
 import CountUp from "../components/CountUp";
-import ClientAIInsightButton from "../components/ClientAIInsightButton";
 import {
   projectsCache,
   setProjectsCache,
@@ -64,17 +63,6 @@ import useRole, { clientRole } from "./../hooks/useRole";
 // slow client-data request can no longer clobber freshly loaded admin data.
 let activeLoadToken = 0;
 const bumpLoadToken = () => ++activeLoadToken;
-
-// Admin/CM "preview as client" insight rows (returned when the bulk call is sent
-// with as_client_id) carry BOTH `spend` (client-facing — markup / fixed-CPL
-// applied) and `spend_raw` (the actual Meta charge). The ledger's "Total Spent"
-// / "AVG CPL" columns are the RAW Meta figures — the marked-up number lives in
-// the separate Premium CPL column — so read `spend_raw` whenever it is present.
-// A client's own rows have no `spend_raw`, so fall back to `spend` (which is
-// already their billed figure). This keeps the raw columns at the Meta charge
-// even after we start sending as_client_id (which flips `spend` to marked-up).
-const rawSpendOf = (row) =>
-  parseFloat((row?.spend_raw != null ? row.spend_raw : row?.spend) || 0);
 
 // ── Design-section toggles (UI only) ─────────────────────────────────────────
 // The funnel needs impressions/CTR/CPM (not fetched anywhere yet) and the AI
@@ -155,33 +143,11 @@ export default function MainDashboard() {
     return localStorage.getItem("selectedClientNomen");
   };
 
-  // Client nomen id for the client-level AI insight call. Tracks route changes
-  // (same as selectedClientNomen above) so it clears when the client context is
-  // removed on the Main Dashboard.
-  const selectedClientNomenId = () => {
-    location.pathname; // track route changes
-    return localStorage.getItem("selectedClientNomenId");
-  };
-
   const { isRetainer, iscpl, ishybrid, isAdmin } = clientRole();
   const { handleSort, getSortIcon, sortData, resetSort } = useColumnSort();
 
   const params = useParams();
   const location = useLocation();
-
-  // ── Gate for the campaign/insights sweep (mirrors DailyReports' ready()) ─────
-  // When an admin is "Viewing Client: X", the ledger's leads/spend MUST be
-  // scoped to that client's Client PK (selectedClientNomenId). Firing the sweep
-  // before the PK is resolved sends an unscoped bulk-insights call that sums
-  // EVERY client's spend on shared/multi-client projects — the all-clients bug.
-  // This is true only while previewing a client: the admin's own "/" dashboard
-  // (no client selected) is meant to be all-clients, and real client logins are
-  // force-scoped server-side by their own nomen — so both return ready = true.
-  const clientContextReady = () => {
-    if (userRole() !== "admin") return true; // clients are server-scoped
-    if (location.pathname === "/") return true; // admin's own dashboard
-    return !!selectedClientNomenId(); // previewing a client → need the PK
-  };
 
   // ── Reactively clear client context when navigating back to the Main Dashboard ──
   // Both "/" and "/:client-nomen-name" render THIS same component, so SolidJS
@@ -266,38 +232,10 @@ export default function MainDashboard() {
     // (fresh timestamp but empty insightsMap — see hasRenderedCampaignData).
     // This guarantees data loads on every reload while still skipping the
     // refetch when valid data is already present (cache benefit preserved).
-    // Gated on clientContextReady() so an admin previewing a client never fires
-    // the sweep before the client PK resolves (the createEffect below re-fires it
-    // the moment the context becomes ready, so it is never permanently skipped).
-    if (
-      clientContextReady() &&
-      (isAllProjectsCacheStale() || !hasRenderedCampaignData())
-    ) {
+    if (isAllProjectsCacheStale() || !hasRenderedCampaignData()) {
       loadAllProjects();
     }
   });
-
-  // Safety net for the viewing-client hydration race: if onMount gated the sweep
-  // because the selected-client PK was not resolved yet, fire it as soon as the
-  // context becomes ready. clientContextReady() reads selectedClientNomenId(),
-  // which tracks location.pathname, so this re-runs on navigation. defer:true
-  // skips the initial run (onMount already covers the ready-at-mount case), so a
-  // client already resolved at mount does not double-load.
-  createEffect(
-    on(
-      clientContextReady,
-      (ready, wasReady) => {
-        if (
-          ready &&
-          !wasReady &&
-          (isAllProjectsCacheStale() || !hasRenderedCampaignData())
-        ) {
-          loadAllProjects();
-        }
-      },
-      { defer: true },
-    ),
-  );
 
   const auth = JSON.parse(localStorage.getItem("auth") || "{}");
 
@@ -349,12 +287,9 @@ export default function MainDashboard() {
             item.property_type.slice(1).toLowerCase()
           : "N/A",
         uploaddocument: item.upload_document ?? null,
-        // Seed status counts to 0 — deriveProjectStatuses fills them from c.status.
-        // campaign_count is a TOTAL, not an active count; seeding it here flashed
-        // the whole project total in the "Active Campaigns" column until derive ran.
-        activeCampaigns: 0,
-        completedCampaigns: 0,
-        pausedCampaigns: 0,
+        activeCampaigns: item.campaign_count ?? 0,
+        completedCampaigns: item.completed_campaigns ?? 0,
+        pausedCampaigns: item.paused_campaigns ?? 0,
         status: item.status,
         clientRequest: item.client_request ?? null,
         priority: item.priority_label ?? "Standard",
@@ -415,11 +350,9 @@ export default function MainDashboard() {
             ? item.property_type.charAt(0).toUpperCase() +
               item.property_type.slice(1).toLowerCase()
             : "N/A",
-          // Seed status counts to 0 — deriveProjectStatuses fills them from
-          // c.status. campaign_count is a TOTAL, not an active count.
-          activeCampaigns: 0,
-          completedCampaigns: 0,
-          pausedCampaigns: 0,
+          activeCampaigns: item.campaign_count ?? 0,
+          completedCampaigns: item.completed_campaigns ?? 0,
+          pausedCampaigns: item.paused_campaigns ?? 0,
           status: item.status,
           cpl: parseFloat(item.cpl) || 0,
           modifiedCpl: item.modified_cpl ?? null,
@@ -543,8 +476,8 @@ export default function MainDashboard() {
 
       const filtered = inRange(insights, from, to);
 
-      // Leads filtered by the stamped campaign range so they stay in lockstep
-      // with the bulk-insights window (no flicker during a date-change refetch).
+      // Real leads filtered by the stamped campaign range so they stay in
+      // lockstep with extra_leads (no flicker during a date-change refetch).
       const leadsRange = range ?? { from, to };
       const totalLeads = inRange(
         insights,
@@ -558,7 +491,7 @@ export default function MainDashboard() {
         to,
       );
       const totalSpent = filtered.reduce(
-        (s, d) => s + rawSpendOf(d),
+        (s, d) => s + parseFloat(d.spend || 0),
         0,
       );
       const avgCPL =
@@ -567,30 +500,39 @@ export default function MainDashboard() {
       const resolvedCpl = totalLeads > 0 ? Number(avgCPL) : 1500;
 
       // ✅ Date-range aware campaign counts
-      // Campaign status counts are classified by c.status — a campaign's
-      // active/paused/completed state is NOT date-dependent, so the date range
-      // must not drive it. The old range path counted "active" as "had spend or
-      // leads in range", which mislabelled a now-paused campaign that spent
-      // earlier in the range as active (e.g. DholeraEvent: 11 paused → 11 active).
-      // Same rule as deriveProjectStatuses: live = not paused and not completed.
-      const activeCampaigns = campaigns.filter(
-        (c) => c.status !== "paused" && c.status !== "completed",
-      ).length;
-      const completedCampaigns = campaigns.filter(
-        (c) => c.status === "completed",
-      ).length;
-      const pausedCampaigns = campaigns.filter(
-        (c) => c.status === "paused",
-      ).length;
+      let activeCampaigns, pausedCampaigns, completedCampaigns;
+      if (!from || !to) {
+        activeCampaigns = project.activeCampaigns ?? 0;
+        completedCampaigns = project.completedCampaigns ?? 0;
+        pausedCampaigns = project.pausedCampaigns ?? 0;
+      } else {
+        // Completed campaigns are tracked on their own — never as active/paused.
+        const completedIds = new Set(
+          campaigns.filter((c) => c.status === "completed").map((c) => c.id),
+        );
+        const activeCampaignIds = new Set(
+          filtered
+            .filter((d) => d.spend > 0 || d.leads > 0)
+            .map((d) => d.campaignId),
+        );
+        for (const id of completedIds) activeCampaignIds.delete(id);
+        activeCampaigns = activeCampaignIds.size;
+        completedCampaigns = completedIds.size;
+        pausedCampaigns = campaigns.filter(
+          (c) => !activeCampaignIds.has(c.id) && !completedIds.has(c.id),
+        ).length;
+      }
 
-      // Total Leads = Σ leads across the in-range bulk rows. For clients that
-      // sum is already INCLUSIVE of synthetic leads — the bulk endpoint merges
-      // them into normal rows and the standalone is_manual row is now counted in
-      // `insights` too — so we must NOT add campaign.extra_leads on top (that
-      // double-counted the merged portion: 108 → 122). Admin is raw/exclusive
-      // and shows synthetic separately in the Extra Leads column.
+      // Same rule as the table (allProjectStats): clients fold synthetic leads
+      // into Total Leads via the client-accessible campaign.extra_leads field;
+      // admins keep real-only here (synthetic in the separate column).
+      const extraFromCampaigns = campaigns.reduce(
+        (s, c) => s + Number(c.extra_leads ?? 0),
+        0,
+      );
+
       result[project.id] = {
-        totalLeads,
+        totalLeads: isAdmin() ? totalLeads : totalLeads + extraFromCampaigns,
         extraLeads,
         totalSpent,
         avgCPL,
@@ -878,19 +820,23 @@ export default function MainDashboard() {
 
     // Build the per-project result entry for every project (same shape as
     // before): mapped campaigns + empty insights (filled by the bulk call) +
-    // the date range these campaigns belong to.
+    // the date range these campaigns/extra_leads belong to.
     for (const project of projectList) {
       const allCampaigns = projectCampaigns[project.id] || [];
       result[project.id] = {
         campaigns: allCampaigns.map((c) => ({
           id: c.id,
           status: c.status,
+          // Backend-computed synthetic/extra leads, client-accessible via the
+          // /api/campaigns/ endpoint (same field Project Details uses). Used to
+          // fold synthetic leads into the client's Total Leads.
+          extra_leads: Number(c.extra_leads ?? 0),
           // server-computed premium (marked-up) figures for this campaign
           premium_metrics: c.premium_metrics,
         })),
         insights: [],
-        // Date range these campaigns were fetched for. Real leads are filtered
-        // by this so they stay in lockstep with the bulk insights window.
+        // Date range these campaigns/extra_leads were fetched for. Real leads
+        // are filtered by this so they stay in lockstep with extra_leads.
         range: { from: fromDate(), to: toDate() },
       };
     }
@@ -913,35 +859,13 @@ export default function MainDashboard() {
     // 4. ONE bulk insights call for all campaigns (raw, date-filtered later)
     if (allCampaignIds.length > 0) {
       try {
-        // Admin/CM previewing a client: send the Client PK as as_client_id so the
-        // backend enters "preview as client" mode — it enables the Phase-4 history
-        // filter (correct per-day attribution, drops any foreign campaign's rows)
-        // and returns both `spend` (marked-up) and `spend_raw` (Meta charge). Null
-        // for the admin's own dashboard / a client's own login (already scoped),
-        // where the call falls back to the normal client_nomen scoping. Raw
-        // columns read spend_raw via rawSpendOf(), so the displayed figure is
-        // unchanged even though `spend` now carries the markup.
-        const bulk = await fetchBulkCampaignInsights(allCampaignIds, {
-          asClientId: selectedClientNomenId(),
-        });
+        const bulk = await fetchBulkCampaignInsights(allCampaignIds);
         const rows = bulk.data || [];
 
         for (const row of rows) {
+          if (row.is_manual) continue;
           const entry = campaignById[String(row.campaign_id)];
           if (!entry) continue;
-          if (row.is_manual && isAdmin()) {
-            // Admin is raw/exclusive: synthetic leads are shown separately in the
-            // Extra Leads column, so standalone synthetic rows are dropped here.
-            continue;
-          }
-          // For CLIENTS the bulk endpoint is inclusive of synthetic leads (most
-          // merged into normal rows; the remainder on standalone is_manual rows).
-          // Count is_manual rows the same as any other — leads AND their actual
-          // spend, which is the client-facing figure the API already computed and
-          // is internally consistent with the leads (₹1500 batch ÷ 15 = ₹100/lead).
-          // Zeroing it would drop the standalone lead's cost and skew CPL, and the
-          // merged/standalone split shifts with the date range. This replaces the
-          // old campaign.extra_leads add, which double-counted the merged portion.
           result[entry.projectId].insights.push({
             ...row,
             campaignId: entry.campaign.id,
@@ -994,6 +918,7 @@ export default function MainDashboard() {
         campsByProject[pid].push({
           id: c.id,
           status: c.status,
+          extra_leads: Number(c.extra_leads ?? 0),
           premium_metrics: c.premium_metrics,
         });
       }
@@ -1044,6 +969,10 @@ export default function MainDashboard() {
           const camps = all.map((c) => ({
             id: c.id,
             status: c.status,
+            // Preserve date-scoped synthetic leads so the client's Total Leads
+            // stays correct after a date-filter change (these campaigns replace
+            // the ones loaded at mount).
+            extra_leads: Number(c.extra_leads ?? 0),
             premium_metrics: c.premium_metrics,
           }));
 
@@ -1125,9 +1054,10 @@ export default function MainDashboard() {
 
       const filtered = inRange(insights, from, to);
 
-      // Leads are filtered by the range the loaded campaigns belong to (stamped
-      // in the cache), so Total Leads stays in lockstep with the bulk-insights
-      // window — no flicker while a date-change campaign refetch is in flight.
+      // Real leads are filtered by the range the loaded campaigns/extra_leads
+      // belong to (stamped in the cache), so the real (insights) and synthetic
+      // (extra_leads) halves of Total Leads always move together — no flicker
+      // while a date-change campaign refetch is in flight.
       const leadsRange = range ?? { from, to };
       const totalLeads = inRange(
         insights,
@@ -1141,7 +1071,7 @@ export default function MainDashboard() {
         to,
       );
       const totalSpent = filtered.reduce(
-        (s, d) => s + rawSpendOf(d),
+        (s, d) => s + parseFloat(d.spend || 0),
         0,
       );
       const avgCPL =
@@ -1169,30 +1099,42 @@ export default function MainDashboard() {
           : null;
       // ─────────────────────────────────────────────────────────────────────
 
-      // Campaign status counts are classified by c.status — a campaign's
-      // active/paused/completed state is NOT date-dependent, so the date range
-      // must not drive it. The old range path counted "active" as "had spend or
-      // leads in range", which mislabelled a now-paused campaign that spent
-      // earlier in the range as active (e.g. DholeraEvent: 11 paused → 11 active).
-      // Same rule as deriveProjectStatuses: live = not paused and not completed.
-      const activeCampaigns = campaigns.filter(
-        (c) => c.status !== "paused" && c.status !== "completed",
-      ).length;
-      const completedCampaigns = campaigns.filter(
-        (c) => c.status === "completed",
-      ).length;
-      const pausedCampaigns = campaigns.filter(
-        (c) => c.status === "paused",
-      ).length;
+      let activeCampaigns, pausedCampaigns, completedCampaigns;
+      if (!from || !to) {
+        activeCampaigns = project.activeCampaigns ?? 0;
+        completedCampaigns = project.completedCampaigns ?? 0;
+        pausedCampaigns = project.pausedCampaigns ?? 0;
+      } else {
+        // Completed campaigns are tracked on their own — never as active/paused.
+        const completedIds = new Set(
+          campaigns.filter((c) => c.status === "completed").map((c) => c.id),
+        );
+        const activeCampaignIds = new Set(
+          filtered
+            .filter((d) => d.spend > 0 || d.leads > 0)
+            .map((d) => d.campaignId),
+        );
+        for (const id of completedIds) activeCampaignIds.delete(id);
+        activeCampaigns = activeCampaignIds.size;
+        completedCampaigns = completedIds.size;
+        pausedCampaigns = campaigns.filter(
+          (c) => !activeCampaignIds.has(c.id) && !completedIds.has(c.id),
+        ).length;
+      }
+
+      // Synthetic/extra leads for the CLIENT total come from the backend-
+      // computed campaign.extra_leads (client-accessible, authoritative, matches
+      // billing) — NOT the admin-only manual-batches endpoint.
+      const extraFromCampaigns = campaigns.reduce(
+        (s, c) => s + Number(c.extra_leads ?? 0),
+        0,
+      );
 
       result[project.id] = {
-        // Total Leads = Σ leads across the in-range bulk rows. For CLIENTS this
-        // is already INCLUSIVE of synthetic leads (the bulk endpoint merges them
-        // into normal rows, and the standalone is_manual row is now counted in
-        // `insights`), so we must NOT add campaign.extra_leads on top — doing so
-        // double-counted the merged portion (108 → 122). Admin is raw/exclusive
-        // and shows synthetic separately in its own Extra Leads column.
-        totalLeads,
+        // Admin sees real leads here (synthetic in its own "Extra Leads"
+        // column, sourced from manualBatches). Clients have no such column, so
+        // synthetic leads are folded into Total Leads via campaign.extra_leads.
+        totalLeads: isAdmin() ? totalLeads : totalLeads + extraFromCampaigns,
         extraLeads,
         totalSpent,
         avgCPL,
@@ -1515,7 +1457,7 @@ export default function MainDashboard() {
         reach += Number(d.reach || 0);
         clicks += Number(d.clicks || 0);
         leads += Number(d.leads || 0);
-        spend += rawSpendOf(d);
+        spend += parseFloat(d.spend || 0);
       }
     }
 
@@ -1949,17 +1891,6 @@ export default function MainDashboard() {
           Clear
         </button>
       </div>
-
-      {/* Client-level AI insight (admin + Tier 1 only; self-gates on canUseAI).
-          Only rendered when a specific client is in context — its narrative
-          summarizes ALL of that client's campaigns for the selected range. */}
-      <Show when={selectedClientNomenId()}>
-        <ClientAIInsightButton
-          clientId={selectedClientNomenId()}
-          startDate={fromDate()}
-          endDate={toDate()}
-        />
-      </Show>
 
       {/* ════════ HERO LEDGER ════════
           Replaces the two KPI card rows; every old metric is mapped here:
@@ -2609,9 +2540,9 @@ export default function MainDashboard() {
             </tbody>
             <tfoot class="bg-[#F8FAFC] dark:bg-gray-800 font-semibold text-gray-700 dark:text-white border-t-2 border-[#D4DDE9] dark:border-gray-600">
               <tr class="[&_td]:text-center [&_td]:px-6 [&_td]:py-3">
-                <td class="md:sticky md:left-0 md:z-20 bg-[#F8FAFC] dark:bg-gray-800"></td>
+                <td class="sticky left-0 bg-[#F8FAFC] dark:bg-gray-800 z-20"></td>
 
-                <td class="md:sticky md:left-[57px] md:z-20 bg-[#F8FAFC] dark:bg-gray-800 text-left text-xs uppercase tracking-wider text-[#54657E] dark:text-gray-300">
+                <td class="sticky left-[57px] bg-[#F8FAFC] dark:bg-gray-800 z-20 text-left text-xs uppercase tracking-wider text-[#54657E] dark:text-gray-300">
                   Total
                 </td>
 
@@ -3036,22 +2967,25 @@ export default function MainDashboard() {
             class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 mt-5"
             classList={{ "opacity-50": !funnelStats().hasData }}
           >
-            {funnelCells().map((f) => (
-              <div class="py-3 lg:py-0 lg:px-5 border-t lg:border-t-0 lg:border-l border-[#E2E8F1] dark:border-gray-700 first:border-t-0 first:border-l-0 first:pl-0 flex lg:block items-center justify-between gap-3">
-                {/* Label — with subtext stacked beneath on mobile */}
-                <div class="min-w-0">
+            {funnelCells().map((f, i) => (
+              <div
+                class={
+                  "py-3 lg:py-0 lg:px-5 border-t lg:border-t-0 lg:border-l border-[#E2E8F1] dark:border-gray-700 first:border-t-0 first:border-l-0 first:pl-0 flex lg:block items-center justify-between gap-3" +
+                  (i === 0 ? "" : "")
+                }
+              >
+                <div>
                   <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
                     {f.l}
                   </p>
-                  <p class="lg:hidden text-xs text-[#54657E] dark:text-gray-400 mt-0.5">
+                  <p class="hidden lg:block text-xs text-[#54657E] dark:text-gray-400 mt-1 order-3">
                     {f.s}
                   </p>
                 </div>
-                <p class="flex-none text-right lg:text-left text-xl sm:text-2xl font-bold text-[#14233A] dark:text-white lg:mt-1">
+                <p class="text-2xl font-bold text-[#14233A] dark:text-white lg:mt-1">
                   {f.v}
                 </p>
-                {/* Subtext — sits under the value on desktop */}
-                <p class="hidden lg:block text-xs text-[#54657E] dark:text-gray-400 mt-1">
+                <p class="lg:hidden text-xs text-[#54657E] dark:text-gray-400">
                   {f.s}
                 </p>
               </div>
