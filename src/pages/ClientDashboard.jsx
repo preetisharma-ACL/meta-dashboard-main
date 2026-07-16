@@ -43,6 +43,7 @@ import { fetchProjects, fetchManualBatches } from "../services/dashboard";
 import { fetchCampaigns } from "../services/campaigns";
 import { fetchBulkCampaignInsights } from "../services/campaigns";
 import { fetchAllCampaigns } from "../services/campaigns";
+import { fetchAllAdminClients } from "./admin/services/fetchClients";
 import Avatar from "../components/common/Avatar";
 import CountUp from "../components/CountUp";
 import ClientAIInsightButton from "../components/ClientAIInsightButton";
@@ -86,8 +87,77 @@ const SHOW_PROPOSED_SECTIONS = true;
 // Display thresholds for the "Needs attention" rules (presentation only).
 const HOT_CPL_RATIO = 1.4; // CPL > 140% of portfolio average → "running hot"
 
+// A client route is "/:client-nomen-name" where the slug is the raw nomen
+// lowercased with runs of whitespace collapsed to "-" (see Clients.jsx's
+// handleClientDashboard). slugify() reproduces that transform so a stored nomen
+// can be matched against the slug in the URL.
+const slugify = (name) =>
+  String(name ?? "")
+    .toLowerCase()
+    .replace(/\s+/g, "-");
+
+// Reconcile localStorage.selectedClientNomen to the client named in the URL.
+// The whole dashboard — the projects list (fetchProjects), manual batches, AND
+// the campaign sweep's client_nomen scope — keys off this single localStorage
+// value. Clicking a client in the Clients screen sets it before navigating, but
+// a direct URL / fresh tab (never clicked through) leaves it UNSET, and editing
+// the address bar from one client to another leaves it STALE. Either way the
+// dashboard would render the wrong client — or, when unset, sweep EVERY client
+// in the org (starving the hero ledger for minutes). Resolve the slug back to
+// the raw nomen via the admin roster and write it before any scoped load fires.
+//
+// `routeSlug` MUST be the router's own :client-nomen-name param (see callers) —
+// NOT a value parsed out of location.pathname. All ~35 routes are siblings under
+// one layout, so string-parsing the pathname treated static routes (/clients,
+// /billing, /my-work, …) as client nomens and hard-errored on them. A router
+// param only carries a value when the dynamic "/:client-nomen-name" route matched,
+// so it is undefined on every static route and on "/" — exactly the distinction
+// we need, and it never needs a route-name exclusion list kept in sync.
+//
+// Returns { ok, changed }: ok=false when the slug matches no client; changed=true
+// when localStorage was actually rewritten (so callers must bust the cache).
+const ensureClientContextFromRoute = async (routeSlug) => {
+  const auth = JSON.parse(localStorage.getItem("auth") || "{}");
+  // Only admins carry a switchable client context; real client logins are
+  // scoped server-side by their own nomen and never touch this key.
+  if (auth?.role !== "admin") return { ok: true, changed: false };
+
+  // Not the dynamic client route (a static route, or "/") → nothing to reconcile.
+  if (!routeSlug) return { ok: true, changed: false };
+
+  const stored = localStorage.getItem("selectedClientNomen");
+  // Fast path: localStorage already names the client in the URL → no roster
+  // fetch, no change. This is the common click-through / reload case.
+  if (stored && slugify(stored) === routeSlug) {
+    return { ok: true, changed: false };
+  }
+
+  // Slow path (unset or stale): resolve the slug via the admin roster.
+  try {
+    const roster = await fetchAllAdminClients();
+    const match = roster.find((c) => slugify(c.client_nomen_name) === routeSlug);
+    if (!match) {
+      console.warn(`ClientDashboard: no client matches route slug "${routeSlug}"`);
+      return { ok: false, changed: false, reason: "not-found" };
+    }
+    localStorage.setItem("selectedClientNomen", match.client_nomen_name);
+    localStorage.setItem("selectedClientNomenId", match.client_nomen);
+    localStorage.setItem("selectedClientName", match.organization_name ?? "");
+    return { ok: true, changed: true };
+  } catch (err) {
+    console.error("ClientDashboard: failed to resolve client from route", err);
+    return { ok: false, changed: false, reason: "error" };
+  }
+};
+
 export default function MainDashboard() {
   const [statusFilter, setStatusFilter] = createSignal("all");
+  // Set when an admin lands on a client route whose slug resolves to no client
+  // (typo'd / renamed / removed) or the roster lookup fails. Gates the whole
+  // dashboard behind a "client not found" state so a stale-cached client's
+  // numbers never render under the wrong URL. Shape: { type: "not-found"|"error",
+  // slug } or null. See ensureClientContextFromRoute.
+  const [clientRouteError, setClientRouteError] = createSignal(null);
   const [searchText, setSearchText] = createSignal("");
   const [selectedColumns, setSelectedColumns] = createSignal([]);
   const [sortType, setSortType] = createSignal("");
@@ -191,25 +261,16 @@ export default function MainDashboard() {
   createEffect(
     on(
       () => location.pathname,
-      (pathname, prevPathname) => {
+      async (pathname, prevPathname) => {
         // First run is handled by onMount — skip to avoid a double load.
         if (prevPathname === undefined) return;
 
         const auth = JSON.parse(localStorage.getItem("auth") || "{}");
-        if (auth?.role !== "admin" || pathname !== "/") return;
+        if (auth?.role !== "admin") return;
 
-        const wasViewingClient = localStorage.getItem("selectedClientNomenId");
-
-        // Clear any selected-client context so only admin's own data is used.
-        localStorage.removeItem("selectedClientNomen");
-        localStorage.removeItem("selectedClientNomenId");
-        localStorage.removeItem("selectedClientName");
-
-        // Only bust cache + reload if we were actually viewing a client,
-        // otherwise leave the already-loaded admin dashboard untouched.
-        if (wasViewingClient) {
-          // Cancel the client's still-in-flight loads so they can't overwrite
-          // the admin data we're about to fetch.
+        const bustAndReload = () => {
+          // Cancel any still-in-flight loads so they can't overwrite the data
+          // we're about to fetch.
           bumpLoadToken();
 
           setProjectsCache("lastFetched", 0);
@@ -219,18 +280,70 @@ export default function MainDashboard() {
           setProjectsCache("data", []);
 
           loadData(1);
-          if (auth?.role === "admin") {
-            loadManualBatches();
-          }
+          loadManualBatches();
           loadAllProjects();
+        };
+
+        // ── Back to admin home ("/") ──
+        if (pathname === "/") {
+          setClientRouteError(null); // leaving any not-found / client state behind
+
+          // Clear any selected-client context so only admin's own data is used.
+          localStorage.removeItem("selectedClientNomen");
+          localStorage.removeItem("selectedClientNomenId");
+          localStorage.removeItem("selectedClientName");
+
+          // Always bust the client cache and reload admin data. This effect fires
+          // ONLY when navigating to "/" FROM a client route within the reused
+          // instance (arriving from another page runs onMount, whose first effect
+          // run is skipped) — so we were always previewing a client or its
+          // not-found state. Gating on wasViewingClient/hadError previously left
+          // the previous client's projects on screen once the context had already
+          // been cleared (e.g. by the not-found branch): one client's data under
+          // another client's page, the worst failure mode here.
+          bustAndReload();
+          return;
         }
+
+        // ── Navigated somewhere else within the reused instance. Ask the router
+        // whether THIS is the dynamic client route: params carries a
+        // client-nomen-name ONLY on "/:client-nomen-name", never on the static
+        // sibling routes (/clients, /billing, /my-work, …) this component doesn't
+        // own. Bailing on those is what stops the resolver treating the literal
+        // "clients"/"billing"/etc. as a client nomen and hard-erroring on them.
+        // onMount does NOT re-run across "/"↔client nav, so we reconcile here and
+        // reload only when the context actually changed. ──
+        const routeSlug = params["client-nomen-name"];
+        if (!routeSlug) return; // static route / not a client route → do nothing
+        const ctx = await ensureClientContextFromRoute(routeSlug);
+        if (!ctx.ok) {
+          // Unknown/unresolvable slug — clear the cache AND the stale selected-
+          // client context so no other client's data shows under this URL or
+          // after exiting, then surface the "client not found" state.
+          bumpLoadToken();
+          localStorage.removeItem("selectedClientNomen");
+          localStorage.removeItem("selectedClientNomenId");
+          localStorage.removeItem("selectedClientName");
+          setProjectsCache("lastFetched", 0);
+          setProjectsCache("lastFetchedAll", 0);
+          setProjectsCache("allProjects", []);
+          setProjectsCache("insightsMap", {});
+          setProjectsCache("data", []);
+          setClientRouteError({
+            type: ctx.reason ?? "not-found",
+            slug: routeSlug,
+          });
+          return;
+        }
+        setClientRouteError(null);
+        if (ctx.changed) bustAndReload();
       },
     ),
   );
 
   // Update onMount to read the role
   // MainDashboard.jsx — update onMount
-  onMount(() => {
+  onMount(async () => {
     // New mount → cancel any loads still in flight from a previous context.
     bumpLoadToken();
 
@@ -256,6 +369,45 @@ export default function MainDashboard() {
     }
 
     setUserRole(auth?.role ?? "client");
+
+    // Reconcile the client context from the URL BEFORE any scoped load fires, so
+    // a direct-URL / fresh-tab visit (localStorage never set) or an edited
+    // address bar (stale) doesn't sweep the wrong client — or every client in
+    // the org. When it rewrites the context, the persisted cache belongs to the
+    // previous client, so drop it and re-fetch from scratch.
+    // Ask the router which client this route is, not the pathname string.
+    const routeSlug = params["client-nomen-name"];
+    const ctx = await ensureClientContextFromRoute(routeSlug);
+    if (!ctx.ok) {
+      // Slug resolved to no client (or the lookup failed). Do NOT fall through
+      // and render whatever client is still cached under this URL — clear the
+      // cache AND the stale selected-client context (so nothing renders "as" a
+      // client behind the gate or after "Back to dashboard"), then show the
+      // "client not found" state.
+      bumpLoadToken();
+      localStorage.removeItem("selectedClientNomen");
+      localStorage.removeItem("selectedClientNomenId");
+      localStorage.removeItem("selectedClientName");
+      setProjectsCache("lastFetched", 0);
+      setProjectsCache("lastFetchedAll", 0);
+      setProjectsCache("allProjects", []);
+      setProjectsCache("insightsMap", {});
+      setProjectsCache("data", []);
+      setClientRouteError({
+        type: ctx.reason ?? "not-found",
+        slug: routeSlug,
+      });
+      return;
+    }
+    setClientRouteError(null);
+    if (ctx.changed) {
+      bumpLoadToken();
+      setProjectsCache("lastFetched", 0);
+      setProjectsCache("lastFetchedAll", 0);
+      setProjectsCache("allProjects", []);
+      setProjectsCache("insightsMap", {});
+      setProjectsCache("data", []);
+    }
 
     loadData(1);
     if (auth?.role === "admin") {
@@ -355,7 +507,10 @@ export default function MainDashboard() {
         activeCampaigns: 0,
         completedCampaigns: 0,
         pausedCampaigns: 0,
-        status: item.status,
+        // Seed status to null (skeleton) like the counts above — the backend's
+        // Project.status is stale (says "active" while every campaign is paused).
+        // deriveProjectStatuses fills it from the real per-campaign statuses.
+        status: null,
         clientRequest: item.client_request ?? null,
         priority: item.priority_label ?? "Standard",
         projectControl: item.project_control ?? "Live",
@@ -420,7 +575,10 @@ export default function MainDashboard() {
           activeCampaigns: 0,
           completedCampaigns: 0,
           pausedCampaigns: 0,
-          status: item.status,
+          // Seed status to null (skeleton) like the counts — the backend's stale
+          // Project.status is filled in by deriveProjectStatuses from real
+          // per-campaign statuses.
+          status: null,
           cpl: parseFloat(item.cpl) || 0,
           modifiedCpl: item.modified_cpl ?? null,
           spent: parseFloat(item.total_spend) || 0,
@@ -1879,6 +2037,71 @@ export default function MainDashboard() {
   );
 
   return (
+    <Show
+      when={!clientRouteError()}
+      fallback={
+        <section class="w-full px-4 sm:px-6 lg:px-8 py-16 bg-gray-50 dark:bg-gray-900 min-h-screen flex items-center justify-center">
+          <div class="max-w-md w-full text-center bg-white dark:bg-gray-800 rounded-2xl shadow-sm ring-1 ring-gray-200 dark:ring-gray-700 px-8 py-10">
+            <div class="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-[#AC2334]/10 text-[#AC2334]">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="26"
+                height="26"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                <line x1="12" y1="9" x2="12" y2="13" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+            </div>
+            <h2 class="text-xl font-bold text-[#14233A] dark:text-white mb-2">
+              {clientRouteError()?.type === "error"
+                ? "Couldn't load this client"
+                : "Client not found"}
+            </h2>
+            <p class="text-sm text-[#54657E] dark:text-gray-400 mb-6">
+              <Show
+                when={clientRouteError()?.type === "error"}
+                fallback={
+                  <>
+                    No client matches{" "}
+                    <span class="font-semibold text-[#14233A] dark:text-gray-200">
+                      "{clientRouteError()?.slug}"
+                    </span>
+                    . It may have been renamed or removed.
+                  </>
+                }
+              >
+                We couldn't load this client's details right now. Please check
+                your connection and try again.
+              </Show>
+            </p>
+            <div class="flex items-center justify-center gap-3">
+              <A
+                href="/"
+                class="inline-flex items-center justify-center rounded-lg bg-[#14233A] px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-[#1d3255] transition-colors"
+              >
+                Back to dashboard
+              </A>
+              <Show when={clientRouteError()?.type === "error"}>
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  class="inline-flex items-center justify-center rounded-lg ring-1 ring-gray-300 dark:ring-gray-600 px-5 py-2.5 text-sm font-medium text-[#14233A] dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                >
+                  Try again
+                </button>
+              </Show>
+            </div>
+          </div>
+        </section>
+      }
+    >
     <section class="w-full px-4 sm:px-6 lg:px-8 py-6 bg-gray-50 dark:bg-gray-900 min-h-screen">
       {/* Section Header */}
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-6">
@@ -2472,28 +2695,32 @@ export default function MainDashboard() {
                         <span
                           class={
                             "inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold uppercase tracking-wide rounded-full " +
-                            (project.status === "active"
-                              ? "bg-[#E9F7F1] text-[#15966A] dark:bg-green-900/30 dark:text-green-300"
-                              : project.status === "completed"
-                                ? "bg-[#ECF2FA] text-[#3E6FB0] dark:bg-blue-900/30 dark:text-blue-300"
-                                : project.status === "paused"
-                                  ? "bg-[#FBF3E2] text-[#B07A14] dark:bg-yellow-900/30 dark:text-yellow-300"
-                                  : "bg-[#FBEEF0] text-[#AC2334] dark:bg-red-900/30 dark:text-red-300")
+                            (!project.status
+                              ? "bg-gray-100 text-gray-400 dark:bg-gray-700 dark:text-gray-400 animate-pulse"
+                              : project.status === "active"
+                                ? "bg-[#E9F7F1] text-[#15966A] dark:bg-green-900/30 dark:text-green-300"
+                                : project.status === "completed"
+                                  ? "bg-[#ECF2FA] text-[#3E6FB0] dark:bg-blue-900/30 dark:text-blue-300"
+                                  : project.status === "paused"
+                                    ? "bg-[#FBF3E2] text-[#B07A14] dark:bg-yellow-900/30 dark:text-yellow-300"
+                                    : "bg-[#FBEEF0] text-[#AC2334] dark:bg-red-900/30 dark:text-red-300")
                           }
                         >
                           <span
                             class={
                               "w-1.5 h-1.5 rounded-full " +
-                              (project.status === "active"
-                                ? "bg-[#15966A]"
-                                : project.status === "completed"
-                                  ? "bg-[#3E6FB0]"
-                                  : project.status === "paused"
-                                    ? "bg-[#B07A14]"
-                                    : "bg-[#AC2334]")
+                              (!project.status
+                                ? "bg-gray-300 dark:bg-gray-500"
+                                : project.status === "active"
+                                  ? "bg-[#15966A]"
+                                  : project.status === "completed"
+                                    ? "bg-[#3E6FB0]"
+                                    : project.status === "paused"
+                                      ? "bg-[#B07A14]"
+                                      : "bg-[#AC2334]")
                             }
                           ></span>
-                          {project.status}
+                          {project.status ?? "—"}
                         </span>
                       </td>
 
@@ -3060,5 +3287,6 @@ export default function MainDashboard() {
         </div>
       </Show>
     </section>
+    </Show>
   );
 }
