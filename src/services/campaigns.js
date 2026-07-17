@@ -3,7 +3,13 @@ import { api } from "../api/api";
 // campaigns.js — add this helper at the top
 const getClientNomen = () => {
   const auth = JSON.parse(localStorage.getItem("auth") || "{}");
-  if (auth?.role === "admin") {
+  // Admins AND campaign managers view clients through a switchable context, so
+  // both scope off selectedClientNomen. A CM is not a client — auth.clientNomen
+  // is null for them — so gating this on admin alone sent no client_nomen at all
+  // and the request came back with the CM's whole book of business (every client
+  // they manage) under one client's page. A CM passing client_nomen still can't
+  // widen past their own scope: the backend intersects the two.
+  if (auth?.role === "admin" || auth?.role === "campaign_manager") {
     return localStorage.getItem("selectedClientNomen") || null;
   }
   // Real client users: read from their own auth (ensure login sets this)
