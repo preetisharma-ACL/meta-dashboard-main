@@ -117,6 +117,10 @@ export default function DailyReports() {
       localStorage.setItem("selectedClientNomen", c.client_nomen_name);
     if (c.client_nomen != null)
       localStorage.setItem("selectedClientNomenId", String(c.client_nomen));
+    // Client PK (c.id) — what as_client_id expects, and NOT the nomen id above
+    // (they differ for all but one client). Keeps the ledger / ProjectDetails
+    // preview-as-client scoping working off the same selection.
+    if (c.id != null) localStorage.setItem("selectedClientId", String(c.id));
     // NOTE: loading is triggered by the ready() effect below (needs a date range
     // too), NOT here — picking a client alone doesn't load data (FIX 2).
   };

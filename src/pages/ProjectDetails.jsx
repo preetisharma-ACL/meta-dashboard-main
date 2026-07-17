@@ -269,10 +269,11 @@ export default function ProjectDetails() {
   // the ledger + DailyReports). Null for a client's own login and for an admin
   // viewing a project outside a selected-client context, where the call falls back
   // to the normal client_nomen scoping.
+  // selectedClientId is the Client PK. It is NOT selectedClientNomenId (the nomen
+  // id) — those differ for all but one client, and passing a nomen id here 404s
+  // "Target client not found or inactive" → 0 leads / ₹0.
   const previewClientId = () =>
-    userRole() === "admin"
-      ? localStorage.getItem("selectedClientNomenId")
-      : null;
+    userRole() === "admin" ? localStorage.getItem("selectedClientId") : null;
 
   // ── Write helper — merges into this project's cache slot ────────────────────
   const setProjectCache = (patch) =>

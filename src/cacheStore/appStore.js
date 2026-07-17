@@ -128,6 +128,7 @@ export const setProjectDetailsCache = (...args) => {
 export const clearClientDashboardContext = () => {
   localStorage.removeItem("selectedClientNomen");
   localStorage.removeItem("selectedClientNomenId");
+  localStorage.removeItem("selectedClientId");
   localStorage.removeItem("selectedClientName");
 
   // Switching context starts a fresh view — drop any persisted date filter.

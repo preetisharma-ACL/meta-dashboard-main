@@ -379,7 +379,10 @@ export default function Clients() {
 
   const handleClientDashboard = (client) => {
     localStorage.setItem("selectedClientNomen", client.client_nomen_name);
-    localStorage.setItem("selectedClientNomenId", client.client_nomen);
+    localStorage.setItem("selectedClientNomenId", client.client_nomen); // nomen id
+    // Client PK — what as_client_id expects. Distinct from the nomen id above for
+    // all but one client, and the backend 404s if handed a nomen id.
+    localStorage.setItem("selectedClientId", String(client.id));
     localStorage.setItem("selectedClientName", client.organization_name);
 
     setProjectsCache({

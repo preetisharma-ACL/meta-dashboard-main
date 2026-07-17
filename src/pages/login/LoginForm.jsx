@@ -19,6 +19,7 @@ export const handleLogout = () => {
   localStorage.removeItem("selectedClientNomen");
 
   localStorage.removeItem("selectedClientNomenId");
+  localStorage.removeItem("selectedClientId");
 
   localStorage.removeItem("selectedClientName");
   window.location.href = "/login";

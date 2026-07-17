@@ -126,9 +126,16 @@ const ensureClientContextFromRoute = async (routeSlug) => {
   if (!routeSlug) return { ok: true, changed: false };
 
   const stored = localStorage.getItem("selectedClientNomen");
-  // Fast path: localStorage already names the client in the URL → no roster
-  // fetch, no change. This is the common click-through / reload case.
-  if (stored && slugify(stored) === routeSlug) {
+  // Fast path: localStorage already names the client in the URL AND carries its
+  // Client PK → no roster fetch, no change. The PK check matters: a session from
+  // before selectedClientId existed (or any partial write) must fall through to
+  // the roster so the PK is backfilled — otherwise as_client_id goes missing and
+  // the ledger silently loses its preview-as-client scoping.
+  if (
+    stored &&
+    slugify(stored) === routeSlug &&
+    localStorage.getItem("selectedClientId")
+  ) {
     return { ok: true, changed: false };
   }
 
@@ -141,7 +148,8 @@ const ensureClientContextFromRoute = async (routeSlug) => {
       return { ok: false, changed: false, reason: "not-found" };
     }
     localStorage.setItem("selectedClientNomen", match.client_nomen_name);
-    localStorage.setItem("selectedClientNomenId", match.client_nomen);
+    localStorage.setItem("selectedClientNomenId", match.client_nomen); // nomen id
+    localStorage.setItem("selectedClientId", String(match.id)); // Client PK
     localStorage.setItem("selectedClientName", match.organization_name ?? "");
     return { ok: true, changed: true };
   } catch (err) {
@@ -233,6 +241,16 @@ export default function MainDashboard() {
     return localStorage.getItem("selectedClientNomenId");
   };
 
+  // Client PK — what as_client_id ("preview as client") expects. DISTINCT from the
+  // nomen id above: they differ for all but one client (AnandSingh is PK 45 /
+  // nomen 168; only Navdeep happens to have PK == nomen == 11, which is why this
+  // slipped through testing). Sending a nomen id 404s "Target client not found or
+  // inactive" → 0 leads / ₹0. Nomen id → AI-insight + CM endpoints; PK → as_client_id.
+  const selectedClientId = () => {
+    location.pathname; // track route changes
+    return localStorage.getItem("selectedClientId");
+  };
+
   const { isRetainer, iscpl, ishybrid, isAdmin } = clientRole();
   const { handleSort, getSortIcon, sortData, resetSort } = useColumnSort();
 
@@ -241,16 +259,16 @@ export default function MainDashboard() {
 
   // ── Gate for the campaign/insights sweep (mirrors DailyReports' ready()) ─────
   // When an admin is "Viewing Client: X", the ledger's leads/spend MUST be
-  // scoped to that client's Client PK (selectedClientNomenId). Firing the sweep
-  // before the PK is resolved sends an unscoped bulk-insights call that sums
-  // EVERY client's spend on shared/multi-client projects — the all-clients bug.
+  // scoped to that client's Client PK (selectedClientId). Firing the sweep before
+  // the PK is resolved sends an unscoped bulk-insights call that sums EVERY
+  // client's spend on shared/multi-client projects — the all-clients bug.
   // This is true only while previewing a client: the admin's own "/" dashboard
   // (no client selected) is meant to be all-clients, and real client logins are
   // force-scoped server-side by their own nomen — so both return ready = true.
   const clientContextReady = () => {
     if (userRole() !== "admin") return true; // clients are server-scoped
     if (location.pathname === "/") return true; // admin's own dashboard
-    return !!selectedClientNomenId(); // previewing a client → need the PK
+    return !!selectedClientId(); // previewing a client → need the Client PK
   };
 
   // ── Reactively clear client context when navigating back to the Main Dashboard ──
@@ -291,6 +309,7 @@ export default function MainDashboard() {
           // Clear any selected-client context so only admin's own data is used.
           localStorage.removeItem("selectedClientNomen");
           localStorage.removeItem("selectedClientNomenId");
+          localStorage.removeItem("selectedClientId");
           localStorage.removeItem("selectedClientName");
 
           // Always bust the client cache and reload admin data. This effect fires
@@ -323,6 +342,7 @@ export default function MainDashboard() {
           bumpLoadToken();
           localStorage.removeItem("selectedClientNomen");
           localStorage.removeItem("selectedClientNomenId");
+          localStorage.removeItem("selectedClientId");
           localStorage.removeItem("selectedClientName");
           setProjectsCache("lastFetched", 0);
           setProjectsCache("lastFetchedAll", 0);
@@ -355,6 +375,7 @@ export default function MainDashboard() {
 
       localStorage.removeItem("selectedClientNomen");
       localStorage.removeItem("selectedClientNomenId");
+      localStorage.removeItem("selectedClientId");
       localStorage.removeItem("selectedClientName");
 
       // ✅ If admin was viewing a client, bust the cache so admin's own
@@ -387,6 +408,7 @@ export default function MainDashboard() {
       bumpLoadToken();
       localStorage.removeItem("selectedClientNomen");
       localStorage.removeItem("selectedClientNomenId");
+      localStorage.removeItem("selectedClientId");
       localStorage.removeItem("selectedClientName");
       setProjectsCache("lastFetched", 0);
       setProjectsCache("lastFetchedAll", 0);
@@ -1080,7 +1102,7 @@ export default function MainDashboard() {
         // columns read spend_raw via rawSpendOf(), so the displayed figure is
         // unchanged even though `spend` now carries the markup.
         const bulk = await fetchBulkCampaignInsights(allCampaignIds, {
-          asClientId: selectedClientNomenId(),
+          asClientId: selectedClientId(), // Client PK — a nomen id 404s here
         });
         const rows = bulk.data || [];
 
