@@ -52,9 +52,23 @@ export const startFundingRefresh = async () => {
 //     accounts_without_data }
 // per_account[].added is null when an account lacks snapshot history for that day
 // (show "no data"/"—", never 0). Backend already sorts most-added first.
-export const fetchFundsAdded = async (date) => {
+//
+// clientTypes (optional) — same param, parser and default as the accounts
+// endpoint above: ?client_types=cpl,hybrid, omit to let the backend default to
+// cpl,hybrid. meta.client_types echoes the applied filter.
+//
+// NOTE: this endpoint filters ACCOUNTS by the client types they serve, then
+// reports each one's wallet-balance delta in full. A balance delta is money
+// loaded into the account, not into a campaign, so it can't be split by client
+// type — an account serving both a retainer and a CPL/hybrid client reports its
+// whole amount. That's why the totals here won't tie out with Account Funding
+// (which filters campaigns before aggregating). Inherent, not a bug.
+export const fetchFundsAdded = async (date, clientTypes) => {
   let url = `/cm/funding/funds-added/?1=1`;
   if (date) url += `&date=${encodeURIComponent(date)}`;
+  if (Array.isArray(clientTypes) && clientTypes.length) {
+    url += `&client_types=${encodeURIComponent(clientTypes.join(","))}`;
+  }
   url += scopeQuery({ supportsOwn: true });
 
   const res = await api(url, { method: "GET" });

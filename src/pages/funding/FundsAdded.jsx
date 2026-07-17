@@ -3,6 +3,10 @@ import { fetchFundsAdded } from "../../services/funding";
 import { scopeKey } from "../../stores/cmScope";
 import Avatar from "../../components/common/Avatar";
 import useColumnSort from "../../components/Columnsorting";
+import ClientTypeFilter, {
+  DEFAULT_CLIENT_TYPES,
+  toggleClientTypeIn,
+} from "../../components/funding/ClientTypeFilter";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // "Funds Added by Date" — a SEPARATE page (sidebar submenu under Accounts &
@@ -94,14 +98,25 @@ function AccountIdPill(props) {
   );
 }
 
+// Wallet balance deltas can't be attributed to a client type the way campaign
+// spend can, so a mixed account reports its full amount under any of its types.
+const MIXED_ACCOUNT_CAVEAT =
+  "This page reports a wallet balance delta — the money went into the account, not a campaign, so it can't be split by client type. An account serving both a retainer and CPL/hybrid clients shows its full amount, which is why these totals won't tie out with Account Funding on those accounts.";
+
 export default function FundsAdded() {
   const today = todayYMD();
   const [date, setDate] = createSignal(today);
+  const [clientTypes, setClientTypes] = createSignal(DEFAULT_CLIENT_TYPES);
 
-  // Refetch on scope change (switch-mode) OR when the picked date changes.
+  const toggleClientType = (key) =>
+    setClientTypes((prev) => toggleClientTypeIn(prev, key));
+
+  // Refetch on scope change (switch-mode), on a new date, OR when the
+  // client-type filter changes — the backend re-scopes which accounts are in
+  // the set and recomputes total_added over them.
   const [funds] = createResource(
-    () => ({ scope: scopeKey(), date: date() }),
-    async (s) => (await fetchFundsAdded(s.date)) ?? null,
+    () => ({ scope: scopeKey(), date: date(), types: clientTypes() }),
+    async (s) => (await fetchFundsAdded(s.date, s.types)) ?? null,
   );
 
   const perAccount = () =>
@@ -230,6 +245,13 @@ export default function FundsAdded() {
           />
         </div>
       </div>
+
+      {/* ════ CLIENT-TYPE FILTER (same chips + default as Account Funding) ════ */}
+      <ClientTypeFilter
+        value={clientTypes()}
+        onToggle={toggleClientType}
+        caveat={MIXED_ACCOUNT_CAVEAT}
+      />
 
       {/* Error */}
       <Show when={funds.error}>
