@@ -1093,7 +1093,7 @@ export default function MainDashboard() {
     // 4. ONE bulk insights call for all campaigns (raw, date-filtered later)
     if (allCampaignIds.length > 0) {
       try {
-        // Admin/CM previewing a client: send the Client PK as as_client_id so the
+        // ADMIN previewing a client: send the Client PK as as_client_id so the
         // backend enters "preview as client" mode — it enables the Phase-4 history
         // filter (correct per-day attribution, drops any foreign campaign's rows)
         // and returns both `spend` (marked-up) and `spend_raw` (Meta charge). Null
@@ -1101,8 +1101,14 @@ export default function MainDashboard() {
         // where the call falls back to the normal client_nomen scoping. Raw
         // columns read spend_raw via rawSpendOf(), so the displayed figure is
         // unchanged even though `spend` now carries the markup.
+        // NEVER for a CM: only the admin roster carries the Client PK, so any
+        // selectedClientId a CM session holds is a nomen id the backend 403s
+        // ("This client is not in your scope") → silent zeros. CMs are already
+        // server-scoped, so omitting it returns the correct rows. The isAdmin()
+        // guard is defence in depth — it keeps poisoned storage off the wire even
+        // though the write site is now admin-gated too.
         const bulk = await fetchBulkCampaignInsights(allCampaignIds, {
-          asClientId: selectedClientId(), // Client PK — a nomen id 404s here
+          asClientId: isAdmin() ? selectedClientId() : null, // PK; nomen id 403s
         });
         const rows = bulk.data || [];
 

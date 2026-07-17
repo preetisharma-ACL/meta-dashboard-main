@@ -82,6 +82,7 @@ const authRole = (() => {
   }
 })();
 const isCampaignManager = () => authRole === "campaign_manager";
+const isAdmin = () => authRole === "admin";
 
 // The admin clients endpoint is 403 for CMs, so CMs are sourced from the
 // CM-scoped hierarchy endpoint instead. That payload is smaller — this maps it
@@ -382,7 +383,11 @@ export default function Clients() {
     localStorage.setItem("selectedClientNomenId", client.client_nomen); // nomen id
     // Client PK — what as_client_id expects. Distinct from the nomen id above for
     // all but one client, and the backend 404s if handed a nomen id.
-    localStorage.setItem("selectedClientId", String(client.id));
+    // Admin only: `client.id` is the Client PK only on the admin roster. For CMs
+    // the rows come from /cm/hierarchy/clients/ via adaptHierarchyClient, whose
+    // `id` is the NOMEN id (66, not PK 6) — writing it here would send a nomen as
+    // as_client_id and 403 "This client is not in your scope" → silent zeros.
+    if (isAdmin()) localStorage.setItem("selectedClientId", String(client.id));
     localStorage.setItem("selectedClientName", client.organization_name);
 
     setProjectsCache({
