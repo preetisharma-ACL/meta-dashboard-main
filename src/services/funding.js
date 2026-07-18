@@ -73,7 +73,7 @@ export const fetchFundsAdded = async (date, clientTypes) => {
 
   const res = await api(url, { method: "GET" });
   applyMeta(res?.meta);
-  return res?.data ?? res ?? null;
+  return { ...res.data, meta: res.meta };
 };
 
 // GET the status of an in-flight refresh. data.status is

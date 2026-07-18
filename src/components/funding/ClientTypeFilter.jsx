@@ -79,7 +79,7 @@ export default function ClientTypeFilter(props) {
         </For>
       </div>
       <span class="text-xs text-[#8593A8] dark:text-gray-500 ml-1">
-        Retainer accounts are client-funded; excluded by default.
+        Retainer spend is client-funded; excluded by default.
       </span>
       <Show when={props.caveat}>
         <span

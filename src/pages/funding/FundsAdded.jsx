@@ -69,13 +69,6 @@ const tbMeta = (t) =>
 const sumMoney = (items, key) =>
   items.reduce((s, b) => s + (parseFloat(b[key]) || 0), 0);
 
-// Per-account "Pending" (unattributed) portion — loads with no spend yet to
-// attribute against. Summed across accounts this drives the total-card note.
-const rowUnattributed = (r) =>
-  (Array.isArray(r.type_breakdown) ? r.type_breakdown : [])
-    .filter((b) => b.client_type === "unattributed")
-    .reduce((s, b) => s + (parseFloat(b.portion) || 0), 0);
-
 // Non-zero-portion breakdown entries (chips/expander omit zero-portion ones).
 const tbEntries = (r) =>
   (Array.isArray(r.type_breakdown) ? r.type_breakdown : []).filter(
@@ -240,11 +233,11 @@ export default function FundsAdded() {
   const named = () => clientTypes().length < 3;
 
   // Pending (unattributed) loaded today — money loaded before any spend, so not
-  // yet attributable to a type. Summed from the per-account breakdown. On all
-  // observed data this equals meta.unattributed_total (which funding.js does not
-  // surface to the component); shown as a note under the total card.
+  // yet attributable to a type. This is a GLOBAL figure from meta: filtered
+  // views drop the rows that carry pending money, so it can't be summed from
+  // per_account. Shown as a note under the total card.
   const unattributedTotal = () =>
-    perAccount().reduce((s, r) => s + rowUnattributed(r), 0);
+    parseFloat(funds()?.meta?.unattributed_total) || 0;
 
   // Display-only epsilon: rows whose `added` is < ₹0.01 are hidden behind a
   // "show zero rows" link. Data is untouched — totals still come from the server.
