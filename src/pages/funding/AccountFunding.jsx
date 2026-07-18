@@ -25,7 +25,7 @@ const REFRESH_COPY = {
   syncingTitle: (name) =>
     name.toLowerCase() === "alok"
       ? "🧘 Patience, Alok! Your money is being loaded..."
-      : `🧘 Patience, ${name.charAt(0).toUpperCase() + name.slice(1)}, it's not your money being loaded.`,
+      : `🧘 Patience, ${name.charAt(0).toUpperCase() + name.slice(1)}, It's not your money, so don't stress—it's just loading. 😄`,
   syncingBody: "Fetching fresh balances from Meta — this takes a few seconds.",
   cooldownTitle: (name) =>
     name.toLowerCase() === "alok"
