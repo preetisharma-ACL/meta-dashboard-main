@@ -1237,6 +1237,36 @@ function ClientQuickSelect(props) {
 function AdAccountQuickSelect(props) {
   const [open, setOpen] = createSignal(false);
   const [q, setQ] = createSignal("");
+  // The panel lives inside an overflow-hidden card, so an absolutely-positioned
+  // menu gets clipped whenever the button is near an edge (right side on one
+  // row, left side when wrapped). We position the menu with FIXED viewport
+  // coordinates computed from the button, clamped to stay fully on screen — so
+  // it never clips regardless of where the button sits.
+  const MENU_W = 300;
+  let btnRef;
+  const [pos, setPos] = createSignal({ left: 0, top: 0 });
+
+  const placeMenu = () => {
+    const r = btnRef?.getBoundingClientRect();
+    if (!r) return;
+    const m = 8;
+    // Keep the menu inside the campaigns panel so it never crosses into the
+    // sidebar (left) or off-screen (right), whatever row the button is on.
+    const panel = btnRef.closest("section")?.getBoundingClientRect();
+    const minLeft = panel ? panel.left + m : m;
+    const maxLeft = Math.min(
+      window.innerWidth - MENU_W - m,
+      panel ? panel.right - MENU_W - m : Infinity,
+    );
+    // Prefer opening rightward from the button; shift left only enough to fit.
+    let left = Math.min(r.left, maxLeft);
+    left = Math.max(left, minLeft);
+    setPos({ left, top: r.bottom + 6 });
+  };
+  const openMenu = () => {
+    placeMenu();
+    setOpen(true);
+  };
 
   const filtered = createMemo(() => {
     const needle = q().trim().toLowerCase();
@@ -1260,7 +1290,8 @@ function AdAccountQuickSelect(props) {
     <div class="relative">
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        ref={btnRef}
+        onClick={() => (open() ? setOpen(false) : openMenu())}
         disabled={(props.accounts ?? []).length === 0}
         aria-expanded={open()}
         class={`inline-flex items-center gap-1.5 h-[35px] px-3 rounded-[9px] border text-[12px] font-semibold max-w-[240px] disabled:opacity-40 disabled:cursor-not-allowed transition-colors ${
@@ -1298,7 +1329,15 @@ function AdAccountQuickSelect(props) {
       <Show when={open()}>
         {/* Click-away backdrop */}
         <div class="fixed inset-0 z-[40]" onClick={() => setOpen(false)} />
-        <div class="absolute right-0 mt-1.5 w-[300px] max-w-[calc(100vw-2rem)] z-[50] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl overflow-hidden">
+        {/* Fixed to the viewport (escapes the card's overflow-hidden clip). */}
+        <div
+          style={{
+            position: "fixed",
+            left: `${pos().left}px`,
+            top: `${pos().top}px`,
+            width: `${MENU_W}px`,
+          }}
+          class="z-[50] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl overflow-hidden">
           <div class="p-2 border-b border-gray-100 dark:border-gray-800">
             <div class="relative">
               <Search class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
