@@ -95,6 +95,217 @@ const prettyYMD = (ymd) => {
     year: "numeric",
   });
 };
+// DD-MM-YYYY, matching the label the native date input used to show.
+const dmy = (ymd) => {
+  const p = ymd?.split("-");
+  return p && p.length === 3 ? `${p[2]}-${p[1]}-${p[0]}` : ymd || "";
+};
+
+// ─── Custom calendar field ────────────────────────────────────────────────────
+// Drop-in replacement for <input type="date"> whose native dropdown can't be
+// themed. Same contract as the native input — props.value is a YMD string,
+// props.max caps the selectable day, props.onChange receives the chosen YMD — so
+// the surrounding date logic is unchanged; only the presentation is redesigned.
+const WEEKDAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
+const MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+const MONTHS_SHORT = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+const ymdParts = (ymd) => {
+  const d = new Date(`${ymd}T00:00:00`);
+  return isFinite(d.getTime())
+    ? { y: d.getFullYear(), m: d.getMonth(), d: d.getDate() }
+    : null;
+};
+
+function DateField(props) {
+  const [open, setOpen] = createSignal(false);
+  const [view, setView] = createSignal(null); // {y, m} month shown in the grid
+
+  const openCal = () => {
+    const s = ymdParts(props.value) ?? ymdParts(props.max) ?? ymdParts(todayYMD());
+    setView({ y: s.y, m: s.m });
+    setOpen(true);
+  };
+  const toggle = () => (open() ? setOpen(false) : openCal());
+
+  // 6-week (42-cell) grid for the viewed month; leading/trailing days spill in
+  // from the adjacent months and render greyed.
+  const grid = createMemo(() => {
+    const v = view();
+    if (!v) return [];
+    // Monday-first: shift Sun(0) to the end of the week.
+    const startDow = (new Date(v.y, v.m, 1).getDay() + 6) % 7;
+    const start = new Date(v.y, v.m, 1 - startDow);
+    return Array.from({ length: 42 }, (_, i) => {
+      const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+      return { ymd: toYMD(d), day: d.getDate(), inMonth: d.getMonth() === v.m };
+    });
+  });
+
+  const stepMonth = (delta) =>
+    setView((v) => {
+      const d = new Date(v.y, v.m + delta, 1);
+      return { y: d.getFullYear(), m: d.getMonth() };
+    });
+  const jumpMonth = (m) => setView((v) => ({ y: v.y, m }));
+
+  const isFuture = (ymd) => props.max && ymd > props.max;
+  const choose = (ymd) => {
+    if (isFuture(ymd)) return;
+    props.onChange?.(ymd);
+    setOpen(false);
+  };
+
+  return (
+    <div class="relative">
+      <button
+        type="button"
+        onClick={toggle}
+        aria-expanded={open()}
+        class={`inline-flex items-center gap-2 rounded-lg border px-3.5 py-2 text-[13px] font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-[#AC2334]/25 ${
+          open()
+            ? "border-[#AC2334] bg-white dark:bg-gray-800 text-[#14233A] dark:text-white ring-2 ring-[#AC2334]/25"
+            : "border-[#E2E8F1] dark:border-gray-700 bg-[#F8FAFC] dark:bg-gray-800 text-[#1A2B45] dark:text-gray-200 hover:border-[#14233A]/40"
+        }`}
+      >
+        <span class="tabular-nums tracking-wide">{dmy(props.value)}</span>
+        <svg
+          class="w-4 h-4 text-[#AC2334]"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <rect x="3" y="4" width="18" height="18" rx="2.5" />
+          <path d="M16 2v4M8 2v4M3 10h18" />
+        </svg>
+      </button>
+
+      <Show when={open()}>
+        {/* Click-away backdrop */}
+        <div class="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+        <div class="absolute right-0 mt-2 z-50 w-[264px] rounded-[20px] bg-[#F4F5FA] dark:bg-gray-800 shadow-[0_18px_40px_-12px_rgba(16,29,49,.28)] ring-1 ring-black/[0.04] dark:ring-white/[0.06]">
+          {/* Card */}
+          <div class="rounded-[20px] bg-white dark:bg-gray-800 shadow-[0_8px_24px_-10px_rgba(16,29,49,.18)] px-4 pt-4 pb-3">
+            {/* Header: month/year + red nav pills */}
+            <div class="flex items-center justify-between mb-2.5">
+              <div class="text-[16px] font-extrabold text-[#14233A] dark:text-white tracking-tight">
+                <Show when={view()}>
+                  {(v) => `${MONTHS[v().m]} ${v().y}`}
+                </Show>
+              </div>
+              <div class="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => stepMonth(-1)}
+                  aria-label="Previous month"
+                  class="w-7 h-7 grid place-items-center rounded-[9px] text-white bg-[#AC2334] hover:bg-[#8f1c2b] shadow-sm shadow-[#AC2334]/30 active:scale-95 transition-all"
+                >
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => stepMonth(1)}
+                  aria-label="Next month"
+                  class="w-7 h-7 grid place-items-center rounded-[9px] text-white bg-[#AC2334] hover:bg-[#8f1c2b] shadow-sm shadow-[#AC2334]/30 active:scale-95 transition-all"
+                >
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6" /></svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="h-px bg-[#EBEEF3] dark:bg-gray-700 -mx-4 mb-2" />
+
+            {/* Weekday labels */}
+            <div class="grid grid-cols-7">
+              <For each={WEEKDAYS}>
+                {(w) => (
+                  <div class="h-7 grid place-items-center text-[11px] font-bold text-[#14233A] dark:text-gray-200">
+                    {w}
+                  </div>
+                )}
+              </For>
+            </div>
+
+            {/* Day grid */}
+            <div class="grid grid-cols-7 gap-y-0.5">
+              <For each={grid()}>
+                {(cell) => {
+                  const selected = () => cell.ymd === props.value;
+                  const isTodayCell = () => cell.ymd === todayYMD();
+                  const disabled = () => isFuture(cell.ymd);
+                  return (
+                    <button
+                      type="button"
+                      disabled={disabled()}
+                      onClick={() => choose(cell.ymd)}
+                      class={`relative h-8 grid place-items-center rounded-[9px] text-[12.5px] font-semibold transition-colors ${
+                        selected()
+                          ? "bg-[#F5333F] text-white shadow-md shadow-[#F5333F]/35"
+                          : disabled()
+                            ? "text-[#CFD7E2] dark:text-gray-600 cursor-not-allowed"
+                            : cell.inMonth
+                              ? "text-[#3A4A61] dark:text-gray-200 hover:bg-[#F4F5FA] dark:hover:bg-gray-700"
+                              : "text-[#C7CFDB] dark:text-gray-600 hover:bg-[#F8F9FC] dark:hover:bg-gray-700/60"
+                      }`}
+                    >
+                      {cell.day}
+                      <Show when={isTodayCell() && !selected()}>
+                        <span class="absolute bottom-[3px] w-[3px] h-[3px] rounded-full bg-[#F5333F]" />
+                      </Show>
+                    </button>
+                  );
+                }}
+              </For>
+            </div>
+          </div>
+
+          {/* Month strip — jumps the calendar to that month (within the year) */}
+          <div class="px-3 pt-2.5 pb-3">
+            <div class="grid grid-cols-12 gap-0.5">
+              <For each={MONTHS_SHORT}>
+                {(mo, i) => {
+                  const active = () => view()?.m === i();
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => jumpMonth(i())}
+                      class="group flex flex-col items-center gap-1 py-0.5"
+                    >
+                      <span
+                        class={`text-[8.5px] font-semibold transition-colors ${
+                          active()
+                            ? "text-[#14233A] dark:text-white"
+                            : "text-[#A9B4C4] dark:text-gray-500 group-hover:text-[#54657E]"
+                        }`}
+                      >
+                        {mo}
+                      </span>
+                      <span
+                        class={`w-1.5 h-1.5 rounded-full transition-colors ${
+                          active()
+                            ? "bg-[#F5333F]"
+                            : "bg-[#D3DAE4] dark:bg-gray-600 group-hover:bg-[#AFB9C7]"
+                        }`}
+                      />
+                    </button>
+                  );
+                }}
+              </For>
+            </div>
+          </div>
+        </div>
+      </Show>
+    </div>
+  );
+}
 
 // ─── Ad-account id pill (click to copy) — same affordance as AccountFunding ────
 function AccountIdPill(props) {
@@ -369,12 +580,10 @@ export default function FundsAdded() {
           >
             Yesterday
           </button>
-          <input
-            type="date"
+          <DateField
             value={date()}
             max={today}
-            onInput={(e) => e.target.value && setDate(e.target.value)}
-            class="border border-[#E2E8F1] dark:border-gray-700 bg-[#F8FAFC] dark:bg-gray-800 rounded-lg px-3 py-2 text-[13px] font-semibold text-[#1A2B45] dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#AC2334]/25 focus:border-[#AC2334] cursor-pointer"
+            onChange={(ymd) => ymd && setDate(ymd)}
           />
         </div>
       </div>
