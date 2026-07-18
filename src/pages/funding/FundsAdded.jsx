@@ -40,6 +40,48 @@ const money2 = (v) => {
 };
 const num = (v) => (Number(v) || 0).toLocaleString("en-IN");
 
+// A "dust" amount — displayably zero (< ₹0.01). Used to omit zero-portion type
+// chips and to hide zero-value rows behind the "show zero rows" link. null (a
+// no-data row) is never dust — those keep their own "no data" state.
+const isDust = (v) => {
+  if (v == null) return false;
+  const n = parseFloat(v);
+  return isFinite(n) && Math.abs(n) < 0.01;
+};
+
+// ─── Type-breakdown chips + expander ──────────────────────────────────────────
+// The backend attributes each day's loads across client types in proportion to
+// that day's spend (attribution: "spend-share"). Each per_account row carries a
+// type_breakdown[] of { client_type, day_spend, portion } whose portions sum to
+// added_full exactly. client_type is one of cpl/hybrid/retainer, plus "unknown"
+// (spend on an account with no typed client) and "unattributed" (loads made
+// before any spend that day — not yet attributable). Chip palette mirrors
+// AccountFunding's per-client TYPE_CHIP, extended with the two synthetic types.
+const TB_META = {
+  cpl: { label: "CPL", chip: "bg-[#E9F7F1] text-[#15966A] dark:bg-teal-900/30 dark:text-teal-300" },
+  hybrid: { label: "Hybrid", chip: "bg-[#ECF2FA] text-[#3E6FB0] dark:bg-indigo-900/30 dark:text-indigo-300" },
+  retainer: { label: "Retainer", chip: "bg-[#FBF3E2] text-[#B07A14] dark:bg-amber-900/30 dark:text-amber-300" },
+  unknown: { label: "Untyped", chip: "bg-[#EEF2F7] text-[#54657E] dark:bg-gray-700 dark:text-gray-300" },
+  unattributed: { label: "Pending", chip: "bg-[#F1F4F9] text-[#8593A8] dark:bg-gray-800 dark:text-gray-400" },
+};
+const tbMeta = (t) =>
+  TB_META[t] ?? { label: t || "—", chip: "bg-[#EEF2F7] text-[#54657E] dark:bg-gray-700 dark:text-gray-300" };
+const sumMoney = (items, key) =>
+  items.reduce((s, b) => s + (parseFloat(b[key]) || 0), 0);
+
+// Per-account "Pending" (unattributed) portion — loads with no spend yet to
+// attribute against. Summed across accounts this drives the total-card note.
+const rowUnattributed = (r) =>
+  (Array.isArray(r.type_breakdown) ? r.type_breakdown : [])
+    .filter((b) => b.client_type === "unattributed")
+    .reduce((s, b) => s + (parseFloat(b.portion) || 0), 0);
+
+// Non-zero-portion breakdown entries (chips/expander omit zero-portion ones).
+const tbEntries = (r) =>
+  (Array.isArray(r.type_breakdown) ? r.type_breakdown : []).filter(
+    (b) => !isDust(b.portion),
+  );
+
 // ─── Date helpers (LOCAL time — never toISOString, which is UTC and can slip a
 // day across the IST offset) ─────────────────────────────────────────────────
 const pad2 = (n) => String(n).padStart(2, "0");
@@ -98,10 +140,74 @@ function AccountIdPill(props) {
   );
 }
 
-// Wallet balance deltas can't be attributed to a client type the way campaign
-// spend can, so a mixed account reports its full amount under any of its types.
+// Loads ARE now attributed across client types in proportion to that day's
+// spend (backend attribution: "spend-share"), so the old "can't be split"
+// caveat is obsolete. This is the info-icon tooltip on the client-type filter.
 const MIXED_ACCOUNT_CAVEAT =
-  "This page reports a wallet balance delta — the money went into the account, not a campaign, so it can't be split by client type. An account serving both a retainer and CPL/hybrid clients shows its full amount, which is why these totals won't tie out with Account Funding on those accounts.";
+  "Each day's loads are attributed across client types in proportion to that day's spend on this account. Filtered totals show money for the selected types; loads made before any spend appear as 'Pending' until spend begins. Full-wallet figures stay visible per account.";
+
+// ─── Per-account type-breakdown sub-table (expanded row) ──────────────────────
+// Mirrors AccountFunding's ClientBreakdown: one line per breakdown entry
+// (type, day spend, portion) plus an ALL line that equals added_full — the
+// same visual reconciliation, since the portions sum to added_full exactly.
+function TypeBreakdown(props) {
+  const list = () => (Array.isArray(props.items) ? props.items : []);
+  return (
+    <Show
+      when={list().length > 0}
+      fallback={
+        <p class="px-4 py-3 text-xs italic text-[#8593A8] dark:text-gray-500">
+          No client-type breakdown for this account.
+        </p>
+      }
+    >
+      <table class="min-w-full text-[13px]">
+        <thead>
+          <tr class="text-[#8593A8] dark:text-gray-400 uppercase text-[10px] font-bold tracking-wider">
+            <th class="py-2 pl-4 pr-3 text-left">Client type</th>
+            <th class="py-2 px-3 text-right whitespace-nowrap">Day spend</th>
+            <th class="py-2 pl-3 pr-4 text-right whitespace-nowrap">Attributed</th>
+          </tr>
+        </thead>
+        <tbody>
+          <For each={list()}>
+            {(b) => (
+              <tr class="border-t border-[#E2E8F1] dark:border-gray-800">
+                <td class="py-2 pl-4 pr-3 text-left">
+                  <span
+                    class={`inline-block text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wide ${tbMeta(b.client_type).chip}`}
+                  >
+                    {tbMeta(b.client_type).label}
+                  </span>
+                </td>
+                <td class="py-2 px-3 text-right text-[#54657E] dark:text-gray-400 tabular-nums whitespace-nowrap">
+                  {money2(b.day_spend) ?? "—"}
+                </td>
+                <td class="py-2 pl-3 pr-4 text-right font-semibold text-[#1A2B45] dark:text-gray-200 tabular-nums whitespace-nowrap">
+                  {money2(b.portion) ?? "—"}
+                </td>
+              </tr>
+            )}
+          </For>
+        </tbody>
+        {/* ALL line — reconciles to added_full (== Σ of the portions above) */}
+        <tfoot>
+          <tr class="border-t-2 border-[#D4DDE9] dark:border-gray-700 bg-white/60 dark:bg-gray-900/30">
+            <td class="py-2 pl-4 pr-3 text-left text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
+              All types
+            </td>
+            <td class="py-2 px-3 text-right font-bold text-[#14233A] dark:text-gray-100 tabular-nums whitespace-nowrap">
+              {money2(String(sumMoney(list(), "day_spend")))}
+            </td>
+            <td class="py-2 pl-3 pr-4 text-right font-extrabold text-[#15966A] dark:text-green-400 tabular-nums whitespace-nowrap">
+              {money2(props.addedFull) ?? "—"}
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+    </Show>
+  );
+}
 
 export default function FundsAdded() {
   const today = todayYMD();
@@ -124,6 +230,33 @@ export default function FundsAdded() {
   const withData = () => Number(funds()?.accounts_with_data) || 0;
   const withoutData = () => Number(funds()?.accounts_without_data) || 0;
   const totalAdded = () => funds()?.total_added ?? "0.00";
+
+  // "Named" = any selection short of all three types. Under all three the
+  // backend reports each account's whole wallet (added == added_full), so the
+  // "of ₹… total" suffix and the Pending note only make sense under a NAMED
+  // selection. (The suffix is also self-guarding: it keys off added != added_full,
+  // which never holds under all-three.) Only three type keys exist, so length 3
+  // is exactly the all-three view.
+  const named = () => clientTypes().length < 3;
+
+  // Pending (unattributed) loaded today — money loaded before any spend, so not
+  // yet attributable to a type. Summed from the per-account breakdown. On all
+  // observed data this equals meta.unattributed_total (which funding.js does not
+  // surface to the component); shown as a note under the total card.
+  const unattributedTotal = () =>
+    perAccount().reduce((s, r) => s + rowUnattributed(r), 0);
+
+  // Display-only epsilon: rows whose `added` is < ₹0.01 are hidden behind a
+  // "show zero rows" link. Data is untouched — totals still come from the server.
+  const [showZero, setShowZero] = createSignal(false);
+
+  // Per-account type-breakdown expander (mirrors AccountFunding's row expander).
+  const [openRows, setOpenRows] = createSignal({});
+  const rowKey = (r) => r.account_id ?? r.meta_account_id ?? r.name;
+  const isOpen = (r) => !!openRows()[rowKey(r)];
+  const toggleRow = (r) =>
+    setOpenRows((o) => ({ ...o, [rowKey(r)]: !o[rowKey(r)] }));
+  const expandable = (r) => tbEntries(r).length > 0;
 
   // ─── Search by account name + column sorting ────────────────────────────────
   const [search, setSearch] = createSignal("");
@@ -161,7 +294,7 @@ export default function FundsAdded() {
 
   // Display filter (search by account name) + optional sort. API order preserved
   // until a header is clicked.
-  const rows = createMemo(() => {
+  const sorted = createMemo(() => {
     const q = search().trim().toLowerCase();
     const filtered = q
       ? perAccount().filter((r) => r.name?.toLowerCase().includes(q))
@@ -185,6 +318,13 @@ export default function FundsAdded() {
         : String(vb).localeCompare(String(va), undefined, { sensitivity: "base" });
     });
   });
+
+  // Dust rows (added < ₹0.01, non-null) hidden unless "show zero rows" is on.
+  // No-data rows (added == null) are never dust — they keep their own state.
+  const hiddenDustCount = () => sorted().filter((r) => isDust(r.added)).length;
+  const rows = createMemo(() =>
+    showZero() ? sorted() : sorted().filter((r) => !isDust(r.added)),
+  );
 
   // "Still collecting" — snapshots haven't spanned a full day yet, so no account
   // can compute an "added" figure. total_added is "0.00" and nothing has data.
@@ -306,6 +446,15 @@ export default function FundsAdded() {
               </p>
             </div>
           </div>
+
+          {/* Pending (unattributed) — only under a NAMED selection, when there
+              are loads made before any spend that can't yet be attributed. */}
+          <Show when={named() && unattributedTotal() >= 0.01}>
+            <p class="mt-4 pt-3 border-t border-[#E2E8F1] dark:border-gray-700 text-xs text-[#8593A8] dark:text-gray-400">
+              + {money2(String(unattributedTotal()))} loaded today, not yet
+              attributable (no spend yet)
+            </p>
+          </Show>
         </div>
       </Show>
 
@@ -363,6 +512,18 @@ export default function FundsAdded() {
             <span class="text-[13px] font-medium text-[#54657E] dark:text-gray-400">
               {num(rows().length)} of {num(perAccount().length)} account{perAccount().length !== 1 ? "s" : ""}
             </span>
+          </Show>
+
+          {/* Epsilon: reveal/hide near-zero (< ₹0.01) rows. Display-only. */}
+          <Show when={showZero() || hiddenDustCount() > 0}>
+            <button
+              onClick={() => setShowZero((v) => !v)}
+              class="ml-auto text-[13px] font-semibold text-[#3E6FB0] dark:text-blue-300 hover:underline whitespace-nowrap"
+            >
+              {showZero()
+                ? "Hide zero rows"
+                : `Show ${num(hiddenDustCount())} zero row${hiddenDustCount() !== 1 ? "s" : ""}`}
+            </button>
           </Show>
         </div>
 
@@ -422,8 +583,20 @@ export default function FundsAdded() {
               <For each={rows()}>
                 {(r, i) => {
                   const hasData = () => r.added != null;
+                  const exp = () => expandable(r);
+                  // Show the "of ₹… total" suffix only under a NAMED selection
+                  // when the attributed amount is short of the whole wallet.
+                  const partial = () =>
+                    named() &&
+                    r.added != null &&
+                    r.added_full != null &&
+                    Math.abs(parseFloat(r.added) - parseFloat(r.added_full)) >= 0.01;
                   return (
-                    <tr class="group transition-colors hover:bg-[#F6F9FC] dark:hover:bg-gray-800/40">
+                    <>
+                    <tr
+                      onClick={() => exp() && toggleRow(r)}
+                      class={`group transition-colors ${exp() ? "cursor-pointer select-none" : ""} ${isOpen(r) ? "bg-[#F6F9FC] dark:bg-gray-800/40" : "hover:bg-[#F6F9FC] dark:hover:bg-gray-800/40"}`}
+                    >
                       <td class="px-4 py-2.5 text-center align-middle border-b border-[#E2E8F1] dark:border-gray-800">
                         <span class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-[#E9F7F1] dark:bg-green-900/30 text-[#15966A] dark:text-green-300 text-xs font-extrabold">
                           {i() + 1}
@@ -431,6 +604,15 @@ export default function FundsAdded() {
                       </td>
                       <td class="px-4 py-2.5 align-middle border-b border-[#E2E8F1] dark:border-gray-800">
                         <div class="flex items-center gap-3">
+                          <Show when={exp()} fallback={<span class="w-4 flex-none" />}>
+                            <svg
+                              class="w-4 h-4 flex-none text-[#8593A8] transition-transform"
+                              style={{ transform: isOpen(r) ? "rotate(90deg)" : "rotate(0deg)" }}
+                              fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
+                            >
+                              <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+                            </svg>
+                          </Show>
                           <Avatar name={r.name} />
                           <div class="min-w-0">
                             <span
@@ -439,6 +621,20 @@ export default function FundsAdded() {
                             >
                               {r.name}
                             </span>
+                            {/* Type chips — one per non-zero breakdown portion */}
+                            <Show when={tbEntries(r).length > 0}>
+                              <div class="flex flex-wrap items-center gap-1 mt-1">
+                                <For each={tbEntries(r)}>
+                                  {(b) => (
+                                    <span
+                                      class={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wide ${tbMeta(b.client_type).chip}`}
+                                    >
+                                      {tbMeta(b.client_type).label}
+                                    </span>
+                                  )}
+                                </For>
+                              </div>
+                            </Show>
                             <Show when={r.meta_account_id}>
                               <AccountIdPill id={r.meta_account_id} />
                             </Show>
@@ -473,9 +669,28 @@ export default function FundsAdded() {
                         </td>
                         <td class="px-4 py-2.5 text-right align-middle font-bold text-[#15966A] dark:text-green-400 tabular-nums whitespace-nowrap border-b border-[#E2E8F1] dark:border-gray-800">
                           {money2(r.added) ?? "—"}
+                          <Show when={partial()}>
+                            <span class="block text-[10px] font-normal text-[#8593A8] dark:text-gray-500">
+                              of {money2(r.added_full)} total
+                            </span>
+                          </Show>
                         </td>
                       </Show>
                     </tr>
+                    {/* Expander — per-type reconciliation to added_full */}
+                    <Show when={exp() && isOpen(r)}>
+                      <tr>
+                        <td colspan="6" class="p-0 bg-[#F8FAFC] dark:bg-gray-800/40 border-b border-[#E2E8F1] dark:border-gray-800">
+                          <div class="px-6 py-3">
+                            <p class="text-[10px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-500 mb-1 pl-4">
+                              Attribution by client type
+                            </p>
+                            <TypeBreakdown items={tbEntries(r)} addedFull={r.added_full} />
+                          </div>
+                        </td>
+                      </tr>
+                    </Show>
+                    </>
                   );
                 }}
               </For>
