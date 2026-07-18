@@ -7,7 +7,7 @@ import {
   getFundingRefreshStatus,
 } from "../../services/funding";
 import { scopeKey } from "../../stores/cmScope";
-import { isGlobalRead } from "../../stores/currentUser";
+import { isGlobalRead, currentUser } from "../../stores/currentUser";
 import Avatar from "../../components/common/Avatar";
 import useColumnSort from "../../components/Columnsorting";
 import ClientTypeFilter, {
@@ -20,9 +20,17 @@ import ClientTypeFilter, {
 // messages are an inside joke — friendly, not literal. Keep them here so the
 // roast level is easy to tune depending on who's watching. 😄
 const REFRESH_COPY = {
-  syncingTitle: "🧘 Patience, Alok! Your money is being loaded...",
+  // Username = the part of the logged-in user's email before "@". If it's Alok,
+  // keep the original message; everyone else gets gently reminded whose money it is. 😄
+  syncingTitle: (name) =>
+    name.toLowerCase() === "alok"
+      ? "🧘 Patience, Alok! Your money is being loaded..."
+      : `🧘 Patience, ${name.charAt(0).toUpperCase() + name.slice(1)}, it's not your money being loaded.`,
   syncingBody: "Fetching fresh balances from Meta — this takes a few seconds.",
-  cooldownTitle: "🫸 Easy there, Alok! You just refreshed.",
+  cooldownTitle: (name) =>
+    name.toLowerCase() === "alok"
+      ? "🫸 Easy there, Alok! You just refreshed."
+      : `🫸 Easy there, ${name.charAt(0).toUpperCase() + name.slice(1)}! You just refreshed.`,
   cooldownBody: (secs) => `Have some patience — try again in ${secs}s.`,
   doneTitle: "Balances refreshed!",
   doneBody: (n) => `Synced ${n} account${n === 1 ? "" : "s"}.`,
@@ -893,7 +901,7 @@ export default function AccountFunding() {
               <img src="/budget.gif" alt="Loading balances" class="w-full h-full object-cover" />
             </div>
             <p class="text-base font-bold text-[#14233A] dark:text-white">
-              {REFRESH_COPY.syncingTitle}
+              {REFRESH_COPY.syncingTitle((currentUser.email || "").split("@")[0])}
             </p>
             <p class="text-sm text-[#54657E] dark:text-gray-400 mt-2 leading-snug">
               {REFRESH_COPY.syncingBody}
@@ -906,7 +914,7 @@ export default function AccountFunding() {
       <Show when={cooldownLeft() > 0}>
         <div class="fixed top-6 right-6 z-[130] w-[340px] max-w-[calc(100vw-3rem)] rounded-2xl border border-[#B07A14]/40 dark:border-amber-700/70 bg-[#FBF3E2] dark:bg-amber-950/40 shadow-xl px-4 py-3.5">
           <p class="text-sm font-bold text-[#8A5D10] dark:text-amber-300">
-            {REFRESH_COPY.cooldownTitle}
+            {REFRESH_COPY.cooldownTitle((currentUser.email || "").split("@")[0])}
           </p>
           <p class="text-sm text-[#7A6636] dark:text-amber-200/80 mt-0.5 leading-snug">
             {REFRESH_COPY.cooldownBody(cooldownLeft())}
