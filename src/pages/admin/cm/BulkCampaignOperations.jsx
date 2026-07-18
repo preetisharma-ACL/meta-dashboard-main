@@ -309,6 +309,10 @@ function NewOperation(props) {
   const [selected, setSelected] = createSignal(new Set());
   const [query, setQuery] = createSignal("");
   const [statusFilter, setStatusFilter] = createSignal("all"); // all | active | paused
+  // Ad-account scope for the list: null = all accounts, else {id, name, metaId}.
+  // Combines with statusFilter — e.g. Active + one account shows only that
+  // account's active campaigns.
+  const [accountFilter, setAccountFilter] = createSignal(null);
 
   // ── Action console state ──
   const [action, setAction] = createSignal("pause");
@@ -336,8 +340,10 @@ function NewOperation(props) {
   const filtered = createMemo(() => {
     const q = query().trim().toLowerCase();
     const sf = statusFilter();
+    const af = accountFilter();
     return (campaigns() ?? []).filter((c) => {
       if (sf !== "all" && String(c.status).toLowerCase() !== sf) return false;
+      if (af != null && String(c.ad_account_id) !== String(af.id)) return false;
       if (!q) return true;
       const hay = `${c.name ?? ""} ${c.client_nomen_name ?? ""} ${
         c.project_name ?? ""
@@ -449,12 +455,12 @@ function NewOperation(props) {
     );
   };
 
-  // ── Ad-account-wise quick select ────────────────────────────────────────────
-  // Same shortcut as client, keyed on the campaign's ad account. Rows carry
-  // ad_account_id (internal row id) + ad_account_name; we group by the id and
-  // show the resolved Meta id (act_…) as a subtitle. Picking one REPLACES the
-  // selection with all of that ad account's campaigns — scoped to one account
-  // at a time. No backend change; the write flow that follows is unchanged.
+  // ── Ad-account filter ────────────────────────────────────────────────────────
+  // Keyed on the campaign's ad account. Rows carry ad_account_id (internal row id)
+  // + ad_account_name; we group by the id and show the resolved Meta id (act_…) as
+  // a subtitle. Picking one SCOPES the visible list to that account — combined
+  // with the Active/Paused toggle it instantly shows only that status on that
+  // account. Purely a list filter; selection + write flow are unchanged.
   const adAccountList = createMemo(() => {
     const map = new Map();
     for (const c of campaigns() ?? []) {
@@ -476,39 +482,8 @@ function NewOperation(props) {
     );
   });
 
-  const selectAdAccount = async (acct) => {
-    const ids = (campaigns() ?? [])
-      .filter((c) => String(c.ad_account_id) === String(acct.id))
-      .map((c) => c.id);
-    if (ids.length === 0) {
-      toast("info", "Nothing to select", `No campaigns found for ${acct.name}.`);
-      return;
-    }
-    const { isConfirmed } = await Swal.fire({
-      title: `Select ${acct.name}'s campaigns?`,
-      html: `<div style="text-align:left;font-size:13px;line-height:1.6">
-        This will change <b>${ids.length}</b> campaign${ids.length === 1 ? "" : "s"} for
-        <b>${escapeHtml(acct.name)}</b>${
-          acct.metaId ? ` <span style="color:#8593A8">(${escapeHtml(acct.metaId)})</span>` : ""
-        }. Proceed?<br/>
-        <span style="color:#8593A8;font-size:12px">You'll still preview and type-confirm before anything is written to Meta.</span>
-      </div>`,
-      icon: "question",
-      showCancelButton: true,
-      confirmButtonText: `Select ${ids.length}`,
-      cancelButtonText: "Cancel",
-      confirmButtonColor: NAVY,
-      reverseButtons: true,
-    });
-    if (!isConfirmed) return;
-    // Replace (not merge) — scoped to a single ad account.
-    setSelected(new Set(ids));
-    resetFlow();
-    toast(
-      "success",
-      "Ad account selected",
-      `${ids.length} campaign${ids.length === 1 ? "" : "s"} for ${acct.name} selected.`,
-    );
+  const filterByAdAccount = (acct) => {
+    setAccountFilter(acct); // acct === null clears the filter
   };
 
   const chooseAction = (a) => {
@@ -735,10 +710,11 @@ function NewOperation(props) {
             </div>
             {/* One-click: select all of one client's campaigns. */}
             <ClientQuickSelect clients={clientList()} onPick={selectClient} />
-            {/* One-click: select all of one ad account's campaigns. */}
+            {/* Scope the list to one ad account (combines with Active/Paused). */}
             <AdAccountQuickSelect
               accounts={adAccountList()}
-              onPick={selectAdAccount}
+              active={accountFilter()}
+              onPick={filterByAdAccount}
             />
           </div>
         </div>
@@ -1253,10 +1229,11 @@ function ClientQuickSelect(props) {
   );
 }
 
-// ── Ad-account quick-select dropdown ─────────────────────────────────────────
-// Mirrors ClientQuickSelect, keyed on the ad account. Each row shows the account
-// name, its resolved Meta id (act_…), and the campaign count. Picking one hands
-// the account up to onPick, which selects all of that account's campaigns.
+// ── Ad-account filter dropdown ───────────────────────────────────────────────
+// Scopes the campaign list to one ad account. props.active holds the current
+// filter ({id, name, metaId} | null); picking a row calls props.onPick(acct),
+// and "All ad accounts" calls props.onPick(null) to clear. Combines with the
+// Active/Paused toggle upstream, so the list updates instantly.
 function AdAccountQuickSelect(props) {
   const [open, setOpen] = createSignal(false);
   const [q, setQ] = createSignal("");
@@ -1272,10 +1249,11 @@ function AdAccountQuickSelect(props) {
     );
   });
 
-  const pick = async (acct) => {
+  const active = () => props.active;
+  const pick = (acct) => {
     setOpen(false);
     setQ("");
-    await props.onPick?.(acct);
+    props.onPick?.(acct);
   };
 
   return (
@@ -1285,17 +1263,42 @@ function AdAccountQuickSelect(props) {
         onClick={() => setOpen((v) => !v)}
         disabled={(props.accounts ?? []).length === 0}
         aria-expanded={open()}
-        class="inline-flex items-center gap-1.5 h-[35px] px-3 rounded-[9px] border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-[12px] font-semibold text-gray-600 dark:text-gray-300 hover:border-[#14233A]/40 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        class={`inline-flex items-center gap-1.5 h-[35px] px-3 rounded-[9px] border text-[12px] font-semibold max-w-[240px] disabled:opacity-40 disabled:cursor-not-allowed transition-colors ${
+          active()
+            ? "border-[#14233A] bg-[#14233A] text-white"
+            : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:border-[#14233A]/40"
+        }`}
       >
-        <Wallet class="w-3.5 h-3.5" />
-        Select ad account
-        <ChevronDown class={`w-3.5 h-3.5 transition-transform ${open() ? "rotate-180" : ""}`} />
+        <Wallet class="w-3.5 h-3.5 flex-shrink-0" />
+        <span class="truncate">
+          {active() ? active().name : "Select ad account"}
+        </span>
+        {/* When a filter is active, the trailing control clears it. */}
+        <Show
+          when={active()}
+          fallback={
+            <ChevronDown class={`w-3.5 h-3.5 flex-shrink-0 transition-transform ${open() ? "rotate-180" : ""}`} />
+          }
+        >
+          <span
+            role="button"
+            tabindex="0"
+            aria-label="Clear ad account filter"
+            onClick={(e) => {
+              e.stopPropagation();
+              pick(null);
+            }}
+            class="flex-shrink-0 -mr-1 p-0.5 rounded hover:bg-white/20"
+          >
+            <X class="w-3.5 h-3.5" />
+          </span>
+        </Show>
       </button>
 
       <Show when={open()}>
         {/* Click-away backdrop */}
         <div class="fixed inset-0 z-[40]" onClick={() => setOpen(false)} />
-        <div class="absolute right-0 mt-1.5 w-[300px] z-[50] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl overflow-hidden">
+        <div class="absolute right-0 mt-1.5 w-[300px] max-w-[calc(100vw-2rem)] z-[50] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl overflow-hidden">
           <div class="p-2 border-b border-gray-100 dark:border-gray-800">
             <div class="relative">
               <Search class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
@@ -1310,6 +1313,23 @@ function AdAccountQuickSelect(props) {
             </div>
           </div>
           <div class="max-h-[280px] overflow-y-auto py-1">
+            {/* Clear row */}
+            <button
+              type="button"
+              onClick={() => pick(null)}
+              class="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors border-b border-gray-100 dark:border-gray-800"
+            >
+              <span
+                class={`text-[12.5px] font-semibold flex-1 ${
+                  !active() ? "text-[#14233A] dark:text-white" : "text-gray-500 dark:text-gray-400"
+                }`}
+              >
+                All ad accounts
+              </span>
+              <Show when={!active()}>
+                <Check class="w-3.5 h-3.5 text-[#14233A] dark:text-white" />
+              </Show>
+            </button>
             <Show
               when={filtered().length > 0}
               fallback={
@@ -1319,27 +1339,37 @@ function AdAccountQuickSelect(props) {
               }
             >
               <For each={filtered()}>
-                {(a) => (
-                  <button
-                    type="button"
-                    onClick={() => pick(a)}
-                    class="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors"
-                  >
-                    <div class="min-w-0 flex-1">
-                      <div class="text-[12.5px] font-medium text-gray-800 dark:text-gray-100 truncate">
-                        {a.name}
-                      </div>
-                      <Show when={a.metaId}>
-                        <div class="text-[10.5px] text-gray-400 font-mono tabular-nums truncate">
-                          {a.metaId}
+                {(a) => {
+                  const isActive = () => active() && String(active().id) === String(a.id);
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => pick(a)}
+                      class={`w-full flex items-center gap-2 px-3 py-2 text-left transition-colors ${
+                        isActive()
+                          ? "bg-[#14233A]/[0.05] dark:bg-gray-800"
+                          : "hover:bg-gray-50 dark:hover:bg-gray-800/60"
+                      }`}
+                    >
+                      <div class="min-w-0 flex-1">
+                        <div class="text-[12.5px] font-medium text-gray-800 dark:text-gray-100 truncate">
+                          {a.name}
                         </div>
+                        <Show when={a.metaId}>
+                          <div class="text-[10.5px] text-gray-400 font-mono tabular-nums truncate">
+                            {a.metaId}
+                          </div>
+                        </Show>
+                      </div>
+                      <Show when={isActive()}>
+                        <Check class="w-3.5 h-3.5 text-[#14233A] dark:text-white flex-shrink-0" />
                       </Show>
-                    </div>
-                    <span class="text-[10.5px] font-bold tabular-nums text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 rounded-full px-2 py-[2px] flex-shrink-0">
-                      {a.count}
-                    </span>
-                  </button>
-                )}
+                      <span class="text-[10.5px] font-bold tabular-nums text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 rounded-full px-2 py-[2px] flex-shrink-0">
+                        {a.count}
+                      </span>
+                    </button>
+                  );
+                }}
               </For>
             </Show>
           </div>
