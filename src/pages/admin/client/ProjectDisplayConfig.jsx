@@ -656,6 +656,7 @@ export default function ProjectDisplayConfig() {
               class="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60
                        text-gray-500 dark:text-gray-400 uppercase text-xs tracking-wider"
             >
+              <th class="p-3 text-center whitespace-nowrap w-12">S.No</th>
               <th
                 class="p-3 text-left cursor-pointer hover:text-blue-600 whitespace-nowrap"
                 onClick={() => toggleSort("id")}
@@ -729,6 +730,9 @@ export default function ProjectDisplayConfig() {
                 <For each={Array(8).fill(0)}>
                   {() => (
                     <tr class="border-b border-gray-100 dark:border-gray-800 animate-pulse">
+                      <td class="p-3 text-center">
+                        <div class="h-3 w-6 bg-gray-200 dark:bg-gray-700 rounded mx-auto" />
+                      </td>
                       <td class="p-3">
                         <div class="h-3 w-44 bg-gray-200 dark:bg-gray-700 rounded" />
                       </td>
@@ -768,6 +772,9 @@ export default function ProjectDisplayConfig() {
                                    : "bg-gray-50/60 dark:bg-gray-800/30"
                                }`}
                   >
+                    <td class="p-3 text-center text-gray-500 dark:text-gray-400 tabular-nums">
+                      {(page() - 1) * PAGE_SIZE + i() + 1}
+                    </td>
                     {/* Client — maps to client_email */}
                     <td class="p-3 text-purple-700 dark:text-gray-300 font-medium">
                       {cfg.id}
@@ -876,7 +883,7 @@ export default function ProjectDisplayConfig() {
               <Show when={filtered().length === 0}>
                 <tr>
                   <td
-                    colspan="7"
+                    colspan="8"
                     class="py-16 text-center text-gray-400 dark:text-gray-500"
                   >
                     <svg
@@ -903,7 +910,7 @@ export default function ProjectDisplayConfig() {
           <tfoot>
             <tr class="border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60">
               <td
-                colspan="7"
+                colspan="8"
                 class="px-4 py-2.5 text-xs text-gray-500 dark:text-gray-400"
               >
                 {filtered().length} config{filtered().length !== 1 ? "s" : ""}
