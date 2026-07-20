@@ -156,14 +156,32 @@ export default function Sidebar() {
     [
       {
         name: userRole() === "admin" ? "Dashboard" : "Dashboard",
-        // Sales sees Dashboard only for v1; every other item stays hidden because
-        // its roles list omits "sales".
+        // Sales sees Dashboard | Clients | Payments | Logout for v1.1; every
+        // admin/CM/coordination item stays hidden because its roles list omits
+        // "sales".
         roles: ["admin", "client", "sales"],
         icon: () => (
           <Icon d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
         ),
         path: "/",
         action: goToDashboard,
+      },
+      // ── Sales manager nav (v1.1) ──────────────────────────────────────────
+      {
+        name: "Clients",
+        roles: ["sales"],
+        icon: () => (
+          <Icon d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0h-6m6 0a3 3 0 01-5.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M9 7a4 4 0 11-8 0 4 4 0 018 0zm0 0a4 4 0 015.536 3.536M15.536 10.536A5.967 5.967 0 0121 16.941M16.536 10.536A5.973 5.973 0 0012 16c0 .132 0 .263.012.391M12 16a5.973 5.973 0 00-4.536-2.464" />
+        ),
+        path: "/sales/clients",
+      },
+      {
+        name: "Payments",
+        roles: ["sales"],
+        icon: () => (
+          <Icon d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+        ),
+        path: "/sales/payments",
       },
       // ── Campaign Manager nav ──────────────────────────────────────────────
       {

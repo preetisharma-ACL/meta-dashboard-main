@@ -1,8 +1,18 @@
 import { createSignal, createResource, createMemo, For, Show, onMount } from "solid-js";
-import { useNavigate } from "@solidjs/router";
+import { useNavigate, A } from "@solidjs/router";
 import { DateRangeFilter } from "../../components/DateRangeFilter";
-import { fetchSalesClients, fetchSalesSummary } from "../../services/sales";
+import {
+  fetchSalesClients,
+  fetchSalesSummary,
+  fetchSalesPayments,
+} from "../../services/sales";
 import { currentUser } from "../../stores/currentUser";
+
+// Current month as "YYYY-MM" for the payments strip.
+const currentMonthStr = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+};
 
 // ─── Formatting helpers (match the other dashboards) ──────────────────────────
 const fmtMoney = (val) => {
@@ -172,6 +182,20 @@ export default function SalesDashboard() {
   });
   const clients = () => clientsRes() ?? [];
 
+  // ── Compact payments strip (current month) → links to /sales/payments ────────
+  // Same feed as SalesPayments; no refresh param here (server cache is fine).
+  const [paymentsRes] = createResource(async () => {
+    try {
+      const res = await fetchSalesPayments(currentMonthStr());
+      return res?.data?.totals ?? {};
+    } catch (err) {
+      console.error("[SalesDashboard] failed to load payments totals", err);
+      return {};
+    }
+  });
+  const paymentsTotals = () => paymentsRes() ?? {};
+  const paymentsRemaining = () => parseFloat(paymentsTotals().closing_balance_inc_gst) || 0;
+
   const handleCardClick = (client) => {
     const name = client.client_nomen_name;
     // Sales scopes purely by nomen. Write name + nomen id + display name; do NOT
@@ -340,6 +364,59 @@ export default function SalesDashboard() {
           </div>
         </Show>
       </div>
+
+      {/* ════════ THIS MONTH · PAYMENTS (compact, links to /sales/payments) ════════ */}
+      <A
+        href="/sales/payments"
+        class="group flex flex-wrap items-center gap-x-6 gap-y-2 bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] p-5 mb-8 hover:border-[#AC2334]/40 transition-all"
+      >
+        <span class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
+          This month
+        </span>
+        <span class="text-sm text-[#54657E] dark:text-gray-300">
+          Received{" "}
+          <b class="text-[#15966A] dark:text-green-300">
+            {fmtMoney(paymentsTotals().received_inc_gst)}
+          </b>
+        </span>
+        <span class="text-sm text-[#54657E] dark:text-gray-300">
+          Billed{" "}
+          <b class="text-[#14233A] dark:text-white">
+            {fmtMoney(paymentsTotals().utilized_inc_gst)}
+          </b>
+        </span>
+        <span class="text-sm text-[#54657E] dark:text-gray-300">
+          Remaining{" "}
+          <Show
+            when={paymentsRemaining() < 0}
+            fallback={
+              <b class="text-[#15966A] dark:text-green-300">
+                {fmtMoney(paymentsRemaining())}
+              </b>
+            }
+          >
+            <b class="text-[#AC2334] dark:text-red-300">
+              Owes {fmtMoney(Math.abs(paymentsRemaining()))}
+            </b>
+          </Show>
+        </span>
+        <span class="ml-auto inline-flex items-center gap-1 text-sm font-semibold text-[#AC2334] group-hover:gap-2 transition-all">
+          Payments
+          <svg
+            class="w-4 h-4"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M9 5l7 7-7 7"
+            />
+          </svg>
+        </span>
+      </A>
 
       {/* ════════ MY CLIENTS ════════ */}
       <div class="flex items-center gap-3 mb-4 text-xs font-bold uppercase tracking-[0.12em] text-[#AC2334]">

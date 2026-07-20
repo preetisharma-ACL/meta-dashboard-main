@@ -39,6 +39,8 @@ import AdminRoute from "./utils/AdminRoute";
 import CoordinationDashboard from "./pages/coordination/pages/CoordinationDashboard";
 import CMDashboard from "./pages/CMDashboard";
 import SalesDashboard from "./pages/sales/SalesDashboard";
+import SalesClients from "./pages/sales/SalesClients";
+import SalesPayments from "./pages/sales/SalesPayments";
 import CMDailyReport from "./pages/CMDailyReport";
 import AccountFunding from "./pages/funding/AccountFunding";
 import FundsAdded from "./pages/funding/FundsAdded";
@@ -179,6 +181,24 @@ function App() {
                   roles={["admin", "coordination", "accounts", "campaign_manager"]}
                 >
                   <BulkCampaignOperations />
+                </AdminRoute>
+              )}
+            />
+            {/* Sales manager pages — sales-gated the same way the home
+                dashboard branches to SalesDashboard for role "sales". */}
+            <Route
+              path="/sales/clients"
+              component={() => (
+                <AdminRoute roles={["sales"]}>
+                  <SalesClients />
+                </AdminRoute>
+              )}
+            />
+            <Route
+              path="/sales/payments"
+              component={() => (
+                <AdminRoute roles={["sales"]}>
+                  <SalesPayments />
                 </AdminRoute>
               )}
             />

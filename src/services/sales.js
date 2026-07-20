@@ -31,3 +31,19 @@ export const fetchSalesSummary = async (startDate, endDate) => {
   if (endDate) url += `&end_date=${endDate}`;
   return await api(url, { method: "GET" });
 };
+
+// Per-client payments overview for a month, scoped server-side to the sales
+// manager's onboarded book. The path carries "admin/" for historical reasons
+// but the backend sales-scopes it (verified live). Returns the full envelope;
+// callers read res.data = { month, totals, clients[] }.
+//   month  → "YYYY-MM" (omit to let the server default to the current month)
+//   refresh→ true ONLY from an explicit Refresh button — bypasses the server's
+//            10-min cache and forces a ~6s recompute.
+export const fetchSalesPayments = async (month = "", refresh = false) => {
+  let url = `/billing/admin/payments-overview/`;
+  const params = [];
+  if (month) params.push(`month=${encodeURIComponent(month)}`);
+  if (refresh) params.push(`refresh=1`);
+  if (params.length) url += `?${params.join("&")}`;
+  return await api(url, { method: "GET" });
+};
