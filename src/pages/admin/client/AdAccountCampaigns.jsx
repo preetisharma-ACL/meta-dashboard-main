@@ -17,6 +17,19 @@ const formatDate = (iso) => {
   });
 };
 
+// Paused-at carries a full timestamp (mirrors ProjectDetails' "Paused Date").
+const formatDateTime = (iso) => {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+};
+
 // Campaigns running on a single ad account.
 // Reached from the Ad Accounts list → /ad-accounts/:id
 export default function AdAccountCampaigns() {
@@ -258,6 +271,7 @@ export default function AdAccountCampaigns() {
               <th class="p-3 text-left">Campaign</th>
               <th class="p-3 text-left">Status</th>
               <th class="p-3 text-left">Start Date</th>
+              <th class="p-3 text-left">Paused Date</th>
               <th class="p-3 text-right">Leads</th>
               <th class="p-3 text-right">Spend</th>
             </tr>
@@ -272,6 +286,7 @@ export default function AdAccountCampaigns() {
                     <tr class="border-b border-gray-100 dark:border-gray-800 animate-pulse">
                       <td class="p-3"><div class="h-3 w-64 bg-gray-200 dark:bg-gray-700 rounded" /></td>
                       <td class="p-3"><div class="h-3 w-16 bg-gray-200 dark:bg-gray-700 rounded" /></td>
+                      <td class="p-3"><div class="h-3 w-20 bg-gray-200 dark:bg-gray-700 rounded" /></td>
                       <td class="p-3"><div class="h-3 w-20 bg-gray-200 dark:bg-gray-700 rounded" /></td>
                       <td class="p-3"><div class="h-3 w-10 bg-gray-200 dark:bg-gray-700 rounded ml-auto" /></td>
                       <td class="p-3"><div class="h-3 w-16 bg-gray-200 dark:bg-gray-700 rounded ml-auto" /></td>
@@ -321,6 +336,9 @@ export default function AdAccountCampaigns() {
                     <td class="p-3 text-gray-500 dark:text-gray-400 whitespace-nowrap">
                       {formatDate(c.start_date)}
                     </td>
+                    <td class="p-3 text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                      {c.status === "paused" ? formatDateTime(c.paused_at) : "No Date"}
+                    </td>
                     <td class="p-3 text-right text-gray-700 dark:text-gray-300">
                       <Show when={!metricsLoading()} fallback={<span class="text-gray-400">…</span>}>
                         {leadsFor(c)}
@@ -337,7 +355,7 @@ export default function AdAccountCampaigns() {
 
               <Show when={filtered().length === 0}>
                 <tr>
-                  <td colspan="5" class="py-16 text-center text-gray-400 dark:text-gray-500">
+                  <td colspan="6" class="py-16 text-center text-gray-400 dark:text-gray-500">
                     {account()
                       ? "No campaigns found for this ad account"
                       : "Ad account not found"}
@@ -350,7 +368,7 @@ export default function AdAccountCampaigns() {
             <Show when={filtered().length > 0}>
               <tfoot>
                 <tr class="border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 font-semibold text-gray-700 dark:text-gray-200">
-                  <td class="p-3" colspan="3">
+                  <td class="p-3" colspan="4">
                     Total
                     <Show when={dateFrom() && dateTo()}>
                       <span class="ml-1 font-normal text-xs text-purple-600 dark:text-purple-400">
