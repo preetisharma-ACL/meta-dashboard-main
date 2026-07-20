@@ -5,6 +5,7 @@ import {
   For,
   Show,
   createMemo,
+  createEffect,
   onMount,
   onCleanup,
 } from "solid-js";
@@ -493,6 +494,20 @@ export default function Sidebar() {
       },
     ].filter((item) => item.roles.includes(userRole())),
   );
+
+  // Keep the submenu group that owns the active route expanded — including on a
+  // fresh page load / refresh, where openMenu() would otherwise reset to null
+  // and collapse the group even though we're still on one of its sub-pages.
+  // Runs on mount and whenever the route changes; it only ever OPENS the owning
+  // group, so a user manually collapsing a group while staying on the same page
+  // (no pathname change) is left untouched.
+  createEffect(() => {
+    const path = location.pathname;
+    const parent = menuItems().find((item) =>
+      item.subMenus?.some((sub) => sub.path === path),
+    );
+    if (parent) setOpenMenu(parent.name);
+  });
 
   return (
     <>
