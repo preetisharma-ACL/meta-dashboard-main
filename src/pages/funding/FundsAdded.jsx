@@ -465,6 +465,16 @@ export default function FundsAdded() {
   // ─── Search by account name + column sorting ────────────────────────────────
   const [search, setSearch] = createSignal("");
 
+  // "Pending only" chip — a row is Pending when part of its day's load was made
+  // before any spend and so isn't yet attributed to a client type (the
+  // "unattributed" breakdown entry, rendered as the "Pending" chip).
+  const [pendingOnly, setPendingOnly] = createSignal(false);
+  const isPending = (r) =>
+    tbEntries(r).some((b) => b.client_type === "unattributed");
+  const pendingCount = createMemo(
+    () => perAccount().filter(isPending).length,
+  );
+
   // Same hook + ⇅/↑/↓ icons as the rest of the project. No column selected → API
   // order (funds-added desc) is preserved.
   const { columnSort, handleSort, getSortIcon } = useColumnSort();
@@ -500,9 +510,12 @@ export default function FundsAdded() {
   // until a header is clicked.
   const sorted = createMemo(() => {
     const q = search().trim().toLowerCase();
-    const filtered = q
-      ? perAccount().filter((r) => r.name?.toLowerCase().includes(q))
-      : perAccount();
+    const onlyPending = pendingOnly();
+    const filtered = perAccount().filter((r) => {
+      if (q && !r.name?.toLowerCase().includes(q)) return false;
+      if (onlyPending && !isPending(r)) return false;
+      return true;
+    });
 
     const { key, direction } = columnSort();
     if (!key) return filtered; // preserve the API's funds-added-desc order
@@ -710,7 +723,31 @@ export default function FundsAdded() {
               </button>
             </Show>
           </div>
-          <Show when={search()}>
+
+          {/* Pending-only chip — accounts with money loaded before any spend
+              that day (the "Pending" / unattributed portion). */}
+          <button
+            onClick={() => setPendingOnly((v) => !v)}
+            title="Show only accounts with pending (unattributed) funds"
+            class={`inline-flex items-center gap-2 px-3.5 py-2 rounded-full text-[13px] font-semibold border transition-colors ${
+              pendingOnly()
+                ? "bg-[#14233A] text-white border-[#14233A]"
+                : "bg-gray-50 dark:bg-gray-800 text-[#54657E] dark:text-gray-300 border-[#E2E8F1] dark:border-gray-700 hover:border-[#14233A]/40"
+            }`}
+          >
+            Pending
+            <span
+              class={`text-[11px] font-extrabold px-1.5 py-px rounded-full ${
+                pendingOnly()
+                  ? "bg-white/20 text-white"
+                  : "bg-[#F1F4F9] dark:bg-gray-700 text-[#8593A8]"
+              }`}
+            >
+              {num(pendingCount())}
+            </span>
+          </button>
+
+          <Show when={search() || pendingOnly()}>
             <span class="text-[13px] font-medium text-[#54657E] dark:text-gray-400">
               {num(rows().length)} of {num(perAccount().length)} account{perAccount().length !== 1 ? "s" : ""}
             </span>
@@ -733,7 +770,11 @@ export default function FundsAdded() {
           when={rows().length > 0}
           fallback={
             <div class="bg-gray-50 dark:bg-gray-900 rounded-2xl border border-[#E2E8F1] dark:border-gray-700 py-16 text-center text-[#8593A8] dark:text-gray-500">
-              No accounts match “{search()}”.
+              {search()
+                ? `No accounts match “${search()}”.`
+                : pendingOnly()
+                  ? "No accounts with pending funds on this day."
+                  : "No accounts match your filters."}
             </div>
           }
         >
