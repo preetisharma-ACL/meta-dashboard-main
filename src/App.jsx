@@ -30,6 +30,7 @@ import ProjectDisplayConfig from "./pages/admin/client/ProjectDisplayConfig";
 import ClientNomen from "./pages/admin/client/ClientNomen";
 import Campaigns from "./pages/admin/campaigns/Campaigns";
 import AdAccounts from "./pages/admin/client/AdAccounts";
+import AdAccountClients from "./pages/admin/client/AdAccountClients";
 import AdAccountCampaigns from "./pages/admin/client/AdAccountCampaigns";
 import FeededLeads from "./pages/admin/leads/FeededLeads";
 import ManualBatches from "./pages/admin/leads/FeededLeads";
@@ -242,6 +243,14 @@ function App() {
               component={() => (
                 <AdminRoute roles={["admin", "campaign_manager"]}>
                   <AdAccounts />
+                </AdminRoute>
+              )}
+            />
+            <Route
+              path="/ad-account-clients"
+              component={() => (
+                <AdminRoute roles={["admin", "campaign_manager"]}>
+                  <AdAccountClients />
                 </AdminRoute>
               )}
             />

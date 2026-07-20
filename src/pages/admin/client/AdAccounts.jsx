@@ -1,5 +1,5 @@
 import { createSignal, createMemo, createEffect, onMount, For, Show } from "solid-js";
-import { useNavigate, useSearchParams } from "@solidjs/router";
+import { useNavigate, useSearchParams, A } from "@solidjs/router";
 import { fetchAdAccounts } from "../services/adAccount";
 import { fetchAllAdminCampaigns, normAccountId } from "../services/campaigns";
 import Avatar from "../../../components/common/Avatar";
@@ -190,6 +190,19 @@ export default function AdAccounts() {
         <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
           {allAccounts().length} total · click a row to see its campaigns
         </p>
+
+        {/* View switcher — Accounts table ⇄ Clients by account */}
+        <div class="inline-flex items-center gap-1 p-1 rounded-lg bg-gray-100 dark:bg-gray-800 mt-3">
+          <span class="px-3.5 py-1.5 text-sm rounded-md font-medium bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm">
+            Accounts
+          </span>
+          <A
+            href="/ad-account-clients"
+            class="px-3.5 py-1.5 text-sm rounded-md font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+          >
+            Clients by Account
+          </A>
+        </div>
       </div>
 
       {/* Filters Bar */}
