@@ -475,9 +475,21 @@ export default function MainDashboard() {
 
   const auth = JSON.parse(localStorage.getItem("auth") || "{}");
 
-  const serviceChargePercent = Number(auth?.serviceCharge ?? 13);
+  // Service charge for the ledger ("Spend + X% service charge"). This must be
+  // the VIEWED client's rate, not the logged-in user's. It rides on the projects
+  // response's `meta.report_summary.service_charge` (the exact field the admin /
+  // client Daily Report reads) and is captured in loadData below — that call is
+  // already scoped to the viewed client via selectedClientNomen, so no extra
+  // request and no backend change are needed. Falls back to the logged-in user's
+  // own auth.serviceCharge (correct for a client's own login) and finally 13%,
+  // so an admin/CM viewing another client no longer sees their own / a hardcoded
+  // rate.
+  const [clientServiceCharge, setClientServiceCharge] = createSignal(null);
 
-  const serviceChargeRate = serviceChargePercent / 100;
+  const serviceChargePercent = () =>
+    Number(clientServiceCharge() ?? auth?.serviceCharge ?? 13);
+
+  const serviceChargeRate = () => serviceChargePercent() / 100;
 
   const loadManualBatches = async () => {
     const token = activeLoadToken;
@@ -510,6 +522,13 @@ export default function MainDashboard() {
           ? res.data
           : [];
       const meta = res?.meta?.pagination;
+
+      // The per-client service-charge rate lives in this response's
+      // report_summary (present because /projects/ is scoped to one client via
+      // selectedClientNomen). Capture it so the ledger bills the VIEWED client's
+      // rate. null when unscoped → serviceChargePercent() falls back to auth/13%.
+      const sc = res?.meta?.report_summary?.service_charge;
+      if (sc != null) setClientServiceCharge(Number(sc));
 
       const mappedProjects = (apiData || []).map((item) => ({
         id: item.id,
@@ -1506,7 +1525,7 @@ export default function MainDashboard() {
     );
 
     const serviceChargeSpent =
-      totalSpent + totalSpent * serviceChargeRate.toFixed(2);
+      totalSpent + totalSpent * serviceChargeRate().toFixed(2);
 
     // Admin view: spend + 18% GST (client view uses serviceChargeSpent above)
     const gstSpent = totalSpent + totalSpent * 0.18;
@@ -2445,7 +2464,7 @@ export default function MainDashboard() {
             <Show when={!isAdmin()}>
               <div class="py-3.5 border-b border-[#E2E8F1] dark:border-gray-700">
                 <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
-                  Spend + {serviceChargePercent}% service charge
+                  Spend + {serviceChargePercent()}% service charge
                 </p>
                 <p class="text-xl font-bold text-gray-700 dark:text-white mt-1">
                   {"₹"}

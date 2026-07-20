@@ -342,18 +342,45 @@ export default function CMDailyReport() {
       // column. The hierarchy response carries no S.C rate, so fetch it the way
       // the admin daily report does: /projects/?client_id=<Client PK> →
       // meta.report_summary.service_charge. The Client PK isn't on report.client
-      // (only client_nomen_id) — it rides on premium_metrics.client_id.
+      // (only client_nomen_id) — it rides on the campaign rows.
+      //
+      // IMPORTANT: premiumCampaigns is the CM's WHOLE scope (every assigned
+      // client — fetchAllCampaignsScoped takes no client filter), so the PK MUST
+      // be scavenged from a campaign belonging to the SELECTED client. The old
+      // code took the first campaign with any client_id, which could hand back a
+      // DIFFERENT client's PK (→ wrong S.C) or, if that field is absent, null
+      // (→ silent 0% S.C). Match on client_nomen first, then read the PK from
+      // premium_metrics.client_id, falling back to a top-level client_id if the
+      // backend exposes it there instead.
       let serviceCharge = null;
+      const cid = String(client.client_nomen_id);
+      const ownRows = premiumCampaigns.filter(
+        (c) => String(c.client_nomen) === cid,
+      );
       const clientPK =
-        premiumCampaigns.find((c) => c?.premium_metrics?.client_id != null)
-          ?.premium_metrics?.client_id ?? null;
+        ownRows.find((c) => c?.premium_metrics?.client_id != null)
+          ?.premium_metrics?.client_id ??
+        ownRows.find((c) => c?.client_id != null)?.client_id ??
+        null;
       if (clientPK != null) {
         try {
           const projRes = await fetchProjects(1, "", 20, clientPK);
           serviceCharge = projRes?.meta?.report_summary?.service_charge ?? null;
+          if (serviceCharge == null) {
+            console.warn(
+              "[CMDailyReport] /projects/?client_id=%s returned no report_summary.service_charge (backend did not surface the S.C rate for this CM token).",
+              clientPK,
+            );
+          }
         } catch (err) {
           console.error("[CMDailyReport] service charge fetch failed:", err);
         }
+      } else {
+        console.warn(
+          "[CMDailyReport] could not resolve a Client PK for '%s' (client_nomen=%s): no campaign in the CM scope carries premium_metrics.client_id / client_id. Falling back to 0%% S.C.",
+          client.client_name,
+          cid,
+        );
       }
       setReport({ client, projects, from, to, premiumCampaigns, serviceCharge });
     } catch (err) {
