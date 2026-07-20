@@ -2461,7 +2461,7 @@ export default function MainDashboard() {
                 </p>
               </Show>
             </div>
-            <Show when={!isAdmin()}>
+            
               <div class="py-3.5 border-b border-[#E2E8F1] dark:border-gray-700">
                 <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
                   Spend + {serviceChargePercent()}% service charge
@@ -2476,8 +2476,8 @@ export default function MainDashboard() {
                   (excluding GST)
                 </p>
               </div>
-            </Show>
-            <Show when={isAdmin()}>
+            
+            {/* <Show when={isAdmin()}>
               <div class="py-3.5 border-b border-[#E2E8F1] dark:border-gray-700">
                 <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
                   Spend + 18% GST
@@ -2493,7 +2493,7 @@ export default function MainDashboard() {
                   (including 18% GST)
                 </p>
               </div>
-            </Show>
+            </Show> */}
             <div class="py-3.5">
               <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
                 Campaigns
