@@ -41,6 +41,7 @@ import CMDashboard from "./pages/CMDashboard";
 import SalesDashboard from "./pages/sales/SalesDashboard";
 import SalesClients from "./pages/sales/SalesClients";
 import SalesPayments from "./pages/sales/SalesPayments";
+import SalesManagers from "./pages/admin/sales/SalesManagers";
 import CMDailyReport from "./pages/CMDailyReport";
 import AccountFunding from "./pages/funding/AccountFunding";
 import FundsAdded from "./pages/funding/FundsAdded";
@@ -169,6 +170,15 @@ function App() {
               component={() => (
                 <AdminRoute>
                   <CampaignManagerClients />
+                </AdminRoute>
+              )}
+            />
+            {/* Admin roster of sales managers + their clients/payments. */}
+            <Route
+              path="/sales-managers"
+              component={() => (
+                <AdminRoute roles={["admin"]}>
+                  <SalesManagers />
                 </AdminRoute>
               )}
             />

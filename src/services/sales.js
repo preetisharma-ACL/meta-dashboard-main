@@ -32,6 +32,18 @@ export const fetchSalesSummary = async (startDate, endDate) => {
   return await api(url, { method: "GET" });
 };
 
+// Admin-only roster of sales managers and the clients each has onboarded.
+// GET /clients/admin/sales-managers/ (admin token). Per manager:
+//   { user_id, name, email, role, client_count, client_ids[],
+//     clients: [{ id, client_nomen_name, client_type,
+//                 campaign_managers: [{ name, email, tier }] }] }
+// Returns the flat manager array. Server order preserved (count desc);
+// zero-client managers are still listed.
+export const fetchSalesManagers = async () => {
+  const res = await api(`/clients/admin/sales-managers/`, { method: "GET" });
+  return Array.isArray(res?.data) ? res.data : res?.data?.results ?? [];
+};
+
 // Per-client payments overview for a month, scoped server-side to the sales
 // manager's onboarded book. The path carries "admin/" for historical reasons
 // but the backend sales-scopes it (verified live). Returns the full envelope;

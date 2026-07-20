@@ -1,6 +1,8 @@
 import { createResource, For, Show } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { fetchSalesClients } from "../../services/sales";
+import { typeBadge } from "../../components/sales/salesFormat";
+import { CMChips } from "../../components/sales/salesUI";
 
 // A client route is "/:client-nomen-name" — nomen name lowercased, whitespace
 // runs collapsed to "-" (matches Clients.jsx:413 and ClientDashboard's slugify).
@@ -8,16 +10,6 @@ const slugify = (name) =>
   String(name ?? "")
     .toLowerCase()
     .replace(/\s+/g, "-");
-
-// Client-type badge palette (house tones).
-const TYPE_BADGE = {
-  cpl: "bg-[#ECF2FA] text-[#3E6FB0] dark:bg-blue-900/40 dark:text-blue-300",
-  hybrid: "bg-[#FBF3E2] text-[#B07A14] dark:bg-yellow-900/30 dark:text-yellow-300",
-  retainer: "bg-[#E9F7F1] text-[#15966A] dark:bg-green-900/30 dark:text-green-300",
-};
-const typeBadge = (t) =>
-  TYPE_BADGE[String(t || "").toLowerCase()] ??
-  "bg-[#F1F4F9] text-[#54657E] dark:bg-gray-700 dark:text-gray-300";
 
 export default function SalesClients() {
   const navigate = useNavigate();
@@ -41,30 +33,6 @@ export default function SalesClients() {
     localStorage.setItem("selectedClientName", name);
     navigate(`/${slugify(name)}`);
   };
-
-  // CM chips from campaign_managers: [{name, email, tier}]. tier_1 → "Lead"
-  // badge; tier_2 → plain chip. Empty list → single "—" placeholder.
-  const CMChips = (props) => (
-    <Show
-      when={Array.isArray(props.managers) && props.managers.length > 0}
-      fallback={<span class="text-[#8593A8] dark:text-gray-500">—</span>}
-    >
-      <div class="flex flex-wrap gap-1.5">
-        <For each={props.managers}>
-          {(cm) => (
-            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-[#F1F4F9] text-[#54657E] dark:bg-gray-700 dark:text-gray-200">
-              {cm?.name || cm?.email || "Unknown"}
-              <Show when={String(cm?.tier || "").toLowerCase() === "tier_1"}>
-                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-[#ECF2FA] text-[#3E6FB0] dark:bg-blue-900/40 dark:text-blue-300">
-                  Lead
-                </span>
-              </Show>
-            </span>
-          )}
-        </For>
-      </div>
-    </Show>
-  );
 
   return (
     <section class="w-full px-4 sm:px-6 lg:px-8 py-6 bg-gray-50 dark:bg-gray-900 min-h-screen">

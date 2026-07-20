@@ -7,6 +7,12 @@ import {
   fetchSalesPayments,
 } from "../../services/sales";
 import { currentUser } from "../../stores/currentUser";
+import {
+  fmtMoney,
+  fmtNum,
+  isMissing,
+  remainingTile,
+} from "../../components/sales/salesFormat";
 
 // Current month as "YYYY-MM" for the payments strip.
 const currentMonthStr = () => {
@@ -14,19 +20,15 @@ const currentMonthStr = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 };
 
-// ─── Formatting helpers (match the other dashboards) ──────────────────────────
-const fmtMoney = (val) => {
-  const n = parseFloat(val);
-  if (!isFinite(n)) return "₹0";
-  return `₹${n.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+// Money → number | null (never coerce a missing money field to 0 — a missing
+// figure must render "—", not a healthy ₹0).
+const numOrNull = (v) => {
+  if (isMissing(v)) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
 };
-const fmtCPL = (val) => {
-  if (val == null || val === "") return "—";
-  const n = parseFloat(val);
-  if (!isFinite(n)) return "—";
-  return `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-};
-const fmtNum = (val) => (Number(val) || 0).toLocaleString("en-IN");
+// CPL: 2-decimal money; missing → "—".
+const fmtCPL = (val) => fmtMoney(val, 2);
 
 // A client route is "/:client-nomen-name" where the slug is the raw nomen name
 // lowercased with runs of whitespace collapsed to "-" (see Clients.jsx:413 and
@@ -149,15 +151,19 @@ export default function SalesDashboard() {
 
   const summary = createMemo(() => {
     const d = summaryRes() ?? {};
-    const spend = parseFloat(d.total_spend) || 0;
-    const leads = Number(d.total_leads) || 0;
+    const spend = numOrNull(d.total_spend); // money → null when absent, never 0
+    const leads = Number(d.total_leads) || 0; // count — 0 is meaningful
     return {
-      budget: parseFloat(d.total_budget) || 0,
+      budget: numOrNull(d.total_budget),
       spend,
       leads,
-      // Prefer the server's avg_cpl; fall back to spend/leads so the tile is
-      // never blank when the key is absent.
-      cpl: d.avg_cpl != null ? parseFloat(d.avg_cpl) : leads > 0 ? spend / leads : 0,
+      // Prefer the server's avg_cpl; else derive from spend/leads. null when
+      // neither is available so the tile shows "—", not ₹0.
+      cpl: !isMissing(d.avg_cpl)
+        ? numOrNull(d.avg_cpl)
+        : spend != null && leads > 0
+          ? spend / leads
+          : null,
       impressions: Number(d.total_impressions) || 0,
       clicks: Number(d.total_clicks) || 0,
       active: Number(d.active_campaigns) || 0,
@@ -166,10 +172,11 @@ export default function SalesDashboard() {
   });
 
   const summaryLoading = () => summaryRes.loading;
-  const utilPct = () =>
-    summary().budget > 0
-      ? Math.min((summary().spend / summary().budget) * 100, 100)
-      : 0;
+  const utilPct = () => {
+    const b = summary().budget;
+    const s = summary().spend;
+    return b && b > 0 && s != null ? Math.min((s / b) * 100, 100) : 0;
+  };
 
   // ── Roster of onboarded clients ─────────────────────────────────────────────
   const [clientsRes] = createResource(async () => {
@@ -194,7 +201,12 @@ export default function SalesDashboard() {
     }
   });
   const paymentsTotals = () => paymentsRes() ?? {};
-  const paymentsRemaining = () => parseFloat(paymentsTotals().closing_balance_inc_gst) || 0;
+  // TOTALS use closing_inc_gst (no "balance" — the per-client rows use
+  // closing_balance_inc_gst). Reading the row-style name here was the live bug:
+  // undefined → 0 → a false green "Remaining ₹0". remainingTile keeps "—" for
+  // missing and red "Owes ₹X" for negative.
+  const remainingTileData = () =>
+    remainingTile("Remaining", paymentsTotals().closing_inc_gst);
 
   const handleCardClick = (client) => {
     const name = client.client_nomen_name;
@@ -386,19 +398,7 @@ export default function SalesDashboard() {
           </b>
         </span>
         <span class="text-sm text-[#54657E] dark:text-gray-300">
-          Remaining{" "}
-          <Show
-            when={paymentsRemaining() < 0}
-            fallback={
-              <b class="text-[#15966A] dark:text-green-300">
-                {fmtMoney(paymentsRemaining())}
-              </b>
-            }
-          >
-            <b class="text-[#AC2334] dark:text-red-300">
-              Owes {fmtMoney(Math.abs(paymentsRemaining()))}
-            </b>
-          </Show>
+          Remaining <b class={remainingTileData().tone}>{remainingTileData().value}</b>
         </span>
         <span class="ml-auto inline-flex items-center gap-1 text-sm font-semibold text-[#AC2334] group-hover:gap-2 transition-all">
           Payments
