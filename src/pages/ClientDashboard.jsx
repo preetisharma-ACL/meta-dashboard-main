@@ -44,6 +44,7 @@ import { fetchCampaigns } from "../services/campaigns";
 import { fetchBulkCampaignInsights } from "../services/campaigns";
 import { fetchAllCampaigns } from "../services/campaigns";
 import { fetchAllAdminClients } from "./admin/services/fetchClients";
+import { fetchSalesClients } from "../services/sales";
 import Avatar from "../components/common/Avatar";
 import CountUp from "../components/CountUp";
 import ClientAIInsightButton from "../components/ClientAIInsightButton";
@@ -118,12 +119,49 @@ const slugify = (name) =>
 // when localStorage was actually rewritten (so callers must bust the cache).
 const ensureClientContextFromRoute = async (routeSlug) => {
   const auth = JSON.parse(localStorage.getItem("auth") || "{}");
-  // Only admins carry a switchable client context; real client logins are
-  // scoped server-side by their own nomen and never touch this key.
-  if (auth?.role !== "admin") return { ok: true, changed: false };
+  const role = auth?.role;
+  // Only admin + sales carry a switchable client context reconciled from the
+  // URL. Real client logins are scoped server-side by their own nomen and never
+  // touch these keys.
+  if (role !== "admin" && role !== "sales") return { ok: true, changed: false };
 
   // Not the dynamic client route (a static route, or "/") → nothing to reconcile.
   if (!routeSlug) return { ok: true, changed: false };
+
+  // ── Sales: mirror the admin slow path against the sales roster. Sales NEVER
+  // writes selectedClientId — that Client PK feeds as_client_id ("preview as
+  // client"), which is admin-only. Sales scopes purely by nomen, and the backend
+  // intersects with the manager's onboarded book, so this can never widen. ──
+  if (role === "sales") {
+    const stored = localStorage.getItem("selectedClientNomen");
+    // Fast path: localStorage already names the client in the URL → no fetch.
+    if (stored && slugify(stored) === routeSlug) {
+      return { ok: true, changed: false };
+    }
+    try {
+      const roster = await fetchSalesClients();
+      const match = roster.find(
+        (c) => slugify(c.client_nomen_name) === routeSlug,
+      );
+      if (!match) {
+        console.warn(
+          `ClientDashboard: no sales client matches route slug "${routeSlug}"`,
+        );
+        return { ok: false, changed: false, reason: "not-found" };
+      }
+      localStorage.setItem("selectedClientNomen", match.client_nomen_name);
+      localStorage.setItem("selectedClientNomenId", match.client_nomen); // nomen id
+      localStorage.setItem("selectedClientName", match.client_nomen_name);
+      // NOT selectedClientId — admin-only (as_client_id preview).
+      return { ok: true, changed: true };
+    } catch (err) {
+      console.error(
+        "ClientDashboard: failed to resolve sales client from route",
+        err,
+      );
+      return { ok: false, changed: false, reason: "error" };
+    }
+  }
 
   const stored = localStorage.getItem("selectedClientNomen");
   // Fast path: localStorage already names the client in the URL AND carries its
@@ -284,7 +322,12 @@ export default function MainDashboard() {
         if (prevPathname === undefined) return;
 
         const auth = JSON.parse(localStorage.getItem("auth") || "{}");
-        if (auth?.role !== "admin") return;
+        // Admin AND sales reconcile the client context from the URL on in-place
+        // nav (e.g. editing the address bar from one client to another within
+        // this reused instance). Sales "/" renders SalesDashboard, so the "/"
+        // branch below only ever fires for admin; the client-route branch runs
+        // for both and ensureClientContextFromRoute handles the sales roster.
+        if (auth?.role !== "admin" && auth?.role !== "sales") return;
 
         const bustAndReload = () => {
           // Cancel any still-in-flight loads so they can't overwrite the data

@@ -26,6 +26,7 @@ export const [currentUser, setCurrentUser] = createStore(defaultUser);
 export const cmTier = () => currentUser.cmProfile?.tier ?? null; // "tier_1" | "tier_2" | null
 export const isCM = () => currentUser.role === "campaign_manager";
 export const isAdmin = () => currentUser.role === "admin";
+export const isSales = () => currentUser.role === "sales";
 export const isTier1 = () => cmTier() === "tier_1";
 export const isTier2 = () => cmTier() === "tier_2";
 

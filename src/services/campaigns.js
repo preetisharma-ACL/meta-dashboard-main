@@ -9,7 +9,13 @@ const getClientNomen = () => {
   // and the request came back with the CM's whole book of business (every client
   // they manage) under one client's page. A CM passing client_nomen still can't
   // widen past their own scope: the backend intersects the two.
-  if (auth?.role === "admin" || auth?.role === "campaign_manager") {
+  // Sales views clients through the same switchable context; backend intersects
+  // with their onboarded scope, so this can never widen.
+  if (
+    auth?.role === "admin" ||
+    auth?.role === "campaign_manager" ||
+    auth?.role === "sales"
+  ) {
     return localStorage.getItem("selectedClientNomen") || null;
   }
   // Real client users: read from their own auth (ensure login sets this)

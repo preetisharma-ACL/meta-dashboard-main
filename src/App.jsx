@@ -38,6 +38,7 @@ import Projects from "./pages/admin/projects/Projects";
 import AdminRoute from "./utils/AdminRoute";
 import CoordinationDashboard from "./pages/coordination/pages/CoordinationDashboard";
 import CMDashboard from "./pages/CMDashboard";
+import SalesDashboard from "./pages/sales/SalesDashboard";
 import CMDailyReport from "./pages/CMDailyReport";
 import AccountFunding from "./pages/funding/AccountFunding";
 import FundsAdded from "./pages/funding/FundsAdded";
@@ -65,7 +66,9 @@ function RoleHome() {
       return null;
     }
   })();
-  return role === "campaign_manager" ? <CMDashboard /> : <MainDashboard />;
+  if (role === "campaign_manager") return <CMDashboard />;
+  if (role === "sales") return <SalesDashboard />;
+  return <MainDashboard />;
 }
 
 //  Layout is a named component — SolidJS reuses the SAME instance across all
