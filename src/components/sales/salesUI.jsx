@@ -1,5 +1,12 @@
-import { For, Show } from "solid-js";
-import { fmtMoney, fmtNum, typeBadge, isNegativeMoney } from "./salesFormat";
+import { For, Show, createSignal, createMemo } from "solid-js";
+import {
+  fmtMoney,
+  fmtNum,
+  typeBadge,
+  isNegativeMoney,
+  isMissing,
+} from "./salesFormat";
+import Avatar from "../common/Avatar";
 
 // ─── Shared sales UI ──────────────────────────────────────────────────────────
 // One copy of the payments table + money tiles + chips, serving SalesPayments
@@ -93,27 +100,119 @@ export function MoneyTilesRow(props) {
   );
 }
 
-// Per-client payments table (server order preserved — debtors first). Columns:
-// Client · Type · Opening · Received · Billed · Remaining · Leads · Status.
-// props.rows(): overview clients[]; props.loading(): bool.
+// Column definitions for the payments table — drives both the sortable headers
+// and the sort accessors. `num` columns sort largest-first on the first click;
+// `str` columns A→Z. `align` mirrors the cell alignment so headers line up.
+const PAY_COLUMNS = [
+  { key: "client", label: "Client", align: "left", type: "str", get: (c) => c.client_nomen },
+  { key: "type", label: "Type", align: "center", type: "str", get: (c) => c.client_type },
+  { key: "opening", label: "Opening", align: "right", type: "num", get: (c) => c.opening_balance_inc_gst },
+  { key: "received", label: "Received", align: "right", type: "num", get: (c) => c.received_inc_gst },
+  { key: "billed", label: "Billed", align: "right", type: "num", get: (c) => c.utilized_inc_gst },
+  { key: "remaining", label: "Remaining", align: "right", type: "num", get: (c) => c.closing_balance_inc_gst },
+  { key: "leads", label: "Leads", align: "right", type: "num", get: (c) => c.total_leads },
+  { key: "status", label: "Status", align: "center", type: "str", get: (c) => c.status },
+];
+const PAY_COL = Object.fromEntries(PAY_COLUMNS.map((c) => [c.key, c]));
+
+// Per-client payments table. Server order (debtors first) is the DEFAULT — sort
+// is opt-in: click a header to sort, click again to reverse, a third time to
+// restore the server order. Columns: Client · Type · Opening · Received ·
+// Billed · Remaining · Leads · Status. props.rows(): clients[]; props.loading().
 export function PaymentsTable(props) {
   const cellTone = (v, negTone, posTone) =>
     "px-4 py-3 text-right tabular-nums font-medium " +
     (isNegativeMoney(v) ? negTone : posTone);
+
+  // null sortKey → preserve the server's debtors-first order.
+  const [sortKey, setSortKey] = createSignal(null);
+  const [sortDir, setSortDir] = createSignal("asc");
+
+  const toggleSort = (key) => {
+    const primary = PAY_COL[key].type === "num" ? "desc" : "asc";
+    const secondary = primary === "asc" ? "desc" : "asc";
+    if (sortKey() !== key) {
+      setSortKey(key);
+      setSortDir(primary);
+    } else if (sortDir() === primary) {
+      setSortDir(secondary);
+    } else {
+      setSortKey(null); // third click → back to server order
+      setSortDir("asc");
+    }
+  };
+
+  const sortIcon = (key) => {
+    if (sortKey() !== key)
+      return <span class="ml-1 text-[#C3CDDB] dark:text-gray-600">⇅</span>;
+    return (
+      <span class="ml-1 text-[#AC2334] dark:text-red-300">
+        {sortDir() === "asc" ? "↑" : "↓"}
+      </span>
+    );
+  };
+
+  // Missing money/leads always sort to the bottom, regardless of direction.
+  const compare = (a, b, col) => {
+    if (col.type === "num") {
+      const na = isMissing(col.get(a)) ? null : Number(col.get(a));
+      const nb = isMissing(col.get(b)) ? null : Number(col.get(b));
+      if (na === null && nb === null) return 0;
+      if (na === null) return 1;
+      if (nb === null) return -1;
+      return na - nb;
+    }
+    const sa = String(col.get(a) ?? "").toLowerCase();
+    const sb = String(col.get(b) ?? "").toLowerCase();
+    return sa < sb ? -1 : sa > sb ? 1 : 0;
+  };
+
+  const sortedRows = createMemo(() => {
+    const rows = props.rows() ?? [];
+    const key = sortKey();
+    if (!key) return rows; // server order
+    const col = PAY_COL[key];
+    const dir = sortDir() === "asc" ? 1 : -1;
+    const missingLast = (a, b) => {
+      // keep "missing last" stable even when direction flips
+      if (col.type === "num") {
+        const ma = isMissing(col.get(a));
+        const mb = isMissing(col.get(b));
+        if (ma && !mb) return 1;
+        if (!ma && mb) return -1;
+      }
+      return compare(a, b, col) * dir;
+    };
+    return [...rows].sort(missingLast);
+  });
 
   return (
     <div class="overflow-x-auto bg-gray-50 dark:bg-gray-800 rounded-xl border border-[#E2E8F1] dark:border-gray-700 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)]">
       <table class="w-full text-sm table-auto">
         <thead class="bg-[#F8FAFC] dark:bg-gray-800">
           <tr class="[&_th]:whitespace-nowrap [&_th]:text-xs [&_th]:uppercase [&_th]:tracking-wider [&_th]:font-bold [&_th]:px-4 [&_th]:py-3.5 text-[#54657E] dark:text-gray-300 border-b border-[#D4DDE9] dark:border-gray-700">
-            <th class="text-left">Client</th>
-            <th class="text-center">Type</th>
-            <th class="text-right">Opening</th>
-            <th class="text-right">Received</th>
-            <th class="text-right">Billed</th>
-            <th class="text-right">Remaining</th>
-            <th class="text-right">Leads</th>
-            <th class="text-center">Status</th>
+            <th class="text-center w-12">S.No</th>
+            <For each={PAY_COLUMNS}>
+              {(col) => (
+                <th
+                  class={
+                    col.align === "right"
+                      ? "text-right"
+                      : col.align === "center"
+                        ? "text-center"
+                        : "text-left"
+                  }
+                >
+                  <button
+                    onClick={() => toggleSort(col.key)}
+                    class="inline-flex items-center uppercase tracking-wider font-bold hover:text-[#AC2334] dark:hover:text-red-300 transition"
+                  >
+                    {col.label}
+                    {sortIcon(col.key)}
+                  </button>
+                </th>
+              )}
+            </For>
           </tr>
         </thead>
 
@@ -124,6 +223,9 @@ export function PaymentsTable(props) {
               <For each={Array(8).fill(0)}>
                 {() => (
                   <tr class="border-t border-[#E2E8F1] dark:border-gray-700 animate-pulse">
+                    <td class="p-3">
+                      <div class="h-7 w-7 bg-gray-200 dark:bg-gray-700 rounded-full mx-auto"></div>
+                    </td>
                     <td class="p-3">
                       <div class="h-4 w-40 bg-gray-200 dark:bg-gray-700 rounded"></div>
                     </td>
@@ -147,7 +249,7 @@ export function PaymentsTable(props) {
           }
         >
           <tbody>
-            <For each={props.rows()}>
+            <For each={sortedRows()}>
               {(c, i) => (
                 <tr
                   class={
@@ -157,16 +259,27 @@ export function PaymentsTable(props) {
                       : "bg-[#FAFBFD] dark:bg-gray-800")
                   }
                 >
+                  {/* S.No */}
+                  <td class="px-4 py-3 text-center">
+                    <span class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-[#FBEEF0] dark:bg-red-900/30 text-[#AC2334] dark:text-red-300 text-xs font-bold">
+                      {i() + 1}
+                    </span>
+                  </td>
                   {/* Client */}
                   <td class="px-4 py-3">
-                    <div class="font-semibold text-blue-900 dark:text-gray-100">
-                      {c.client_nomen || "—"}
-                    </div>
-                    <Show when={c.client_email}>
-                      <div class="text-xs text-[#8593A8] dark:text-gray-400">
-                        {c.client_email}
+                    <div class="flex items-center gap-3">
+                      <Avatar name={c.client_nomen || c.client_email} />
+                      <div class="min-w-0">
+                        <div class="font-semibold text-blue-900 dark:text-gray-100 truncate">
+                          {c.client_nomen || "—"}
+                        </div>
+                        <Show when={c.client_email}>
+                          <div class="text-xs text-[#8593A8] dark:text-gray-400 truncate">
+                            {c.client_email}
+                          </div>
+                        </Show>
                       </div>
-                    </Show>
+                    </div>
                   </td>
                   {/* Type */}
                   <td class="px-4 py-3 text-center">
