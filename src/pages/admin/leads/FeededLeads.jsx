@@ -60,6 +60,7 @@ export default function ManualBatches() {
     project_id: "",
     synthetic_lead_count: "",
     total_cost: "",
+    received_date: "",
     notes: "",
   });
 
@@ -232,6 +233,7 @@ export default function ManualBatches() {
         project_id: "",
         synthetic_lead_count: "",
         total_cost: "",
+        received_date: "",
         notes: "",
       });
 
@@ -283,6 +285,15 @@ export default function ManualBatches() {
         total_cost: formData().total_cost,
         notes: formData().notes,
       };
+
+      // received_date is optional. The <input type="date"> already yields a
+      // "YYYY-MM-DD" string. Only include it when the user actually picked a
+      // date — never send an empty string (backend defaults to upload date
+      // when the field is omitted/null).
+      const receivedDate = formData().received_date?.trim();
+      if (receivedDate) {
+        payload.received_date = receivedDate;
+      }
 
       await createManualBatch(payload);
       const leadCount = formData().synthetic_lead_count;
@@ -915,6 +926,31 @@ export default function ManualBatches() {
                    focus:ring-2 focus:ring-purple-500
                    outline-none"
                 />
+              </div>
+
+              {/* Received date (optional) */}
+              <div>
+                <label class="block text-sm font-medium mb-1.5">
+                  Received date{" "}
+                  <span class="text-gray-400 font-normal">(optional)</span>
+                </label>
+
+                <input
+                  type="date"
+                  value={formData().received_date}
+                  onInput={(e) =>
+                    handleInputChange("received_date", e.target.value)
+                  }
+                  class="w-full px-3 py-2 rounded-lg border
+                   border-gray-300 dark:border-gray-600
+                   bg-white dark:bg-gray-800
+                   focus:ring-2 focus:ring-purple-500
+                   outline-none"
+                />
+
+                <p class="text-xs text-gray-400 mt-1">
+                  Leave blank to use today's upload date.
+                </p>
               </div>
 
               {/* Notes */}

@@ -7,6 +7,6 @@ export const fetchManualBatches = async (page = 1) => {
 export const createManualBatch = async (payload) => {
   return await api(`/leads/manual-batches/`, {
     method: "POST",
-    body: payload,
+    body: JSON.stringify(payload),
   });
 };
