@@ -42,6 +42,7 @@ import SalesDashboard from "./pages/sales/SalesDashboard";
 import SalesClients from "./pages/sales/SalesClients";
 import SalesPayments from "./pages/sales/SalesPayments";
 import SalesManagers from "./pages/admin/sales/SalesManagers";
+import SalesLeaderboard from "./pages/admin/sales/SalesLeaderboard";
 import CMDailyReport from "./pages/CMDailyReport";
 import AccountFunding from "./pages/funding/AccountFunding";
 import FundsAdded from "./pages/funding/FundsAdded";
@@ -179,6 +180,15 @@ function App() {
               component={() => (
                 <AdminRoute roles={["admin"]}>
                   <SalesManagers />
+                </AdminRoute>
+              )}
+            />
+            {/* Admin sales-manager leaderboard (billed vs collected). */}
+            <Route
+              path="/sales-leaderboard"
+              component={() => (
+                <AdminRoute roles={["admin"]}>
+                  <SalesLeaderboard />
                 </AdminRoute>
               )}
             />
