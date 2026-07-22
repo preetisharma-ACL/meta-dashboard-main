@@ -227,7 +227,7 @@ function App() {
                 the backend role-scopes the payments-overview feed (a CM gets
                 only their visible clients, admins get all). */}
             <Route
-              path="/client-billing/payments"
+              path="/client-payments"
               component={() => (
                 <AdminRoute roles={["admin", "campaign_manager"]}>
                   <ClientBilling />
