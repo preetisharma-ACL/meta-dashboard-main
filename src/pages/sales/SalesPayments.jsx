@@ -8,6 +8,7 @@ import {
   TONE_NAVY,
 } from "../../components/sales/salesFormat";
 import { MoneyTilesRow, PaymentsTable } from "../../components/sales/salesUI";
+import MonthPicker from "../../components/sales/MonthPicker";
 import {
   CLIENT_TYPES,
   toggleClientTypeIn,
@@ -139,12 +140,10 @@ export default function SalesPayments() {
         </div>
 
         <div class="flex items-center gap-3 flex-wrap">
-          <input
-            type="month"
+          <MonthPicker
             value={month()}
             max={currentMonthStr()}
-            onInput={(e) => handleMonthChange(e.currentTarget.value)}
-            class="border border-[#E2E8F1] dark:border-gray-600 px-3 py-2 rounded-lg bg-white dark:bg-gray-800 text-sm text-[#1A2B45] dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#AC2334]/25 focus:border-[#AC2334]"
+            onChange={handleMonthChange}
           />
           <button
             onClick={handleRefresh}
