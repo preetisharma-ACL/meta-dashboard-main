@@ -11,6 +11,10 @@ import { useTheme } from "../context/ThemeContext";
 import { fetchUser } from "../services/userProfile";
 import { handleLogout } from "../pages/login/LoginForm";
 import { fetchAlerts } from "../services/alert-service";
+import {
+  ensureNotifyPermission,
+  showBrowserNotification,
+} from "../services/browserNotify";
 import SwitchModeDropdown from "./SwitchModeDropdown";
 import { useNavigate, useLocation } from "@solidjs/router";
 import {
@@ -70,6 +74,12 @@ export default function Header() {
     }
   });
 
+  // IDs we've already surfaced as an OS notification this page-session. Starts
+  // null; the first successful load seeds it silently so we don't blast a
+  // backlog of existing unread alerts on login/reload — only alerts that arrive
+  // *after* the app is open get a browser notification + sound.
+  let notifiedIds = null;
+
   //  Notifications/alerts load — paginates through every alert page.
   const loadAlerts = async () => {
     try {
@@ -99,6 +109,24 @@ export default function Header() {
           category: item.category,
         }));
 
+      // ── Surface brand-new unread alerts as OS notifications + sound ──────────
+      const unreadNow = allNotifications.filter((n) => n.unread);
+      if (notifiedIds === null) {
+        // First load: seed silently, no popup for the existing backlog.
+        notifiedIds = new Set(unreadNow.map((n) => n.id));
+      } else {
+        for (const n of unreadNow) {
+          if (notifiedIds.has(n.id)) continue;
+          notifiedIds.add(n.id);
+          showBrowserNotification({
+            title: n.title,
+            body: n.message,
+            tag: `alert-${n.id}`,
+            onClick: () => navigate("/notifications"),
+          });
+        }
+      }
+
       setHeaderCache({
         ...headerCache,
         notifications: allNotifications.slice(0, 5),
@@ -123,6 +151,24 @@ export default function Header() {
     } // cache fresh
     alertsLoaded = true;
     loadAlerts();
+  });
+
+  //  Poll for new alerts so OS notifications fire while the app sits open in any
+  //  tab. Runs on every route except Billing (which deliberately never fetches
+  //  alerts). Permission is requested up front; the bell click re-asks if the
+  //  browser deferred the prompt without a user gesture.
+  onMount(() => {
+    ensureNotifyPermission();
+
+    const POLL_MS = 45_000;
+    const tick = () => {
+      // Deliberately runs even when the tab is hidden — the whole point is to
+      // alert the user while they're looking at some other tab/window.
+      if (location.pathname === "/billing") return;
+      loadAlerts();
+    };
+    const id = setInterval(tick, POLL_MS);
+    onCleanup(() => clearInterval(id));
   });
 
   // ── Close dropdowns when clicking outside ─────────────────────────────────
@@ -240,7 +286,10 @@ export default function Header() {
           {/* Notifications */}
           <div class="relative header-notifications">
             <button
-              onClick={() => setShowNotifications(!showNotifications())}
+              onClick={() => {
+                ensureNotifyPermission(); // gesture-driven prompt if deferred
+                setShowNotifications(!showNotifications());
+              }}
               class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors relative"
             >
               <svg
