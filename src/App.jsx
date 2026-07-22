@@ -56,6 +56,7 @@ import AccountMonitor from "./pages/monitor/AccountMonitor";
 import MyWork from "./pages/worklog/MyWork";
 import ClientWorkspace from "./pages/worklog/ClientWorkspace";
 import CplRules from "./pages/cpl/CplRules";
+import ClientBilling from "./pages/billing/ClientBilling";
 import AlertsPanel from "./components/AlertsPanel";
 import { loadCurrentUser } from "./stores/currentUser";
 
@@ -219,6 +220,17 @@ function App() {
               component={() => (
                 <AdminRoute roles={["sales"]}>
                   <SalesPayments />
+                </AdminRoute>
+              )}
+            />
+            {/* Client Billing → Client Payments. Role-gated to CMs + admins;
+                the backend role-scopes the payments-overview feed (a CM gets
+                only their visible clients, admins get all). */}
+            <Route
+              path="/client-billing/payments"
+              component={() => (
+                <AdminRoute roles={["admin", "campaign_manager"]}>
+                  <ClientBilling />
                 </AdminRoute>
               )}
             />

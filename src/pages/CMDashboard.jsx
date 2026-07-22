@@ -4,25 +4,10 @@ import Swal from "sweetalert2";
 import { DateRangeFilter } from "../components/DateRangeFilter";
 import Avatar from "../components/common/Avatar";
 import { fetchAllCampaignsScoped, fetchHierarchyClients } from "../services/cm";
-import { fetchSalesPayments } from "../services/sales";
 import { asTeamMemberId, ownScope, clearScope } from "../stores/cmScope";
-import {
-  currentUser,
-  cmTier,
-  canWriteCampaigns,
-  isCM,
-  isAdmin,
-} from "../stores/currentUser";
+import { currentUser, cmTier, canWriteCampaigns } from "../stores/currentUser";
 import CMHierarchy from "../components/CMHierarchy";
 import CampaignStatusControl from "../components/CampaignStatusControl";
-import MonthPicker from "../components/sales/MonthPicker";
-import { MoneyTilesRow, PaymentsTable } from "../components/sales/salesUI";
-import {
-  fmtMoney as fmtMoneyPay,
-  remainingTile,
-  TONE_GREEN,
-  TONE_NAVY,
-} from "../components/sales/salesFormat";
 
 // ─── Formatting helpers (match existing dashboards) ───────────────────────────
 const fmtMoney = (val) => {
@@ -91,12 +76,6 @@ const formatDate = (date) => {
   const m = String(date.getMonth() + 1).padStart(2, "0");
   const d = String(date.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
-};
-
-// "YYYY-MM" for the current month — the Client Payments picker's default + cap.
-const currentMonthStr = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 };
 
 // ── Status + performance palette (house navy/crimson) ────────────────────────
@@ -289,78 +268,6 @@ export default function CMDashboard() {
   });
 
   const tierLabel = () => (cmTier() === "tier_1" ? "Team Lead" : cmTier() === "tier_2" ? "Individual" : "");
-
-  // ════════════════════════════════════════════════════════════════════════
-  // CLIENT PAYMENTS — billing overview for the CM's visible book.
-  // Reuses the exact endpoint + shared sales components (no fork). The backend
-  // role-scopes GET /billing/admin/payments-overview/ (a CM gets only their
-  // tier-aware clients; admins get all), so we send no scoping params — only
-  // month, and refresh=1 from the explicit Refresh button. This is independent
-  // of the campaign date-range filter above (own month picker + own resource).
-  // ════════════════════════════════════════════════════════════════════════
-  const [payMonth, setPayMonth] = createSignal(currentMonthStr());
-  const [payRefreshing, setPayRefreshing] = createSignal(false);
-
-  // Keyed on month → switching months refetches (cached). Refresh calls
-  // refetch(true); the fetcher reads info.refetching to append refresh=1.
-  const [payPayload, { refetch: refetchPay }] = createResource(
-    payMonth,
-    async (m, info) => {
-      const refresh = info?.refetching === true;
-      const res = await fetchSalesPayments(m, refresh);
-      return res?.data ?? {};
-    },
-  );
-
-  const payTotals = () => payPayload()?.totals ?? {};
-  // Server order (debtors first) preserved — the table handles opt-in sorting.
-  const payRows = () => payPayload()?.clients ?? [];
-  const payLoading = () => payPayload.loading;
-
-  // Three tiles straight off TOTALS. NOTE the key asymmetry: rows use
-  // closing_BALANCE_inc_gst, but TOTALS use closing_inc_gst (no "balance").
-  // Reading the row-style name here returned undefined → a false "Remaining ₹0
-  // healthy". Read the totals name. No money read coerces undefined to 0 —
-  // fmtMoneyPay / remainingTile render missing as "—", never ₹0.
-  const payTiles = createMemo(() => [
-    {
-      label: "Received",
-      value: fmtMoneyPay(payTotals().received_inc_gst, 0),
-      tone: TONE_GREEN,
-    },
-    {
-      label: "Billed (incl. S.C + GST)",
-      value: fmtMoneyPay(payTotals().utilized_inc_gst, 0),
-      tone: TONE_NAVY,
-    },
-    remainingTile("Remaining", payTotals().closing_inc_gst),
-  ]);
-
-  const payMonthLabel = createMemo(() => {
-    const m = payPayload()?.month || payMonth();
-    const [y, mo] = String(m).split("-");
-    if (!y || !mo) return m;
-    return new Date(Number(y), Number(mo) - 1, 1).toLocaleDateString("en-IN", {
-      month: "long",
-      year: "numeric",
-    });
-  });
-
-  const handlePayMonthChange = (value) => {
-    if (!value) return;
-    if (value > currentMonthStr()) value = currentMonthStr(); // no future months
-    setPayMonth(value);
-  };
-
-  const handlePayRefresh = async () => {
-    if (payLoading() || payRefreshing()) return;
-    setPayRefreshing(true);
-    try {
-      await refetchPay(true);
-    } finally {
-      setPayRefreshing(false);
-    }
-  };
 
   // ════════════════════════════════════════════════════════════════════════
   // DISPLAY-ONLY DERIVATIONS for the redesigned sections.
@@ -857,90 +764,6 @@ export default function CMDashboard() {
           </div>
         </div>
       </div>
-
-      {/* ════════ CLIENT PAYMENTS (billing overview, CM-scoped) ════════
-          Own month picker + Refresh, independent of the campaign date range.
-          Tiles + table reuse the shared sales components. Visible to CMs and
-          admins only (this dashboard never renders for other roles).        */}
-      <Show when={isCM() || isAdmin()}>
-        <Eyebrow label="Client payments" soft={payMonthLabel()} />
-        <div class="mb-8">
-          {/* Controls: month picker + explicit Refresh (refresh=1) */}
-          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-            <p class="text-sm text-[#54657E] dark:text-gray-400">
-              Received, billed and remaining balances for your clients in{" "}
-              <span class="font-semibold text-[#14233A] dark:text-gray-200">
-                {payMonthLabel()}
-              </span>
-              .
-            </p>
-            <div class="flex items-center gap-3 flex-wrap">
-              <MonthPicker
-                value={payMonth()}
-                max={currentMonthStr()}
-                onChange={handlePayMonthChange}
-              />
-              <button
-                onClick={handlePayRefresh}
-                disabled={payRefreshing()}
-                class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#14233A] text-white text-sm font-semibold hover:bg-[#1d3252] disabled:opacity-60 disabled:cursor-default transition-colors"
-              >
-                <svg
-                  class={"w-4 h-4 " + (payRefreshing() ? "animate-spin" : "")}
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M4 4v5h5M20 20v-5h-5M5.5 9a7 7 0 0112.9-2M18.5 15a7 7 0 01-12.9 2"
-                  />
-                </svg>
-                {payRefreshing() ? "Refreshing…" : "Refresh"}
-              </button>
-            </div>
-          </div>
-
-          <Show when={payPayload.error}>
-            <div class="mb-4 rounded-xl border border-[#AC2334]/25 bg-[#FBEEF0] dark:bg-red-900/20 dark:border-red-800 px-4 py-3 text-sm font-medium text-[#AC2334] dark:text-red-300">
-              Could not load payments overview. Please try again.
-            </div>
-          </Show>
-
-          {/* Three tiles from totals: Received · Billed · Remaining */}
-          <div class="mb-3">
-            <MoneyTilesRow tiles={payTiles} loading={payLoading} />
-          </div>
-
-          {/* A positive net Remaining can hide clients who owe — surface it. */}
-          <Show when={(payTotals().clients_owing ?? 0) > 0}>
-            <div class="mb-4 inline-flex items-start gap-2 rounded-lg border border-[#AC2334]/25 bg-[#FBEEF0] dark:bg-red-900/20 dark:border-red-800 px-3.5 py-2 text-sm font-semibold text-[#AC2334] dark:text-red-300">
-              <svg
-                class="w-4 h-4 flex-none mt-0.5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"
-                />
-              </svg>
-              <span>
-                <b>{payTotals().clients_owing}</b> of {payTotals().client_count}{" "}
-                clients owe {fmtMoneyPay(payTotals().total_owed_inc_gst, 0)}
-              </span>
-            </div>
-          </Show>
-
-          {/* Per-client table (server order — debtors first) */}
-          <PaymentsTable rows={payRows} loading={payLoading} />
-        </div>
-      </Show>
 
       {/* ════════ VIEW TABS ════════ */}
       <div class="inline-flex gap-1 p-1 bg-[#EEF2F7] dark:bg-gray-800 rounded-xl border border-[#E2E8F1] dark:border-gray-700 mb-6">
