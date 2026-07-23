@@ -247,6 +247,16 @@ export default function ProjectDetails() {
     JSON.parse(localStorage.getItem("auth") || "null")?.role ?? "client",
   );
   const { handleSort, getSortIcon, sortData } = useColumnSort();
+  // Rows-per-page selector. Kept as its own signal (the server echoes the
+  // applied size back in meta.page_size, which the display reads) and persisted
+  // so the choice survives navigation.
+  // 20 stays in the list because it is this table's long-standing default — the
+  // menu must always be able to check the active size.
+  const ROWS_PER_PAGE_OPTIONS = [10, 20, 25, 50, 100];
+  const [rowsPerPage, setRowsPerPage] = createSignal(
+    Number(localStorage.getItem("projectDetailsRowsPerPage")) || 20,
+  );
+  const [showRowsMenu, setShowRowsMenu] = createSignal(false);
   // Add near your other signals
   const [allCampaigns, setAllCampaigns] = createSignal([]);
   const [allCampaignsLoaded, setAllCampaignsLoaded] = createSignal(false);
@@ -257,7 +267,7 @@ export default function ProjectDetails() {
   const campaigns = () => cachedProject().campaigns ?? [];
   const loading = () => cachedProject().loading ?? false;
   const page = () => cachedProject().meta?.page ?? 1;
-  const pageSize = () => cachedProject().meta?.page_size ?? 20;
+  const pageSize = () => cachedProject().meta?.page_size ?? rowsPerPage();
   const total = () => cachedProject().meta?.total ?? 0;
   const totalPages = () => cachedProject().meta?.total_pages ?? 1;
   const hasNext = () => cachedProject().meta?.has_next ?? false;
@@ -347,6 +357,9 @@ export default function ProjectDetails() {
       if (!e.target.closest(".notification-wrapper")) {
         setShowNotifications(false);
       }
+      if (!e.target.closest(".rows-per-page-wrapper")) {
+        setShowRowsMenu(false);
+      }
     };
     document.addEventListener("click", handleClickOutside);
     onCleanup(() => document.removeEventListener("click", handleClickOutside));
@@ -380,7 +393,7 @@ export default function ProjectDetails() {
         pageNo,
         projectId,
         searchValue,
-        20,
+        rowsPerPage(),
         rangeStart(),
         rangeEnd(),
       );
@@ -453,6 +466,16 @@ export default function ProjectDetails() {
       console.error("API error:", err);
       setProjectCache({ campaigns: [], loading: false });
     }
+  };
+
+  // Rows-per-page change → always restart at page 1 (the old page number can be
+  // past the end once the page grows).
+  const changeRowsPerPage = (size) => {
+    setShowRowsMenu(false);
+    if (size === rowsPerPage()) return;
+    setRowsPerPage(size);
+    localStorage.setItem("projectDetailsRowsPerPage", String(size));
+    loadCampaigns(1, search());
   };
 
   // Add this new function to load ALL campaigns for totals.
@@ -1491,11 +1514,64 @@ export default function ProjectDetails() {
         }
       >
         <div class="flex items-center justify-between mt-4 flex-wrap gap-3">
-          <span class="text-sm text-gray-500">
-            {total() === 0
-              ? "No results"
-              : `Showing ${(page() - 1) * pageSize() + 1}–${Math.min(page() * pageSize(), total())} of ${total()} results`}
-          </span>
+          <div class="flex items-center gap-3">
+            <span class="text-sm text-gray-500">
+              {total() === 0
+                ? "No results"
+                : `Showing ${(page() - 1) * pageSize() + 1}–${Math.min(page() * pageSize(), total())} of ${total()} results`}
+            </span>
+
+            {/* Rows-per-page selector */}
+            <div class="rows-per-page-wrapper relative">
+              <button
+                type="button"
+                onClick={() => setShowRowsMenu(!showRowsMenu())}
+                class="flex items-center gap-2 px-3 h-9 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+              >
+                {rowsPerPage()} per page
+                <svg
+                  class={`w-3.5 h-3.5 transition-transform ${showRowsMenu() ? "rotate-180" : ""}`}
+                  fill="none"
+                  viewBox="0 0 16 16"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                >
+                  <path d="M4 6l4 4 4-4" />
+                </svg>
+              </button>
+
+              <Show when={showRowsMenu()}>
+                <div class="absolute left-0 bottom-full mb-1 z-30 w-40 py-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg">
+                  <For each={ROWS_PER_PAGE_OPTIONS}>
+                    {(size) => (
+                      <button
+                        type="button"
+                        onClick={() => changeRowsPerPage(size)}
+                        class={`w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors ${
+                          size === rowsPerPage()
+                            ? "text-blue-600 dark:text-blue-400 font-medium"
+                            : "text-gray-700 dark:text-gray-200"
+                        }`}
+                      >
+                        {size} per page
+                        <Show when={size === rowsPerPage()}>
+                          <svg
+                            class="w-3.5 h-3.5"
+                            fill="none"
+                            viewBox="0 0 16 16"
+                            stroke="currentColor"
+                            stroke-width="2"
+                          >
+                            <path d="M3 8.5l3.5 3.5L13 5" />
+                          </svg>
+                        </Show>
+                      </button>
+                    )}
+                  </For>
+                </div>
+              </Show>
+            </div>
+          </div>
 
           <div class="flex items-center gap-2">
             <button
