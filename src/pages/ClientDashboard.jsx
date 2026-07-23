@@ -27,6 +27,7 @@ import {
   createSignal,
   createMemo,
   createEffect,
+  createResource,
   on,
 } from "solid-js";
 import { useParams } from "@solidjs/router";
@@ -40,7 +41,12 @@ import { A } from "@solidjs/router";
 import { DateRangeFilter } from "../components/DateRangeFilter";
 import useColumnSort from "../components/Columnsorting";
 import { fetchProjects, fetchManualBatches } from "../services/dashboard";
-import { fedLeadsForProject } from "../services/fedLeads";
+import {
+  fedLeadsForProject,
+  fetchFedLeadBatches,
+  fedLeadsByProject,
+  fmtFed,
+} from "../services/fedLeads";
 import { fetchCampaigns } from "../services/campaigns";
 import { fetchBulkCampaignInsights } from "../services/campaigns";
 import { fetchAllCampaigns } from "../services/campaigns";
@@ -761,6 +767,63 @@ export default function MainDashboard() {
   const getProjectExtraLeads = (projectId, batches, from, to) =>
     fedLeadsForProject(batches, projectId, from, to);
 
+  // ── Fed (manually-uploaded) leads for a CM viewing a client's dashboard ─────
+  //
+  // A CM's bulk-insights rows come back RAW: the display pipeline that folds
+  // synthetic leads into the normal rows does not run for privileged roles, so
+  // there is no is_manual row in this response to derive fed leads from. They
+  // have to come from the manual-batch list and be joined by project id — the
+  // same route CMDashboard and CMDailyReport already take. That shared join is
+  // the whole point: a CM's dashboard, their own daily report and the client's
+  // own view can no longer disagree about the same batch. The day/revoked rule
+  // is never re-implemented here; fedLeads.js owns it.
+  //
+  // Deliberately CM-ONLY:
+  //   • admin already has its own server-scoped "Extra Leads" column (fed by
+  //     loadManualBatches → getProjectExtraLeads); a second fed source here
+  //     would double count it.
+  //   • a client's own rows are already INCLUSIVE of fed leads, so adding them
+  //     again is the 108 → 122 double count all over again.
+  const isCMViewer = () => auth?.role === "campaign_manager";
+
+  // One fetch per viewed client. The list endpoint carries no date filter, so
+  // every range below is applied client-side by fedLeadsByProject. A null source
+  // means the fetcher never runs at all for admin / client viewers.
+  const cmFedScope = () =>
+    isCMViewer() ? (selectedClientNomen() ?? "cm") : null;
+
+  const [cmFedBatches] = createResource(cmFedScope, async () => {
+    try {
+      // No client_nomen filter: the backend auto-scopes the list to the CM's
+      // visible clients, and we then join by project id against THIS client's
+      // own projects — so no other client's batch can surface here. A failure
+      // degrades to "no fed leads" rather than sinking the dashboard.
+      return await fetchFedLeadBatches();
+    } catch (err) {
+      console.error("[ClientDashboard] CM fed lead batches failed:", err);
+      return [];
+    }
+  });
+
+  // The hero reads the CARD range and the project ledger reads the CALENDAR
+  // range — two different pickers — so each gets its own roll-up rather than
+  // sharing one and drifting from the numbers printed beside it.
+  const cmFedByProjectCard = createMemo(() => {
+    if (!isCMViewer()) return {};
+    const { from, to } = getCardDateRange();
+    return fedLeadsByProject(cmFedBatches() ?? [], from, to);
+  });
+
+  const cmFedByProjectLedger = createMemo(() =>
+    isCMViewer()
+      ? fedLeadsByProject(cmFedBatches() ?? [], fromDate(), toDate())
+      : {},
+  );
+
+  // Fed leads for one project, 0 for every non-CM viewer. Keys are strings.
+  const cmFedOf = (map, projectId) =>
+    isCMViewer() ? map[String(projectId)] || 0 : 0;
+
   const cardStats = createMemo(() => {
     const { from, to } = getCardDateRange();
     const result = {};
@@ -796,10 +859,15 @@ export default function MainDashboard() {
         from,
         to,
       );
+      // CM only — 0 for admin (which uses extraLeads above) and for clients
+      // (whose totalLeads is already inclusive). Never folded into totalLeads.
+      const fedLeads = cmFedOf(cmFedByProjectCard(), project.id);
       const totalSpent = filtered.reduce(
         (s, d) => s + rawSpendOf(d),
         0,
       );
+      // CPL is cost per META lead: raw spend ÷ Meta leads. Fed leads cost
+      // nothing on Meta, so dividing by the inclusive total would understate it.
       const avgCPL =
         totalLeads > 0 ? parseFloat(totalSpent / totalLeads).toFixed(2) : 0;
 
@@ -831,6 +899,8 @@ export default function MainDashboard() {
       result[project.id] = {
         totalLeads,
         extraLeads,
+        fedLeads,
+        totalLeadsWithFed: totalLeads + fedLeads,
         totalSpent,
         avgCPL,
         resolvedCpl,
@@ -1385,10 +1455,14 @@ export default function MainDashboard() {
         from,
         to,
       );
+      // CM only — see cmFedByProjectLedger. Kept in its own field so the Meta
+      // figure, the admin Extra Leads column and CPL are all untouched.
+      const fedLeads = cmFedOf(cmFedByProjectLedger(), project.id);
       const totalSpent = filtered.reduce(
         (s, d) => s + rawSpendOf(d),
         0,
       );
+      // Cost per META lead — raw spend ÷ Meta leads, never ÷ the inclusive total.
       const avgCPL =
         totalLeads > 0 ? parseFloat(totalSpent / totalLeads).toFixed(2) : 0;
       const resolvedCpl = totalLeads > 0 ? Number(avgCPL) : 1500;
@@ -1439,6 +1513,8 @@ export default function MainDashboard() {
         // and shows synthetic separately in its own Extra Leads column.
         totalLeads,
         extraLeads,
+        fedLeads,
+        totalLeadsWithFed: totalLeads + fedLeads,
         totalSpent,
         avgCPL,
         modifiedCpl, // ← now properly computed
@@ -1509,6 +1585,13 @@ export default function MainDashboard() {
       (s, p) => s + (statsMap[p.id]?.totalLeads ?? 0),
       0,
     );
+    // CM only (0 elsewhere). Summed over ALL projects, exactly like totalLeads
+    // above, so the ledger footer's "Total (incl. fed)" reconciles with the CM's
+    // own Daily Report total for the same client and range.
+    const totalFedLeads = all.reduce(
+      (s, p) => s + (statsMap[p.id]?.fedLeads ?? 0),
+      0,
+    );
     const totalSpent = all.reduce(
       (s, p) => s + (statsMap[p.id]?.totalSpent ?? 0),
       0,
@@ -1533,6 +1616,8 @@ export default function MainDashboard() {
       totalBudget,
       totalSpent,
       totalLeads,
+      totalFedLeads,
+      totalLeadsWithFed: totalLeads + totalFedLeads,
       avgCPL,
       activeCampaigns,
       completedCampaigns,
@@ -1559,6 +1644,11 @@ export default function MainDashboard() {
       (s, p) => s + (statsMap[p.id]?.totalLeads ?? 0),
       0,
     );
+    // CM only (0 elsewhere) — the hero's "+N fed · N total" line.
+    const totalFedLeads = all.reduce(
+      (s, p) => s + (statsMap[p.id]?.fedLeads ?? 0),
+      0,
+    );
     const totalSpent = all.reduce(
       (s, p) => s + (statsMap[p.id]?.totalSpent ?? 0),
       0,
@@ -1583,6 +1673,8 @@ export default function MainDashboard() {
 
     return {
       totalLeads,
+      totalFedLeads,
+      totalLeadsWithFed: totalLeads + totalFedLeads,
       totalSpent,
       serviceChargeSpent,
       gstSpent,
@@ -2298,7 +2390,7 @@ export default function MainDashboard() {
             {/* Leads generated */}
             <div class="py-2 sm:py-1 sm:px-6 first:sm:pl-0">
               <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
-                Leads generated
+                {isCMViewer() ? "Meta leads" : "Leads generated"}
               </p>
               <p class="text-3xl font-bold text-[#14233A] dark:text-white mt-1.5">
                 <CountUp
@@ -2306,6 +2398,24 @@ export default function MainDashboard() {
                   loading={ledgerLoading()}
                 />
               </p>
+              {/* Fed leads sit BESIDE the Meta figure, never inside it — this is
+                  the number the client's own dashboard already counts, and it's
+                  why a Meta-only dashboard read short against the CM's report. */}
+              <Show
+                when={isCMViewer() && overviewStatsCards().totalFedLeads > 0}
+              >
+                <p class="text-xs text-[#54657E] dark:text-gray-400 mt-1">
+                  +
+                  {overviewStatsCards().totalFedLeads.toLocaleString("en-IN")}{" "}
+                  fed ·{" "}
+                  <b class="text-[#14233A] dark:text-white">
+                    {overviewStatsCards().totalLeadsWithFed.toLocaleString(
+                      "en-IN",
+                    )}
+                  </b>{" "}
+                  total
+                </p>
+              </Show>
               <Show
                 when={heroPacing().isMonthView && heroPacing().dayOfMonth > 0}
               >
@@ -2321,7 +2431,9 @@ export default function MainDashboard() {
             {/* Average CPL */}
             <div class="py-2 sm:py-1 sm:px-6 border-t sm:border-t-0 border-[#E2E8F1] dark:border-gray-700">
               <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
-                Average CPL
+                {/* Cost per META lead. Fed leads cost nothing on Meta, so they
+                    are never in this denominator — say so on the CM's view. */}
+                {isCMViewer() ? "Average CPL (per Meta lead)" : "Average CPL"}
               </p>
               <p class="text-3xl font-bold text-[#14233A] dark:text-white mt-1.5">
                 {"₹"}
@@ -2467,7 +2579,7 @@ export default function MainDashboard() {
           <div class="flex flex-col border-t lg:border-t-0 lg:border-l border-[#E2E8F1] dark:border-gray-700 pt-4 lg:pt-0 lg:pl-9">
             <div class="py-3.5 border-b border-[#E2E8F1] dark:border-gray-700">
               <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
-                Leads generated
+                {isCMViewer() ? "Meta leads" : "Leads generated"}
               </p>
               <p class="text-xl font-bold text-[#14233A] dark:text-white mt-1">
                 <CountUp
@@ -2475,6 +2587,24 @@ export default function MainDashboard() {
                   loading={ledgerLoading()}
                 />
               </p>
+              {/* Fed leads sit BESIDE the Meta figure, never inside it — this is
+                  the number the client's own dashboard already counts, and it's
+                  why a Meta-only dashboard read short against the CM's report. */}
+              <Show
+                when={isCMViewer() && overviewStatsCards().totalFedLeads > 0}
+              >
+                <p class="text-xs text-[#54657E] dark:text-gray-400 mt-0.5">
+                  +
+                  {overviewStatsCards().totalFedLeads.toLocaleString("en-IN")}{" "}
+                  fed ·{" "}
+                  <b class="text-[#14233A] dark:text-white">
+                    {overviewStatsCards().totalLeadsWithFed.toLocaleString(
+                      "en-IN",
+                    )}
+                  </b>{" "}
+                  total
+                </p>
+              </Show>
               <Show
                 when={heroPacing().isMonthView && heroPacing().dayOfMonth > 0}
               >
@@ -2488,7 +2618,9 @@ export default function MainDashboard() {
             </div>
             <div class="py-3.5 border-b border-[#E2E8F1] dark:border-gray-700">
               <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
-                Average CPL
+                {/* Cost per META lead. Fed leads cost nothing on Meta, so they
+                    are never in this denominator — say so on the CM's view. */}
+                {isCMViewer() ? "Average CPL (per Meta lead)" : "Average CPL"}
               </p>
               <p class="text-xl font-bold text-gray-700 dark:text-white mt-1">
                 {"₹"}
@@ -2681,9 +2813,20 @@ export default function MainDashboard() {
                   Budget {getSortIcon("budget")}
                 </th>
               </Show>
+              {/* For a CM this column is Meta-only (their bulk rows are raw);
+                  for a client it is already the inclusive total, so the label
+                  stays "Total Leads" there. */}
               <th class="p-3" onClick={() => handleSort("totalLeads")}>
-                {rangeLabel()} Total Leads {getSortIcon("totalLeads")}
+                {rangeLabel()} {isCMViewer() ? "Meta Leads" : "Total Leads"}{" "}
+                {getSortIcon("totalLeads")}
               </th>
+              {/* CM-only fed columns. Admin keeps its own server-computed Extra
+                  Leads column below and never gets these — one fed column per
+                  view, never two. */}
+              <Show when={isCMViewer()}>
+                <th class="p-3">{rangeLabel()} Fed Leads</th>
+                <th class="p-3">{rangeLabel()} Total (incl. fed)</th>
+              </Show>
               {isAdmin() && <th class="p-3">{rangeLabel()} Extra Leads</th>}
               <Show when={!iscpl()}>
                 <th class="p-3" onClick={() => handleSort("totalSpent")}>
@@ -2691,7 +2834,9 @@ export default function MainDashboard() {
                 </th>
               </Show>
               <th class="p-3" onClick={() => handleSort("avgCPL")}>
-                {rangeLabel()} AVG CPL {getSortIcon("avgCPL")}
+                {rangeLabel()} AVG CPL
+                {isCMViewer() ? " (per Meta lead)" : ""}{" "}
+                {getSortIcon("avgCPL")}
               </th>
               <Show when={isAdmin()}>
                 <th class="p-3" onClick={() => handleSort("modifiedCpl")}>
@@ -2870,10 +3015,23 @@ export default function MainDashboard() {
                         </td>
                       </Show>
 
-                      {/* Date-range Leads */}
+                      {/* Date-range Leads — Meta only for a CM */}
                       <td class="p-2 font-medium text-gray-700 dark:text-gray-100">
                         {stats().totalLeads}
                       </td>
+
+                      <Show when={isCMViewer()}>
+                        {/* Fed Leads — "+N", em dash when none */}
+                        <td class="p-2 font-medium text-[#15966A] dark:text-green-300">
+                          {fmtFed(stats().fedLeads)}
+                        </td>
+                        {/* Total = Meta + fed — the figure the client sees */}
+                        <td class="p-2 font-bold text-[#14233A] dark:text-white">
+                          {(
+                            stats().totalLeadsWithFed ?? stats().totalLeads
+                          ).toLocaleString("en-IN")}
+                        </td>
+                      </Show>
 
                       {isAdmin() && (
                         <td class="p-2 text-gray-700 dark:text-green-300 font-medium">
@@ -2941,8 +3099,21 @@ export default function MainDashboard() {
                   </td>
                 </Show>
 
-                {/* Leads Total */}
+                {/* Leads Total — Meta only for a CM */}
                 <td>{overviewStats().totalLeads}</td>
+
+                <Show when={isCMViewer()}>
+                  {/* Fed total, then Total (incl. fed). Both roll up over ALL
+                      projects — the same set totalLeads above sums — so this
+                      footer reconciles with the CM's own Daily Report total for
+                      the same client and range. */}
+                  <td class="text-[#15966A] dark:text-green-300">
+                    {fmtFed(overviewStats().totalFedLeads)}
+                  </td>
+                  <td>
+                    {overviewStats().totalLeadsWithFed.toLocaleString("en-IN")}
+                  </td>
+                </Show>
 
                 {isAdmin() && (
                   <td>
