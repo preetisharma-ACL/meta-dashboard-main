@@ -82,7 +82,11 @@ export default function AdAccountCampaigns() {
         if (token !== metricsToken) return; // a newer range superseded this fetch
         const map = new Map();
         for (const row of res?.data || []) {
-          if (row.is_manual) continue; // mirror DailyReports/dashboard aggregation
+          // Admin-only screen → the dashboard's raw/exclusive admin rule:
+          // synthetic (fed) leads are not part of an ad account's Meta delivery.
+          // (Client-facing views are inclusive and keep these rows — see
+          // ProjectDetails' keepManualRow note / DailyReports.)
+          if (row.is_manual) continue;
           const key = String(row.campaign_id);
           const cur = map.get(key) || { leads: 0, spend: 0 };
           cur.leads += Number(row.leads) || 0;

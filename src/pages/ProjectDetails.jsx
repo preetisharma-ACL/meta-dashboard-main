@@ -275,6 +275,22 @@ export default function ProjectDetails() {
   const previewClientId = () =>
     userRole() === "admin" ? localStorage.getItem("selectedClientId") : null;
 
+  // ── keepManualRow / extraLeadsOf — synthetic (fed) leads, exactly once ──────
+  // The bulk-insights contract differs by role, so the two must move together:
+  //   • CLIENT/CM  → inclusive. Fed leads on a day WITH campaign delivery are
+  //     merged into the normal row; fed leads on a day with NO delivery arrive
+  //     as a STANDALONE is_manual row. Σ leads over ALL rows is the correct
+  //     total, so we keep is_manual rows and add NOTHING on top — adding
+  //     extra_leads as well double-counted the merged portion (108 → 122), and
+  //     dropping the standalone rows undercounted (EdenWaveCity 1–23 Jul 2026:
+  //     5 vs the ledger's 16). Same rule as the dashboard ledger + DailyReports.
+  //   • ADMIN → raw/exclusive. Rows carry Meta delivery only and every synthetic
+  //     lead comes back on standalone is_manual rows, so those are dropped and
+  //     the server-computed extra_leads is added instead (unchanged behaviour).
+  // The Meta/fed split is therefore derivable from row.is_manual — never a
+  // second fetch, and never a second day/revoked rule (fedLeads.js owns that).
+  const extraLeadsOf = (row) => (isAdmin() ? Number(row.extra_leads || 0) : 0);
+
   // ── Write helper — merges into this project's cache slot ────────────────────
   const setProjectCache = (patch) =>
     setProjectDetailsCache(projectId, (prev) => ({ ...prev, ...patch }));
@@ -384,7 +400,7 @@ export default function ProjectDetails() {
           { asClientId: previewClientId() },
         );
         for (const row of bulk.data || []) {
-          if (row.is_manual) continue; // manual leads come from a separate path
+          if (row.is_manual && isAdmin()) continue; // see keepManualRow note
           const key = row.campaign_id;
           if (!insightsMap[key]) insightsMap[key] = [];
           insightsMap[key].push(row);
@@ -473,7 +489,7 @@ export default function ProjectDetails() {
             { asClientId: previewClientId() },
           );
           for (const row of bulk.data || []) {
-            if (row.is_manual) continue; // manual leads come from a separate path
+            if (row.is_manual && isAdmin()) continue; // see keepManualRow note
             const key = row.campaign_id;
             if (!insightsMap[key]) insightsMap[key] = [];
             insightsMap[key].push(row);
@@ -617,9 +633,10 @@ export default function ProjectDetails() {
         const pm = row.premium_metrics;
         const premiumCpl = pm && pm.cpl != null ? Number(pm.cpl) : null;
 
-        // Total leads = own (from insights) + extra (manually-added, server-
-        // computed). CPL is recomputed against the combined lead count.
-        const totalLeads = stats.leads + Number(row.extra_leads || 0);
+        // Total leads = the rows' own leads, plus (admin only) the server-
+        // computed extras — see extraLeadsOf. CPL is recomputed against the
+        // combined lead count.
+        const totalLeads = stats.leads + extraLeadsOf(row);
         const totalCPL =
           totalLeads > 0 ? Number((stats.spent / totalLeads).toFixed(2)) : 0;
 
@@ -659,7 +676,7 @@ export default function ProjectDetails() {
     const stats = getInsightsInRange(row.insights, fromDate(), toDate());
     const pm = row.premium_metrics;
     const premiumCpl = pm && pm.cpl != null ? Number(pm.cpl) : null;
-    const totalLeads = stats.leads + Number(row.extra_leads || 0);
+    const totalLeads = stats.leads + extraLeadsOf(row);
     const totalCPL =
       totalLeads > 0 ? Number((stats.spent / totalLeads).toFixed(2)) : 0;
     return {
@@ -869,7 +886,7 @@ export default function ProjectDetails() {
     for (const row of filtered) {
       const stats = getInsightsInRange(row.insights, fromDate(), toDate());
 
-      totalLeads += stats.leads + Number(row.extra_leads || 0);
+      totalLeads += stats.leads + extraLeadsOf(row);
       totalClicks += stats.clicks;
       totalReach += stats.reach;
       totalSpent += stats.spent;

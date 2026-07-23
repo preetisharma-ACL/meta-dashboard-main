@@ -276,12 +276,16 @@ export default function DailyReports() {
         });
         const rows = bulk.data || [];
 
-        // 4. Group rows back onto their project. Synthetic (is_manual) rows are
-        //    skipped to mirror the dashboard's handling. NOTE: this page has no
-        //    separate manual-lead path, so confirm totals still match the old
-        //    report — if they drop, remove this `is_manual` skip.
+        // 4. Group rows back onto their project — EVERY row, including the
+        //    synthetic (is_manual) ones. Summing `leads` across all rows is the
+        //    bulk endpoint's inclusive total: fed leads landing on a day with
+        //    campaign delivery are merged into the normal row, and fed leads on
+        //    a day with NO delivery come back as a standalone is_manual row.
+        //    Skipping those standalone rows undercounted the report against the
+        //    dashboard ledger (EdenWaveCity, 1–23 Jul 2026: 5 vs 16 leads).
+        //    This page has no separate manual-lead path and must NOT add one —
+        //    adding extras on top would re-create the 108 → 122 double count.
         for (const row of rows) {
-          if (row.is_manual) continue;
           const entry = campaignById[String(row.campaign_id)];
           if (!entry) continue;
           result[entry.projectId].insights.push({
