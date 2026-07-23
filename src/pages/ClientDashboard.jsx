@@ -754,19 +754,6 @@ export default function MainDashboard() {
     return entry;
   };
 
-  // Admin "Extra Leads" = the client's fed (synthetic) leads for the range.
-  //
-  // This used to filter on uploaded_at and count revoked batches. Both were
-  // wrong: the backend distributes synthetic leads by received_date, so a batch
-  // uploaded today with a backdated received_date landed in the CLIENT's leads
-  // on the backdated day but never in this column (Bullmen / NoidaEvent, 20 Jul
-  // 2026: admin "+30" against a real fed total of 57), and a revoked batch is
-  // withdrawn — its leads were never delivered. fedLeadsForProject applies the
-  // shared batchDay + revoked rules, so this column, the CM project ledger and
-  // the CM daily report can no longer disagree about the same batch.
-  const getProjectExtraLeads = (projectId, batches, from, to) =>
-    fedLeadsForProject(batches, projectId, from, to);
-
   // ── Fed (manually-uploaded) leads for a CM viewing a client's dashboard ─────
   //
   // A CM's bulk-insights rows come back RAW: the display pipeline that folds
@@ -778,13 +765,17 @@ export default function MainDashboard() {
   // own view can no longer disagree about the same batch. The day/revoked rule
   // is never re-implemented here; fedLeads.js owns it.
   //
-  // Deliberately CM-ONLY:
-  //   • admin already has its own server-scoped "Extra Leads" column (fed by
-  //     loadManualBatches → getProjectExtraLeads); a second fed source here
-  //     would double count it.
-  //   • a client's own rows are already INCLUSIVE of fed leads, so adding them
-  //     again is the 108 → 122 double count all over again.
+  // This RESOURCE is CM-only — admin reads the same fedLeads.js helpers over the
+  // batches loadManualBatches() already holds (also fetchFedLeadBatches, scoped
+  // by client_nomen), so a second fetch here would be pure duplication. A
+  // client's own rows need no fed source at all: they are already INCLUSIVE, and
+  // adding batches on top is the 108 → 122 double count all over again.
   const isCMViewer = () => auth?.role === "campaign_manager";
+
+  // Admin and CM both show the Meta / Fed / Total split; a client sees one
+  // (already inclusive) leads figure. One flag drives every header, cell and
+  // label so the two privileged ledgers cannot drift apart visually either.
+  const isFedAwareViewer = () => isAdmin() || isCMViewer();
 
   // One fetch per viewed client. The list endpoint carries no date filter, so
   // every range below is applied client-side by fedLeadsByProject. A null source
@@ -824,6 +815,52 @@ export default function MainDashboard() {
   const cmFedOf = (map, projectId) =>
     isCMViewer() ? map[String(projectId)] || 0 : 0;
 
+  // ── The ONE fed figure, for whichever viewer is looking ────────────────────
+  // Admin and CM now read the same helper over the same kind of batch list
+  // (fedLeads.js applies the shared received_date + revoked rules), so the two
+  // ledgers can no longer print different fed totals for the same client, day
+  // and project. The server-computed `extra_leads` column is deliberately NOT
+  // consulted anywhere on this ledger: two fed sources drift, one cannot.
+  //   • admin  → loadManualBatches(), client_nomen-scoped, swept over all pages
+  //   • CM     → the cmFedBatches resource, pre-rolled per project by the range
+  //   • client → 0; their bulk rows already include every fed lead
+  const fedLeadsOf = (projectId, cmMap, from, to) => {
+    if (isAdmin())
+      return fedLeadsForProject(manualBatches(), projectId, from, to);
+    return cmFedOf(cmMap, projectId);
+  };
+
+  // Split one project's leads into Meta / Fed / Total from the bulk-row sum and
+  // that fed figure. The bases differ by viewer, and that is the whole bug this
+  // replaces — admin was printing an INCLUSIVE sum under "Total Leads" and then
+  // a fed count beside it, so the row added up to 174 against a real 123:
+  //   • ADMIN  — sent with as_client_id, so the backend runs the client display
+  //     pipeline: fed leads are already merged into the normal rows (plus any
+  //     standalone is_manual row we no longer drop). The sum IS the Total, and
+  //     Meta is what remains once fed is taken back out.
+  //   • CM     — privileged rows come back RAW, so the sum IS Meta and the
+  //     Total is Meta + fed.
+  //   • CLIENT — inclusive like admin, but fed is 0 here, so both are the sum
+  //     and the client view is bit-for-bit unchanged.
+  // fed is clamped into [0, total] on the admin path so no column can ever be
+  // added to another and exceed the Total.
+  const splitLeads = (sumLeads, fed) => {
+    if (isAdmin()) {
+      const fedLeads = Math.min(Math.max(Number(fed) || 0, 0), sumLeads);
+      return {
+        totalLeads: sumLeads - fedLeads, // Meta
+        fedLeads,
+        totalLeadsWithFed: sumLeads, // inclusive — what the client sees
+      };
+    }
+    const fedLeads = Math.max(Number(fed) || 0, 0);
+    return {
+      totalLeads: sumLeads, // Meta (CM) / already-inclusive (client)
+      fedLeads,
+      totalLeadsWithFed: sumLeads + fedLeads,
+    };
+  };
+
   const cardStats = createMemo(() => {
     const { from, to } = getCardDateRange();
     const result = {};
@@ -848,20 +885,16 @@ export default function MainDashboard() {
       // Leads filtered by the stamped campaign range so they stay in lockstep
       // with the bulk-insights window (no flicker during a date-change refetch).
       const leadsRange = range ?? { from, to };
-      const totalLeads = inRange(
+      const leadSum = inRange(
         insights,
         leadsRange.from,
         leadsRange.to,
       ).reduce((s, d) => s + (d.leads || 0), 0);
-      const extraLeads = getProjectExtraLeads(
-        project.id,
-        manualBatches(),
-        from,
-        to,
+      // Meta / Fed / Total from ONE sum and ONE fed source — see splitLeads.
+      const { totalLeads, fedLeads, totalLeadsWithFed } = splitLeads(
+        leadSum,
+        fedLeadsOf(project.id, cmFedByProjectCard(), from, to),
       );
-      // CM only — 0 for admin (which uses extraLeads above) and for clients
-      // (whose totalLeads is already inclusive). Never folded into totalLeads.
-      const fedLeads = cmFedOf(cmFedByProjectCard(), project.id);
       const totalSpent = filtered.reduce(
         (s, d) => s + rawSpendOf(d),
         0,
@@ -890,17 +923,15 @@ export default function MainDashboard() {
         (c) => c.status === "paused",
       ).length;
 
-      // Total Leads = Σ leads across the in-range bulk rows. For clients that
-      // sum is already INCLUSIVE of synthetic leads — the bulk endpoint merges
-      // them into normal rows and the standalone is_manual row is now counted in
-      // `insights` too — so we must NOT add campaign.extra_leads on top (that
-      // double-counted the merged portion: 108 → 122). Admin is raw/exclusive
-      // and shows synthetic separately in the Extra Leads column.
+      // For ADMIN and CLIENT the bulk sum is already INCLUSIVE of synthetic
+      // leads (the endpoint merges them into normal rows and the standalone
+      // is_manual row is counted in `insights` too), so nothing is ever added on
+      // top — that add is what double-counted the merged portion (108 → 122).
+      // splitLeads subtracts instead, which is why admin's Meta + Fed = Total.
       result[project.id] = {
         totalLeads,
-        extraLeads,
         fedLeads,
-        totalLeadsWithFed: totalLeads + fedLeads,
+        totalLeadsWithFed,
         totalSpent,
         avgCPL,
         resolvedCpl,
@@ -1244,13 +1275,16 @@ export default function MainDashboard() {
         for (const row of rows) {
           const entry = campaignById[String(row.campaign_id)];
           if (!entry) continue;
-          if (row.is_manual && isAdmin()) {
-            // Admin is raw/exclusive: synthetic leads are shown separately in the
-            // Extra Leads column, so standalone synthetic rows are dropped here.
-            continue;
-          }
-          // For CLIENTS the bulk endpoint is inclusive of synthetic leads (most
-          // merged into normal rows; the remainder on standalone is_manual rows).
+          // Standalone is_manual rows are counted for EVERY viewer. Dropping
+          // them for admin (which the old code did, to keep that view exclusive)
+          // made admin's total silently under-count whenever a batch did not
+          // merge into a normal row — it happens to be 0 rows for Bullmen /
+          // NoidaEvent, but EdenWaveCity has had them. Admin's total must be the
+          // inclusive figure in EVERY case, because that is what the client sees
+          // and what the Fed column is now subtracted from.
+          //
+          // The bulk endpoint is inclusive of synthetic leads (most merged into
+          // normal rows; the remainder on standalone is_manual rows).
           // Count is_manual rows the same as any other — leads AND their actual
           // spend, which is the client-facing figure the API already computed and
           // is internally consistent with the leads (₹1500 batch ÷ 15 = ₹100/lead).
@@ -1444,20 +1478,18 @@ export default function MainDashboard() {
       // in the cache), so Total Leads stays in lockstep with the bulk-insights
       // window — no flicker while a date-change campaign refetch is in flight.
       const leadsRange = range ?? { from, to };
-      const totalLeads = inRange(
+      const leadSum = inRange(
         insights,
         leadsRange.from,
         leadsRange.to,
       ).reduce((s, d) => s + (d.leads || 0), 0);
-      const extraLeads = getProjectExtraLeads(
-        project.id,
-        manualBatches(),
-        from,
-        to,
+      // Meta / Fed / Total from ONE sum and ONE fed source — see splitLeads.
+      // Admin and CM feed the identical three columns from here, so a
+      // back-to-back capture of the two ledgers must agree per project.
+      const { totalLeads, fedLeads, totalLeadsWithFed } = splitLeads(
+        leadSum,
+        fedLeadsOf(project.id, cmFedByProjectLedger(), from, to),
       );
-      // CM only — see cmFedByProjectLedger. Kept in its own field so the Meta
-      // figure, the admin Extra Leads column and CPL are all untouched.
-      const fedLeads = cmFedOf(cmFedByProjectLedger(), project.id);
       const totalSpent = filtered.reduce(
         (s, d) => s + rawSpendOf(d),
         0,
@@ -1505,16 +1537,14 @@ export default function MainDashboard() {
       ).length;
 
       result[project.id] = {
-        // Total Leads = Σ leads across the in-range bulk rows. For CLIENTS this
-        // is already INCLUSIVE of synthetic leads (the bulk endpoint merges them
-        // into normal rows, and the standalone is_manual row is now counted in
-        // `insights`), so we must NOT add campaign.extra_leads on top — doing so
-        // double-counted the merged portion (108 → 122). Admin is raw/exclusive
-        // and shows synthetic separately in its own Extra Leads column.
+        // totalLeads is the META figure for admin and CM, and the (already
+        // inclusive) client figure for a client. campaign.extra_leads is never
+        // added on top for anyone — that add double-counted the merged portion
+        // (108 → 122), and the server-computed extra_leads column is retired
+        // from this ledger entirely so there is exactly one fed source.
         totalLeads,
-        extraLeads,
         fedLeads,
-        totalLeadsWithFed: totalLeads + fedLeads,
+        totalLeadsWithFed,
         totalSpent,
         avgCPL,
         modifiedCpl, // ← now properly computed
@@ -1585,9 +1615,10 @@ export default function MainDashboard() {
       (s, p) => s + (statsMap[p.id]?.totalLeads ?? 0),
       0,
     );
-    // CM only (0 elsewhere). Summed over ALL projects, exactly like totalLeads
-    // above, so the ledger footer's "Total (incl. fed)" reconciles with the CM's
-    // own Daily Report total for the same client and range.
+    // Admin + CM (0 for a client). Summed over ALL projects, exactly like
+    // totalLeads above, so the ledger footer's "Total (incl. fed)" reconciles
+    // with the CM's own Daily Report total for the same client and range — and
+    // with what the client sees on their own dashboard.
     const totalFedLeads = all.reduce(
       (s, p) => s + (statsMap[p.id]?.fedLeads ?? 0),
       0,
@@ -1644,7 +1675,7 @@ export default function MainDashboard() {
       (s, p) => s + (statsMap[p.id]?.totalLeads ?? 0),
       0,
     );
-    // CM only (0 elsewhere) — the hero's "+N fed · N total" line.
+    // Admin + CM (0 for a client) — the hero's "+N fed · N total" line.
     const totalFedLeads = all.reduce(
       (s, p) => s + (statsMap[p.id]?.fedLeads ?? 0),
       0,
@@ -2390,7 +2421,7 @@ export default function MainDashboard() {
             {/* Leads generated */}
             <div class="py-2 sm:py-1 sm:px-6 first:sm:pl-0">
               <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
-                {isCMViewer() ? "Meta leads" : "Leads generated"}
+                {isFedAwareViewer() ? "Meta leads" : "Leads generated"}
               </p>
               <p class="text-3xl font-bold text-[#14233A] dark:text-white mt-1.5">
                 <CountUp
@@ -2402,7 +2433,9 @@ export default function MainDashboard() {
                   the number the client's own dashboard already counts, and it's
                   why a Meta-only dashboard read short against the CM's report. */}
               <Show
-                when={isCMViewer() && overviewStatsCards().totalFedLeads > 0}
+                when={
+                  isFedAwareViewer() && overviewStatsCards().totalFedLeads > 0
+                }
               >
                 <p class="text-xs text-[#54657E] dark:text-gray-400 mt-1">
                   +
@@ -2432,8 +2465,11 @@ export default function MainDashboard() {
             <div class="py-2 sm:py-1 sm:px-6 border-t sm:border-t-0 border-[#E2E8F1] dark:border-gray-700">
               <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
                 {/* Cost per META lead. Fed leads cost nothing on Meta, so they
-                    are never in this denominator — say so on the CM's view. */}
-                {isCMViewer() ? "Average CPL (per Meta lead)" : "Average CPL"}
+                    are never in this denominator — say so on the privileged
+                    views (admin and CM), which both break fed out. */}
+                {isFedAwareViewer()
+                  ? "Average CPL (per Meta lead)"
+                  : "Average CPL"}
               </p>
               <p class="text-3xl font-bold text-[#14233A] dark:text-white mt-1.5">
                 {"₹"}
@@ -2579,7 +2615,7 @@ export default function MainDashboard() {
           <div class="flex flex-col border-t lg:border-t-0 lg:border-l border-[#E2E8F1] dark:border-gray-700 pt-4 lg:pt-0 lg:pl-9">
             <div class="py-3.5 border-b border-[#E2E8F1] dark:border-gray-700">
               <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
-                {isCMViewer() ? "Meta leads" : "Leads generated"}
+                {isFedAwareViewer() ? "Meta leads" : "Leads generated"}
               </p>
               <p class="text-xl font-bold text-[#14233A] dark:text-white mt-1">
                 <CountUp
@@ -2591,7 +2627,9 @@ export default function MainDashboard() {
                   the number the client's own dashboard already counts, and it's
                   why a Meta-only dashboard read short against the CM's report. */}
               <Show
-                when={isCMViewer() && overviewStatsCards().totalFedLeads > 0}
+                when={
+                  isFedAwareViewer() && overviewStatsCards().totalFedLeads > 0
+                }
               >
                 <p class="text-xs text-[#54657E] dark:text-gray-400 mt-0.5">
                   +
@@ -2619,8 +2657,11 @@ export default function MainDashboard() {
             <div class="py-3.5 border-b border-[#E2E8F1] dark:border-gray-700">
               <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
                 {/* Cost per META lead. Fed leads cost nothing on Meta, so they
-                    are never in this denominator — say so on the CM's view. */}
-                {isCMViewer() ? "Average CPL (per Meta lead)" : "Average CPL"}
+                    are never in this denominator — say so on the privileged
+                    views (admin and CM), which both break fed out. */}
+                {isFedAwareViewer()
+                  ? "Average CPL (per Meta lead)"
+                  : "Average CPL"}
               </p>
               <p class="text-xl font-bold text-gray-700 dark:text-white mt-1">
                 {"₹"}
@@ -2813,21 +2854,21 @@ export default function MainDashboard() {
                   Budget {getSortIcon("budget")}
                 </th>
               </Show>
-              {/* For a CM this column is Meta-only (their bulk rows are raw);
-                  for a client it is already the inclusive total, so the label
-                  stays "Total Leads" there. */}
+              {/* Meta-only for admin and CM (fed is broken out beside it); for
+                  a client it is already the inclusive total, so the label stays
+                  "Total Leads" there. */}
               <th class="p-3" onClick={() => handleSort("totalLeads")}>
-                {rangeLabel()} {isCMViewer() ? "Meta Leads" : "Total Leads"}{" "}
+                {rangeLabel()}{" "}
+                {isFedAwareViewer() ? "Meta Leads" : "Total Leads"}{" "}
                 {getSortIcon("totalLeads")}
               </th>
-              {/* CM-only fed columns. Admin keeps its own server-computed Extra
-                  Leads column below and never gets these — one fed column per
-                  view, never two. */}
-              <Show when={isCMViewer()}>
+              {/* The SAME three columns for admin and CM. The old admin-only
+                  "Extra Leads" column is retired: it printed a fed count beside
+                  an already-inclusive total, so the row added up past itself. */}
+              <Show when={isFedAwareViewer()}>
                 <th class="p-3">{rangeLabel()} Fed Leads</th>
                 <th class="p-3">{rangeLabel()} Total (incl. fed)</th>
               </Show>
-              {isAdmin() && <th class="p-3">{rangeLabel()} Extra Leads</th>}
               <Show when={!iscpl()}>
                 <th class="p-3" onClick={() => handleSort("totalSpent")}>
                   {rangeLabel()} Total Spent {getSortIcon("totalSpent")}
@@ -2835,7 +2876,7 @@ export default function MainDashboard() {
               </Show>
               <th class="p-3" onClick={() => handleSort("avgCPL")}>
                 {rangeLabel()} AVG CPL
-                {isCMViewer() ? " (per Meta lead)" : ""}{" "}
+                {isFedAwareViewer() ? " (per Meta lead)" : ""}{" "}
                 {getSortIcon("avgCPL")}
               </th>
               <Show when={isAdmin()}>
@@ -3015,17 +3056,18 @@ export default function MainDashboard() {
                         </td>
                       </Show>
 
-                      {/* Date-range Leads — Meta only for a CM */}
+                      {/* Date-range Leads — Meta only for admin and CM */}
                       <td class="p-2 font-medium text-gray-700 dark:text-gray-100">
                         {stats().totalLeads}
                       </td>
 
-                      <Show when={isCMViewer()}>
+                      <Show when={isFedAwareViewer()}>
                         {/* Fed Leads — "+N", em dash when none */}
                         <td class="p-2 font-medium text-[#15966A] dark:text-green-300">
                           {fmtFed(stats().fedLeads)}
                         </td>
-                        {/* Total = Meta + fed — the figure the client sees */}
+                        {/* Total — the figure the client sees on their own
+                            dashboard. Meta + Fed by construction, never more. */}
                         <td class="p-2 font-bold text-[#14233A] dark:text-white">
                           {(
                             stats().totalLeadsWithFed ?? stats().totalLeads
@@ -3033,11 +3075,6 @@ export default function MainDashboard() {
                         </td>
                       </Show>
 
-                      {isAdmin() && (
-                        <td class="p-2 text-gray-700 dark:text-green-300 font-medium">
-                          +{stats().extraLeads || 0}
-                        </td>
-                      )}
                       {/* Date-range Spent */}
                       <Show when={!iscpl()}>
                         <td class="p-2 font-medium text-gray-700 dark:text-gray-100">
@@ -3099,14 +3136,15 @@ export default function MainDashboard() {
                   </td>
                 </Show>
 
-                {/* Leads Total — Meta only for a CM */}
+                {/* Leads Total — Meta only for admin and CM */}
                 <td>{overviewStats().totalLeads}</td>
 
-                <Show when={isCMViewer()}>
+                <Show when={isFedAwareViewer()}>
                   {/* Fed total, then Total (incl. fed). Both roll up over ALL
                       projects — the same set totalLeads above sums — so this
                       footer reconciles with the CM's own Daily Report total for
-                      the same client and range. */}
+                      the same client and range, and admin's footer matches the
+                      CM's line for line. */}
                   <td class="text-[#15966A] dark:text-green-300">
                     {fmtFed(overviewStats().totalFedLeads)}
                   </td>
@@ -3114,16 +3152,6 @@ export default function MainDashboard() {
                     {overviewStats().totalLeadsWithFed.toLocaleString("en-IN")}
                   </td>
                 </Show>
-
-                {isAdmin() && (
-                  <td>
-                    {filteredProjects().reduce(
-                      (sum, project) =>
-                        sum + (allProjectStats()[project.id]?.extraLeads || 0),
-                      0,
-                    )}
-                  </td>
-                )}
 
                 {/* Spent Total */}
                 <Show when={!iscpl()}>
