@@ -15,6 +15,10 @@ import { For, Show } from "solid-js";
 //   caveat   — optional string; renders an info icon with this text as its
 //              tooltip after the helper text (Funds Added uses it to explain
 //              that wallet-balance deltas can't be split by client type)
+//   hint     — optional helper text override. Defaults to the funding wording;
+//              pages that filter something other than agency-funded spend (e.g.
+//              Client Billing, where all three types are shown by default) pass
+//              their own so the text matches what the chips actually do.
 //   class    — optional extra classes on the wrapper
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -79,7 +83,7 @@ export default function ClientTypeFilter(props) {
         </For>
       </div>
       <span class="text-xs text-[#8593A8] dark:text-gray-500 ml-1">
-        Retainer spend is client-funded; excluded by default.
+        {props.hint ?? "Retainer spend is client-funded; excluded by default."}
       </span>
       <Show when={props.caveat}>
         <span
