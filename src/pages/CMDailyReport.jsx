@@ -572,7 +572,9 @@ export default function CMDailyReport() {
   };
 
   const exportColumns = () => {
-    const cols = ["Date", "Project", "Meta Leads", "Fed Leads", "Total Leads"];
+    const cols = ["Date", "Project"];
+    if (showRaw()) cols.push("Meta Leads", "Fed Leads");
+    cols.push("Total Leads");
     if (showRaw()) cols.push("Raw CPL");
     cols.push("Premium CPL");
     if (!iscpl()) {
@@ -584,13 +586,9 @@ export default function CMDailyReport() {
   const exportRow = (r) => {
     // Numeric in exports (not the "+N" display form) so the columns stay
     // sum-able in Excel; Total is always Meta + Fed.
-    const base = [
-      dateCellLabel(),
-      r.projectName,
-      r.leads,
-      r.fedLeads,
-      r.totalLeads,
-    ];
+    const base = [dateCellLabel(), r.projectName];
+    if (showRaw()) base.push(r.leads, r.fedLeads);
+    base.push(r.totalLeads);
     if (showRaw()) base.push(r.cpl);
     base.push(r.premiumCpl ?? "");
     if (!iscpl()) {
@@ -601,7 +599,9 @@ export default function CMDailyReport() {
   };
   const exportTotalsRow = () => {
     const t = totals();
-    const base = ["TOTAL", "", t.totalLeads, t.totalFedLeads, t.totalAllLeads];
+    const base = ["TOTAL", ""];
+    if (showRaw()) base.push(t.totalLeads, t.totalFedLeads);
+    base.push(t.totalAllLeads);
     if (showRaw()) base.push(t.avgCPL);
     base.push(t.avgPremiumCPL ?? "");
     if (!iscpl()) {
@@ -709,12 +709,12 @@ export default function CMDailyReport() {
   };
 
   // Column span for empty/placeholder table rows.
-  // Base: Date, Project, Meta Leads, Fed Leads, Total Leads, Premium CPL
-  // (+ Premium Spent + Client Billed incl S.C & GST when !cpl). Raw CPL / Raw
+  // Base: Date, Project, Total Leads, Premium CPL (+ Premium Spent + Client
+  // Billed incl S.C & GST when !cpl). Meta Leads / Fed Leads / Raw CPL / Raw
   // Amount Spent add columns only when showRaw().
   const colCount = () => {
-    let n = iscpl() ? 6 : 8;
-    if (showRaw()) n += iscpl() ? 1 : 2;
+    let n = iscpl() ? 4 : 6;
+    if (showRaw()) n += iscpl() ? 3 : 4;
     return n;
   };
 
@@ -976,9 +976,10 @@ export default function CMDailyReport() {
             )}
           </For>
 
-          {/* Client-vs-internal toggle — ON shows Raw CPL + Raw Amount Spent in
-              the table AND all downloads; OFF = client-facing (Premium CPL +
-              Client Billed only), safe to share. */}
+          {/* Client-vs-internal toggle — ON shows Raw CPL, Raw Amount Spent and
+              the Meta / Fed lead split in the table AND all downloads; OFF =
+              client-facing (Total Leads + Premium CPL + Client Billed only),
+              safe to share. */}
           <label class="flex items-center gap-2 cursor-pointer select-none ml-auto text-sm text-gray-600 dark:text-gray-300">
             <input
               type="checkbox"
@@ -987,7 +988,7 @@ export default function CMDailyReport() {
               class="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-[#AC2334] focus:ring-[#AC2334]"
             />
             <span>
-              Include raw CPL / spend
+              Include raw CPL / spend, Meta Leads, Fed Leads
               <span class="text-gray-400 dark:text-gray-500">
                 {" "}
                 — internal (off = client-facing)
@@ -1071,11 +1072,13 @@ export default function CMDailyReport() {
               <tr class="[&_th]:text-center [&_th:first-child]:text-left text-gray-700 dark:text-gray-200 [&_th]:whitespace-nowrap [&_th]:font-semibold">
                 <th class="p-3 pl-4">Date</th>
                 <th class="p-3">Project</th>
-                {/* Meta / Fed / Total stay three separate columns — the client's
-                    own dashboard shows Meta + fed, so the CM has to be able to
-                    show the same total AND where it came from. */}
-                <th class="p-3">Meta Leads</th>
-                <th class="p-3">Fed Leads</th>
+                {/* Meta / Fed split is internal — it rides the same toggle as
+                    raw CPL / spend. Client-facing view shows Total Leads only.
+                 */}
+                <Show when={showRaw()}>
+                  <th class="p-3">Meta Leads</th>
+                  <th class="p-3">Fed Leads</th>
+                </Show>
                 <th class="p-3">Total Leads</th>
                 <Show when={showRaw()}>
                   <th class="p-3">Raw CPL</th>
@@ -1146,12 +1149,14 @@ export default function CMDailyReport() {
                           {row.projectName}
                         </span>
                       </td>
-                      <td class="p-3 font-bold text-gray-800 dark:text-gray-100">
-                        {row.leads}
-                      </td>
-                      <td class="p-3 font-medium text-green-700 dark:text-green-400">
-                        {fmtFed(row.fedLeads)}
-                      </td>
+                      <Show when={showRaw()}>
+                        <td class="p-3 font-bold text-gray-800 dark:text-gray-100">
+                          {row.leads}
+                        </td>
+                        <td class="p-3 font-medium text-green-700 dark:text-green-400">
+                          {fmtFed(row.fedLeads)}
+                        </td>
+                      </Show>
                       <td class="p-3 font-bold text-gray-900 dark:text-white">
                         {row.totalLeads}
                       </td>
@@ -1189,12 +1194,14 @@ export default function CMDailyReport() {
                     </span>
                   </td>
                   <td class="p-3" />
-                  <td class="p-3 text-green-700 dark:text-green-300 font-bold text-base">
-                    {totals().totalLeads}
-                  </td>
-                  <td class="p-3 text-green-700 dark:text-green-400 font-bold">
-                    {fmtFed(totals().totalFedLeads)}
-                  </td>
+                  <Show when={showRaw()}>
+                    <td class="p-3 text-green-700 dark:text-green-300 font-bold text-base">
+                      {totals().totalLeads}
+                    </td>
+                    <td class="p-3 text-green-700 dark:text-green-400 font-bold">
+                      {fmtFed(totals().totalFedLeads)}
+                    </td>
+                  </Show>
                   <td class="p-3 text-gray-900 dark:text-white font-bold text-base">
                     {totals().totalAllLeads}
                   </td>
@@ -1417,12 +1424,14 @@ export default function CMDailyReport() {
                     <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
                       Project
                     </th>
-                    <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
-                      Meta Leads
-                    </th>
-                    <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
-                      Fed Leads
-                    </th>
+                    <Show when={showRaw()}>
+                      <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
+                        Meta Leads
+                      </th>
+                      <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
+                        Fed Leads
+                      </th>
+                    </Show>
                     <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
                       Total Leads
                     </th>
@@ -1467,12 +1476,14 @@ export default function CMDailyReport() {
                         <td class="px-4 py-3 text-center text-[#333] font-medium text-md whitespace-nowrap border-r border-[rgba(123,28,28,0.1)]">
                           {row.projectName}
                         </td>
-                        <td class="px-4 py-3 text-center font-bold text-[#7B1C1C] text-md border-r border-[rgba(123,28,28,0.1)]">
-                          {row.leads}
-                        </td>
-                        <td class="px-4 py-3 text-center font-semibold text-[#1D7044] text-md border-r border-[rgba(123,28,28,0.1)]">
-                          {fmtFed(row.fedLeads)}
-                        </td>
+                        <Show when={showRaw()}>
+                          <td class="px-4 py-3 text-center font-bold text-[#7B1C1C] text-md border-r border-[rgba(123,28,28,0.1)]">
+                            {row.leads}
+                          </td>
+                          <td class="px-4 py-3 text-center font-semibold text-[#1D7044] text-md border-r border-[rgba(123,28,28,0.1)]">
+                            {fmtFed(row.fedLeads)}
+                          </td>
+                        </Show>
                         <td class="px-4 py-3 text-center font-bold text-[#1a1a1a] text-md border-r border-[rgba(123,28,28,0.1)]">
                           {row.totalLeads}
                         </td>
@@ -1507,12 +1518,14 @@ export default function CMDailyReport() {
                       Total
                     </td>
                     <td class="px-4 py-3 border-r border-white/10" />
-                    <td class="px-4 py-3 text-center text-white font-bold text-sm border-r border-white/10">
-                      {totals().totalLeads}
-                    </td>
-                    <td class="px-4 py-3 text-center text-white font-bold text-sm border-r border-white/10">
-                      {fmtFed(totals().totalFedLeads)}
-                    </td>
+                    <Show when={showRaw()}>
+                      <td class="px-4 py-3 text-center text-white font-bold text-sm border-r border-white/10">
+                        {totals().totalLeads}
+                      </td>
+                      <td class="px-4 py-3 text-center text-white font-bold text-sm border-r border-white/10">
+                        {fmtFed(totals().totalFedLeads)}
+                      </td>
+                    </Show>
                     <td class="px-4 py-3 text-center text-white font-bold text-sm border-r border-white/10">
                       {totals().totalAllLeads}
                     </td>
@@ -1630,12 +1643,14 @@ export default function CMDailyReport() {
                       <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
                         Project
                       </th>
-                      <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
-                        Meta Leads
-                      </th>
-                      <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
-                        Fed Leads
-                      </th>
+                      <Show when={showRaw()}>
+                        <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
+                          Meta Leads
+                        </th>
+                        <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
+                          Fed Leads
+                        </th>
+                      </Show>
                       <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
                         Total Leads
                       </th>
@@ -1676,12 +1691,14 @@ export default function CMDailyReport() {
                         <td style="padding:10px 14px;text-align:center;font-size:14px;color:#333;font-weight:500;border-right:1px solid rgba(123,28,28,0.1);">
                           {row.projectName}
                         </td>
-                        <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:700;color:#7B1C1C;border-right:1px solid rgba(123,28,28,0.1);">
-                          {row.leads}
-                        </td>
-                        <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:600;color:#1D7044;border-right:1px solid rgba(123,28,28,0.1);">
-                          {fmtFed(row.fedLeads)}
-                        </td>
+                        <Show when={showRaw()}>
+                          <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:700;color:#7B1C1C;border-right:1px solid rgba(123,28,28,0.1);">
+                            {row.leads}
+                          </td>
+                          <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:600;color:#1D7044;border-right:1px solid rgba(123,28,28,0.1);">
+                            {fmtFed(row.fedLeads)}
+                          </td>
+                        </Show>
                         <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:700;color:#1a1a1a;border-right:1px solid rgba(123,28,28,0.1);">
                           {row.totalLeads}
                         </td>
@@ -1713,12 +1730,14 @@ export default function CMDailyReport() {
                         Total
                       </td>
                       <td style="padding:11px 14px;border-right:1px solid rgba(255,255,255,0.12);" />
-                      <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
-                        {totals().totalLeads}
-                      </td>
-                      <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
-                        {fmtFed(totals().totalFedLeads)}
-                      </td>
+                      <Show when={showRaw()}>
+                        <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
+                          {totals().totalLeads}
+                        </td>
+                        <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
+                          {fmtFed(totals().totalFedLeads)}
+                        </td>
+                      </Show>
                       <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
                         {totals().totalAllLeads}
                       </td>
