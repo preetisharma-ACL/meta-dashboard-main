@@ -40,6 +40,7 @@ import { A } from "@solidjs/router";
 import { DateRangeFilter } from "../components/DateRangeFilter";
 import useColumnSort from "../components/Columnsorting";
 import { fetchProjects, fetchManualBatches } from "../services/dashboard";
+import { fedLeadsForProject } from "../services/fedLeads";
 import { fetchCampaigns } from "../services/campaigns";
 import { fetchBulkCampaignInsights } from "../services/campaigns";
 import { fetchAllCampaigns } from "../services/campaigns";
@@ -747,22 +748,18 @@ export default function MainDashboard() {
     return entry;
   };
 
-  const getProjectExtraLeads = (projectId, batches, from, to) => {
-    return batches
-      .filter((b) => {
-        const date = b.uploaded_at?.split("T")[0];
-
-        const matchesProject = Number(b.project) === Number(projectId);
-
-        // no filter selected
-        if (!from || !to) {
-          return matchesProject;
-        }
-
-        return matchesProject && date >= from && date <= to;
-      })
-      .reduce((sum, b) => sum + Number(b.synthetic_lead_count || 0), 0);
-  };
+  // Admin "Extra Leads" = the client's fed (synthetic) leads for the range.
+  //
+  // This used to filter on uploaded_at and count revoked batches. Both were
+  // wrong: the backend distributes synthetic leads by received_date, so a batch
+  // uploaded today with a backdated received_date landed in the CLIENT's leads
+  // on the backdated day but never in this column (Bullmen / NoidaEvent, 20 Jul
+  // 2026: admin "+30" against a real fed total of 57), and a revoked batch is
+  // withdrawn — its leads were never delivered. fedLeadsForProject applies the
+  // shared batchDay + revoked rules, so this column, the CM project ledger and
+  // the CM daily report can no longer disagree about the same batch.
+  const getProjectExtraLeads = (projectId, batches, from, to) =>
+    fedLeadsForProject(batches, projectId, from, to);
 
   const cardStats = createMemo(() => {
     const { from, to } = getCardDateRange();

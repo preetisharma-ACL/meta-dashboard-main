@@ -1,4 +1,5 @@
 import { api } from "../api/api";
+import { fetchFedLeadBatches } from "./fedLeads";
 
 const getClientNomen = () => {
   const auth = JSON.parse(localStorage.getItem("auth") || "{}");
@@ -52,18 +53,14 @@ export const fetchProjects = async (
   });
 };
 
+// Manual (fed) lead batches for the client currently in context. Delegates to
+// the shared fed-leads service so the fetch is paginated — a single page
+// silently truncated the roll-up once a client had enough batches — and so every
+// surface reads batches the same way. Returns the usual { data } envelope shape
+// the callers already unwrap.
 export const fetchManualBatches = async () => {
-  const clientNomen = getClientNomen();
-
-  let url = `/leads/manual-batches/`;
-
-  if (clientNomen) {
-    url += `?client_nomen=${clientNomen}`;
-  }
-
-  return await api(url, {
-    method: "GET",
-  });
+  const rows = await fetchFedLeadBatches({ clientNomen: getClientNomen() });
+  return { data: rows };
 };
 
 

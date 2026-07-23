@@ -4,7 +4,12 @@ import Swal from "sweetalert2";
 import { DateRangeFilter } from "../components/DateRangeFilter";
 import Avatar from "../components/common/Avatar";
 import { fetchAllCampaignsScoped, fetchHierarchyClients } from "../services/cm";
-import { asTeamMemberId, ownScope, clearScope } from "../stores/cmScope";
+import {
+  fetchFedLeadBatches,
+  fedLeadsByProject,
+  fmtFed,
+} from "../services/fedLeads";
+import { asTeamMemberId, ownScope, clearScope, scopeKey } from "../stores/cmScope";
 import { currentUser, cmTier, canWriteCampaigns } from "../stores/currentUser";
 import CMHierarchy from "../components/CMHierarchy";
 import CampaignStatusControl from "../components/CampaignStatusControl";
@@ -196,6 +201,28 @@ export default function CMDashboard() {
     },
   );
 
+  // ─── Fed (manually-uploaded) lead batches ─────────────────────────────────
+  // Fetched ONCE per switch scope, never per project: the list endpoint carries
+  // no date filter, so the range is applied client-side by fedLeadsByProject.
+  // The backend auto-scopes this to the CM's visible clients (GET only — POST
+  // stays admin-only), and we then join by project id against campaigns already
+  // in view, so nothing outside scope can surface here. A failure degrades to
+  // "no fed leads" rather than sinking the dashboard.
+  const [fedBatches] = createResource(scopeKey, async () => {
+    try {
+      return await fetchFedLeadBatches();
+    } catch (err) {
+      console.error("[CMDashboard] fed lead batches failed:", err);
+      return [];
+    }
+  });
+
+  // { [projectId]: fedLeads } for the selected range. Empty range = all time,
+  // matching how the campaign figures are fetched when no dates are picked.
+  const fedByProject = createMemo(() =>
+    fedLeadsByProject(fedBatches() ?? [], fromDate(), toDate()),
+  );
+
   // Client-side filters: "Just me" narrowing + search. Both are display filters
   // (the lead is authorized to see all); they never widen visibility.
   const campaigns = createMemo(() => {
@@ -264,6 +291,87 @@ export default function CMDashboard() {
       cpl: leads > 0 ? spend / leads : 0,
       total: rows.length,
       active,
+    };
+  });
+
+  // ─── Project ledger (Meta vs fed leads) ───────────────────────────────────
+  // Fed leads are attached to a PROJECT, never to a campaign, so this is the
+  // only level where they can be shown truthfully — hence a project ledger
+  // alongside the campaign one rather than a fed column on campaign rows.
+  //
+  // Meta and fed stay in separate columns and are only added in "Total (incl.
+  // fed)". A CM sending a client a report of Meta leads alone was showing a
+  // smaller number than the client's own dashboard (which counts both) for the
+  // same day; merging them silently would have hidden the difference instead.
+  const projectLedger = createMemo(() => {
+    const fed = fedByProject();
+    const byKey = new Map();
+
+    for (const c of campaigns()) {
+      // Group by project id when the row carries one; fall back to the name so
+      // a campaign with a missing project_id still lands in a sane bucket.
+      const pid = c.project_id != null ? String(c.project_id) : null;
+      const key = pid ?? `name:${(c.project_name || "Unassigned").trim().toLowerCase()}`;
+      let row = byKey.get(key);
+      if (!row) {
+        row = {
+          key,
+          projectId: pid,
+          name: c.project_name || "Unassigned",
+          client: c.client_nomen_name || "",
+          metaLeads: 0,
+          spend: 0,
+          budget: 0,
+          campaigns: 0,
+          active: 0,
+        };
+        byKey.set(key, row);
+      }
+      row.metaLeads += Number(c.leads_count) || 0;
+      row.spend += parseFloat(c.spend) || 0;
+      row.budget += parseFloat(c.budget) || 0;
+      row.campaigns += 1;
+      if (c.status === "active") row.active += 1;
+    }
+
+    const rows = [...byKey.values()].map((r) => {
+      // Only an id-keyed row can be matched to a batch; a name-keyed fallback
+      // row gets 0 rather than a guessed match.
+      const fedLeads = r.projectId ? fed[r.projectId] || 0 : 0;
+      const total = r.metaLeads + fedLeads;
+      return {
+        ...r,
+        fedLeads,
+        totalLeads: total,
+        // CPL is cost per META lead — spend buys Meta leads, fed leads are
+        // uploaded separately — so it must NOT be divided by the total.
+        cpl: r.metaLeads > 0 ? r.spend / r.metaLeads : null,
+      };
+    });
+
+    rows.sort((a, b) => b.spend - a.spend || b.totalLeads - a.totalLeads);
+    return rows;
+  });
+
+  const projectTotals = createMemo(() => {
+    const rows = projectLedger();
+    let metaLeads = 0;
+    let fedLeads = 0;
+    let spend = 0;
+    let budget = 0;
+    for (const r of rows) {
+      metaLeads += r.metaLeads;
+      fedLeads += r.fedLeads;
+      spend += r.spend;
+      budget += r.budget;
+    }
+    return {
+      metaLeads,
+      fedLeads,
+      totalLeads: metaLeads + fedLeads,
+      spend,
+      budget,
+      cpl: metaLeads > 0 ? spend / metaLeads : null,
     };
   });
 
@@ -718,7 +826,7 @@ export default function CMDashboard() {
         <div class="flex flex-col border-t lg:border-t-0 lg:border-l border-[#E2E8F1] dark:border-gray-700 pt-4 lg:pt-0 lg:pl-9">
           <div class="py-3.5 border-b border-[#E2E8F1] dark:border-gray-700">
             <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
-              Leads generated
+              Meta leads
             </p>
             <p class="text-xl font-bold text-[#14233A] dark:text-white mt-1">
               <Show
@@ -730,6 +838,18 @@ export default function CMDashboard() {
                 {fmtNum(summary().leads)}
               </Show>
             </p>
+            {/* Fed leads sit beside the Meta figure, never inside it — this is
+                the number the client's own dashboard already counts, and it's
+                why a Meta-only report read short. */}
+            <Show when={projectTotals().fedLeads > 0}>
+              <p class="text-xs text-[#54657E] dark:text-gray-400 mt-0.5">
+                +{fmtNum(projectTotals().fedLeads)} fed ·{" "}
+                <b class="text-[#14233A] dark:text-white">
+                  {fmtNum(summary().leads + projectTotals().fedLeads)}
+                </b>{" "}
+                total
+              </p>
+            </Show>
           </div>
 
           <div class="py-3.5 border-b border-[#E2E8F1] dark:border-gray-700">
@@ -798,8 +918,140 @@ export default function CMDashboard() {
 
       {/* ── Flat campaigns list view ── */}
       <Show when={view() === "list"}>
+        {/* ════════ PROJECT LEDGER (Meta vs fed leads) ════════
+            The client's own dashboard counts Meta + fed leads; a CM reporting
+            Meta alone sends a smaller number for the same day. This is the
+            level fed leads are attributed at, so it's the level that
+            reconciles. Both figures stay visible — never merged.            */}
+        <Eyebrow label="Project ledger" soft="meta vs fed leads" />
+        <div class="overflow-auto max-h-[60vh] bg-gray-50 dark:bg-gray-800 rounded-xl border border-[#E2E8F1] dark:border-gray-700 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] mb-8">
+          <table class="w-full text-sm table-auto">
+            <thead class="bg-[#F8FAFC] dark:bg-gray-800">
+              <tr class="text-[#54657E] dark:text-gray-300 border-b border-[#D4DDE9] dark:border-gray-700 [&_th]:text-xs [&_th]:uppercase [&_th]:tracking-wider [&_th]:font-bold [&_th]:whitespace-nowrap [&_th]:sticky [&_th]:top-0 [&_th]:bg-[#F8FAFC] dark:[&_th]:bg-gray-800">
+                <th class="p-3 text-left min-w-[200px]">Project</th>
+                <th class="p-3 text-left">Client</th>
+                <th class="p-3 text-center">Campaigns</th>
+                <th class="p-3 text-right">Meta Leads</th>
+                <th class="p-3 text-right">Fed Leads</th>
+                <th class="p-3 text-right">Total (incl. fed)</th>
+                <th class="p-3 text-right">Spend</th>
+                <th class="p-3 text-right">CPL</th>
+              </tr>
+            </thead>
+
+            <Show
+              when={!firstLoad()}
+              fallback={
+                <tbody>
+                  <For each={Array(5).fill(0)}>
+                    {() => (
+                      <tr class="border-t border-[#E2E8F1] dark:border-gray-700 animate-pulse">
+                        <For each={Array(8).fill(0)}>
+                          {() => (
+                            <td class="p-3">
+                              <div class="h-4 w-20 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                            </td>
+                          )}
+                        </For>
+                      </tr>
+                    )}
+                  </For>
+                </tbody>
+              }
+            >
+              <tbody>
+                <For each={projectLedger()}>
+                  {(p, i) => (
+                    <tr
+                      class={
+                        "border-t border-[#E2E8F1] dark:border-gray-700 transition-colors " +
+                        (i() % 2 === 0
+                          ? "bg-gray-50 dark:bg-gray-800"
+                          : "bg-[#FAFBFD] dark:bg-gray-800")
+                      }
+                    >
+                      <td class="px-3 py-2.5 text-left font-semibold text-[#14233A] dark:text-gray-100">
+                        {p.name}
+                      </td>
+                      <td class="px-3 py-2.5 text-left text-[#54657E] dark:text-gray-400 whitespace-nowrap">
+                        {p.client || "—"}
+                      </td>
+                      <td class="px-3 py-2.5 text-center text-[#54657E] dark:text-gray-400">
+                        {p.campaigns}
+                      </td>
+                      {/* Meta Leads — raw Meta only, never includes fed */}
+                      <td class="px-3 py-2.5 text-right font-medium text-gray-700 dark:text-gray-100 whitespace-nowrap">
+                        {fmtNum(p.metaLeads)}
+                      </td>
+                      {/* Fed Leads — "+N", em dash when none */}
+                      <td class="px-3 py-2.5 text-right font-medium text-[#15966A] dark:text-green-300 whitespace-nowrap">
+                        {fmtFed(p.fedLeads)}
+                      </td>
+                      {/* Total = Meta + fed — the figure the client sees */}
+                      <td class="px-3 py-2.5 text-right font-bold text-[#14233A] dark:text-white whitespace-nowrap">
+                        {fmtNum(p.totalLeads)}
+                      </td>
+                      <td class="px-3 py-2.5 text-right text-[#54657E] dark:text-gray-300 whitespace-nowrap">
+                        {fmtMoney(p.spend)}
+                      </td>
+                      <td class="px-3 py-2.5 text-right text-[#54657E] dark:text-gray-300 whitespace-nowrap">
+                        {p.cpl != null ? fmtCPL(p.cpl) : "—"}
+                      </td>
+                    </tr>
+                  )}
+                </For>
+
+                <Show when={projectLedger().length === 0}>
+                  <tr>
+                    <td
+                      colspan="8"
+                      class="py-12 text-center text-[#8593A8] dark:text-gray-500"
+                    >
+                      No projects to show.
+                    </td>
+                  </tr>
+                </Show>
+              </tbody>
+
+              <Show when={projectLedger().length > 0}>
+                <tfoot class="bg-[#F8FAFC] dark:bg-gray-800 font-semibold text-gray-700 dark:text-white border-t-2 border-[#D4DDE9] dark:border-gray-600">
+                  <tr>
+                    <td class="px-3 py-3 text-left text-xs uppercase tracking-wider text-[#54657E] dark:text-gray-300">
+                      Total
+                    </td>
+                    <td></td>
+                    <td></td>
+                    <td class="px-3 py-3 text-right">
+                      {fmtNum(projectTotals().metaLeads)}
+                    </td>
+                    <td class="px-3 py-3 text-right text-[#15966A] dark:text-green-300">
+                      {fmtFed(projectTotals().fedLeads)}
+                    </td>
+                    <td class="px-3 py-3 text-right">
+                      {fmtNum(projectTotals().totalLeads)}
+                    </td>
+                    <td class="px-3 py-3 text-right">
+                      {fmtMoney(projectTotals().spend)}
+                    </td>
+                    <td class="px-3 py-3 text-right">
+                      {projectTotals().cpl != null
+                        ? fmtCPL(projectTotals().cpl)
+                        : "—"}
+                    </td>
+                  </tr>
+                </tfoot>
+              </Show>
+            </Show>
+          </table>
+        </div>
+        <p class="-mt-6 mb-8 text-xs text-[#8593A8] dark:text-gray-500">
+          Fed leads are uploaded manually and attributed to the day they were
+          received, so they land on a project rather than a campaign. CPL is cost
+          per Meta lead.
+        </p>
+
         {/* ════════ CAMPAIGN LEDGER ════════ */}
-        <Eyebrow label="Campaign ledger" soft="full reference" />
+        <Eyebrow label="Campaign ledger" soft="meta leads only · full reference" />
 
         {/* Filters */}
         <div class="flex flex-wrap items-center gap-3 mb-4">
@@ -878,7 +1130,9 @@ export default function CMDashboard() {
                 <th class="p-3 text-center">Status</th>
                 <th class="p-3 text-right">Spend</th>
                 <th class="p-3 text-right">Budget</th>
-                <th class="p-3 text-right">Leads</th>
+                {/* Fed leads attach to a project, not a campaign, so this
+                    column is Meta-only by construction — say so. */}
+                <th class="p-3 text-right">Meta Leads</th>
                 <th class="p-3 text-right">CPL</th>
                 <th class="p-3 text-center">Performance</th>
                 <Show when={canWriteCampaigns()}>
