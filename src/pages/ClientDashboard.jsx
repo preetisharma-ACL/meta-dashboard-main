@@ -85,6 +85,38 @@ const bumpLoadToken = () => ++activeLoadToken;
 const rawSpendOf = (row) =>
   parseFloat((row?.spend_raw != null ? row.spend_raw : row?.spend) || 0);
 
+// ── Dev-time ledger invariants ───────────────────────────────────────────────
+// The privileged ledger derives Meta by SUBTRACTING fed from an inclusive sum,
+// so a single lead lost anywhere between the bulk response and the rendered row
+// surfaces as a quietly wrong Meta figure, not as an obvious blank — which is
+// exactly how "Meta 65" shipped against a real 66. These fire in dev only and
+// name the stage that dropped it instead of leaving it to be re-derived by hand.
+const DEV_ASSERTS = Boolean(import.meta.env?.DEV);
+
+const assertLeadIdentity = (label, meta, fed, total) => {
+  if (!DEV_ASSERTS) return;
+  if (meta + fed !== total) {
+    console.error(
+      `[ledger] ${label}: Meta + Fed != Total (${meta} + ${fed} != ${total}). ` +
+        `A lead was lost or double-counted between the bulk rows and the split.`,
+    );
+  }
+};
+
+// Reported once per bulk load when rows never reach a project — the silent
+// drop path behind a short Total. `dropped` rows are gone from leads AND spend.
+const reportRowAudit = (audit) => {
+  if (!DEV_ASSERTS) return;
+  if (audit.dropped === 0 && audit.dateless === 0) return;
+  console.error(
+    `[ledger] bulk rows not counted: ${audit.dropped} unmapped ` +
+      `(${audit.droppedLeads} leads — campaign_id not in the requested set), ` +
+      `${audit.dateless} dateless (${audit.datelessLeads} leads — no row.date, ` +
+      `so every date filter drops them). Received ${audit.received} rows, ` +
+      `${audit.leads} leads total.`,
+  );
+};
+
 // ── Design-section toggles (UI only) ─────────────────────────────────────────
 // The funnel needs impressions/CTR/CPM (not fetched anywhere yet) and the AI
 // brief's issue timestamps need the diagnostics service. Until those exist,
@@ -830,6 +862,27 @@ export default function MainDashboard() {
     return cmFedOf(cmMap, projectId);
   };
 
+  // ── Raw Meta spend for ONE row ─────────────────────────────────────────────
+  // The ledger's "Total Spent" / "AVG CPL" are the RAW Meta charge; the
+  // marked-up figure lives in the separate Premium CPL column. On a privileged
+  // view that means `spend_raw` and ONLY `spend_raw`:
+  //   • with as_client_id, `spend` is the BILLED amount, so falling back to it
+  //     for any row missing spend_raw silently mixes billed money into the raw
+  //     total — ₹10,669.32 against a real ₹9,718.72 for Bullmen / NoidaEvent on
+  //     20 Jul 2026, an excess of exactly one row's markup.
+  //   • an is_manual row has no Meta charge at all (fed leads cost nothing on
+  //     Meta), so it contributes 0. f950175 stopped skipping those rows for
+  //     admin, which is right for LEADS but must not put their billed cost into
+  //     raw spend.
+  // This is the rule DailyReports' Raw column already uses (Σ spend_raw, no
+  // fallback). A client's own login has no spend_raw on any row and `spend` IS
+  // their billed figure, so the fallback stays for them — client view unchanged.
+  const metaSpendOf = (row) => {
+    if (!isFedAwareViewer()) return rawSpendOf(row);
+    if (row?.is_manual) return 0;
+    return parseFloat(row?.spend_raw || 0);
+  };
+
   // Split one project's leads into Meta / Fed / Total from the bulk-row sum and
   // that fed figure. The bases differ by viewer, and that is the whole bug this
   // replaces — admin was printing an INCLUSIVE sum under "Total Leads" and then
@@ -842,22 +895,25 @@ export default function MainDashboard() {
   //     Total is Meta + fed.
   //   • CLIENT — inclusive like admin, but fed is 0 here, so both are the sum
   //     and the client view is bit-for-bit unchanged.
-  // fed is clamped into [0, total] on the admin path so no column can ever be
-  // added to another and exceed the Total.
+  // Meta + Fed == Total holds BY CONSTRUCTION at every level: Total is always
+  // re-derived as Meta + Fed rather than carried alongside them, so no
+  // aggregation step can drift the three apart.
+  //
+  // The earlier clamp bounded FED into [0, sum]. That silently swallowed fed
+  // leads for any project with fed batches but no Meta delivery in range (fed
+  // clamped down to a 0 sum), and it hid a short sum instead of surfacing it.
+  // Clamp META at 0 instead: when fed exceeds the inclusive sum, Meta is 0 and
+  // Total becomes fed, which is honest and still satisfies the identity — and
+  // the dev assert below fires so the short sum gets found rather than absorbed.
   const splitLeads = (sumLeads, fed) => {
-    if (isAdmin()) {
-      const fedLeads = Math.min(Math.max(Number(fed) || 0, 0), sumLeads);
-      return {
-        totalLeads: sumLeads - fedLeads, // Meta
-        fedLeads,
-        totalLeadsWithFed: sumLeads, // inclusive — what the client sees
-      };
-    }
     const fedLeads = Math.max(Number(fed) || 0, 0);
+    const metaLeads = isAdmin()
+      ? Math.max(sumLeads - fedLeads, 0) // inclusive sum → back out fed
+      : sumLeads; // raw sum (CM) / already inclusive (client)
     return {
-      totalLeads: sumLeads, // Meta (CM) / already-inclusive (client)
+      totalLeads: metaLeads,
       fedLeads,
-      totalLeadsWithFed: sumLeads + fedLeads,
+      totalLeadsWithFed: metaLeads + fedLeads,
     };
   };
 
@@ -895,8 +951,14 @@ export default function MainDashboard() {
         leadSum,
         fedLeadsOf(project.id, cmFedByProjectCard(), from, to),
       );
+      assertLeadIdentity(
+        `hero ${project.name ?? project.id}`,
+        totalLeads,
+        fedLeads,
+        totalLeadsWithFed,
+      );
       const totalSpent = filtered.reduce(
-        (s, d) => s + rawSpendOf(d),
+        (s, d) => s + metaSpendOf(d),
         0,
       );
       // CPL is cost per META lead: raw spend ÷ Meta leads. Fed leads cost
@@ -1259,7 +1321,7 @@ export default function MainDashboard() {
         // and returns both `spend` (marked-up) and `spend_raw` (Meta charge). Null
         // for the admin's own dashboard / a client's own login (already scoped),
         // where the call falls back to the normal client_nomen scoping. Raw
-        // columns read spend_raw via rawSpendOf(), so the displayed figure is
+        // columns read spend_raw via metaSpendOf(), so the displayed figure is
         // unchanged even though `spend` now carries the markup.
         // NEVER for a CM: only the admin roster carries the Client PK, so any
         // selectedClientId a CM session holds is a nomen id the backend 403s
@@ -1272,9 +1334,42 @@ export default function MainDashboard() {
         });
         const rows = bulk.data || [];
 
+        // Every row that never reaches a project is a lead missing from the
+        // inclusive Total, and Meta is derived by subtracting fed FROM that
+        // Total — so a silent drop here reads as a wrong Meta on screen. Audit
+        // the two drop paths and report them in dev rather than absorbing them.
+        const audit = {
+          received: rows.length,
+          leads: 0,
+          dropped: 0,
+          droppedLeads: 0,
+          dateless: 0,
+          datelessLeads: 0,
+        };
+
         for (const row of rows) {
-          const entry = campaignById[String(row.campaign_id)];
-          if (!entry) continue;
+          const rowLeads = Number(row.leads || 0);
+          audit.leads += rowLeads;
+          if (!row.date) {
+            // No date → every range filter downstream drops it, from both leads
+            // and spend. Count it so a short Total names its own cause.
+            audit.dateless += 1;
+            audit.datelessLeads += rowLeads;
+          }
+
+          let entry = campaignById[String(row.campaign_id)];
+          if (!entry && row.project_id != null && result[row.project_id]) {
+            // The bulk response is scoped to THIS client, so a row we cannot map
+            // by campaign still belongs on its own project when it names one
+            // (standalone synthetic rows need not carry a campaign we asked for).
+            // Dropping it lost its leads from the inclusive Total.
+            entry = { projectId: row.project_id, campaign: { id: null } };
+          }
+          if (!entry) {
+            audit.dropped += 1;
+            audit.droppedLeads += rowLeads;
+            continue;
+          }
           // Standalone is_manual rows are counted for EVERY viewer. Dropping
           // them for admin (which the old code did, to keep that view exclusive)
           // made admin's total silently under-count whenever a batch did not
@@ -1284,18 +1379,19 @@ export default function MainDashboard() {
           // and what the Fed column is now subtracted from.
           //
           // The bulk endpoint is inclusive of synthetic leads (most merged into
-          // normal rows; the remainder on standalone is_manual rows).
-          // Count is_manual rows the same as any other — leads AND their actual
-          // spend, which is the client-facing figure the API already computed and
-          // is internally consistent with the leads (₹1500 batch ÷ 15 = ₹100/lead).
-          // Zeroing it would drop the standalone lead's cost and skew CPL, and the
-          // merged/standalone split shifts with the date range. This replaces the
-          // old campaign.extra_leads add, which double-counted the merged portion.
+          // normal rows; the remainder on standalone is_manual rows), so their
+          // LEADS are counted here like any other row's. Their SPEND is handled
+          // by metaSpendOf, which keeps the client's billed figure for a client
+          // and contributes 0 on a privileged view (no Meta charge exists for a
+          // fed lead). This replaces the old campaign.extra_leads add, which
+          // double-counted the merged portion.
           result[entry.projectId].insights.push({
             ...row,
             campaignId: entry.campaign.id,
           });
         }
+
+        reportRowAudit(audit);
       } catch (err) {
         console.error("Failed to load bulk campaign insights", err);
       }
@@ -1490,8 +1586,15 @@ export default function MainDashboard() {
         leadSum,
         fedLeadsOf(project.id, cmFedByProjectLedger(), from, to),
       );
+      // Row level. The footer asserts the same identity over the roll-up.
+      assertLeadIdentity(
+        `project ${project.name ?? project.id}`,
+        totalLeads,
+        fedLeads,
+        totalLeadsWithFed,
+      );
       const totalSpent = filtered.reduce(
-        (s, d) => s + rawSpendOf(d),
+        (s, d) => s + metaSpendOf(d),
         0,
       );
       // Cost per META lead — raw spend ÷ Meta leads, never ÷ the inclusive total.
@@ -1643,12 +1746,30 @@ export default function MainDashboard() {
       0,
     );
 
+    // The footer re-derives its Total from the two roll-ups rather than summing
+    // the per-project Totals, so assert BOTH: that the identity survives the
+    // roll-up, and that the roll-up still equals the sum of the rows above it.
+    const totalLeadsWithFed = totalLeads + totalFedLeads;
+    assertLeadIdentity("footer", totalLeads, totalFedLeads, totalLeadsWithFed);
+    if (DEV_ASSERTS) {
+      const rowTotals = all.reduce(
+        (s, p) => s + (statsMap[p.id]?.totalLeadsWithFed ?? 0),
+        0,
+      );
+      if (rowTotals !== totalLeadsWithFed) {
+        console.error(
+          `[ledger] footer Total ${totalLeadsWithFed} != Σ per-project Totals ` +
+            `${rowTotals} — the footer and the rows disagree.`,
+        );
+      }
+    }
+
     return {
       totalBudget,
       totalSpent,
       totalLeads,
       totalFedLeads,
-      totalLeadsWithFed: totalLeads + totalFedLeads,
+      totalLeadsWithFed,
       avgCPL,
       activeCampaigns,
       completedCampaigns,
@@ -1883,7 +2004,7 @@ export default function MainDashboard() {
         reach += Number(d.reach || 0);
         clicks += Number(d.clicks || 0);
         leads += Number(d.leads || 0);
-        spend += rawSpendOf(d);
+        spend += metaSpendOf(d);
       }
     }
 
