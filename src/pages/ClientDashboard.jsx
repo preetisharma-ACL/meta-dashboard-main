@@ -2455,7 +2455,13 @@ export default function MainDashboard() {
                         + Add New Project
                     </A>
                 </div> */}
-        <Show when={userRole() === "admin" && selectedClientNomen()}>
+        <Show
+          when={
+            (userRole() === "admin" ||
+              userRole() === "campaign_manager") &&
+            selectedClientNomen()
+          }
+        >
           <div class="inline-flex items-center gap-2.5 bg-[#14233A] text-white px-5 py-2.5 rounded-full mb-4 text-sm font-medium shadow-sm">
             <span class="w-2 h-2 rounded-full bg-[#3DD598]"></span>
             Viewing Client:

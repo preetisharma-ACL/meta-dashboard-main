@@ -285,6 +285,18 @@ export default function ProjectDetails() {
   const previewClientId = () =>
     userRole() === "admin" ? localStorage.getItem("selectedClientId") : null;
 
+  // Name of the client an admin/CM is currently previewing, for the "Viewing
+  // Client" badge. Mirrors the ClientDashboard ledger badge so the context stays
+  // visible after drilling into a project. Tracks route changes so it clears when
+  // the client context is removed. Only admin and campaign_manager preview a
+  // client through selectedClientNomen; a real client login never sets it.
+  const selectedClientNomen = () => {
+    location.pathname; // track route changes
+    return (userRole() === "admin" || userRole() === "campaign_manager")
+      ? localStorage.getItem("selectedClientNomen")
+      : null;
+  };
+
   // ── keepManualRow / extraLeadsOf — synthetic (fed) leads, exactly once ──────
   // The bulk-insights contract differs by role, so the two must move together:
   //   • CLIENT/CM  → inclusive. Fed leads on a day WITH campaign delivery are
@@ -939,7 +951,16 @@ export default function ProjectDetails() {
     <div class="space-y-6 m-4">
       {/* ================= PROJECT OVERVIEW ================= */}
       <div>
-        <h1 class="text-2xl font-semibold">All campaigns</h1>
+        <div class="flex flex-wrap items-start justify-between gap-2">
+          <h1 class="text-2xl font-semibold">All campaigns</h1>
+          <Show when={selectedClientNomen()}>
+            <div class="inline-flex items-center gap-2.5 bg-[#14233A] text-white px-5 py-2.5 rounded-full text-sm font-medium shadow-sm">
+              <span class="w-2 h-2 rounded-full bg-[#3DD598]"></span>
+              Viewing Client:
+              {selectedClientNomen()}
+            </div>
+          </Show>
+        </div>
         <nav>
           <ul class="flex items-center gap-1.5 mb-1.5 mt-2 list-none p-0">
             <li class="flex items-center gap-1 group cursor-pointer">
