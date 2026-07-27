@@ -305,7 +305,7 @@
   align-items: center;
   justify-content: center;
   padding: 40px 24px;
-  background: #f7f8fc;
+  background: #fffff3;
 }
 
 @media (min-width: 900px) {
@@ -382,8 +382,8 @@
   width: 100%;
   padding: 12px 16px;
   border-radius: 12px;
-  border: 1.5px solid #e2e8f0;
-  background: #fff;
+  border: 1.5px solid #faf5f9;
+  background: #faf5f9;
   font-size: 0.92rem;
   color: #1a2340;
   font-family: 'DM Sans', sans-serif;
@@ -393,8 +393,35 @@
 }
 
 .input-field:focus {
-  border-color: #5b7fa6;
+  border-color: #c7b2c2;
   box-shadow: 0 0 0 3px rgba(91, 127, 166, 0.12);
+}
+
+/* ── Autofill ──────────────────────────────────────────────────────────────
+   Chrome/Safari paint their own pale-blue wash over an autofilled input and
+   override both `background` and `color`, so the field stopped matching
+   .input-field the moment saved credentials were filled in. No property clears
+   that wash; the accepted workaround is a huge INSET box-shadow in the colour
+   we actually want, because box-shadow isn't part of what autofill overrides
+   (and -webkit-text-fill-color for the text, since `color` is overridden too).
+   Scoped to .login-root so the app's other .input-field instances — which have
+   a dark-mode variant — are left alone. */
+.login-root .input-field:-webkit-autofill,
+.login-root .input-field:-webkit-autofill:hover,
+.login-root .input-field:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px #faf5f9 inset;
+  box-shadow: 0 0 0 1000px #faf5f9 inset;
+  -webkit-text-fill-color: #1a2340;
+  caret-color: #1a2340;
+}
+
+/* The rule above replaces box-shadow outright, which would swallow the focus
+   ring while a field is autofilled — so re-state the ring alongside the fill. */
+.login-root .input-field:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px #faf5f9 inset, 0 0 0 3px rgba(91, 127, 166, 0.12);
+  box-shadow: 0 0 0 1000px #faf5f9 inset, 0 0 0 3px rgba(91, 127, 166, 0.12);
+  -webkit-text-fill-color: #1a2340;
+  caret-color: #1a2340;
 }
 
 .submit-btn {
