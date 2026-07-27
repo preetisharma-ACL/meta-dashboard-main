@@ -63,7 +63,7 @@ const FEATURE_CARDS = [
   {
     icon: "ri-ico-portal",
     title: "Client portal",
-    lead: "Clients sign in to their own projects only — nothing else is visible.",
+    lead: "Clients Login in to their own projects only — nothing else is visible.",
     src: `${SHOTS}/app-client-portal.png`,
     alt: "Client dashboard listing their live projects with spend against allocation, leads and average CPL",
     w: 1582,
@@ -110,7 +110,7 @@ const STEPS = [
   },
   {
     av: "ri-av-4",
-    lead: "Sign in and read it.",
+    lead: "Login  and read it.",
     body: "Spend, leads, CPL and pacing update through the month — with a billing statement that already adds up.",
     step: "Step three",
     label: "Live, on your own login",
@@ -185,9 +185,9 @@ export default function ReportingIntro() {
             <img
               src="/logo.webp"
               alt="Aajneeti"
-              width="304"
-              height="133"
-              class="h-8 w-auto object-contain"
+              width="150"
+              height="140"
+              class="h-12 w-auto object-contain"
             />
           </a>
 
@@ -205,7 +205,7 @@ export default function ReportingIntro() {
             href={ctaHref()}
             class="ri-btn ri-btn-dark ri-btn-sm max-[900px]:!hidden"
           >
-            {signedIn() ? "Dashboard" : "Sign in"}
+            {signedIn() ? "Dashboard" : "Login "}
           </A>
 
           <button
@@ -258,7 +258,7 @@ export default function ReportingIntro() {
               data-reveal
             >
               <A href={ctaHref()} class="ri-btn ri-btn-dark">
-                {signedIn() ? "Go to dashboard" : "Sign in"}
+                {signedIn() ? "Go to dashboard" : "Login"}
               </A>
               <a class="ri-btn ri-btn-ghost" href="#features">
                 See how it works
@@ -773,7 +773,7 @@ export default function ReportingIntro() {
               <A href={ctaHref()} class="ri-btn ri-btn-dark">
                 {signedIn()
                   ? "Go to the dashboard"
-                  : "Sign in to the dashboard"}
+                  : "Login to the dashboard"}
               </A>
             </div>
           </Container>

@@ -204,7 +204,7 @@ export default function Login() {
 
             <h1 class="form-heading">Aajneeti Reporting Dashboard</h1>
             <p class="form-subheading mt-2">
-              Sign in to your account to continue
+              Login to your account to continue
             </p>
             {/* Error */}
             {error() && <div class="error-box">{error()}</div>}
@@ -283,7 +283,7 @@ export default function Login() {
 
                 <button type="submit" disabled={loading()} class="submit-btn">
                   {loading() && <span class="spinner" />}
-                  {loading() ? "Signing in..." : "Sign in"}
+                  {loading() ? "Logging in..." : "Login "}
                 </button>
               </form>
             )}
