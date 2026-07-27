@@ -11,7 +11,8 @@ export default function AdminRoute(props) {
   // (e.g. the Clients section is also open to campaign managers).
   const allowed = props.roles ?? ["admin"];
   if (!allowed.includes(auth?.role)) {
-    return <Navigate href="/" />;
+    // Back to the app home, NOT "/" — that's the public marketing intro now.
+    return <Navigate href="/dashboard" />;
   }
 
   return props.children;

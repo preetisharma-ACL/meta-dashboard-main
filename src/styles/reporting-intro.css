@@ -1,0 +1,506 @@
+/* ─── Reporting intro (public landing page) ───────────────────────────────────
+ * Everything is scoped under `.ri` so these tokens never leak into the rest of
+ * the Tailwind app — and so the app's dark-mode `body`/`*` rules never bleed
+ * INTO the landing page, which is always light.
+ *
+ * Layout, spacing, grids and typography live as Tailwind utilities in
+ * ReportingIntro.jsx. What stays here is only what Tailwind can't express
+ * cleanly: design tokens, the pastel blobs, the 3D page-turn showcase, the
+ * connector diagram, the screenshot wells (.ri-shot/.ri-bshot), the
+ * watermark and the pre-animation states that landingMotion.js drives.
+ * ──────────────────────────────────────────────────────────────────────────── */
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap");
+
+/* Lenis owns the document scroll while the landing page is mounted. These have
+   to stay unscoped — Lenis puts the classes on <html>. */
+html.lenis,
+html.lenis body { height: auto; }
+.lenis.lenis-smooth { scroll-behavior: auto !important; }
+
+/* 1. TOKENS ─────────────────────────────────────────────────────────────────*/
+.ri {
+  --white: #ffffff;
+  --off: #f7f7f8;
+  --ink: #111114;
+  --grey: #6b6b72;
+  --grey-2: #8b8b94;
+  --line: #e8e8ee;
+  --line-2: #d7d7de;
+
+  --dark: #141416;
+  --accent: #e6398a;
+
+  --lilac: #c9b8f0;
+  --peach: #f6c9a8;
+  --pink: #f3b9ce;
+
+  --r-sm: 10px;
+  --r-md: 16px;
+  --r-lg: 24px;
+  --r-xl: 32px;
+  --r-pill: 999px;
+
+  --shadow-sm: 0 1px 2px rgba(17, 17, 20, .04), 0 4px 12px rgba(17, 17, 20, .05);
+  --shadow-md: 0 2px 4px rgba(17, 17, 20, .04), 0 12px 32px rgba(17, 17, 20, .07);
+  --shadow-lg: 0 4px 8px rgba(17, 17, 20, .04), 0 28px 64px rgba(17, 17, 20, .1);
+  --shadow-hover: 0 6px 12px rgba(17, 17, 20, .05), 0 24px 48px rgba(17, 17, 20, .12);
+
+  /* Every section pads BOTH edges, so the visible gap between two adjacent
+     sections is 2 × this — this is the ONE number to tune if the page ever
+     feels too airy or too cramped between blocks. */
+  --section-y: 32px;
+  --ease: cubic-bezier(.22, .61, .36, 1);
+
+  --font-display: "Manrope", "Inter", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, -apple-system, sans-serif;
+
+  /* The page owns the whole viewport and is always light, whatever the app's
+     theme class says. `clip` (not `hidden`) contains the decorative blobs
+     without creating a scroll container that would break the fixed navbar. */
+  background: var(--white);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 17px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: clip;
+}
+
+@media (min-width: 721px)  { .ri { --section-y: 40px; } }
+@media (min-width: 1081px) { .ri { --section-y: 52px; } }
+
+.ri :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+
+/* The app's global `* { @apply border-gray-200 dark:border-gray-700 }` would
+   turn every hairline on this page dark. Pin them back to the landing token. */
+.ri *,
+.ri *::before,
+.ri *::after { border-color: var(--line); }
+
+/* 2. LAYOUT PRIMITIVES ──────────────────────────────────────────────────────*/
+.ri-section { position: relative; padding-block: var(--section-y); isolation: isolate; }
+.ri-section > .ri-container { position: relative; z-index: 1; }
+
+.ri-display {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -.035em;
+  line-height: 1.05;
+  font-size: clamp(34px, 5vw, 58px);
+}
+.ri-lede { color: var(--grey); font-size: clamp(15px, 1.3vw, 18px); line-height: 1.65; max-width: 620px; }
+.ri-lede-narrow { max-width: 440px; font-size: 15px; }
+/* Display face as a class — this sheet loads after Tailwind's utilities layer,
+   so a `font-[…]` utility would lose to any font-family set here anyway. */
+.ri-h { font-family: var(--font-display); }
+
+/* Manual line break in headings — only honoured once there's room for it. */
+.ri-br { display: none; }
+@media (min-width: 861px) { .ri-br { display: inline; } }
+
+.ri-eyebrow {
+  display: inline-block;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .02em;
+  color: var(--grey);
+  background: rgba(255, 255, 255, .7);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  padding: 6px 14px;
+  backdrop-filter: blur(8px);
+}
+
+/* 3. BUTTONS ────────────────────────────────────────────────────────────────*/
+.ri-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 15px;
+  line-height: 1;
+  padding: 15px 28px;
+  border-radius: var(--r-pill);
+  transition: transform .25s var(--ease), background-color .25s var(--ease),
+              box-shadow .25s var(--ease), color .25s var(--ease);
+  will-change: transform;
+}
+.ri-btn-dark { background: var(--dark); color: #fff; box-shadow: var(--shadow-sm); }
+.ri-btn-dark:hover { background: #26262b; transform: scale(1.035); box-shadow: var(--shadow-md); }
+.ri-btn-dark:active { transform: scale(.985); }
+.ri-btn-ghost { background: rgba(255, 255, 255, .72); color: var(--ink); border: 1px solid var(--line); }
+.ri-btn-ghost:hover { background: #fff; transform: scale(1.035); box-shadow: var(--shadow-sm); }
+.ri-btn-sm { padding: 11px 20px; font-size: 14px; }
+
+@media (max-width: 420px) {
+  .ri-btn { width: 100%; }
+}
+
+/* 4. PASTEL BLOBS ───────────────────────────────────────────────────────────*/
+/* z-index 0 (not -1) so they still paint over a section's own background;
+   real content sits at z-index 1 via .ri-section > .ri-container. */
+.ri-blobs { position: absolute; inset: -10% -5%; z-index: 0; pointer-events: none; overflow: hidden; }
+.ri-blob {
+  position: absolute;
+  left: var(--x);
+  top: var(--y);
+  width: 46vw;
+  max-width: 640px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: .7;
+  transform: scale(var(--s, 1));
+}
+.ri-blob-lilac { background: radial-gradient(circle at 50% 50%, var(--lilac), transparent 68%); }
+.ri-blob-peach { background: radial-gradient(circle at 50% 50%, var(--peach), transparent 68%); }
+.ri-blob-pink  { background: radial-gradient(circle at 50% 50%, var(--pink),  transparent 68%); }
+.ri-blobs-soft .ri-blob { opacity: .38; }
+
+/* 5. MOCK ATOMS ─────────────────────────────────────────────────────────────*/
+/* Only the step avatars survive. The grey placeholder bars, pills, chart bars
+   and progress fills went with the bento's fake UI, which is real product
+   screenshots now — see .ri-bshot. */
+.ri-av { flex: none; width: 22px; height: 22px; border-radius: 50%; background: linear-gradient(140deg, var(--lilac), #a89bdc); }
+.ri-av-2 { background: linear-gradient(140deg, var(--peach), #e9a173); }
+.ri-av-3 { background: linear-gradient(140deg, var(--pink), #dd88ad); }
+.ri-av-4 { background: linear-gradient(140deg, #b9dcf3, #7fb3d8); }
+
+/* 6. NAVBAR ─────────────────────────────────────────────────────────────────*/
+.ri-nav-wrap { transition: padding .35s var(--ease); }
+.ri-nav-wrap.is-stuck { padding-top: 10px; }
+
+.ri-nav {
+  background: rgba(255, 255, 255, .62);
+  border: 1px solid rgba(232, 232, 238, .9);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(2px);
+  transition: background-color .35s var(--ease), box-shadow .35s var(--ease),
+              backdrop-filter .35s var(--ease), transform .35s var(--ease);
+}
+.is-stuck .ri-nav {
+  background: rgba(255, 255, 255, .82);
+  backdrop-filter: blur(18px) saturate(1.4);
+  box-shadow: var(--shadow-md);
+  transform: scale(.975);
+}
+
+/* Layout lives here rather than as utilities so the mobile drawer rules below
+   don't have to out-specify Tailwind. */
+.ri-nav-links { display: flex; align-items: center; gap: 4px; margin-inline: auto; }
+.ri-nav-links a {
+  display: block;
+  padding: 8px 14px;
+  border-radius: var(--r-pill);
+  font-size: 14.5px;
+  font-weight: 500;
+  color: var(--grey);
+  transition: color .2s var(--ease), background-color .2s var(--ease);
+}
+.ri-nav-links a:hover { color: var(--ink); background: rgba(17, 17, 20, .045); }
+
+.ri-burger span {
+  display: block; height: 2px; border-radius: 2px; background: var(--ink);
+  transition: transform .3s var(--ease), opacity .2s var(--ease);
+}
+.ri-burger span + span { margin-top: 5px; }
+.ri-burger[aria-expanded="true"] span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+.ri-burger[aria-expanded="true"] span:nth-child(2) { opacity: 0; }
+.ri-burger[aria-expanded="true"] span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+@media (max-width: 900px) {
+  .ri-nav-links {
+    position: absolute;
+    inset: calc(100% + 10px) 0 auto 0;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    margin: 0;
+    padding: 10px;
+    border-radius: var(--r-lg);
+    background: rgba(255, 255, 255, .92);
+    backdrop-filter: blur(18px) saturate(1.4);
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow-md);
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-8px);
+    transition: opacity .25s var(--ease), transform .25s var(--ease), visibility .25s;
+  }
+  .ri-nav-links.is-open { opacity: 1; visibility: visible; transform: translateY(0); }
+  .ri-nav-links a { padding: 12px 14px; font-size: 16px; }
+}
+
+/* 7. HERO + PAGE-TURN SHOWCASE ──────────────────────────────────────────────*/
+/* The hero and CTA band override .ri-section's padding-block shorthand, so
+   they stay in CSS rather than fighting a Tailwind utility for specificity. */
+.ri-hero { padding-top: 132px; padding-bottom: 0; text-align: center; overflow: hidden; }
+@media (min-width: 901px) { .ri-hero { padding-top: 168px; } }
+.ri-cta { text-align: center; overflow: hidden; }
+
+.ri-hero::after {
+  /* fade the pastel wash into white toward the bottom (paints over the blobs,
+     under the container which is z-index 1) */
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 42%;
+  background: linear-gradient(180deg, transparent, var(--white) 82%);
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* Screenshots stacked in one box. Each layer is hinged on its left edge (the
+   spine) and turns like a page — once past 90° its backface is culled, so the
+   layer beneath is revealed in exactly the same place. Perspective gives the
+   turn its depth; transform-style stays flat so plain z-index still decides
+   what sits on top. */
+.ri-book { perspective: 2600px; cursor: pointer; will-change: transform; }
+.ri-book-stack {
+  position: relative;
+  aspect-ratio: 1907 / 908;      /* SWAP: match your screenshots' ratio */
+  perspective: 2600px;
+}
+@media (max-width: 900px) {
+  /* Shallower perspective so the turn doesn't skew hard on a narrow screen */
+  .ri-book-stack { perspective: 1500px; }
+}
+
+/* Every screenshot card. --i sets the stacking order: 0 is on top. */
+.ri-layer {
+  position: absolute;
+  inset: 0;
+  z-index: calc(30 - var(--i));
+  transform-origin: left center;   /* hinge on the spine */
+  backface-visibility: hidden;     /* past 90° the next page shows through */
+  -webkit-backface-visibility: hidden;
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-lg);
+  /* transform ONLY. `opacity`/`filter` here create a grouping context that
+     flattens the layer and disables backface culling — you'd see a mirrored
+     screenshot past 90° instead of the next page. Blur goes on the <img>. */
+  will-change: transform;
+}
+/* `contain`, not `cover`: the four screenshots aren't the same shape, and
+   cover would crop ~20% off the widest one. Leftover gutter matches the card
+   colour, so it reads as padding rather than letterboxing. */
+.ri-layer img { width: 100%; height: 100%; object-fit: contain; object-position: center; }
+.ri-layer.is-dark { background: #10131a; border-color: rgba(255, 255, 255, .1); }
+
+/* Contact shadow on the surface under the stack */
+.ri-book-contact {
+  position: absolute;
+  left: 5%;
+  right: 5%;
+  bottom: -26px;
+  height: 52px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at 50% 50%, rgba(17, 17, 20, .5), transparent 70%);
+  filter: blur(26px);
+  opacity: .2;
+  pointer-events: none;
+}
+
+/* Blurred organic shapes behind the book */
+.ri-aura-wrap { position: absolute; inset: -14% -10%; z-index: 0; pointer-events: none; }
+.ri-aura { position: absolute; width: 46%; aspect-ratio: 1; filter: blur(64px); opacity: .5; }
+.ri-aura-1 { left: -4%;  top: 6%;      background: var(--lilac); border-radius: 52% 48% 38% 62% / 46% 58% 42% 54%; }
+.ri-aura-2 { right: -6%; top: 0%;      background: var(--peach); border-radius: 44% 56% 60% 40% / 58% 42% 58% 42%; }
+.ri-aura-3 { left: 34%;  bottom: -14%; background: var(--pink);  border-radius: 60% 40% 46% 54% / 40% 56% 44% 60%; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .ri-aura { animation: ri-aura-drift 18s ease-in-out infinite alternate; }
+  .ri-aura-2 { animation-duration: 23s; animation-delay: -6s; }
+  .ri-aura-3 { animation-duration: 27s; animation-delay: -12s; }
+}
+@keyframes ri-aura-drift {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to   { transform: translate3d(3%, -4%, 0) scale(1.08); }
+}
+
+/* 8. INTEGRATIONS DIAGRAM ───────────────────────────────────────────────────*/
+/* .ri-hub and .ri-branch both span the container so the branch's drop points
+   line up with the card centres below. preserveAspectRatio="none" lets the SVGs
+   stretch to the box exactly.
+   NB: no `vector-effect: non-scaling-stroke`. It resolves stroke-dasharray in
+   screen units, but the draw-in animation sets the dash from getTotalLength()
+   in viewBox units — the tail of every line would silently never draw. */
+.ri-hub { position: relative; aspect-ratio: 1000 / 190; }
+.ri-branch { aspect-ratio: 1000 / 62; }
+.ri-conn-svg { display: block; width: 100%; height: 100%; }
+
+.ri-chip {
+  position: absolute;
+  left: var(--l);
+  top: var(--t);
+  /* `translate` (not `transform`) so GSAP can own `transform` for the pop-in */
+  translate: -50% -50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-width: 152px;
+  padding: 13px 20px;
+  border-radius: 14px;
+  background: #fff;
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-md);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 17px;
+  letter-spacing: -.02em;
+  white-space: nowrap;
+  transition: box-shadow .3s var(--ease);
+}
+.ri-chip-core {
+  background: var(--dark);
+  color: #fff;
+  border-color: var(--dark);
+  border-radius: var(--r-pill);
+  min-width: 0;
+  padding: 15px 26px;
+  font-size: 18px;
+  box-shadow: 0 12px 32px rgba(17, 17, 20, .3);
+}
+
+@media (max-width: 900px) {
+  /* Cards stack, so the branch has nothing to point at */
+  .ri-branch { aspect-ratio: auto; height: 44px; }
+  .ri-branch .ri-conn-svg { display: none; }
+}
+@media (max-width: 720px) {
+  /* Connectors don't survive a narrow viewport — stack the chips instead */
+  .ri-hub { aspect-ratio: auto; display: grid; gap: 10px; justify-items: center; max-width: 320px; margin-inline: auto; }
+  .ri-conn-svg { display: none; }
+  .ri-branch { aspect-ratio: auto; height: 28px; }
+  .ri-chip { position: static; translate: none; width: 100%; justify-content: center; }
+  .ri-chip-core { order: -1; }
+}
+
+/* 9. CARDS ──────────────────────────────────────────────────────────────────*/
+.ri-card,
+.ri-bcard,
+.ri-quote {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+  transition: transform .35s var(--ease), box-shadow .35s var(--ease);
+  will-change: transform;
+}
+.ri-card:hover,
+.ri-bcard:hover,
+.ri-quote:hover { transform: translateY(-6px); box-shadow: var(--shadow-hover); }
+
+/* SWAP: card icons — swap the gradients or drop in real 20px SVGs */
+.ri-ico { width: 22px; height: 22px; border-radius: 7px; flex: none; }
+.ri-ico-portal { background: linear-gradient(140deg, #f6c9a8, #e58f5c); }
+.ri-ico-task   { background: linear-gradient(140deg, #b9dcf3, #5a9fd4); }
+.ri-ico-usage  { background: linear-gradient(140deg, #c9b8f0, #8b6fd8); }
+
+/* Screenshot well — the whole screenshot sits inside it, centred both ways and
+   inset from the card edges, so it reads as a framed thumbnail rather than a
+   full-bleed crop. Fixed height keeps the three cards' copy on the same line. */
+.ri-shot {
+  /* --shot-h is tall enough that all three screenshots are limited by WIDTH,
+     not height — so each runs the full width of the well instead of leaving
+     side gutters. Raise it if you swap in a taller screenshot. */
+  --shot-h: 152px;                       /* SWAP: usable height inside the padding */
+  height: calc(var(--shot-h) + 22px);    /* + 10px padding ×2 + 1px border ×2 */
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, #fbfaff, #f4f5fa);
+}
+.ri-shot img {
+  /* auto + max-* keeps the aspect ratio and never fills the well edge to edge.
+     max-height is an explicit length, NOT 100%: a percentage max-height on a
+     centred grid item doesn't resolve against the grid area, so a wide card
+     would let a tall screenshot overflow the well and collide with the copy. */
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: var(--shot-h);
+  border-radius: 7px;
+  box-shadow: 0 4px 14px rgba(17, 17, 20, .16);
+}
+
+/* 10. BENTO ─────────────────────────────────────────────────────────────────*/
+.ri-bento-panel {
+  border-radius: var(--r-xl);
+  background: linear-gradient(170deg, #fbfaff, #f7f8fa 55%, #fdf6fa);
+  border: 1px solid var(--line);
+}
+.ri-bcard-ui { border-radius: var(--r-md); background: linear-gradient(165deg, #fbf8ff, #f6f7fb); }
+
+/* Bento screenshot well. Unlike .ri-shot (the feature cards) there's no fixed
+   height here: each bento card is a different width, so pinning one height
+   would leave a fat side gutter in the narrow card and a fat vertical one in
+   the wide card. Letting the image run the full width and the well follow its
+   aspect ratio keeps every screenshot tight to its frame — the cards end up
+   different heights, which is how this grid already reads. */
+.ri-bshot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(17, 17, 20, .16);
+}
+
+/* 11. FOOTER + WATERMARK ────────────────────────────────────────────────────*/
+.ri-footer { background: var(--white); overflow: hidden; }
+.ri-footer-bottom { border-top: 1px solid var(--line); }
+.ri-watermark { overflow: hidden; line-height: 0; }
+.ri-watermark span {
+  display: block;
+  text-align: center;
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -.045em;
+  font-size: clamp(64px, 17vw, 250px);
+  /* This used to be line-height .82 + margin-bottom -.06em, which deliberately
+     cropped the descender line for a bleed effect. "Aajneeti" has a j in it —
+     clipping its tail made the word read as "Aaineeti". The bleed is gone and
+     the box is padded enough that the descender lands inside the wrapper's
+     overflow clip instead of being cut off by it. */
+  line-height: .85;
+  padding-bottom: .28em;
+  /* Clipped to the glyphs. The lilac off the CTA band's left edge, lightened
+     hard and washing out to white at the baseline, so the wordmark reads as a
+     soft shadow of itself rather than a solid coloured word. Keep the top stop
+     pale — anything near --lilac itself competes with the copy above it. The
+     white stop lands at 92%, not 100%, because the padding above extends the
+     background box past the last glyph. */
+  background: linear-gradient(180deg, #ddd4f4 0%, #f0ecfa 50%, #fff 92%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  user-select: none;
+}
+
+/* 12. ANIMATION STATES ──────────────────────────────────────────────────────*/
+/* Pre-animation states only apply once JS has flagged the root AND motion is
+   both possible and wanted. GSAP clears the inline transform after each play. */
+/* The y offset must match REVEAL.y in landingMotion.js. */
+.ri.is-js:not(.ri-no-motion) [data-reveal] { opacity: 0; transform: translateY(24px); }
+.ri.is-js:not(.ri-no-motion) [data-chip]   { opacity: 0; }
+.ri.is-js:not(.ri-no-motion) [data-intro]  { opacity: 0; }
+
+/* No-animation fallback: nothing can fly out, so lay the views out as a stack
+   of plates instead of leaving the lower ones permanently unreachable. */
+.ri-no-motion .ri-book { cursor: default; }
+.ri-no-motion .ri-book-stack { aspect-ratio: auto; perspective: none; display: grid; gap: 16px; }
+/* DOM order already matches the sequence, so the grid lays them out 1–4. */
+.ri-no-motion .ri-layer { position: relative; inset: auto; transform: none; opacity: 1; }
+.ri-no-motion .ri-layer img { height: auto; }
+.ri-no-motion .ri-book-contact { display: none; }
+.ri-no-motion * { animation: none !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ri * { transition-duration: .01ms !important; }
+}

@@ -58,6 +58,7 @@ import ClientWorkspace from "./pages/worklog/ClientWorkspace";
 import CplRules from "./pages/cpl/CplRules";
 import ClientBilling from "./pages/billing/ClientBilling";
 import AlertsPanel from "./components/AlertsPanel";
+import ReportingIntro from "./pages/landing/ReportingIntro";
 import { loadCurrentUser } from "./stores/currentUser";
 
 // The home route ("/") branches on role: Campaign Managers get the CM dashboard,
@@ -136,13 +137,21 @@ function App() {
     <ThemeProvider>
       <SidebarProvider>
         <Router root={Root}>
-          {/* Public route — no layout, no auth guard */}
+          {/* Public routes — no layout, no auth guard.
+              "/" is the marketing intro for reports.aajneeti.social; its CTAs
+              link to /login, and the app itself now lives at /dashboard. The
+              ProtectedLayout branch below deliberately has NO index child, so
+              "/" only ever matches this route. */}
           <Route path="/login" component={Login} />
+          <Route path="/" component={ReportingIntro} />
 
           {/*  All protected routes share ONE Layout instance via nesting.
                Header and Sidebar mount once and never remount on navigation. */}
           <Route path="/" component={ProtectedLayout}>
-            <Route path="/" component={RoleHome} />
+            {/* The app home. Static segments outrank dynamic ones in the
+                router's scoring, so this always wins over the
+                "/:client-nomen-name" client route further down. */}
+            <Route path="/dashboard" component={RoleHome} />
             <Route path="/cm-alerts" component={AlertsPanel} />
             {/* CM daily report — page-gated to campaign managers; the backend
                 scopes clients to the CM's own assigned accounts. */}

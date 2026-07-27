@@ -41,7 +41,7 @@ export default function Login() {
     if (auth?.token && auth?.refreshToken) {
       // Both tokens present — safe to continue session
       setIsLoggedIn(true);
-      navigate("/", { replace: true });
+      navigate("/dashboard", { replace: true });
     } else if (auth?.token && !auth?.refreshToken) {
       // Access token only, no refresh token — clear and re-login
       console.warn("No refresh token found — clearing session");
@@ -137,18 +137,18 @@ export default function Login() {
 
       // FIX: Use window.location.href instead of navigate().
       //
-      // navigate("/", { replace: true }) is an in-memory SolidJS route
-      // change — it does NOT remount components that are already in the
-      // tree. After a softLogout the router navigated to /login without
+      // navigate("/dashboard", { replace: true }) is an in-memory SolidJS
+      // route change — it does NOT remount components that are already in
+      // the tree. After a softLogout the router navigated to /login without
       // a page reload, so dashboard components were already mounted.
-      // When the user logged back in and navigate("/") was called, those
+      // When the user logged back in and navigate() was called, those
       // components never re-ran their onMount data-fetching logic.
       //
       // window.location.href forces a full browser reload, guaranteeing
       // every component initialises from scratch with the new auth token
       // and an empty cache — exactly what handleLogout already does.
 
-      window.location.href = "/";
+      window.location.href = "/dashboard";
     } catch (err) {
       console.error(err);
       setError(err.message || "Login failed. Please try again.");

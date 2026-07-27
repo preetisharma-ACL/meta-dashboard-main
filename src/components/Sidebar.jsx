@@ -28,10 +28,11 @@ const getUserRole = () => {
   }
 };
 
-// Logo click: navigation to "/" is handled by the <A href="/"> itself. Here we
-// only reset any drilled-in client context so "/" renders the admin's own
-// dashboard instead of the last-opened client's. (Previously this called an
-// undefined `navigate`, so it threw and was never wired up.)
+// Logo click: navigation to /dashboard is handled by the <A> itself. Here we
+// only reset any drilled-in client context so /dashboard renders the admin's
+// own dashboard instead of the last-opened client's. ("/" is the public
+// marketing intro now, not the app home.) (Previously this called an undefined
+// `navigate`, so it threw and was never wired up.)
 const handleLogoClick = () => {
   try {
     const role = JSON.parse(localStorage.getItem("auth") || "{}")?.role;
@@ -137,7 +138,7 @@ export default function Sidebar() {
       clearClientDashboardContext();
     }
 
-    navigate("/");
+    navigate("/dashboard");
   };
   const [isLoggedIn, setIsLoggedIn] = createSignal(getAuthToken());
   const [userRole, setUserRole] = createSignal(getUserRole());
@@ -163,7 +164,7 @@ export default function Sidebar() {
         icon: () => (
           <Icon d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
         ),
-        path: "/",
+        path: "/dashboard",
         action: goToDashboard,
       },
       // ── Sales manager nav (v1.1) ──────────────────────────────────────────
@@ -190,7 +191,7 @@ export default function Sidebar() {
         icon: () => (
           <Icon d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
         ),
-        path: "/",
+        path: "/dashboard",
       },
       {
         name: "My Work",
@@ -597,7 +598,7 @@ export default function Sidebar() {
             fallback={
               <>
                 {/* Light theme */}
-                <A href="/" onClick={handleLogoClick} class="flex items-center justify-center">
+                <A href="/dashboard" onClick={handleLogoClick} class="flex items-center justify-center">
                 <img
                   src="/logo.webp"
                   alt="aajneeti"
@@ -605,7 +606,7 @@ export default function Sidebar() {
                 />
                 </A>
                 {/* Dark theme */}
-                <A href="/" onClick={handleLogoClick} class="flex items-center justify-center">
+                <A href="/dashboard" onClick={handleLogoClick} class="flex items-center justify-center">
                 <img
                   src="/V2-aajneeti-logo.png"
                   alt="aajneeti"
@@ -617,7 +618,7 @@ export default function Sidebar() {
           >
             <div class="flex flex-col items-center justify-center gap-3 lg:gap-2">
               {/* Light theme */}
-              <A href="/" onClick={handleLogoClick} class="flex items-center justify-center">
+              <A href="/dashboard" onClick={handleLogoClick} class="flex items-center justify-center">
               <img
                 src="/logo.webp"
                 alt="Aajneeti"
@@ -625,7 +626,7 @@ export default function Sidebar() {
               />
               </A>
               {/* Dark theme */}
-              <A href="/" onClick={handleLogoClick} class="flex items-center justify-center">
+              <A href="/dashboard" onClick={handleLogoClick} class="flex items-center justify-center">
               <img
                 src="/V2-aajneeti-logo.png"
                 alt="Aajneeti"

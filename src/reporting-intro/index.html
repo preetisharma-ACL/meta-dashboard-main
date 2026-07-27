@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- ============================================================
+       SWAP: page meta / SEO copy
+       ============================================================ -->
+  <title>Aajneeti Reporting Dashboard — Campaigns that convert. Insights that matter.</title>
+  <meta name="description" content="One dashboard to track every project, manage Meta campaigns and show clients exactly where their budget went — leads, CPL and spend, live." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='14' fill='%23141416'/><circle cx='16' cy='16' r='5' fill='%23E6398A'/></svg>" />
+
+  <!-- Fonts: Manrope (display) + Inter (body) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- ?v= is a cache-buster: bump the number whenever you edit styles.css/main.js
+       so browsers fetch the new file instead of a stale cached copy. -->
+  <link rel="stylesheet" href="styles.css?v=3" />
+
+  <script>
+    /* Flag JS + reduced-motion BEFORE paint so pre-animation states never flash. */
+    (function () {
+      var d = document.documentElement;
+      d.classList.add('js');
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) d.classList.add('reduced-motion');
+    })();
+  </script>
+</head>
+
+<body>
+
+<!-- ============================================================
+     NAVBAR — floating pill, shrinks + blurs on scroll
+     SWAP: logo mark, wordmark, nav links, CTA label
+     ============================================================ -->
+<header class="nav-wrap" id="navWrap">
+  <nav class="nav" id="nav" aria-label="Primary">
+    <a class="nav__brand" href="#top">
+      <span class="nav__mark" aria-hidden="true">
+        <!-- SWAP: logo mark SVG -->
+        <svg viewBox="0 0 32 32" width="26" height="26">
+          <circle cx="16" cy="16" r="15" fill="#141416" />
+          <circle cx="16" cy="16" r="5.5" fill="#fff" />
+        </svg>
+      </span>
+      <span class="nav__word">aajneeti</span>
+    </a>
+
+    <ul class="nav__links" id="navLinks">
+      <li><a href="#integrations">Product</a></li>
+      <li><a href="#features">What you get</a></li>
+      <li><a href="#bento">Reporting</a></li>
+      <li><a href="#testimonials">How it works</a></li>
+    </ul>
+
+    <a class="btn btn--dark btn--sm nav__cta" href="https://reports.aajneeti.social/">Sign in</a>
+
+    <button class="nav__burger" id="navBurger" aria-label="Open menu" aria-expanded="false" aria-controls="navLinks">
+      <span></span><span></span><span></span>
+    </button>
+  </nav>
+</header>
+
+
+<main id="top">
+
+  <!-- ============================================================
+       HERO
+       SWAP: heading, subtext, CTA, dashboard mockup
+       ============================================================ -->
+  <section class="hero section" id="hero">
+    <!-- decorative pastel blobs -->
+    <div class="blobs" aria-hidden="true">
+      <span class="blob blob--lilac" style="--x:8%;  --y:-10%; --s:1.15"></span>
+      <span class="blob blob--peach" style="--x:78%; --y:-6%;  --s:1"></span>
+      <span class="blob blob--pink"  style="--x:44%; --y:22%;  --s:1.3"></span>
+    </div>
+
+    <div class="container hero__inner">
+      <p class="eyebrow" data-reveal>Reporting dashboard for performance marketing</p>
+
+      <h1 class="hero__title display" data-reveal>
+        Campaigns that convert.<br class="br-md" />
+        Insights that matter.
+      </h1>
+
+      <p class="hero__sub lede" data-reveal>
+        One dashboard to track every project, manage Meta campaigns and show clients
+        exactly where their budget went — leads, CPL and spend, live.
+      </p>
+
+      <div class="hero__actions" data-reveal>
+        <a class="btn btn--dark" href="https://reports.aajneeti.social/">Sign in</a>
+        <a class="btn btn--ghost" href="#features">See how it works</a>
+      </div>
+
+      <!-- ============================================================
+           HERO SHOWCASE — four screenshots stacked in one box. Each view is
+           hinged on its left edge and turns like a page to reveal the next,
+           landing in exactly the same place. Click / Enter steps forward;
+           after the last view it resets to the first. Timing and the turn
+           live in main.js § 4.
+
+           TO ADD OR REORDER VIEWS: add/remove a .layer and renumber --i.
+           --i sets the stacking order (0 = on top = shown first); the
+           JS derives the whole sequence from DOM order, so nothing else
+           needs changing. Add .is-dark to any layer whose screenshot has a
+           dark background so its gutters match.
+           ============================================================ -->
+      <div class="book" id="showcase" data-intro data-parallax
+           role="button" tabindex="0"
+           aria-label="Reporting dashboard — press to step through the views">
+
+        <!-- Blurred soft shapes sitting behind the stack -->
+        <div class="book__aura" aria-hidden="true">
+          <span class="aura aura--1"></span>
+          <span class="aura aura--2"></span>
+          <span class="aura aura--3"></span>
+        </div>
+
+        <div class="book__stack" data-stack>
+          <!-- View 1 — on top, shown first -->
+          <div class="layer" data-layer style="--i:0">
+            <img src="assets/images/reporting-dashboard1.png"
+                 alt="Reporting dashboard showing active projects, total spend and campaign metrics in light mode"
+                 width="1907" height="908" fetchpriority="high" decoding="async" />
+          </div>
+
+          <!-- View 2 -->
+          <div class="layer is-dark" data-layer style="--i:1">
+            <img src="assets/images/reporting-dashboard2.png"
+                 alt="Reporting dashboard, active projects and spend, in dark mode"
+                 width="1917" height="906" decoding="async" />
+          </div>
+
+          <!-- View 3 -->
+          <div class="layer" data-layer style="--i:2">
+            <img src="assets/images/reporting-dashboard3.png"
+                 alt="Paused campaign alerts with cost per lead by project and lead sources"
+                 width="1617" height="910" decoding="async" />
+          </div>
+
+          <!-- View 4 — bottom of the stack, shown last -->
+          <div class="layer" data-layer style="--i:3">
+            <img src="assets/images/reporting-dashboard4.png"
+                 alt="Campaign performance chart comparing leads against spend"
+                 width="1628" height="620" decoding="async" />
+          </div>
+        </div>
+
+        <span class="book__contact" aria-hidden="true"></span>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ============================================================
+       INTEGRATIONS DIAGRAM + FEATURE CARDS
+       One block: connector lines run from the logo chips into the hub,
+       then down and out into the three cards, so the whole thing reads
+       as a single wired diagram.
+
+       The SVG viewBoxes and the chip --l/--t percentages are two views of
+       the same coordinate space — if you move a chip, move its path too.
+       SWAP: heading, subtext, logo chips (drop real logos in /assets/logos)
+       ============================================================ -->
+  <section class="section integrations" id="integrations">
+    <div class="blobs" aria-hidden="true">
+      <span class="blob blob--lilac" style="--x:-6%; --y:10%; --s:1"></span>
+      <span class="blob blob--peach" style="--x:86%; --y:40%; --s:.9"></span>
+    </div>
+
+    <div class="container">
+      <header class="sec-head sec-head--tight">
+        <h2 class="display" data-reveal>Every campaign, every rupee,<br class="br-md" /> in one ledger</h2>
+        <p class="lede lede--narrow" data-reveal>Meta ad accounts feed straight in. Spend, leads and CPL roll up by campaign, project and client — automatically.</p>
+      </header>
+
+      <div class="conn" data-diagram>
+        <!-- Hub: four logo chips wired into the central mark -->
+        <div class="hub">
+          <svg class="conn__svg" viewBox="0 0 1000 190" fill="none" aria-hidden="true" preserveAspectRatio="none">
+            <g class="conn__lines" stroke="#DDDDE4" stroke-width="1.6" stroke-linecap="round">
+              <path d="M200 52 H288 Q300 52 300 64 V83 Q300 95 312 95 H470" />
+              <path d="M200 138 H288 Q300 138 300 126 V107 Q300 95 312 95 H470" />
+              <path d="M800 52 H712 Q700 52 700 64 V83 Q700 95 688 95 H530" />
+              <path d="M800 138 H712 Q700 138 700 126 V107 Q700 95 688 95 H530" />
+              <path d="M500 126 V190" />
+            </g>
+          </svg>
+
+          <!-- SWAP: the data sources that feed the ledger -->
+          <span class="chip" style="--l:14%; --t:27.4%" data-chip>
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="#0866FF"/><path d="M13.2 21.9V13.9h2.7l.5-3.1h-3.2V8.8c0-.9.3-1.5 1.6-1.5h1.7V4.5c-.3 0-1.3-.1-2.5-.1-2.5 0-4.2 1.5-4.2 4.3v2.1H7.1v3.1h2.7v8Z" fill="#fff"/></svg>
+            Meta Ads
+          </span>
+
+          <span class="chip" style="--l:14%; --t:72.6%" data-chip>
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4" fill="#7B68EE"/><rect x="6.5" y="8" width="11" height="1.9" rx=".95" fill="#fff"/><rect x="6.5" y="11.5" width="11" height="1.9" rx=".95" fill="#fff"/><rect x="6.5" y="15" width="6.5" height="1.9" rx=".95" fill="#fff"/></svg>
+            Lead Forms
+          </span>
+
+          <span class="chip" style="--l:86%; --t:27.4%" data-chip>
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="2.5" y="5" width="19" height="14" rx="3" fill="#2F8F5B"/><rect x="2.5" y="8.5" width="19" height="2.6" fill="#fff" opacity=".85"/><rect x="5.5" y="14" width="5" height="1.8" rx=".9" fill="#fff"/></svg>
+            Ad Accounts
+          </span>
+
+          <span class="chip" style="--l:86%; --t:72.6%" data-chip>
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3.5" fill="#E6398A"/><rect x="6" y="8.5" width="12" height="2.2" rx="1.1" fill="#fff" opacity=".9"/><rect x="6" y="13" width="7" height="2.2" rx="1.1" fill="#fff" opacity=".6"/></svg>
+            Budgets
+          </span>
+
+          <span class="chip chip--core" style="--l:50%; --t:50%" data-chip>
+            <svg viewBox="0 0 32 32" width="24" height="24" aria-hidden="true"><circle cx="16" cy="16" r="15" fill="#fff"/><circle cx="16" cy="16" r="5.5" fill="#141416"/></svg>
+            aajneeti
+          </span>
+        </div>
+
+        <!-- Branch: the trunk fans out and drops into each card below.
+             Drop x-coords (161 / 500 / 839) are the card centres of a
+             3-column grid — keep them in sync with .grid-3. -->
+        <div class="branch">
+          <svg class="conn__svg" viewBox="0 0 1000 62" fill="none" aria-hidden="true" preserveAspectRatio="none">
+            <g class="conn__lines" stroke="#DDDDE4" stroke-width="1.6" stroke-linecap="round">
+              <path d="M500 0 V62" />
+              <path d="M500 22 H173 Q161 22 161 34 V62" />
+              <path d="M500 22 H827 Q839 22 839 34 V62" />
+            </g>
+          </svg>
+        </div>
+      </div>
+
+      <!-- SWAP: card titles, screenshots, and the one-to-two line copy below each.
+           Each screenshot sits whole inside its well, centred, at a size that
+           leaves breathing room on all four sides. -->
+      <div class="grid-3" id="features" data-stagger>
+
+        <!-- Card 1 — the client role -->
+        <article class="card" data-reveal>
+          <h3><span class="card__ico ico--portal" aria-hidden="true"></span>Client portal</h3>
+          <p class="card__lead">Clients sign in to their own projects only — nothing else is visible.</p>
+          <div class="card__shot">
+            <img src="assets/images/app-client-portal.png"
+                 alt="Client dashboard listing their live projects with spend against allocation, leads and average CPL"
+                 width="1582" height="848" loading="lazy" decoding="async" />
+          </div>
+          <p class="card__cap">Spend against allocation, leads, CPL and where the month will land.</p>
+        </article>
+
+        <!-- Card 2 — billing -->
+        <article class="card" data-reveal>
+          <h3><span class="card__ico ico--task" aria-hidden="true"></span>Billing you can defend</h3>
+          <p class="card__lead">Opening balance, funds added, service charge and GST — itemised.</p>
+          <div class="card__shot">
+            <img src="assets/images/app-billing.png"
+                 alt="Client billing page showing remaining balance, budget utilised and a full monthly account statement"
+                 width="1582" height="848" loading="lazy" decoding="async" />
+          </div>
+          <p class="card__cap">A statement that answers the invoice question before it's asked.</p>
+        </article>
+
+        <!-- Card 3 — daily reporting -->
+        <article class="card" data-reveal>
+          <h3><span class="card__ico ico--usage" aria-hidden="true"></span>Daily reports</h3>
+          <p class="card__lead">Leads, CPL and spend grouped by date and project, ready to download.</p>
+          <div class="card__shot">
+            <img src="assets/images/reporting-dashboard8.png"
+                 alt="Daily reports table showing leads, cost per lead and amount spent for each project"
+                 width="1657" height="642" loading="lazy" decoding="async" />
+          </div>
+          <p class="card__cap">Service charge and GST worked out per project, before you ask.</p>
+        </article>
+
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ============================================================
+       BENTO FEATURE GRID
+       SWAP: panel heading + each card's copy and mock UI
+       ============================================================ -->
+  <section class="section bento" id="bento">
+    <div class="container">
+      <div class="bento__panel">
+        <div class="blobs blobs--soft" aria-hidden="true">
+          <span class="blob blob--lilac" style="--x:5%;  --y:15%; --s:.7"></span>
+          <span class="blob blob--pink"  style="--x:70%; --y:55%; --s:.8"></span>
+        </div>
+
+        <header class="sec-head sec-head--tight">
+          <h2 class="display" data-reveal>Reporting without the spreadsheet</h2>
+          <p class="lede" data-reveal>Everything that used to live in exports, WhatsApp threads and end-of-month reconciliation — in one place.</p>
+        </header>
+
+        <div class="bento__grid" data-stagger>
+
+          <!-- Bento A — chat -->
+          <article class="bcard bcard--a" data-reveal>
+            <div class="bcard__ui">
+              <div class="chat">
+                <div class="msg">
+                  <i class="av"></i>
+                  <div class="bubble"><span class="ln w80"></span><span class="ln w55"></span></div>
+                </div>
+                <div class="msg msg--me">
+                  <div class="bubble bubble--me"><span class="ln w70"></span><span class="ln w40"></span></div>
+                  <i class="av av--2"></i>
+                </div>
+                <div class="msg">
+                  <i class="av av--3"></i>
+                  <div class="bubble"><span class="ln w60"></span></div>
+                </div>
+                <div class="composer"><span class="ln w50"></span><i class="send"></i></div>
+              </div>
+            </div>
+            <div class="bcard__copy">
+              <h3>Alerts before you have to ask</h3>
+              <p>A cost-per-lead ceiling sits on every project. If a campaign drifts past it — or quietly goes dark — the alert reaches you, rather than surfacing in next month's report.</p>
+            </div>
+          </article>
+
+          <!-- Bento B — integrations -->
+          <article class="bcard bcard--b" data-reveal>
+            <div class="bcard__ui">
+              <div class="synclist">
+                <div class="sync"><i class="sq sq--1"></i><span class="ln w55"></span><span class="pill pill--ok">Synced</span></div>
+                <div class="sync"><i class="sq sq--2"></i><span class="ln w45"></span><span class="pill pill--ok">Synced</span></div>
+                <div class="sync"><i class="sq sq--3"></i><span class="ln w60"></span><span class="pill">Pending</span></div>
+                <div class="sync"><i class="sq sq--4"></i><span class="ln w40"></span><span class="pill pill--ok">Synced</span></div>
+              </div>
+            </div>
+            <div class="bcard__copy">
+              <h3>Budget pacing you can read</h3>
+              <p>Spend against allocation, days elapsed against budget used, and where the month lands at the current run rate — in a sentence, not a spreadsheet.</p>
+            </div>
+          </article>
+
+          <!-- Bento C — report -->
+          <article class="bcard bcard--c" data-reveal>
+            <div class="bcard__copy">
+              <h3>Every campaign, itemised</h3>
+              <p>Drill from a project down to the individual campaign: leads, spend and cost per lead side by side, so it's obvious which ones are earning their budget and which are quietly draining it.</p>
+            </div>
+            <div class="bcard__ui">
+              <div class="report">
+                <div class="report__head">
+                  <div class="report__title"><span class="ln w60"></span><span class="ln w35"></span></div>
+                  <span class="pill pill--accent">June report</span>
+                </div>
+                <div class="bars bars--report">
+                  <b style="--h:35%"></b><b style="--h:62%"></b><b style="--h:48%"></b><b style="--h:85%"></b>
+                  <b style="--h:55%"></b><b style="--h:96%"></b><b style="--h:42%"></b><b style="--h:70%"></b>
+                  <b style="--h:58%"></b><b style="--h:88%"></b>
+                </div>
+                <div class="report__rows">
+                  <div class="row"><i class="av"></i><span class="ln w50"></span><span class="prog"><b style="--p:64%"></b></span><em>216h</em></div>
+                  <div class="row"><i class="av av--2"></i><span class="ln w60"></span><span class="prog"><b style="--p:38%"></b></span><em>92h</em></div>
+                  <div class="row"><i class="av av--3"></i><span class="ln w45"></span><span class="prog"><b style="--p:81%"></b></span><em>174h</em></div>
+                </div>
+              </div>
+            </div>
+          </article>
+
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ============================================================
+       TESTIMONIALS
+       SWAP: quotes, avatars (drop images in /assets/avatars), names, roles
+       ============================================================ -->
+  <section class="section testimonials" id="testimonials">
+    <div class="container">
+
+      <header class="sec-head sec-head--tight">
+        <h2 class="display" data-reveal>From ad account to answer</h2>
+        <p class="lede lede--narrow" data-reveal>Three steps, then the reporting runs itself.</p>
+      </header>
+
+      <!-- SWAP: the three onboarding steps -->
+      <div class="quotes" data-stagger>
+        <article class="quote" data-reveal>
+          <p><strong>Connect the ad account.</strong> Your Meta ad accounts and lead forms link to the projects they belong to. Nothing to install, nothing to tag.</p>
+          <footer><i class="av av--2"></i><span><strong>Step one</strong><em>Ad accounts &amp; lead forms</em></span></footer>
+        </article>
+        <article class="quote" data-reveal>
+          <p><strong>Set the monthly budget.</strong> Each project gets an allocation, so spend can be read against a plan instead of a running total.</p>
+          <footer><i class="av av--3"></i><span><strong>Step two</strong><em>Allocation per project</em></span></footer>
+        </article>
+        <article class="quote" data-reveal>
+          <p><strong>Sign in and read it.</strong> Spend, leads, CPL and pacing update through the month — with a billing statement that already adds up.</p>
+          <footer><i class="av av--4"></i><span><strong>Step three</strong><em>Live, on your own login</em></span></footer>
+        </article>
+      </div>
+
+      <!-- NOTE: a real customer-quote block belongs here. It was removed rather
+           than filled with invented names — see the handover notes. -->
+
+    </div>
+  </section>
+
+
+  <!-- ============================================================
+       CTA BAND
+       SWAP: heading, subtext, button label
+       ============================================================ -->
+  <section class="section cta" id="cta">
+    <div class="blobs" aria-hidden="true">
+      <span class="blob blob--lilac" style="--x:12%; --y:0%;  --s:1.1"></span>
+      <span class="blob blob--peach" style="--x:72%; --y:20%; --s:1"></span>
+      <span class="blob blob--pink"  style="--x:42%; --y:45%; --s:1.2"></span>
+    </div>
+    <div class="container cta__inner">
+      <h2 class="display" data-reveal>See your campaigns the way<br class="br-md" /> your clients see them</h2>
+      <p class="lede" data-reveal>Connect a Meta ad account and the ledger fills itself. Everything after that is just reading it.</p>
+      <div data-reveal><a class="btn btn--dark" href="https://reports.aajneeti.social/">Sign in to the dashboard</a></div>
+    </div>
+  </section>
+
+</main>
+
+
+<!-- ============================================================
+     FOOTER — copyright only.
+     Link columns and socials were removed deliberately: they pointed at
+     internal routes (manager performance, leaderboard, funding) that a
+     client shouldn't see.
+     ============================================================ -->
+<footer class="footer footer--bare">
+  <div class="container">
+    <div class="footer__bottom">
+      <small>© 2026 Aajneeti Connect Limited. All rights reserved.</small>
+    </div>
+  </div>
+
+  <!-- Huge faded watermark -->
+  <div class="watermark" aria-hidden="true"><span>Aajneeti</span></div>
+</footer>
+
+
+<!-- Libraries (CDN). Everything degrades gracefully if these fail to load. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js" defer></script>
+<script src="https://unpkg.com/lenis@1.1.13/dist/lenis.min.js" defer></script>
+<script src="main.js?v=3" defer></script>
+
+</body>
+</html>
+
+

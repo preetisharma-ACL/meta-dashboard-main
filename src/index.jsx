@@ -2,6 +2,7 @@ import { render } from 'solid-js/web';
 import { QueryClient, QueryClientProvider } from '@tanstack/solid-query';
 import './index.css';
 import './styles/worklog.css';
+import './styles/reporting-intro.css';
 import App from './App';
 
 const root = document.getElementById('root');

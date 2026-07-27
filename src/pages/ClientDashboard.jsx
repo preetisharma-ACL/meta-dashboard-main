@@ -127,6 +127,12 @@ const SHOW_PROPOSED_SECTIONS = true;
 // Display thresholds for the "Needs attention" rules (presentation only).
 const HOT_CPL_RATIO = 1.4; // CPL > 140% of portfolio average → "running hot"
 
+// The app home — an admin's OWN dashboard, no client selected. This used to be
+// "/", but "/" is now the public reporting intro, so the three checks below
+// (sweep gate, back-to-home effect, onMount context clear) all key off this one
+// constant rather than a literal that could drift apart from the route table.
+const HOME_PATH = "/dashboard";
+
 // A client route is "/:client-nomen-name" where the slug is the raw nomen
 // lowercased with runs of whitespace collapsed to "-" (see Clients.jsx's
 // handleClientDashboard). slugify() reproduces that transform so a stored nomen
@@ -339,17 +345,17 @@ export default function MainDashboard() {
   // scoped to that client's Client PK (selectedClientId). Firing the sweep before
   // the PK is resolved sends an unscoped bulk-insights call that sums EVERY
   // client's spend on shared/multi-client projects — the all-clients bug.
-  // This is true only while previewing a client: the admin's own "/" dashboard
+  // This is true only while previewing a client: the admin's own home dashboard
   // (no client selected) is meant to be all-clients, and real client logins are
   // force-scoped server-side by their own nomen — so both return ready = true.
   const clientContextReady = () => {
     if (userRole() !== "admin") return true; // clients are server-scoped
-    if (location.pathname === "/") return true; // admin's own dashboard
+    if (location.pathname === HOME_PATH) return true; // admin's own dashboard
     return !!selectedClientId(); // previewing a client → need the Client PK
   };
 
   // ── Reactively clear client context when navigating back to the Main Dashboard ──
-  // Both "/" and "/:client-nomen-name" render THIS same component, so SolidJS
+  // Both HOME_PATH and "/:client-nomen-name" render THIS same component, so SolidJS
   // reuses the instance on navigation and onMount does NOT re-run. Without this
   // effect, clicking "Dashboard" in the sidebar after viewing a client would keep
   // showing the previously selected client's cached data.
@@ -363,9 +369,10 @@ export default function MainDashboard() {
         const auth = JSON.parse(localStorage.getItem("auth") || "{}");
         // Admin AND sales reconcile the client context from the URL on in-place
         // nav (e.g. editing the address bar from one client to another within
-        // this reused instance). Sales "/" renders SalesDashboard, so the "/"
-        // branch below only ever fires for admin; the client-route branch runs
-        // for both and ensureClientContextFromRoute handles the sales roster.
+        // this reused instance). Sales' home renders SalesDashboard, so the
+        // HOME_PATH branch below only ever fires for admin; the client-route
+        // branch runs for both and ensureClientContextFromRoute handles the
+        // sales roster.
         if (auth?.role !== "admin" && auth?.role !== "sales") return;
 
         const bustAndReload = () => {
@@ -384,8 +391,8 @@ export default function MainDashboard() {
           loadAllProjects();
         };
 
-        // ── Back to admin home ("/") ──
-        if (pathname === "/") {
+        // ── Back to admin home (HOME_PATH) ──
+        if (pathname === HOME_PATH) {
           setClientRouteError(null); // leaving any not-found / client state behind
 
           // Clear any selected-client context so only admin's own data is used.
@@ -395,7 +402,7 @@ export default function MainDashboard() {
           localStorage.removeItem("selectedClientName");
 
           // Always bust the client cache and reload admin data. This effect fires
-          // ONLY when navigating to "/" FROM a client route within the reused
+          // ONLY when navigating to HOME_PATH FROM a client route within the reused
           // instance (arriving from another page runs onMount, whose first effect
           // run is skipped) — so we were always previewing a client or its
           // not-found state. Gating on wasViewingClient/hadError previously left
@@ -452,7 +459,7 @@ export default function MainDashboard() {
     const auth = JSON.parse(localStorage.getItem("auth"));
 
     // Admin returning to their own dashboard — clear client context AND cache
-    if (auth?.role === "admin" && window.location.pathname === "/") {
+    if (auth?.role === "admin" && window.location.pathname === HOME_PATH) {
       const wasViewingClient = localStorage.getItem("selectedClientNomenId");
 
       localStorage.removeItem("selectedClientNomen");
@@ -2414,7 +2421,7 @@ export default function MainDashboard() {
             </p>
             <div class="flex items-center justify-center gap-3">
               <A
-                href="/"
+                href="/dashboard"
                 class="inline-flex items-center justify-center rounded-lg bg-[#14233A] px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-[#1d3255] transition-colors"
               >
                 Back to dashboard

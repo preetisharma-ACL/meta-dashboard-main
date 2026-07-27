@@ -203,7 +203,7 @@ export default function CampaignDetails() {
               />
             </svg>
             <a
-              href="/"
+              href="/dashboard"
               class="text-sm text-gray-600 dark:text-gray-400 transition-colors group-hover:text-purple-600"
             >
               Home
