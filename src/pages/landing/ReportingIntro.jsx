@@ -31,30 +31,30 @@ const SHOTS = "/images";
    matches the card gutters to a dark screenshot's own background. */
 const HERO_VIEWS = [
   {
-    src: `${SHOTS}/reporting-dashboard1.png`,
-    alt: "Reporting dashboard showing active projects, total spend and campaign metrics in light mode",
-    w: 1907,
-    h: 908,
+    src: `${SHOTS}/dashboard1.png`,
+    alt: "Active Projects dashboard in light mode: total spend against monthly allocation with a day-28-of-31 pacing marker, alongside leads generated, average CPL and live campaign counts",
+    w: 1892,
+    h: 906,
     priority: true,
   },
   {
-    src: `${SHOTS}/reporting-dashboard2.png`,
-    alt: "Reporting dashboard, active projects and spend, in dark mode",
-    w: 1917,
-    h: 906,
+    src: `${SHOTS}/dashboard2.png`,
+    alt: "The same Active Projects dashboard in dark mode",
+    w: 1896,
+    h: 910,
     dark: true,
   },
   {
-    src: `${SHOTS}/reporting-dashboard3.png`,
-    alt: "Paused campaign alerts with cost per lead by project and lead sources",
-    w: 1617,
-    h: 910,
-  },
-  {
     src: `${SHOTS}/reporting-dashboard4.png`,
-    alt: "Campaign performance chart comparing leads against spend",
+    alt: "Campaign performance chart plotting leads as bars against spend as a line, above totals for campaigns, leads, spend and the top campaign",
     w: 1628,
     h: 620,
+  },
+  {
+    src: `${SHOTS}/dashboard3.png`,
+    alt: "Campaign table listing start and paused dates, status, leads, clicks, impressions, spend and average CPL for every campaign",
+    w: 1906,
+    h: 908,
   },
 ];
 
