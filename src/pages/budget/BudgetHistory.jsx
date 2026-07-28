@@ -1,5 +1,6 @@
 import { createSignal, createResource, createMemo, For, Show } from "solid-js";
 import { fetchBudgetHistory } from "../../services/budgetHistory";
+import Avatar from "../../components/common/Avatar";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // BUDGET HISTORY — allocated budget + spend for a specific date (or range).
@@ -50,6 +51,28 @@ const GROUP_BYS = [
   { k: "overall", l: "Overall" },
 ];
 
+// ─── Presentation helpers (DISPLAY-ONLY) ──────────────────────────────────────
+// Avatars read better off the mailbox name than the whole address.
+const mailName = (email) => String(email ?? "").split("@")[0] || "";
+
+// Spend against the allocated figure the same row is showing — single date
+// compares the standing budget, a range compares the summed budget over the
+// range. Returns null whenever the comparison isn't meaningful (no allocated
+// value, or a zero/negative one), so nothing is invented where the data is
+// "Not tracked". No fetch, no new field: both numbers are already on the row.
+const utilisation = (spend, budget) => {
+  const s = parseFloat(spend);
+  const b = parseFloat(budget);
+  if (!isFinite(s) || !isFinite(b) || b <= 0) return null;
+  return (s / b) * 100;
+};
+const utilTone = (pct) =>
+  pct >= 100
+    ? { bar: "bg-[#AC2334]", text: "text-[#AC2334] dark:text-red-400" }
+    : pct >= 85
+      ? { bar: "bg-[#B07A14]", text: "text-[#B07A14] dark:text-amber-300" }
+      : { bar: "bg-[#15966A]", text: "text-[#15966A] dark:text-green-400" };
+
 // Subtle "carried forward from {date}" hint — shown when the allocated value in a
 // cell wasn't captured on the queried date but is the standing value from an
 // earlier date. Renders nothing when the value was captured that day.
@@ -57,10 +80,13 @@ function CarriedHint(props) {
   return (
     <Show when={props.carried && props.sourceDate}>
       <span
-        class="block text-[10px] italic font-medium text-[#8593A8] dark:text-gray-500 mt-0.5"
+        class="inline-flex items-center gap-1 mt-1 pl-1.5 pr-2 py-px rounded-full bg-[#F1F4F9] dark:bg-gray-800 text-[10px] font-semibold text-[#8593A8] dark:text-gray-400 whitespace-nowrap"
         title="This is the standing allocated budget — it wasn't re-captured on the queried date, it carried forward from the date shown."
       >
-        carried forward from {fmtDate(props.sourceDate)}
+        <svg class="w-2.5 h-2.5 flex-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" />
+        </svg>
+        carried from {fmtDate(props.sourceDate)}
       </span>
     </Show>
   );
@@ -68,9 +94,10 @@ function CarriedHint(props) {
 
 const NotTracked = () => (
   <span
-    class="text-[11px] italic font-medium text-[#8593A8] dark:text-gray-500"
+    class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-dashed border-[#D4DDE9] dark:border-gray-700 text-[11px] font-semibold text-[#8593A8] dark:text-gray-500"
     title="Allocated budget wasn't captured for this date — see the note above."
   >
+    <span class="w-1.5 h-1.5 rounded-full bg-[#C4CDDA] dark:bg-gray-600 flex-none" />
     Not tracked
   </span>
 );
@@ -331,14 +358,22 @@ export default function BudgetHistory(props) {
       {/* ── Totals band ── */}
       <Show when={!res.loading && !res.error && (rows().length > 0 || overall())}>
         <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
-          <div class="px-4 py-3 rounded-xl border border-[#E2E8F1] dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
-            <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">Total spend</p>
+          <div class="relative px-4 py-3 pl-5 rounded-xl border border-[#E2E8F1] dark:border-gray-700 bg-gray-50 dark:bg-gray-800 shadow-[0_1px_2px_rgba(16,29,49,.04)] overflow-hidden">
+            <span class="absolute left-0 top-0 bottom-0 w-1 bg-[#AC2334]" />
+            <div class="flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5 flex-none text-[#AC2334]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M21 7v6h-6"/></svg>
+              <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">Total spend</p>
+            </div>
             <p class="text-xl font-bold text-[#14233A] dark:text-white tabular-nums mt-0.5">{moneyWhole(totals().spend)}</p>
           </div>
-          <div class="px-4 py-3 rounded-xl border border-[#E2E8F1] dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
-            <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
-              {mode() === "range" ? "Allocated budget / day" : "Total allocated budget"}
-            </p>
+          <div class="relative px-4 py-3 pl-5 rounded-xl border border-[#E2E8F1] dark:border-gray-700 bg-gray-50 dark:bg-gray-800 shadow-[0_1px_2px_rgba(16,29,49,.04)] overflow-hidden">
+            <span class="absolute left-0 top-0 bottom-0 w-1 bg-[#3E6FB0]" />
+            <div class="flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5 flex-none text-[#3E6FB0]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="13" rx="2.5"/><path d="M2 11h20M6 15h4"/></svg>
+              <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
+                {mode() === "range" ? "Allocated budget / day" : "Total allocated budget"}
+              </p>
+            </div>
             <Show
               when={totals().allocKnown}
               fallback={<p class="text-sm italic font-semibold text-[#8593A8] dark:text-gray-500 mt-1.5">Not tracked for this date</p>}
@@ -356,10 +391,14 @@ export default function BudgetHistory(props) {
               </Show>
             </Show>
           </div>
-          <div class="px-4 py-3 rounded-xl border border-[#E2E8F1] dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
-            <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
-              {groupBy() === "manager" ? "Managers" : "Clients"}
-            </p>
+          <div class="relative px-4 py-3 pl-5 rounded-xl border border-[#E2E8F1] dark:border-gray-700 bg-gray-50 dark:bg-gray-800 shadow-[0_1px_2px_rgba(16,29,49,.04)] overflow-hidden">
+            <span class="absolute left-0 top-0 bottom-0 w-1 bg-[#15966A]" />
+            <div class="flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5 flex-none text-[#15966A]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 20v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 20v-2a4 4 0 00-3-3.87"/></svg>
+              <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
+                {groupBy() === "manager" ? "Managers" : "Clients"}
+              </p>
+            </div>
             <p class="text-xl font-bold text-[#14233A] dark:text-white tabular-nums mt-0.5">
               {num(groupBy() === "manager" ? rows().length : totals().clients || rows().length)}
             </p>
@@ -377,7 +416,17 @@ export default function BudgetHistory(props) {
       {/* ── Loading ── */}
       <Show when={res.loading}>
         <div class="bg-gray-50 dark:bg-gray-900 rounded-2xl border border-[#E2E8F1] dark:border-gray-700 divide-y divide-[#E2E8F1] dark:divide-gray-800 overflow-hidden">
-          <For each={Array(6).fill(0)}>{() => <div class="h-14 animate-pulse bg-[#FAFBFD] dark:bg-gray-800/40" />}</For>
+          <For each={Array(6).fill(0)}>
+            {() => (
+              <div class="flex items-center gap-3 px-5 py-3.5">
+                <div class="w-7 h-7 rounded-full bg-gray-200 dark:bg-gray-700 animate-pulse flex-none" />
+                <div class="w-9 h-9 rounded-full bg-gray-200 dark:bg-gray-700 animate-pulse flex-none" />
+                <div class="h-3 w-44 rounded-full bg-gray-200 dark:bg-gray-700 animate-pulse" />
+                <div class="ml-auto h-3 w-24 rounded-full bg-gray-200 dark:bg-gray-700 animate-pulse" />
+                <div class="h-3 w-20 rounded-full bg-gray-200 dark:bg-gray-700 animate-pulse" />
+              </div>
+            )}
+          </For>
         </div>
       </Show>
 
@@ -433,58 +482,125 @@ export default function BudgetHistory(props) {
       {/* ── CLIENT / MANAGER table ── */}
       <Show when={!res.loading && !res.error && groupBy() !== "overall"}>
         <div class="bg-gray-50 dark:bg-gray-900 rounded-2xl border border-[#E2E8F1] dark:border-gray-700 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] overflow-x-auto">
-          <table class="min-w-full text-sm">
+          <table class="min-w-full text-sm border-separate border-spacing-0">
             <thead>
-              <tr class="border-b border-[#D4DDE9] dark:border-gray-700 bg-[#F8FAFC] dark:bg-gray-800/60 text-[#54657E] dark:text-gray-400 uppercase text-xs font-bold tracking-wider">
-                <th class="p-3.5 text-left whitespace-nowrap min-w-[220px]">{groupBy() === "manager" ? "Manager" : "Client"}</th>
-                <th class="p-3.5 text-right whitespace-nowrap">
+              <tr class="bg-[#F8FAFC] dark:bg-gray-800/60 text-[#8593A8] dark:text-gray-400 uppercase text-[10px] font-bold tracking-[0.09em]">
+                <th class="pl-5 pr-2 py-3 text-center whitespace-nowrap w-12 border-b border-[#D4DDE9] dark:border-gray-700">#</th>
+                <th class="px-3 py-3 text-left whitespace-nowrap min-w-[220px] border-b border-[#D4DDE9] dark:border-gray-700">{groupBy() === "manager" ? "Manager" : "Client"}</th>
+                <th class="p-3.5 text-right whitespace-nowrap border-b border-[#D4DDE9] dark:border-gray-700">
                   {groupBy() === "manager" ? "Clients" : (mode() === "range" ? "Budget days" : "Days")}
                 </th>
-                <th class="p-3.5 text-right whitespace-nowrap">{mode() === "range" ? "Allocated (rate · total)" : "Allocated budget"}</th>
-                <th class="p-3.5 text-right whitespace-nowrap">Spend</th>
+                <th class="p-3.5 text-right whitespace-nowrap border-b border-[#D4DDE9] dark:border-gray-700">{mode() === "range" ? "Allocated (rate · total)" : "Allocated budget"}</th>
+                <th class="pl-3.5 pr-5 py-3 text-right whitespace-nowrap border-b border-[#D4DDE9] dark:border-gray-700">Spend</th>
               </tr>
             </thead>
             <tbody>
               <For each={rows()}>
-                {(r, i) => (
-                  <tr class={`border-b border-[#E2E8F1] dark:border-gray-800 ${i() % 2 === 0 ? "bg-gray-50 dark:bg-gray-900" : "bg-[#FAFBFD] dark:bg-gray-800/30"}`}>
-                    <td class="p-3.5 font-semibold text-[#14233A] dark:text-gray-100">
+                {(r, i) => {
+                  // Label the row once — the avatar, the tooltip and the name
+                  // cell all key off the same value.
+                  const label = () =>
+                    groupBy() === "manager"
+                      ? (r.manager_email ? mailName(r.manager_email) : "Unassigned")
+                      : (r.client_nomen_name ?? `#${r.client_nomen}`);
+                  // Budget this row's spend is measured against: the standing
+                  // value on a single date, the range sum over a range.
+                  const allocBase = () =>
+                    !allocAvailable()
+                      ? null
+                      : mode() === "range"
+                        ? r.allocated_total_over_range
+                        : r.allocated_budget;
+                  const util = () => utilisation(r.total_spend, allocBase());
+                  return (
+                  <tr class="group bg-gray-50 dark:bg-gray-900 hover:bg-[#F6F9FC] dark:hover:bg-gray-800/60 transition-colors">
+                    <td class="relative pl-5 pr-2 py-3 text-center align-middle border-b border-[#E2E8F1] dark:border-gray-800">
+                      {/* hover accent rail, pinned to the table's left edge */}
+                      <span class="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-8 rounded-r-full bg-transparent group-hover:bg-[#AC2334] transition-colors" />
+                      <span class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-[#F1F4F9] dark:bg-gray-800 text-[#54657E] dark:text-gray-400 text-[11px] font-extrabold tabular-nums group-hover:bg-[#E7EEF7] dark:group-hover:bg-gray-700 transition-colors">
+                        {i() + 1}
+                      </span>
+                    </td>
+                    <td class="px-3 py-3 align-middle border-b border-[#E2E8F1] dark:border-gray-800">
+                      <div class="flex items-center gap-3 min-w-0">
+                        <Avatar name={label()} size="w-9 h-9" textSize="text-[11px]" class="ring-2 ring-white dark:ring-gray-900 shadow-sm" />
+                        <Show
+                          when={groupBy() === "manager"}
+                          fallback={
+                            <span class="font-bold text-[#14233A] dark:text-gray-100 truncate max-w-[280px]" title={label()}>
+                              {r.client_nomen_name ?? `#${r.client_nomen}`}
+                            </span>
+                          }
+                        >
+                          <Show
+                            when={r.manager_email}
+                            fallback={<span class="italic font-semibold text-[#8593A8] dark:text-gray-500">Unassigned</span>}
+                          >
+                            <span class="min-w-0">
+                              <span class="block font-bold text-[#14233A] dark:text-gray-100 truncate max-w-[280px] capitalize">{mailName(r.manager_email)}</span>
+                              <span class="block text-[11px] text-[#8593A8] dark:text-gray-500 truncate max-w-[280px]" title={r.manager_email}>{r.manager_email}</span>
+                            </span>
+                          </Show>
+                        </Show>
+                      </div>
+                    </td>
+                    <td class="p-3.5 text-right align-middle border-b border-[#E2E8F1] dark:border-gray-800">
                       <Show
-                        when={groupBy() === "manager"}
-                        fallback={r.client_nomen_name ?? `#${r.client_nomen}`}
+                        when={groupBy() === "manager" || mode() === "range"}
+                        fallback={<span class="text-[#C4CDDA] dark:text-gray-600 font-semibold">—</span>}
                       >
-                        {r.manager_email ?? <span class="italic font-medium text-[#8593A8] dark:text-gray-500">Unassigned</span>}
+                        <span class="inline-flex items-center justify-center min-w-[2rem] px-2 py-0.5 rounded-full bg-[#F1F4F9] dark:bg-gray-800 text-[12px] font-bold text-[#54657E] dark:text-gray-300 tabular-nums">
+                          {groupBy() === "manager" ? num(r.distinct_clients) : num(r.days_with_budget)}
+                        </span>
                       </Show>
                     </td>
-                    <td class="p-3.5 text-right text-[#54657E] dark:text-gray-300 tabular-nums">
-                      <Show
-                        when={groupBy() === "manager"}
-                        fallback={mode() === "range" ? num(r.days_with_budget) : "—"}
-                      >
-                        {num(r.distinct_clients)}
-                      </Show>
-                    </td>
-                    <td class="p-3.5 text-right whitespace-nowrap">
+                    <td class="p-3.5 text-right align-middle whitespace-nowrap border-b border-[#E2E8F1] dark:border-gray-800">
                       <AllocatedCell mode={mode()} alloc={rowAlloc(r)} />
                     </td>
-                    <td class="p-3.5 text-right font-semibold text-[#1A2B45] dark:text-gray-200 tabular-nums whitespace-nowrap">
-                      {money2(r.total_spend) ?? "—"}
+                    <td class="pl-3.5 pr-5 py-3 text-right align-middle whitespace-nowrap border-b border-[#E2E8F1] dark:border-gray-800">
+                      <span class="block font-bold text-[#1A2B45] dark:text-gray-200 tabular-nums">
+                        {money2(r.total_spend) ?? "—"}
+                      </span>
+                      {/* Utilisation meter — spend against this row's allocated
+                          budget. Hidden when there's nothing to compare against. */}
+                      <Show when={util() != null}>
+                        <span class="flex items-center justify-end gap-1.5 mt-1.5">
+                          <span class="block w-16 h-1.5 rounded-full bg-[#E7ECF3] dark:bg-gray-700 overflow-hidden">
+                            <span
+                              class={`block h-full rounded-full ${utilTone(util()).bar}`}
+                              style={`width:${Math.max(2, Math.min(100, util()))}%`}
+                            />
+                          </span>
+                          <span class={`text-[10px] font-bold tabular-nums ${utilTone(util()).text}`}>
+                            {Math.round(util())}%
+                          </span>
+                        </span>
+                      </Show>
                     </td>
                   </tr>
-                )}
+                  );
+                }}
               </For>
               <Show when={rows().length === 0}>
-                <tr><td colspan="4" class="py-16 text-center text-[#8593A8] dark:text-gray-500">No budget or spend data for {rangeLabel()}.</td></tr>
+                <tr><td colspan="5" class="py-16 text-center">
+                  <span class="inline-flex flex-col items-center gap-2 text-[#8593A8] dark:text-gray-500">
+                    <span class="w-11 h-11 rounded-full grid place-items-center bg-[#F1F4F9] dark:bg-gray-800">
+                      <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2.5"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                    </span>
+                    <span class="text-sm font-semibold">No budget or spend data for {rangeLabel()}.</span>
+                  </span>
+                </td></tr>
               </Show>
             </tbody>
             <Show when={rows().length > 0}>
               <tfoot>
-                <tr class="border-t-2 border-[#D4DDE9] dark:border-gray-700 bg-[#EEF2F7] dark:bg-gray-800">
-                  <td class="p-3.5 text-left text-[11px] font-bold uppercase tracking-wider text-[#54657E] dark:text-gray-300">
+                <tr class="bg-[#EEF2F7] dark:bg-gray-800">
+                  <td class="border-t-2 border-[#D4DDE9] dark:border-gray-700 pl-5 pr-2 py-3.5" />
+                  <td class="border-t-2 border-[#D4DDE9] dark:border-gray-700 px-3 py-3.5 text-left text-[11px] font-bold uppercase tracking-wider text-[#54657E] dark:text-gray-300">
                     Totals · {num(rows().length)} {groupBy() === "manager" ? "manager" : "client"}{rows().length !== 1 ? "s" : ""}
                   </td>
-                  <td class="p-3.5" />
-                  <td class="p-3.5 text-right whitespace-nowrap">
+                  <td class="border-t-2 border-[#D4DDE9] dark:border-gray-700 p-3.5" />
+                  <td class="border-t-2 border-[#D4DDE9] dark:border-gray-700 p-3.5 text-right whitespace-nowrap">
                     <Show when={totals().allocKnown} fallback={<span class="text-[11px] italic font-medium text-[#8593A8] dark:text-gray-500">Not tracked</span>}>
                       <Show
                         when={mode() === "range"}
@@ -501,7 +617,7 @@ export default function BudgetHistory(props) {
                       </Show>
                     </Show>
                   </td>
-                  <td class="p-3.5 text-right font-extrabold text-[#14233A] dark:text-gray-100 tabular-nums whitespace-nowrap">{money2(String(totals().spend))}</td>
+                  <td class="border-t-2 border-[#D4DDE9] dark:border-gray-700 pl-3.5 pr-5 py-3.5 text-right font-extrabold text-[#14233A] dark:text-gray-100 tabular-nums whitespace-nowrap">{money2(String(totals().spend))}</td>
                 </tr>
               </tfoot>
             </Show>

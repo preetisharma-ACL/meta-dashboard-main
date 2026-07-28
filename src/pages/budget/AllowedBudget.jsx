@@ -61,6 +61,44 @@ const STATUS_CHIP = {
   approved: "bg-[#E9F7F1] text-[#15966A] dark:bg-green-900/30 dark:text-green-300",
   rejected: "bg-[#FBEEF0] text-[#AC2334] dark:bg-red-900/30 dark:text-red-300",
 };
+// Matching dot for the status chip — same hues, no new states.
+const STATUS_DOT = {
+  pending: "bg-[#B07A14] dark:bg-amber-300",
+  approved: "bg-[#15966A] dark:bg-green-300",
+  rejected: "bg-[#AC2334] dark:bg-red-300",
+};
+
+// ─── Requests-tab presentation helpers (DISPLAY-ONLY) ─────────────────────────
+// Nothing here fetches, writes or filters — they only reshape values the row
+// already carries so the table can render richer cells.
+//
+// Signed change between the current ceiling and the requested one; null when
+// either side isn't a number ("Not set" requests).
+const reqDelta = (r) => {
+  const c = parseFloat(r?.current_value);
+  const q = parseFloat(r?.requested_value);
+  return isFinite(c) && isFinite(q) ? q - c : null;
+};
+// Same up/down/flat tokens the detail drawer uses, so the table and the drawer
+// speak with one voice.
+const DELTA_META = {
+  up: { text: "text-[#15966A] dark:text-green-400", chip: "bg-[#E9F7F1] text-[#15966A] dark:bg-green-900/30 dark:text-green-300", sign: "+" },
+  down: { text: "text-[#AC2334] dark:text-red-400", chip: "bg-[#FBEEF0] text-[#AC2334] dark:bg-red-900/30 dark:text-red-300", sign: "−" },
+  flat: { text: "text-[#14233A] dark:text-white", chip: "bg-[#F1F4F9] text-[#54657E] dark:bg-gray-800 dark:text-gray-300", sign: "" },
+};
+const deltaMeta = (r) => {
+  const d = reqDelta(r);
+  return DELTA_META[d == null || d === 0 ? "flat" : d > 0 ? "up" : "down"];
+};
+// "27 Jul 2026, 07:48 pm" → { day: "27 Jul 2026", time: "07:48 pm" } so the
+// stamp can stack instead of running wide.
+const splitStamp = (iso) => {
+  const s = fmtDate(iso);
+  const i = s.lastIndexOf(", ");
+  return i < 0 ? { day: s, time: "" } : { day: s.slice(0, i), time: s.slice(i + 2) };
+};
+// Avatars read better off the mailbox name than the whole address.
+const personLabel = (email) => String(email ?? "").split("@")[0] || "";
 
 // Headroom tone (UNCHANGED logic; tokens swapped to v4 palette).
 const headroomTone = (headroom, ceiling) => {
@@ -293,6 +331,44 @@ function RequestModal(props) {
         </div>
       </form>
     </ModalShell>
+  );
+}
+
+// ─── Requests-tab people cell (DISPLAY-ONLY) ──────────────────────────────────
+// Avatar + address, with the request/review note quoted beneath it. Same data
+// the plain text cell showed — the full value stays in the title tooltip and in
+// the detail drawer, which is where untruncated text lives.
+function PersonCell(props) {
+  return (
+    <Show
+      when={props.who}
+      fallback={<span class="text-[#C4CDDA] dark:text-gray-600 font-semibold">—</span>}
+    >
+      <div class="flex items-start gap-2.5 min-w-0">
+        <Avatar
+          name={personLabel(props.who)}
+          size="w-7 h-7"
+          textSize="text-[10px]"
+          class="mt-px ring-2 ring-white dark:ring-gray-900"
+        />
+        <div class="min-w-0">
+          <span
+            class="block text-[13px] font-semibold text-[#1A2B45] dark:text-gray-200 truncate max-w-[190px]"
+            title={props.who}
+          >
+            {props.who}
+          </span>
+          <Show when={props.note}>
+            <span
+              class="mt-1 block pl-2 border-l-2 border-[#E2E8F1] dark:border-gray-700 text-[11px] italic leading-snug text-[#8593A8] dark:text-gray-500 truncate max-w-[190px]"
+              title={props.note}
+            >
+              “{props.note}”
+            </span>
+          </Show>
+        </div>
+      </div>
+    </Show>
   );
 }
 
@@ -1144,54 +1220,144 @@ export default function AllowedBudget() {
 
       {/* ── AUDIT / HISTORY TAB ── */}
       <Show when={tab() === "audit"}>
-        <div class="flex items-center gap-3 mb-4">
-          <select value={auditStatus()} onChange={(e) => setAuditStatus(e.target.value)}
-            class="px-3 py-2 text-sm rounded-lg border border-[#E2E8F1] dark:border-gray-700 bg-[#F8FAFC] dark:bg-gray-800 text-[#1A2B45] dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-[#AC2334]/25 focus:border-[#AC2334] cursor-pointer font-semibold">
-            <option value="all">All statuses</option>
-            <option value="pending">Pending</option>
-            <option value="approved">Approved</option>
-            <option value="rejected">Rejected</option>
-          </select>
-          <span class="text-sm font-semibold text-[#8593A8] dark:text-gray-500">{audit()?.length ?? 0} request{(audit()?.length ?? 0) !== 1 ? "s" : ""}</span>
+        <div class="flex items-center gap-3 mb-4 flex-wrap">
+          <label class="inline-flex items-center gap-2.5 pl-3 pr-1 py-1 rounded-xl border border-[#E2E8F1] dark:border-gray-700 bg-gray-50 dark:bg-gray-800 shadow-[0_1px_2px_rgba(16,29,49,.04)]">
+            <span class="text-[10px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-500">Status</span>
+            <select value={auditStatus()} onChange={(e) => setAuditStatus(e.target.value)}
+              class="px-2 py-1.5 text-sm rounded-lg border-0 bg-transparent text-[#1A2B45] dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#AC2334]/25 cursor-pointer font-bold">
+              <option value="all">All statuses</option>
+              <option value="pending">Pending</option>
+              <option value="approved">Approved</option>
+              <option value="rejected">Rejected</option>
+            </select>
+          </label>
+          <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#F1F4F9] dark:bg-gray-800 text-[13px] font-bold text-[#54657E] dark:text-gray-300">
+            <span class="w-1.5 h-1.5 rounded-full bg-[#AC2334]" />
+            {audit()?.length ?? 0} request{(audit()?.length ?? 0) !== 1 ? "s" : ""}
+          </span>
+          <span class="hidden sm:inline text-xs text-[#8593A8] dark:text-gray-500 ml-auto">
+            Click any row for the full request
+          </span>
         </div>
 
         <Show when={audit.error}><div class="bg-[#FBEEF0] dark:bg-red-900/20 border border-[#AC2334]/25 dark:border-red-800 rounded-xl p-4 mb-4 text-sm font-medium text-[#AC2334] dark:text-red-400">Failed to load requests.</div></Show>
 
         <div class="bg-gray-50 dark:bg-gray-900 rounded-2xl border border-[#E2E8F1] dark:border-gray-700 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] overflow-x-auto">
-          <table class="min-w-full text-sm">
+          <table class="min-w-full text-sm border-separate border-spacing-0">
             <thead>
-              <tr class="border-b border-[#D4DDE9] dark:border-gray-700 bg-[#F8FAFC] dark:bg-gray-800/60 text-[#54657E] dark:text-gray-400 uppercase text-xs font-bold tracking-wider">
-                <th class="p-3.5 text-left whitespace-nowrap">Client</th>
-                <th class="p-3.5 text-left whitespace-nowrap">Kind</th>
-                <th class="p-3.5 text-right whitespace-nowrap">Current → Requested</th>
-                <th class="p-3.5 text-center whitespace-nowrap">Status</th>
-                <th class="p-3.5 text-left whitespace-nowrap">Requested by</th>
-                <th class="p-3.5 text-left whitespace-nowrap">Reviewed by</th>
-                <th class="p-3.5 text-left whitespace-nowrap">When</th>
+              <tr class="bg-[#F8FAFC] dark:bg-gray-800/60 text-[#8593A8] dark:text-gray-400 uppercase text-[10px] font-bold tracking-[0.09em]">
+                <th class="pl-5 pr-3.5 py-3 text-left whitespace-nowrap border-b border-[#D4DDE9] dark:border-gray-700">Client</th>
+                <th class="p-3.5 text-left whitespace-nowrap border-b border-[#D4DDE9] dark:border-gray-700">Kind</th>
+                <th class="p-3.5 text-right whitespace-nowrap border-b border-[#D4DDE9] dark:border-gray-700">Current → Requested</th>
+                <th class="p-3.5 text-center whitespace-nowrap border-b border-[#D4DDE9] dark:border-gray-700">Status</th>
+                <th class="p-3.5 text-left whitespace-nowrap border-b border-[#D4DDE9] dark:border-gray-700">Requested by</th>
+                <th class="p-3.5 text-left whitespace-nowrap border-b border-[#D4DDE9] dark:border-gray-700">Reviewed by</th>
+                <th class="pl-3.5 pr-5 py-3 text-right whitespace-nowrap border-b border-[#D4DDE9] dark:border-gray-700">When</th>
               </tr>
             </thead>
             <Show when={audit.loading} fallback={
               <tbody>
                 <For each={audit() ?? []}>
-                  {(r, i) => (
+                  {(r) => {
+                    const meta = () => deltaMeta(r);
+                    const d = () => reqDelta(r);
+                    const stamp = () => splitStamp(r.reviewed_at ?? r.created_at);
+                    return (
                     <tr onClick={() => setDetailReq(r)} title="Click to view full details"
-                      class={`border-b border-[#E2E8F1] dark:border-gray-800 cursor-pointer hover:bg-[#F6F9FC] dark:hover:bg-gray-800/60 transition-colors ${i() % 2 === 0 ? "bg-gray-50 dark:bg-gray-900" : "bg-[#FAFBFD] dark:bg-gray-800/30"}`}>
-                      <td class="p-3.5 font-bold text-[#14233A] dark:text-gray-100">{r.name}</td>
-                      <td class="p-3.5 capitalize text-[#54657E] dark:text-gray-400">{r.budget_kind}</td>
-                      <td class="p-3.5 text-right whitespace-nowrap text-[#54657E] dark:text-gray-300 tabular-nums">{money2(r.current_value) ?? "Not set"} → <span class="font-bold text-[#14233A] dark:text-white">{money2(r.requested_value)}</span></td>
-                      <td class="p-3.5 text-center"><span class={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-bold capitalize ${STATUS_CHIP[r.status] ?? "bg-[#F1F4F9] text-[#54657E]"}`}>{r.status}</span></td>
-                      <td class="p-3.5 text-[#54657E] dark:text-gray-400">{r.requested_by}<Show when={r.reason}><span class="block text-[11px] text-[#8593A8] truncate max-w-[200px]" title={r.reason}>“{r.reason}”</span></Show></td>
-                      <td class="p-3.5 text-[#54657E] dark:text-gray-400">{r.reviewed_by ?? "—"}<Show when={r.review_note}><span class="block text-[11px] text-[#8593A8] truncate max-w-[200px]" title={r.review_note}>“{r.review_note}”</span></Show></td>
-                      <td class="p-3.5 text-[#8593A8] dark:text-gray-400 whitespace-nowrap text-xs">{fmtDate(r.reviewed_at ?? r.created_at)}</td>
+                      class="group cursor-pointer bg-gray-50 dark:bg-gray-900 hover:bg-[#F6F9FC] dark:hover:bg-gray-800/60 transition-colors">
+                      {/* Client — avatar + name, with a hover accent rail */}
+                      <td class="pl-5 pr-3.5 py-3 align-middle border-b border-[#E2E8F1] dark:border-gray-800">
+                        <div class="flex items-center gap-3 min-w-0 relative">
+                          <span class="absolute -left-5 top-1/2 -translate-y-1/2 w-[3px] h-8 rounded-r-full bg-transparent group-hover:bg-[#AC2334] transition-colors" />
+                          <Avatar name={r.name} size="w-9 h-9" textSize="text-[11px]" class="ring-2 ring-white dark:ring-gray-900 shadow-sm" />
+                          <span class="font-bold text-[#14233A] dark:text-gray-100 truncate max-w-[230px] group-hover:text-[#AC2334] dark:group-hover:text-red-300 transition-colors" title={r.name}>{r.name}</span>
+                        </div>
+                      </td>
+                      {/* Kind */}
+                      <td class="p-3.5 align-middle border-b border-[#E2E8F1] dark:border-gray-800">
+                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#F1F4F9] dark:bg-gray-800 text-[11px] font-bold capitalize text-[#54657E] dark:text-gray-300 whitespace-nowrap">
+                          <svg class="w-3 h-3 flex-none text-[#8593A8]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2.5"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                          {r.budget_kind}
+                        </span>
+                      </td>
+                      {/* Current → Requested, with the delta called out */}
+                      <td class="p-3.5 align-middle whitespace-nowrap border-b border-[#E2E8F1] dark:border-gray-800">
+                        <div class="flex items-center justify-end gap-2">
+                          <span class="text-[13px] text-[#8593A8] dark:text-gray-500 tabular-nums">{money2(r.current_value) ?? "Not set"}</span>
+                          <svg class="w-3.5 h-3.5 flex-none text-[#C4CDDA] dark:text-gray-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+                          <span class={`font-extrabold tabular-nums ${meta().text}`}>{money2(r.requested_value)}</span>
+                        </div>
+                        <Show when={d() != null && d() !== 0}>
+                          <div class="flex justify-end mt-1">
+                            <span class={`inline-flex items-center gap-1 px-1.5 py-px rounded-full text-[10px] font-bold tabular-nums ${meta().chip}`}>
+                              {meta().sign}{money2(Math.abs(d()))}
+                            </span>
+                          </div>
+                        </Show>
+                      </td>
+                      {/* Status */}
+                      <td class="p-3.5 text-center align-middle border-b border-[#E2E8F1] dark:border-gray-800">
+                        <span class={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold capitalize ${STATUS_CHIP[r.status] ?? "bg-[#F1F4F9] text-[#54657E]"}`}>
+                          <span class={`w-1.5 h-1.5 rounded-full flex-none ${STATUS_DOT[r.status] ?? "bg-[#8593A8]"}`} />
+                          {r.status}
+                        </span>
+                      </td>
+                      {/* People */}
+                      <td class="p-3.5 align-middle border-b border-[#E2E8F1] dark:border-gray-800">
+                        <PersonCell who={r.requested_by} note={r.reason} />
+                      </td>
+                      <td class="p-3.5 align-middle border-b border-[#E2E8F1] dark:border-gray-800">
+                        <PersonCell who={r.reviewed_by} note={r.review_note} />
+                      </td>
+                      {/* When + the "open drawer" affordance */}
+                      <td class="pl-3.5 pr-5 py-3 align-middle whitespace-nowrap border-b border-[#E2E8F1] dark:border-gray-800">
+                        <div class="flex items-center justify-end gap-2.5">
+                          <span class="text-right">
+                            <span class="block text-[12px] font-semibold text-[#54657E] dark:text-gray-300 tabular-nums">{stamp().day}</span>
+                            <Show when={stamp().time}>
+                              <span class="block text-[11px] text-[#8593A8] dark:text-gray-500 tabular-nums">{stamp().time}</span>
+                            </Show>
+                          </span>
+                          <svg class="w-4 h-4 flex-none text-[#C4CDDA] dark:text-gray-600 group-hover:text-[#AC2334] group-hover:translate-x-0.5 transition-all" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>
+                        </div>
+                      </td>
                     </tr>
-                  )}
+                    );
+                  }}
                 </For>
                 <Show when={(audit()?.length ?? 0) === 0}>
-                  <tr><td colspan="7" class="py-16 text-center text-[#8593A8] dark:text-gray-500">No requests found.</td></tr>
+                  <tr><td colspan="7" class="py-16 text-center">
+                    <span class="inline-flex flex-col items-center gap-2 text-[#8593A8] dark:text-gray-500">
+                      <span class="w-11 h-11 rounded-full grid place-items-center bg-[#F1F4F9] dark:bg-gray-800">
+                        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M9 15h6"/></svg>
+                      </span>
+                      <span class="text-sm font-semibold">No requests found.</span>
+                    </span>
+                  </td></tr>
                 </Show>
               </tbody>
             }>
-              <tbody><tr><td colspan="7" class="py-16 text-center text-[#8593A8] dark:text-gray-500">Loading…</td></tr></tbody>
+              <tbody>
+                <For each={[0, 1, 2, 3, 4]}>
+                  {() => (
+                    <tr class="bg-gray-50 dark:bg-gray-900">
+                      <td class="pl-5 pr-3.5 py-3.5 border-b border-[#E2E8F1] dark:border-gray-800">
+                        <div class="flex items-center gap-3">
+                          <div class="w-9 h-9 rounded-full bg-gray-200 dark:bg-gray-700 animate-pulse flex-none" />
+                          <div class="h-3 w-36 rounded-full bg-gray-200 dark:bg-gray-700 animate-pulse" />
+                        </div>
+                      </td>
+                      <For each={[0, 1, 2, 3, 4, 5]}>
+                        {() => (
+                          <td class="p-3.5 border-b border-[#E2E8F1] dark:border-gray-800">
+                            <div class="h-3 w-24 rounded-full bg-gray-200 dark:bg-gray-700 animate-pulse" />
+                          </td>
+                        )}
+                      </For>
+                    </tr>
+                  )}
+                </For>
+              </tbody>
             </Show>
           </table>
         </div>
