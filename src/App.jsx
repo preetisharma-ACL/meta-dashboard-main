@@ -335,7 +335,7 @@ function App() {
               )}
             />
              <Route
-              path="/coordination-dashboard"
+              path="/payment-billing"
               component={() => (
                 <AdminRoute>
                   <CoordinationDashboard/>
