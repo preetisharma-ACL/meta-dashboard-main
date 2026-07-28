@@ -4,9 +4,14 @@ import { scopeKey } from "../../stores/cmScope";
 import Avatar from "../../components/common/Avatar";
 import useColumnSort from "../../components/Columnsorting";
 import ClientTypeFilter, {
+  CLIENT_TYPES,
   DEFAULT_CLIENT_TYPES,
   toggleClientTypeIn,
 } from "../../components/funding/ClientTypeFilter";
+
+// Every client type the filter knows about — the "unfiltered" selection used to
+// source pending (unattributed) accounts, which belong to no type at all.
+const ALL_CLIENT_TYPES = CLIENT_TYPES.map((t) => t.key);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // "Funds Added by Date" — a SEPARATE page (sidebar submenu under Accounts &
@@ -439,9 +444,9 @@ export default function FundsAdded() {
   // backend reports each account's whole wallet (added == added_full), so the
   // "of ₹… total" suffix and the Pending note only make sense under a NAMED
   // selection. (The suffix is also self-guarding: it keys off added != added_full,
-  // which never holds under all-three.) Only three type keys exist, so length 3
-  // is exactly the all-three view.
-  const named = () => clientTypes().length < 3;
+  // which never holds under all-three.) Only three type keys exist, so a
+  // full-length selection is exactly the all-three view.
+  const named = () => clientTypes().length < ALL_CLIENT_TYPES.length;
 
   // Pending (unattributed) loaded today — money loaded before any spend, so not
   // yet attributable to a type. This is a GLOBAL figure from meta: filtered
@@ -465,15 +470,37 @@ export default function FundsAdded() {
   // ─── Search by account name + column sorting ────────────────────────────────
   const [search, setSearch] = createSignal("");
 
-  // "Pending only" chip — a row is Pending when part of its day's load was made
-  // before any spend and so isn't yet attributed to a client type (the
-  // "unattributed" breakdown entry, rendered as the "Pending" chip).
+  // ─── "Pending only" chip — an INDEPENDENT axis, not a type subset ───────────
+  // A row is Pending when part of its day's load was made before any spend and
+  // so isn't yet attributed to a client type (the "unattributed" breakdown
+  // entry, rendered as the "Pending" chip).
+  //
+  // Pending money belongs to NO client type by definition, so a narrowed
+  // client-type selection drops those rows from per_account entirely — their
+  // money surfaces only as meta.unattributed_total. That's why the Pending chip
+  // used to read 0 under CPL+Hybrid or Retainer alone and only came alive with
+  // all three selected. Pending is a separate filter, so it sources its rows
+  // from the UNFILTERED (all-types) feed instead.
+  //
+  // The extra fetch runs only under a named selection — with all three types
+  // selected per_account already carries the pending rows. Keyed on date+scope
+  // only, so flipping between named selections (CPL ↔ CPL+Hybrid) reuses it.
   const [pendingOnly, setPendingOnly] = createSignal(false);
   const isPending = (r) =>
     tbEntries(r).some((b) => b.client_type === "unattributed");
-  const pendingCount = createMemo(
-    () => perAccount().filter(isPending).length,
+
+  const [fundsAll] = createResource(
+    () => (named() ? `${date()}|${scopeKey()}` : null),
+    async (k) =>
+      (await fetchFundsAdded(k.slice(0, k.indexOf("|")), ALL_CLIENT_TYPES)) ??
+      null,
   );
+  const pendingRows = createMemo(() => {
+    const src = named() ? fundsAll()?.per_account : perAccount();
+    return (Array.isArray(src) ? src : []).filter(isPending);
+  });
+  const pendingCount = () => pendingRows().length;
+  const pendingLoading = () => named() && fundsAll.loading;
 
   // Same hook + ⇅/↑/↓ icons as the rest of the project. No column selected → API
   // order (funds-added desc) is preserved.
@@ -506,16 +533,18 @@ export default function FundsAdded() {
     }
   };
 
+  // Rows the table works from: the type-filtered feed normally, the unfiltered
+  // pending set when the Pending chip is on (pending money has no client type,
+  // so the type chips can't narrow it).
+  const baseRows = () => (pendingOnly() ? pendingRows() : perAccount());
+
   // Display filter (search by account name) + optional sort. API order preserved
   // until a header is clicked.
   const sorted = createMemo(() => {
     const q = search().trim().toLowerCase();
-    const onlyPending = pendingOnly();
-    const filtered = perAccount().filter((r) => {
-      if (q && !r.name?.toLowerCase().includes(q)) return false;
-      if (onlyPending && !isPending(r)) return false;
-      return true;
-    });
+    const filtered = baseRows().filter(
+      (r) => !q || r.name?.toLowerCase().includes(q),
+    );
 
     const { key, direction } = columnSort();
     if (!key) return filtered; // preserve the API's funds-added-desc order
@@ -543,13 +572,20 @@ export default function FundsAdded() {
     showZero() ? sorted() : sorted().filter((r) => !isDust(r.added)),
   );
 
+  // Under the Pending view the server's total_added covers the type-filtered
+  // set, not the pending rows on screen — sum what's actually displayed.
+  const visibleAddedTotal = () =>
+    rows().reduce((s, r) => s + (parseFloat(r.added) || 0), 0);
+
   // "Still collecting" — snapshots haven't spanned a full day yet, so no account
   // can compute an "added" figure. total_added is "0.00" and nothing has data.
+  // Pending rows count as data: if any exist, we have history to show.
   const collecting = () =>
     !funds.loading &&
     !!funds() &&
     (parseFloat(totalAdded()) || 0) === 0 &&
-    withData() === 0;
+    withData() === 0 &&
+    pendingCount() === 0;
 
   const isToday = () => date() === today;
   const isYesterday = () => date() === shiftYMD(today, -1);
@@ -696,7 +732,15 @@ export default function FundsAdded() {
       </Show>
 
       {/* ════ PER-ACCOUNT BREAKDOWN ════ */}
-      <Show when={!funds.loading && !collecting() && perAccount().length > 0}>
+      {/* Kept mounted while the Pending view is on even with nothing to show,
+          so the chip that turns it off stays reachable. */}
+      <Show
+        when={
+          !funds.loading &&
+          !collecting() &&
+          (perAccount().length > 0 || pendingCount() > 0 || pendingOnly())
+        }
+      >
         {/* Search by account name */}
         <div class="mb-4 flex items-center gap-3 flex-wrap">
           <div class="relative flex-1 min-w-[220px] max-w-md">
@@ -725,10 +769,11 @@ export default function FundsAdded() {
           </div>
 
           {/* Pending-only chip — accounts with money loaded before any spend
-              that day (the "Pending" / unattributed portion). */}
+              that day (the "Pending" / unattributed portion). Independent of
+              the client-type chips: pending money has no type yet. */}
           <button
             onClick={() => setPendingOnly((v) => !v)}
-            title="Show only accounts with pending (unattributed) funds"
+            title="Show only accounts with pending (unattributed) funds — independent of the client-type filter"
             class={`inline-flex items-center gap-2 px-3.5 py-2 rounded-full text-[13px] font-semibold border transition-colors ${
               pendingOnly()
                 ? "bg-[#14233A] text-white border-[#14233A]"
@@ -743,13 +788,15 @@ export default function FundsAdded() {
                   : "bg-[#F1F4F9] dark:bg-gray-700 text-[#8593A8]"
               }`}
             >
-              {num(pendingCount())}
+              {pendingLoading() ? "…" : num(pendingCount())}
             </span>
           </button>
 
           <Show when={search() || pendingOnly()}>
             <span class="text-[13px] font-medium text-[#54657E] dark:text-gray-400">
-              {num(rows().length)} of {num(perAccount().length)} account{perAccount().length !== 1 ? "s" : ""}
+              {num(rows().length)} of {num(baseRows().length)}{" "}
+              {pendingOnly() ? "pending " : ""}account
+              {baseRows().length !== 1 ? "s" : ""}
             </span>
           </Show>
 
@@ -766,15 +813,26 @@ export default function FundsAdded() {
           </Show>
         </div>
 
+        {/* Pending rows come from the unfiltered feed, so their figures are the
+            whole wallet — say so while a narrowed type selection is active. */}
+        <Show when={pendingOnly() && named()}>
+          <p class="-mt-1 mb-4 text-xs text-[#8593A8] dark:text-gray-500">
+            Pending funds aren’t attributed to a client type yet, so this list
+            ignores the client-type filter and shows each account’s full amount.
+          </p>
+        </Show>
+
         <Show
           when={rows().length > 0}
           fallback={
             <div class="bg-gray-50 dark:bg-gray-900 rounded-2xl border border-[#E2E8F1] dark:border-gray-700 py-16 text-center text-[#8593A8] dark:text-gray-500">
-              {search()
-                ? `No accounts match “${search()}”.`
-                : pendingOnly()
-                  ? "No accounts with pending funds on this day."
-                  : "No accounts match your filters."}
+              {pendingLoading()
+                ? "Loading pending accounts…"
+                : search()
+                  ? `No accounts match “${search()}”.`
+                  : pendingOnly()
+                    ? "No accounts with pending funds on this day."
+                    : "No accounts match your filters."}
             </div>
           }
         >
@@ -942,11 +1000,17 @@ export default function FundsAdded() {
               <tr class="text-[13px]">
                 <td class="bg-[#EEF2F7] dark:bg-gray-800 border-t-2 border-[#D4DDE9] dark:border-gray-700 px-4 py-3" />
                 <td class="bg-[#EEF2F7] dark:bg-gray-800 border-t-2 border-[#D4DDE9] dark:border-gray-700 px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-[#54657E] dark:text-gray-300">
-                  Total added · {num(withData())} account{withData() !== 1 ? "s" : ""}
+                  {/* Under the Pending view the server total covers a different
+                      set than the rows on screen — total the visible rows. */}
+                  {pendingOnly()
+                    ? `Pending · ${num(rows().length)} account${rows().length !== 1 ? "s" : ""}`
+                    : `Total added · ${num(withData())} account${withData() !== 1 ? "s" : ""}`}
                 </td>
                 <td class="bg-[#EEF2F7] dark:bg-gray-800 border-t-2 border-[#D4DDE9] dark:border-gray-700 px-4 py-3" colspan="3" />
                 <td class="bg-[#EEF2F7] dark:bg-gray-800 border-t-2 border-[#D4DDE9] dark:border-gray-700 px-4 py-3 text-right font-extrabold text-[#15966A] dark:text-green-400 tabular-nums whitespace-nowrap">
-                  {money2(String(parseFloat(totalAdded()) || 0))}
+                  {pendingOnly()
+                    ? money2(String(visibleAddedTotal()))
+                    : money2(String(parseFloat(totalAdded()) || 0))}
                 </td>
               </tr>
             </tfoot>
