@@ -285,14 +285,17 @@ export default function ProjectDetails() {
   const previewClientId = () =>
     userRole() === "admin" ? localStorage.getItem("selectedClientId") : null;
 
-  // Name of the client an admin/CM is currently previewing, for the "Viewing
-  // Client" badge. Mirrors the ClientDashboard ledger badge so the context stays
-  // visible after drilling into a project. Tracks route changes so it clears when
-  // the client context is removed. Only admin and campaign_manager preview a
-  // client through selectedClientNomen; a real client login never sets it.
+  // Name of the client an admin/CM/sales user is currently previewing, for the
+  // "Viewing Client" badge. Mirrors the ClientDashboard ledger badge so the
+  // context stays visible after drilling into a project. Tracks route changes so
+  // it clears when the client context is removed. Only admin, campaign_manager
+  // and sales preview a client through selectedClientNomen; a real client login
+  // never sets it.
   const selectedClientNomen = () => {
     location.pathname; // track route changes
-    return (userRole() === "admin" || userRole() === "campaign_manager")
+    return userRole() === "admin" ||
+      userRole() === "campaign_manager" ||
+      userRole() === "sales"
       ? localStorage.getItem("selectedClientNomen")
       : null;
   };

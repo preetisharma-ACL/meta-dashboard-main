@@ -2465,7 +2465,8 @@ export default function MainDashboard() {
         <Show
           when={
             (userRole() === "admin" ||
-              userRole() === "campaign_manager") &&
+              userRole() === "campaign_manager" ||
+              userRole() === "sales") &&
             selectedClientNomen()
           }
         >
