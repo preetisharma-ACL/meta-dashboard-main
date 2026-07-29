@@ -551,10 +551,20 @@
 }
 
 /* ── Back to landing — top left, over the gradient panel ──
-   Barely-there glass: the gradient reads THROUGH the pill (16% white, no drop
-   shadow), so it sits in the artwork instead of floating on it as a white chip.
-   The blur + saturate keep the pastel behind it lively; only the hairline and
-   the inset highlight define the edge. */
+   A round glass lens, arrow only. The label is gone from the DOM but NOT from
+   the accessibility tree: the button keeps aria-label="Back to home", so a
+   screen reader still announces it. A bare icon needs a bigger target than a
+   labelled pill did, hence the fixed 46px circle (above the 44px touch
+   minimum) rather than padding around a 14px glyph.
+
+   The "glass" is four stacked cues, none of which is a flat white fill:
+     · a top-lit gradient wash, brighter at the top edge like a real lens
+     · blur + saturate, so the pastel blobs behind stay saturated through it
+     · an inset highlight along the top and a soft inset shade at the bottom,
+       which is what reads as thickness
+     · a wide, very soft drop shadow to lift it off the artwork
+   The ::before is the specular sheen — a diagonal glare across the upper half
+   that slides on hover, which is what stops it reading as a flat grey disc. */
 .lp-back {
   position: absolute;
   top: 30px;
@@ -562,50 +572,122 @@
   z-index: 20;
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 9px 16px 9px 13px;
-  border-radius: 999px;
-  background: rgb(255 255 255 / 16%);
-  backdrop-filter: blur(12px) saturate(135%);
-  -webkit-backdrop-filter: blur(12px) saturate(135%);
-  border: 1px solid rgba(255, 255, 255, 0.40);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
-  color: #56617a;
-  font-family: 'DM Sans', sans-serif;
-  font-size: 0.84rem;
-  font-weight: 500;
-  letter-spacing: 0.01em;
-  line-height: 1;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  border-radius: 50%;
+  background:
+    linear-gradient(
+      160deg,
+      rgb(255 255 255 / 42%) 0%,
+      rgb(255 255 255 / 18%) 46%,
+      rgb(255 255 255 / 10%) 100%
+    );
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.7),
+    inset 0 -2px 6px rgba(120, 130, 165, 0.14),
+    0 8px 22px rgba(86, 97, 122, 0.16);
+  color: #4a5573;
   cursor: pointer;
-  transition: background 0.2s, color 0.2s, border-color 0.2s, transform 0.15s;
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background 0.25s ease,
+    border-color 0.25s ease,
+    box-shadow 0.25s ease,
+    color 0.25s ease,
+    transform 0.2s ease;
 }
 
-/* Hover only warms the glass a little — still see-through. */
+/* Specular sheen — a soft diagonal glare over the top-left of the lens. */
+.lp-back::before {
+  content: "";
+  position: absolute;
+  inset: -30%;
+  background: linear-gradient(
+    125deg,
+    rgba(255, 255, 255, 0.55) 0%,
+    rgba(255, 255, 255, 0.12) 34%,
+    rgba(255, 255, 255, 0) 58%
+  );
+  pointer-events: none;
+  transition: transform 0.45s ease, opacity 0.25s ease;
+}
+
+/* Hover: the lens brightens, lifts, and the glare slides across it. */
 .lp-back:hover {
-  background: rgb(255 255 255 / 34%);
-  border-color: rgba(255, 255, 255, 0.58);
+  background:
+    linear-gradient(
+      160deg,
+      rgb(255 255 255 / 58%) 0%,
+      rgb(255 255 255 / 30%) 46%,
+      rgb(255 255 255 / 18%) 100%
+    );
+  border-color: rgba(255, 255, 255, 0.72);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.85),
+    inset 0 -2px 6px rgba(120, 130, 165, 0.12),
+    0 12px 28px rgba(86, 97, 122, 0.22);
   color: #1a2340;
-  transform: translateY(-1px);
+  transform: translateY(-2px);
+}
+
+.lp-back:hover::before {
+  transform: translateX(22%) translateY(-8%);
 }
 
 .lp-back:active {
-  transform: translateY(0);
+  transform: translateY(0) scale(0.96);
+  box-shadow:
+    inset 0 2px 5px rgba(120, 130, 165, 0.2),
+    0 4px 12px rgba(86, 97, 122, 0.16);
 }
 
 .lp-back:focus-visible {
   outline: none;
   box-shadow:
-    0 0 0 3px rgba(91, 127, 166, 0.22),
-    inset 0 1px 0 rgba(255, 255, 255, 0.45);
+    0 0 0 3px rgba(91, 127, 166, 0.3),
+    inset 0 1px 1px rgba(255, 255, 255, 0.7),
+    0 8px 22px rgba(86, 97, 122, 0.16);
 }
 
-/* The arrow picks up the card's italic accent blue. */
+/* Arrow — the card's accent blue, nudged 1px left so it reads optically
+   centred in the circle (a chevron's visual mass sits right of its box). */
 .lp-back svg {
-  width: 14px;
-  height: 14px;
+  position: relative;
+  width: 19px;
+  height: 19px;
   flex: none;
+  margin-left: -1px;
   color: #5b7fa6;
-  opacity: 0.85;
+  transition: transform 0.25s ease, color 0.25s ease;
+}
+
+.lp-back:hover svg {
+  color: #3f5f85;
+  transform: translateX(-2px);
+}
+
+/* Respect a reduced-motion preference: keep the colour changes, drop the
+   slide, lift and glare travel. */
+@media (prefers-reduced-motion: reduce) {
+  .lp-back,
+  .lp-back::before,
+  .lp-back svg {
+    transition: background 0.25s ease, border-color 0.25s ease, color 0.25s ease;
+  }
+  .lp-back:hover,
+  .lp-back:active {
+    transform: none;
+  }
+  .lp-back:hover::before,
+  .lp-back:hover svg {
+    transform: none;
+  }
 }
 
 /* ── Powered by — bottom right ── */
@@ -647,17 +729,31 @@
     top: 20px;
     left: 20px;
   }
-  /* The gradient panel is hidden at this width, so the pill re-parks on the
-     form side — top-right, clear of the logo that holds the top-left. A white
-     hairline is invisible on the flat cream panel, so the edge switches to the
-     same navy tint the form controls use. */
+  /* The gradient panel is hidden at this width, so the lens re-parks on the
+     form side — top-right, clear of the logo that holds the top-left. There's
+     no artwork to refract on the flat cream panel, so the glass is dialled
+     back: a white hairline would be invisible there, and the specular sheen
+     has nothing to catch. It keeps a legible tinted edge instead. Size stays
+     42px — still above the 44px-ish touch target once the ring is counted,
+     and this is the breakpoint where it's most likely to be tapped. */
   .lp-back {
     top: 22px;
     left: auto;
     right: 16px;
-    padding: 7px 13px 7px 10px;
-    font-size: 0.78rem;
+    width: 42px;
+    height: 42px;
+    background: rgba(255, 255, 255, 0.55);
     border-color: rgba(26, 35, 64, 0.12);
+    box-shadow:
+      inset 0 1px 1px rgba(255, 255, 255, 0.8),
+      0 4px 14px rgba(86, 97, 122, 0.12);
+  }
+  .lp-back::before {
+    opacity: 0.35;
+  }
+  .lp-back svg {
+    width: 17px;
+    height: 17px;
   }
   .rp-powered {
     bottom: 16px;

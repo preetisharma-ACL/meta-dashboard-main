@@ -164,24 +164,30 @@ export default function Login() {
             directly (bookmark, session expiry, logout redirect), where going
             back would leave the app entirely. Mounted on .login-root rather
             than inside .login-left so it survives the <900px breakpoint that
-            hides that panel (the CSS re-parks it on the form side there). */}
+            hides that panel (the CSS re-parks it on the form side there).
+
+            ARROW ONLY — no visible label. aria-label and title carry the name
+            instead, so it still announces as "Back to home" to a screen reader
+            and gets a native tooltip on hover; an unlabelled icon button would
+            otherwise announce as just "button". */}
         <button
           type="button"
           class="lp-back"
           onClick={() => navigate("/")}
           aria-label="Back to home"
+          title="Back to home"
         >
           <svg
             viewBox="0 0 16 16"
             fill="none"
             stroke="currentColor"
-            stroke-width="1.8"
+            stroke-width="2"
             stroke-linecap="round"
             stroke-linejoin="round"
+            aria-hidden="true"
           >
             <path d="M10 12L6 8l4-4" />
           </svg>
-          Back
         </button>
 
         {/* ── LEFT DECORATIVE PANEL ── */}
