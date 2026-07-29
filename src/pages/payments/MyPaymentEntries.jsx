@@ -1,8 +1,16 @@
-import { createSignal, createResource, createMemo, Show, For } from "solid-js";
+import {
+  createSignal,
+  createResource,
+  createMemo,
+  onCleanup,
+  Show,
+  For,
+} from "solid-js";
 import { A } from "@solidjs/router";
 
-import { fetchPayments } from "../../services/payments";
+import { fetchPayments, fetchPaymentsCount } from "../../services/payments";
 import PaymentsTable from "../../components/payments/PaymentsTable";
+import MonthPicker from "../../components/sales/MonthPicker";
 import {
   fmtMoney,
   fieldClass,
@@ -16,63 +24,102 @@ import { sumMoney } from "../../components/sales/salesFormat";
 // API's 403 on PATCH/DELETE is the backstop, not the mechanism.
 //
 // The feed is GET /payments/, which the backend already narrows to the CM's
-// visible set. We send no scoping params of our own.
+// visible set. We send no scoping params of our own — same server pagination
+// and the same server-side filters as the accounts ledger.
+
+const currentMonthStr = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+};
+
+const monthRange = (m) => {
+  if (!m) return { from: "", to: "" };
+  const [y, mo] = String(m).split("-").map(Number);
+  if (!y || !mo) return { from: "", to: "" };
+  const last = new Date(y, mo, 0).getDate();
+  const p = (n) => String(n).padStart(2, "0");
+  return { from: `${y}-${p(mo)}-01`, to: `${y}-${p(mo)}-${p(last)}` };
+};
 
 export default function MyPaymentEntries() {
   const [docsStatus, setDocsStatus] = createSignal("");
-  const [dateFrom, setDateFrom] = createSignal("");
-  const [dateTo, setDateTo] = createSignal("");
+  const [month, setMonth] = createSignal("");
   const [query, setQuery] = createSignal("");
+  const [search, setSearch] = createSignal("");
+  const [page, setPage] = createSignal(1);
+  const [pageSize, setPageSize] = createSignal(50);
 
-  const filterKey = createMemo(() => ({
-    docsStatus: docsStatus(),
-    dateFrom: dateFrom(),
-    dateTo: dateTo(),
-  }));
+  const resetPage = () => setPage(1);
 
-  const [payload, { refetch }] = createResource(filterKey, fetchPayments);
+  let searchTimer;
+  const onSearchInput = (v) => {
+    setQuery(v);
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      setSearch(v.trim());
+      resetPage();
+    }, 350);
+  };
+  onCleanup(() => clearTimeout(searchTimer));
 
-  const rows = () => payload()?.rows ?? [];
-  const loading = () => payload.loading;
-
-  const filtered = createMemo(() => {
-    const q = query().trim().toLowerCase();
-    if (!q) return rows();
-    return rows().filter((r) =>
-      [r.clientName, r.project, r.notes].some((v) =>
-        String(v ?? "").toLowerCase().includes(q),
-      ),
-    );
+  const baseFilters = createMemo(() => {
+    const { from, to } = monthRange(month());
+    return {
+      docsStatus: docsStatus(),
+      dateFrom: from,
+      dateTo: to,
+      client: search(),
+    };
   });
 
-  const pendingCount = () =>
-    filtered().filter(
-      (r) => String(r.docsStatus ?? "").toLowerCase() === "pending",
-    ).length;
+  const listKey = createMemo(() => ({
+    ...baseFilters(),
+    page: page(),
+    pageSize: pageSize(),
+  }));
+
+  const [payload, { refetch }] = createResource(listKey, fetchPayments);
+
+  // True across-all-pages count of entries still waiting on accounts.
+  const pendingKey = createMemo(() =>
+    docsStatus() === "pending" ? false : { ...baseFilters(), docsStatus: "pending" },
+  );
+  const [pendingProbe] = createResource(pendingKey, fetchPaymentsCount);
+
+  const rows = () => payload()?.rows ?? [];
+  const pagination = () => payload()?.pagination ?? {};
+  const loading = () => payload.loading;
+  const total = () => pagination().total ?? null;
+  const awaitingDocs = () =>
+    docsStatus() === "pending" ? total() : (pendingProbe() ?? null);
+
+  const fmtCount = (v) => (v == null ? "—" : String(v));
 
   const tiles = createMemo(() => [
     {
       label: "Entries",
-      value: String(filtered().length),
+      value: fmtCount(total()),
       tone: "text-[#14233A] dark:text-white",
-    },
-    {
-      label: "Total recorded",
-      value: fmtMoney(sumMoney(filtered(), "finalAmount"), 0),
-      tone: "text-[#15966A] dark:text-green-300",
+      caption: "matching the current filters",
     },
     {
       label: "Awaiting accounts",
-      value: String(pendingCount()),
+      value: fmtCount(awaitingDocs()),
       tone: "text-[#B07A14] dark:text-yellow-300",
+      caption: "across all pages",
+    },
+    {
+      // Page-scoped and labelled as such — there's no server-side sum, and a
+      // headline "total" covering one page of many would misread as the lot.
+      label: "Recorded on this page",
+      value: fmtMoney(sumMoney(rows(), "finalAmount"), 0),
+      tone: "text-[#15966A] dark:text-green-300",
+      caption: `${rows().length} row${rows().length === 1 ? "" : "s"} shown`,
     },
   ]);
 
   const hasFilters = () =>
-    query().trim() !== "" ||
-    docsStatus() !== "" ||
-    dateFrom() !== "" ||
-    dateTo() !== "";
+    query().trim() !== "" || docsStatus() !== "" || month() !== "";
 
   const loadError = () => {
     const e = payload.error;
@@ -100,6 +147,48 @@ export default function MyPaymentEntries() {
         </div>
 
         <div class="flex items-center gap-3 flex-wrap">
+          <Show
+            when={month()}
+            fallback={
+              <button
+                onClick={() => {
+                  setMonth(currentMonthStr());
+                  resetPage();
+                }}
+                class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[#E2E8F1] dark:border-gray-700 text-sm font-semibold text-[#54657E] dark:text-gray-300 hover:bg-white dark:hover:bg-gray-800 transition-colors"
+              >
+                <svg class="w-4 h-4 text-[#AC2334]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                Filter by month
+              </button>
+            }
+          >
+            <div class="inline-flex items-center gap-1.5">
+              <MonthPicker
+                value={month()}
+                max={currentMonthStr()}
+                onChange={(m) => {
+                  setMonth(m);
+                  resetPage();
+                }}
+              />
+              <button
+                onClick={() => {
+                  setMonth("");
+                  resetPage();
+                }}
+                aria-label="Show all months"
+                title="Show all months"
+                class="w-8 h-8 grid place-items-center rounded-lg border border-[#E2E8F1] dark:border-gray-700 text-[#8593A8] hover:text-[#AC2334] hover:bg-[#FBEEF0] dark:hover:bg-red-900/30 transition-colors"
+              >
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                  <path stroke-linecap="round" d="M6 6l12 12M18 6L6 18" />
+                </svg>
+              </button>
+            </div>
+          </Show>
+
           <A
             href="/payments/record"
             class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#14233A] text-white text-sm font-semibold hover:bg-[#1d3252] transition-colors"
@@ -140,12 +229,13 @@ export default function MyPaymentEntries() {
 
       {/* "Needs docs" on a CM's own screen is about ACCOUNTS' paperwork, not
           about the money being in limbo. Say so once, plainly. */}
-      <Show when={!loading() && pendingCount() > 0}>
+      <Show when={!loading() && (awaitingDocs() ?? 0) > 0}>
         <div class="mb-6 rounded-xl border border-[#B07A14]/25 bg-[#FBF3E2] dark:bg-yellow-900/15 px-4 py-3">
           <p class="text-sm text-[#8A6410] dark:text-yellow-200 leading-relaxed">
-            {pendingCount()} of your entries {pendingCount() === 1 ? "is" : "are"}{" "}
-            marked <b>Needs docs</b>. That's accounts' paperwork step — the
-            amounts already count towards each client's received total.
+            {awaitingDocs()} of your entries{" "}
+            {awaitingDocs() === 1 ? "is" : "are"} marked <b>Needs docs</b>.
+            That's accounts' paperwork step — the amounts already count towards
+            each client's received total.
           </p>
         </div>
       </Show>
@@ -168,6 +258,9 @@ export default function MyPaymentEntries() {
                   {t.value}
                 </Show>
               </p>
+              <p class="text-xs text-[#54657E] dark:text-gray-400 mt-0.5">
+                {t.caption}
+              </p>
             </div>
           )}
         </For>
@@ -175,14 +268,14 @@ export default function MyPaymentEntries() {
 
       {/* ════════ FILTERS ════════ */}
       <div class="bg-white dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-xl p-4 mb-4">
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label class={labelClass}>Search</label>
+            <label class={labelClass}>Client search</label>
             <input
               type="search"
               value={query()}
-              onInput={(e) => setQuery(e.currentTarget.value)}
-              placeholder="Client or project…"
+              onInput={(e) => onSearchInput(e.currentTarget.value)}
+              placeholder="Client name…"
               class={fieldClass}
             />
           </div>
@@ -190,7 +283,10 @@ export default function MyPaymentEntries() {
             <label class={labelClass}>Docs status</label>
             <select
               value={docsStatus()}
-              onChange={(e) => setDocsStatus(e.currentTarget.value)}
+              onChange={(e) => {
+                setDocsStatus(e.currentTarget.value);
+                resetPage();
+              }}
               class={fieldClass}
             >
               <option value="">All</option>
@@ -198,34 +294,25 @@ export default function MyPaymentEntries() {
               <option value="complete">Complete</option>
             </select>
           </div>
-          <div>
-            <label class={labelClass}>From</label>
-            {/* onChange, not onInput — these drive a server refetch (see the
-                same note on the accounts ledger). */}
-            <input
-              type="date"
-              value={dateFrom()}
-              onChange={(e) => setDateFrom(e.currentTarget.value)}
-              class={fieldClass}
-            />
-          </div>
-          <div>
-            <label class={labelClass}>To</label>
-            <input
-              type="date"
-              value={dateTo()}
-              onChange={(e) => setDateTo(e.currentTarget.value)}
-              class={fieldClass}
-            />
-          </div>
         </div>
       </div>
 
-      {/* ════════ TABLE (read-only — canManage omitted) ════════ */}
+      {/* ════════ TABLE (read-only — canManage false) ════════ */}
       <PaymentsTable
-        rows={filtered}
+        rows={rows}
         loading={loading}
         canManage={false}
+        page={page}
+        pageSize={pageSize}
+        total={total}
+        totalPages={() => pagination().totalPages}
+        hasNext={() => pagination().hasNext}
+        hasPrev={() => pagination().hasPrev}
+        onPageChange={setPage}
+        onPageSizeChange={(n) => {
+          setPageSize(n);
+          resetPage();
+        }}
         emptyHint={
           hasFilters()
             ? "No entries match the current filters."

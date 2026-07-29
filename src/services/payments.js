@@ -82,8 +82,20 @@ export const normalizePayment = (r = {}) => ({
   finalAmount: num(first(r, ["final_amount", "total_amount", "amount"])),
 
   method: first(r, ["method", "payment_method"]),
+
+  // TWO DIFFERENT STATUSES — deliberately kept apart:
+  //   status / status_label      → payment PROCESSING (pending/succeeded/…):
+  //                                "has the money settled with the bank".
+  //   docs_status / docs_status_label → PAPERWORK (pending/complete):
+  //                                "has accounts filled in the reference".
+  // The whole CM-records → pending → accounts-completes workflow this
+  // dashboard exists to run is the DOCS axis. Conflating the two is what made
+  // an accounts entry look "pending" when only its settlement was pending, so
+  // the ledger surfaces docsStatus and leaves settlement out of the table.
   status: first(r, ["status", "payment_status"]),
+  statusLabel: first(r, ["status_label"]),
   docsStatus: first(r, ["docs_status"]),
+  docsStatusLabel: first(r, ["docs_status_label"]),
 
   project: first(r, ["project_name", "project_nomen_name", "project"]),
   referenceId: first(r, ["reference_id", "reference"]),
@@ -92,9 +104,15 @@ export const normalizePayment = (r = {}) => ({
 
   paidAt: first(r, ["paid_at", "payment_date", "date", "created_at"]),
   createdAt: first(r, ["created_at"]),
-  createdBy: personName(
-    first(r, ["created_by_name", "created_by_email", "created_by", "recorded_by"]),
-  ),
+
+  // "Recorded by" reads created_by_name ONLY. created_by is a user id, so
+  // falling back to it would print a bare integer in a person column; a
+  // historical row with no recorded author genuinely has null here and must
+  // render "—". Same rule for the accounts user who completed the paperwork.
+  createdById: first(r, ["created_by"]),
+  createdBy: personName(first(r, ["created_by_name"])),
+  completedById: first(r, ["completed_by"]),
+  completedBy: personName(first(r, ["completed_by_name"])),
 
   raw: r,
 });
@@ -127,15 +145,46 @@ const unwrapList = (res) => {
   return { rows: [], count: 0 };
 };
 
+// ── Pagination ────────────────────────────────────────────────────────────────
+// The ledger is SERVER-paginated: a response carries one page of rows plus
+//   meta.pagination = { page, page_size, total, total_pages, has_next, has_prev }
+//
+// `total` is the count across the WHOLE filtered set, which is the only honest
+// number for a paginator or a count tile. Reading data.length instead gave the
+// infamous "20 of 20" on a 264-row ledger — the page size masquerading as the
+// total. So `total` here deliberately does NOT fall back to the row count: if
+// the meta is missing we return null, and the UI shows the paginator as
+// unknown rather than confidently understating it.
+const readPagination = (res, rowCount) => {
+  const p = res?.meta?.pagination ?? res?.pagination ?? null;
+  return {
+    page: num(p?.page) ?? 1,
+    pageSize: num(p?.page_size) ?? rowCount,
+    total: num(p?.total),
+    totalPages: num(p?.total_pages),
+    hasNext: p?.has_next ?? false,
+    hasPrev: p?.has_prev ?? false,
+  };
+};
+
 // ── Reads ─────────────────────────────────────────────────────────────────────
 
 // GET /payments/ — the ledger. Accounts/admin see everything; a tier-1 CM sees
 // their own visible set (same call, server narrows it).
 //
-// filters: { docs_status, status, method, project, date_from, date_to }
-//   docs_status: "pending" → the needs-paperwork queue.
+// filters: { docsStatus, status, method, project, dateFrom, dateTo, client,
+//            clientType, page, pageSize }
+//   docsStatus  "pending" → the needs-paperwork queue.
+//   client      case-insensitive client-NAME match (server-side ?client=).
+//   clientType  "cpl" | "hybrid" | "retainer".
 //   Anything falsy is dropped rather than sent as an empty param.
-// Returns { rows: normalizedPayment[], count }.
+//
+// EVERY filter is a server param, including the search box. That matters under
+// pagination: filtering the 20 rows of the current page client-side would
+// search a twentieth of the ledger while the count tile claimed to describe all
+// of it. Narrowing has to happen where the total is computed.
+//
+// Returns { rows: normalizedPayment[], pagination }.
 export const fetchPayments = async (filters = {}) => {
   const res = await api(
     `/payments/${qs({
@@ -143,13 +192,35 @@ export const fetchPayments = async (filters = {}) => {
       status: filters.status,
       method: filters.method,
       project: filters.project,
+      client: filters.client,
+      client_type: filters.clientType ?? filters.client_type,
       date_from: filters.dateFrom ?? filters.date_from,
       date_to: filters.dateTo ?? filters.date_to,
+      page: filters.page,
+      page_size: filters.pageSize ?? filters.page_size,
     })}`,
     { method: "GET" },
   );
-  const { rows, count } = unwrapList(res);
-  return { rows: rows.map(normalizePayment), count };
+  const { rows } = unwrapList(res);
+  return {
+    rows: rows.map(normalizePayment),
+    pagination: readPagination(res, rows.length),
+  };
+};
+
+// Count-only probe: asks for the smallest possible page and reads
+// meta.pagination.total. Used for the "awaiting paperwork" tile, which must
+// describe the WHOLE filtered set — counting pending rows on the current page
+// would report "3 awaiting" out of a visible 20 while 60 sat unseen on later
+// pages. Returns null if the server didn't send a total, so the caller can
+// render "—" instead of inventing a number.
+export const fetchPaymentsCount = async (filters = {}) => {
+  const { pagination } = await fetchPayments({
+    ...filters,
+    page: 1,
+    pageSize: 1,
+  });
+  return pagination.total;
 };
 
 // GET /payments/clients/ — the client picker, already scoped server-side to the

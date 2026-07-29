@@ -1,11 +1,10 @@
-import { For, Show, createSignal, createMemo, createEffect } from "solid-js";
+import { For, Show } from "solid-js";
 import RowsPerPageSelect from "../common/RowsPerPageSelect";
 import {
   fmtMoney,
   fmtDate,
   methodLabel,
   DocsBadge,
-  StatusBadge,
 } from "./paymentsFormat";
 
 // ─── Payments ledger table ────────────────────────────────────────────────────
@@ -15,47 +14,57 @@ import {
 // buttons. A CM therefore has no edit/delete affordance at all, and the API's
 // 403 remains the backstop rather than the first line of defence.
 //
+// PAGINATION IS CONTROLLED AND SERVER-SIDE. This component no longer slices
+// rows: `rows()` IS one page as the server returned it, and every count comes
+// from meta.pagination. The previous version paginated a single fetched page
+// client-side, which is what produced "20 of 20" on a 264-row ledger.
+//
+// STATUS COLUMN — there is exactly one, and it shows DOCS status. The API also
+// returns `status`/`status_label` (payment settlement: pending/succeeded), but
+// that is a different question from "has accounts filed the paperwork", and
+// showing both made an accounts entry read as "pending" when only its
+// settlement was. This dashboard is the docs workflow, so it shows the docs
+// axis. (statusLabel is still on the normalized row if it's ever wanted.)
+//
 // props:
-//   rows()      normalized payment[] (see services/payments)
-//   loading()   bool
-//   canManage   accounts/admin → row actions
-//   onEdit(row) / onDelete(row)
-//   emptyHint   copy for the empty state
-//   pageSize    initial rows per page (default 20)
+//   rows() / loading()          current page + load state
+//   canManage, onEdit, onDelete row actions (accounts/admin)
+//   page(), pageSize(), total(), totalPages(), hasNext(), hasPrev()
+//   onPageChange(n) / onPageSizeChange(n)
+//   emptyHint
 
 const TH =
   "px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400 whitespace-nowrap";
 const TD = "px-4 py-3 text-sm text-[#14233A] dark:text-gray-200 align-middle";
 
 export default function PaymentsTable(props) {
-  const [page, setPage] = createSignal(1);
-  const [pageSize, setPageSize] = createSignal(props.pageSize ?? 20);
+  const rows = () => props.rows?.() ?? [];
+  const page = () => props.page?.() ?? 1;
+  const pageSize = () => props.pageSize?.() ?? 20;
+  // null total = the server didn't send meta.pagination. Say "unknown" rather
+  // than substituting the row count, which is the bug this replaced.
+  const total = () => props.total?.() ?? null;
+  const totalPages = () => {
+    const tp = props.totalPages?.();
+    if (tp != null) return tp;
+    const t = total();
+    return t != null ? Math.max(1, Math.ceil(t / pageSize())) : null;
+  };
+  const hasNext = () =>
+    props.hasNext?.() ??
+    (totalPages() != null ? page() < totalPages() : rows().length >= pageSize());
+  const hasPrev = () => props.hasPrev?.() ?? page() > 1;
 
-  const all = () => props.rows?.() ?? [];
-  const total = () => all().length;
+  const rangeStart = () =>
+    rows().length === 0 ? 0 : (page() - 1) * pageSize() + 1;
+  const rangeEnd = () => rangeStart() === 0 ? 0 : rangeStart() + rows().length - 1;
 
-  // Filters upstream can shrink the set under the current page — snap back so
-  // the operator never lands on a blank page after narrowing a search.
-  createEffect(() => {
-    const maxPage = Math.max(1, Math.ceil(total() / pageSize()));
-    if (page() > maxPage) setPage(maxPage);
-  });
-
-  const paged = createMemo(() => {
-    const start = (page() - 1) * pageSize();
-    return all().slice(start, start + pageSize());
-  });
-
-  const rangeStart = () => (total() === 0 ? 0 : (page() - 1) * pageSize() + 1);
-  const rangeEnd = () => Math.min(page() * pageSize(), total());
-  const pageCount = () => Math.max(1, Math.ceil(total() / pageSize()));
-
-  const colCount = () => (props.canManage ? 10 : 9);
+  const colCount = () => (props.canManage ? 9 : 8);
 
   return (
     <div>
       <div class="overflow-x-auto rounded-2xl border border-[#E2E8F1] dark:border-gray-700 bg-white dark:bg-gray-800 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)]">
-        <table class="w-full min-w-[1000px]">
+        <table class="w-full min-w-[960px]">
           <thead class="bg-[#F6F9FC] dark:bg-gray-900/60 border-b border-[#E2E8F1] dark:border-gray-700">
             <tr>
               <th class={TH + " text-left"}>Client</th>
@@ -63,8 +72,7 @@ export default function PaymentsTable(props) {
               <th class={TH + " text-right"}>GST</th>
               <th class={TH + " text-right"}>Final</th>
               <th class={TH + " text-left"}>Method</th>
-              <th class={TH + " text-center"}>Status</th>
-              <th class={TH + " text-center"}>Docs</th>
+              <th class={TH + " text-center"}>Docs status</th>
               <th class={TH + " text-left"}>Date</th>
               <th class={TH + " text-left"}>Recorded by</th>
               <Show when={props.canManage}>
@@ -92,7 +100,7 @@ export default function PaymentsTable(props) {
             </Show>
 
             {/* Empty */}
-            <Show when={!props.loading?.() && total() === 0}>
+            <Show when={!props.loading?.() && rows().length === 0}>
               <tr>
                 <td colSpan={colCount()} class="px-4 py-14 text-center">
                   <p class="text-sm font-semibold text-[#54657E] dark:text-gray-300">
@@ -107,7 +115,7 @@ export default function PaymentsTable(props) {
 
             {/* Rows */}
             <Show when={!props.loading?.()}>
-              <For each={paged()}>
+              <For each={rows()}>
                 {(p) => (
                   <tr class="hover:bg-[#F6F9FC] dark:hover:bg-gray-900/40 transition-colors">
                     <td class={TD}>
@@ -157,11 +165,20 @@ export default function PaymentsTable(props) {
                     <td class={TD}>{methodLabel(p.method)}</td>
 
                     <td class={TD + " text-center"}>
-                      <StatusBadge value={p.status} />
-                    </td>
-
-                    <td class={TD + " text-center"}>
-                      <DocsBadge value={p.docsStatus} />
+                      <DocsBadge
+                        value={p.docsStatus}
+                        label={p.docsStatusLabel}
+                      />
+                      {/* Who cleared the paperwork — only meaningful once it's
+                          actually complete. */}
+                      <Show when={p.completedBy}>
+                        <span
+                          class="block mt-1 text-[11px] text-[#8593A8] dark:text-gray-500 truncate max-w-[150px]"
+                          title={`Completed by ${p.completedBy}`}
+                        >
+                          by {p.completedBy}
+                        </span>
+                      </Show>
                     </td>
 
                     <td class={TD + " whitespace-nowrap"}>
@@ -176,8 +193,13 @@ export default function PaymentsTable(props) {
                       </Show>
                     </td>
 
+                    {/* created_by_name only — never the created_by id. A null
+                        here is a genuinely unattributed historical row. */}
                     <td class={TD}>
-                      <span class="text-[#54657E] dark:text-gray-400">
+                      <span
+                        class="text-[#54657E] dark:text-gray-400 truncate block max-w-[180px]"
+                        title={p.createdBy ?? undefined}
+                      >
                         {p.createdBy ?? "—"}
                       </span>
                     </td>
@@ -223,43 +245,46 @@ export default function PaymentsTable(props) {
         </table>
       </div>
 
-      {/* Pagination */}
-      <Show when={!props.loading?.() && total() > 0}>
+      {/* ── Paginator (server-driven) ──────────────────────────────────────── */}
+      <Show when={!props.loading?.() && rows().length > 0}>
         <div class="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div class="flex items-center gap-3">
             <p class="text-sm text-[#54657E] dark:text-gray-400">
               Showing{" "}
-              <b class="text-[#14233A] dark:text-gray-200">
+              <b class="text-[#14233A] dark:text-gray-200 tabular-nums">
                 {rangeStart()}–{rangeEnd()}
               </b>{" "}
-              of {total()}
+              of{" "}
+              <Show when={total() != null} fallback={<span>many</span>}>
+                <b class="text-[#14233A] dark:text-gray-200 tabular-nums">
+                  {total()}
+                </b>
+              </Show>
             </p>
             <RowsPerPageSelect
               value={pageSize()}
-              onChange={(n) => {
-                setPageSize(n);
-                setPage(1);
-              }}
+              onChange={(n) => props.onPageSizeChange?.(n)}
             />
           </div>
 
-          <Show when={pageCount() > 1}>
+          <Show when={hasNext() || hasPrev()}>
             <div class="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page() === 1}
+                onClick={() => props.onPageChange?.(Math.max(1, page() - 1))}
+                disabled={!hasPrev()}
                 class="px-3 h-9 rounded-lg border border-[#E2E8F1] dark:border-gray-700 text-sm font-semibold text-[#54657E] dark:text-gray-300 hover:bg-[#F6F9FC] dark:hover:bg-gray-800 disabled:opacity-40 disabled:cursor-default transition-colors"
               >
                 Previous
               </button>
               <span class="text-sm text-[#54657E] dark:text-gray-400 tabular-nums px-1">
-                {page()} / {pageCount()}
+                {page()}
+                <Show when={totalPages() != null}> / {totalPages()}</Show>
               </span>
               <button
                 type="button"
-                onClick={() => setPage((p) => Math.min(pageCount(), p + 1))}
-                disabled={page() === pageCount()}
+                onClick={() => props.onPageChange?.(page() + 1)}
+                disabled={!hasNext()}
                 class="px-3 h-9 rounded-lg border border-[#E2E8F1] dark:border-gray-700 text-sm font-semibold text-[#54657E] dark:text-gray-300 hover:bg-[#F6F9FC] dark:hover:bg-gray-800 disabled:opacity-40 disabled:cursor-default transition-colors"
               >
                 Next

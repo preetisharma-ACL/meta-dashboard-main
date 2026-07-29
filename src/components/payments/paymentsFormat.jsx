@@ -74,15 +74,21 @@ export const methodLabel = (m) => {
 const BADGE_BASE =
   "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-wide whitespace-nowrap";
 
-// docs_status — the paperwork flag, NOT a money state. `pending` means a
-// tier-1 CM recorded the amount and accounts still owes it a reference/invoice;
-// the money already counts either way. Copy says "Needs docs" rather than
-// "Unpaid" so nobody reads it as an outstanding payment.
+// docs_status — the paperwork flag, NOT a money state and NOT the settlement
+// state. `pending` means a tier-1 CM recorded the amount and accounts still
+// owes it a reference/invoice; the money already counts either way.
+//
+// COLOUR comes from the raw `value` (docs_status), TEXT from `label`
+// (docs_status_label) so the server owns the wording. Falling back to our own
+// copy only when the label is absent keeps a renamed server label from being
+// silently overwritten by a stale frontend string.
 export function DocsBadge(props) {
   const pending = () => String(props.value ?? "").toLowerCase() === "pending";
+  const text = () =>
+    props.label ?? (pending() ? "Needs docs" : "Complete");
   return (
     <Show
-      when={!isMissing(props.value)}
+      when={!isMissing(props.value) || !isMissing(props.label)}
       fallback={<span class="text-[#8593A8] dark:text-gray-500">—</span>}
     >
       <span
@@ -105,38 +111,15 @@ export function DocsBadge(props) {
             (pending() ? "bg-[#B07A14]" : "bg-[#15966A]")
           }
         />
-        {pending() ? "Needs docs" : "Complete"}
+        {text()}
       </span>
     </Show>
   );
 }
 
-// Payment `status` is server-owned and its vocabulary isn't fixed by the spec,
-// so this maps the values we can recognise and renders anything else neutrally
-// (title-cased) instead of guessing a colour that might mislead.
-const STATUS_TONE = {
-  success: "bg-[#E9F7F1] text-[#15966A] dark:bg-green-900/30 dark:text-green-300",
-  completed: "bg-[#E9F7F1] text-[#15966A] dark:bg-green-900/30 dark:text-green-300",
-  complete: "bg-[#E9F7F1] text-[#15966A] dark:bg-green-900/30 dark:text-green-300",
-  paid: "bg-[#E9F7F1] text-[#15966A] dark:bg-green-900/30 dark:text-green-300",
-  approved: "bg-[#E9F7F1] text-[#15966A] dark:bg-green-900/30 dark:text-green-300",
-  pending: "bg-[#FBF3E2] text-[#B07A14] dark:bg-yellow-900/30 dark:text-yellow-300",
-  processing: "bg-[#ECF2FA] text-[#3E6FB0] dark:bg-blue-900/40 dark:text-blue-300",
-  failed: "bg-[#FBEEF0] text-[#AC2334] dark:bg-red-900/30 dark:text-red-300",
-  rejected: "bg-[#FBEEF0] text-[#AC2334] dark:bg-red-900/30 dark:text-red-300",
-  cancelled: "bg-[#FBEEF0] text-[#AC2334] dark:bg-red-900/30 dark:text-red-300",
-};
-
-export function StatusBadge(props) {
-  const tone = () =>
-    STATUS_TONE[String(props.value ?? "").toLowerCase()] ??
-    "bg-[#F1F4F9] text-[#54657E] dark:bg-gray-700 dark:text-gray-300";
-  return (
-    <Show
-      when={!isMissing(props.value)}
-      fallback={<span class="text-[#8593A8] dark:text-gray-500">—</span>}
-    >
-      <span class={BADGE_BASE + " " + tone()}>{methodLabel(props.value)}</span>
-    </Show>
-  );
-}
+// NOTE — there is deliberately no settlement-status badge here. The API also
+// returns status / status_label (the PROCESSING axis: pending/succeeded), but
+// this dashboard runs the PAPERWORK workflow, and showing both made an accounts
+// entry read as "pending" when only its bank settlement was. The normalized row
+// still carries `statusLabel`, so a settlement column is a small addition if
+// it's ever wanted — it just shouldn't sit next to the docs badge unlabelled.
