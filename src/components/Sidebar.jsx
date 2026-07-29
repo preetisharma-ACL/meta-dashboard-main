@@ -11,6 +11,7 @@ import {
 } from "solid-js";
 import { handleLogout } from "../pages/login/LoginForm";
 import { clearClientDashboardContext } from "../cacheStore/appStore";
+import { isTier1CM } from "../stores/currentUser";
 
 const getAuthToken = () => {
   try {
@@ -123,6 +124,35 @@ const NAV_ACTIVE =
 const NAV_INACTIVE =
   "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100";
 
+// ── Payments desk links (accounts + admin) ──────────────────────────────────
+// Declared once and rendered twice, because the two roles want different
+// shapes: accounts work out of these screens all day, so they get them as flat
+// top-level items; admin already has a long sidebar, so the same links are
+// nested under one "Payments Desk" group. Only `d` (the icon path) is stored —
+// each surface wraps it in Icon or SmallIcon at the right size.
+const PAYMENT_DESK_LINKS = [
+  {
+    name: "Payments",
+    path: "/payments",
+    d: "M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z",
+  },
+  {
+    name: "Record Payment",
+    path: "/payments/record",
+    d: "M12 9v6m3-3H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z",
+  },
+  {
+    name: "Needs Docs",
+    path: "/payments/needs-docs",
+    d: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z",
+  },
+  {
+    name: "Billing",
+    path: "/client-payments",
+    d: "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z",
+  },
+];
+
 // ── Main component ──────────────────────────────────────────────────────────
 
 export default function Sidebar() {
@@ -184,6 +214,32 @@ export default function Sidebar() {
         ),
         path: "/sales/payments",
       },
+      // ── Accounts desk nav ─────────────────────────────────────────────────
+      // Flat for accounts: the payments ledger IS their dashboard.
+      ...PAYMENT_DESK_LINKS.map((l) => ({
+        name: l.name,
+        roles: ["accounts"],
+        path: l.path,
+        icon: () => <Icon d={l.d} />,
+      })),
+      // Same screens for admin, folded into one group so admin's already-long
+      // sidebar doesn't grow four more top-level rows. "Billing" is dropped
+      // here — admin reaches that page via the existing "Client Payments".
+      {
+        name: "Payments Desk",
+        roles: ["admin"],
+        icon: () => (
+          <Icon d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+        ),
+        subMenus: PAYMENT_DESK_LINKS.filter(
+          (l) => l.path !== "/client-payments",
+        ).map((l) => ({
+          name: l.name,
+          path: l.path,
+          roles: ["admin"],
+          icon: () => <SmallIcon d={l.d} />,
+        })),
+      },
       // ── Campaign Manager nav ──────────────────────────────────────────────
       {
         name: "Dashboard",
@@ -224,6 +280,27 @@ export default function Sidebar() {
           <Icon d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
         ),
         path: "/client-payments",
+      },
+      // ── Tier-1 CM payment entry ───────────────────────────────────────────
+      // TIER-1 ONLY. `roles` can't express this on its own — tier-2 CMs share
+      // the role and must not see these — so the `when` predicate carries the
+      // tier check. It reads the reactive currentUser store, so the entries
+      // appear as soon as /auth/me resolves rather than needing a reload.
+      {
+        name: "Record Payment",
+        roles: ["campaign_manager"],
+        when: isTier1CM,
+        icon: () => <Icon d="M12 9v6m3-3H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />,
+        path: "/payments/record",
+      },
+      {
+        name: "My Payment Entries",
+        roles: ["campaign_manager"],
+        when: isTier1CM,
+        icon: () => (
+          <Icon d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+        ),
+        path: "/payments/my-entries",
       },
       //  {
       //   name: "Client Billing",
@@ -556,14 +633,24 @@ export default function Sidebar() {
       },
       {
         name: isLoggedIn() ? "Logout" : "Login",
-        roles: ["admin", "client", "campaign_manager", "sales"],
+        // "accounts" added: the payments desk is a primary role now, and it was
+        // the only signed-in role with no way to sign out of its own sidebar.
+        roles: ["admin", "client", "campaign_manager", "sales", "accounts"],
         icon: () => (
           <Icon d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
         ),
         path: isLoggedIn() ? null : "/login",
         action: isLoggedIn() ? handleLogout : null,
       },
-    ].filter((item) => item.roles.includes(userRole())),
+    ].filter(
+      // `roles` is the coarse gate; the optional `when` predicate adds a second
+      // axis for entries that role alone can't decide — today that's CM TIER
+      // (payments are tier-1 only). `when` reads the reactive currentUser
+      // store, so an item hidden during the pre-/auth/me window appears the
+      // moment the tier lands, without a reload.
+      (item) =>
+        item.roles.includes(userRole()) && (item.when ? item.when() : true),
+    ),
   );
 
   // Keep the submenu group that owns the active route expanded — including on a

@@ -78,6 +78,53 @@ export const canWriteCampaigns = () => {
   }
 };
 
+// ─── Payments gates (accounts desk + tier-1 CM entry) ─────────────────────────
+// Same two-source pattern as canWriteCampaigns(): prefer the loaded /auth/me
+// store, fall back to the role/tier mirrored into localStorage so a gate
+// doesn't flicker (or wrongly deny) before /auth/me resolves.
+//
+// These decide which CONTROLS and ROUTES to show. The API is the authority:
+// /payments/clients/ and add-funds 403 a tier-2 CM, and PATCH/DELETE 403 any
+// CM at all. The UI gate exists so nobody is handed a button that always fails.
+
+const readAuth = () => {
+  try {
+    return JSON.parse(localStorage.getItem("auth") || "null");
+  } catch {
+    return null;
+  }
+};
+
+// The accounts desk — plus admin, who sees every accounts surface.
+export const isAccountsDesk = () => {
+  const role = currentUser.loaded ? currentUser.role : readAuth()?.role;
+  return role === "accounts" || role === "admin";
+};
+
+// Tier-1 campaign managers ONLY. Tier-2 is excluded everywhere in payments.
+export const isTier1CM = () => {
+  if (currentUser.loaded) return isCM() && isTier1();
+  const auth = readAuth();
+  return auth?.role === "campaign_manager" && auth?.cmTier === "tier_1";
+};
+
+// Who may POST /payments/add-funds/ — the accounts desk and tier-1 CMs.
+export const canRecordPayments = () => isAccountsDesk() || isTier1CM();
+
+// Who may PATCH / DELETE a payment — accounts and admin only, never a CM.
+export const canManagePayments = () => isAccountsDesk();
+
+// True once the tier is actually known. A campaign_manager's tier arrives with
+// /auth/me, so a route guard must WAIT on this rather than treat "tier not
+// loaded yet" as "not tier-1" and bounce a legitimate tier-1 lead.
+export const isTierResolved = () => {
+  if (currentUser.loaded) return true;
+  const auth = readAuth();
+  if (!auth) return true; // unauthenticated — the auth guard handles it
+  if (auth.role !== "campaign_manager") return true; // tier is irrelevant
+  return auth.cmTier !== undefined && auth.cmTier !== null;
+};
+
 // ─── Loader ───────────────────────────────────────────────────────────────────
 // Idempotent: safe to call from multiple mount points; only fetches once.
 let inFlight = null;

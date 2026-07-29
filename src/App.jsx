@@ -57,6 +57,11 @@ import MyWork from "./pages/worklog/MyWork";
 import ClientWorkspace from "./pages/worklog/ClientWorkspace";
 import CplRules from "./pages/cpl/CplRules";
 import ClientBilling from "./pages/billing/ClientBilling";
+import PaymentsList from "./pages/payments/PaymentsList";
+import RecordPayment from "./pages/payments/RecordPayment";
+import NeedsDocs from "./pages/payments/NeedsDocs";
+import MyPaymentEntries from "./pages/payments/MyPaymentEntries";
+import PaymentsRoute from "./utils/PaymentsRoute";
 import AlertsPanel from "./components/AlertsPanel";
 import ReportingIntro from "./pages/landing/ReportingIntro";
 import { loadCurrentUser } from "./stores/currentUser";
@@ -74,6 +79,9 @@ function RoleHome() {
   })();
   if (role === "campaign_manager") return <CMDashboard />;
   if (role === "sales") return <SalesDashboard />;
+  // The accounts desk's primary screen is the payments ledger, not the client
+  // dashboard — it's the surface they work out of all day.
+  if (role === "accounts") return <PaymentsList />;
   return <MainDashboard />;
 }
 
@@ -238,9 +246,48 @@ function App() {
             <Route
               path="/client-payments"
               component={() => (
-                <AdminRoute roles={["admin", "campaign_manager"]}>
+                <AdminRoute roles={["admin", "campaign_manager", "accounts"]}>
                   <ClientBilling />
                 </AdminRoute>
+              )}
+            />
+            {/* ── Payments desk ────────────────────────────────────────────
+                Accounts + admin get the ledger and the needs-docs queue;
+                Record Payment is shared with tier-1 CMs; My Entries is
+                tier-1-CM-only. PaymentsRoute gates on role AND tier (a tier-2
+                CM is bounced even though their role matches), and waits for
+                /auth/me rather than guessing a CM's tier. The API 403s stay
+                the backstop underneath. */}
+            <Route
+              path="/payments"
+              component={() => (
+                <PaymentsRoute allow="accounts">
+                  <PaymentsList />
+                </PaymentsRoute>
+              )}
+            />
+            <Route
+              path="/payments/record"
+              component={() => (
+                <PaymentsRoute allow="record">
+                  <RecordPayment />
+                </PaymentsRoute>
+              )}
+            />
+            <Route
+              path="/payments/needs-docs"
+              component={() => (
+                <PaymentsRoute allow="accounts">
+                  <NeedsDocs />
+                </PaymentsRoute>
+              )}
+            />
+            <Route
+              path="/payments/my-entries"
+              component={() => (
+                <PaymentsRoute allow="cm">
+                  <MyPaymentEntries />
+                </PaymentsRoute>
               )}
             />
             <Route path="/account-monitor" component={AccountMonitor} />
