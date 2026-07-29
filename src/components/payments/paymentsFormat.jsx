@@ -79,6 +79,17 @@ const METHOD_LABELS = Object.fromEntries(
   PAYMENT_METHODS.map((m) => [m.value, m.label]),
 );
 
+// ── Payment status (the SETTLEMENT axis) ──────────────────────────────────────
+// Distinct from docs_status. This answers "has the money settled", which only
+// accounts sets — the CM record form has no status control at all, and the
+// server defaults a CM entry to "pending".
+export const PAYMENT_STATUSES = [
+  { value: "pending", label: "Pending" },
+  { value: "succeeded", label: "Succeeded" },
+  { value: "failed", label: "Failed" },
+  { value: "refunded", label: "Refunded" },
+];
+
 // "bank_transfer" → "Bank Transfer". A value outside the enum still renders
 // title-cased rather than blank: historical rows predate the enum being
 // enforced, and hiding what the server actually stored would be worse than

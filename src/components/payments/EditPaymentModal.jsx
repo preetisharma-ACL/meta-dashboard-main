@@ -97,10 +97,13 @@ export default function EditPaymentModal(props) {
 
               {/* Body */}
               <div class="px-6 py-6">
+                {/* Edit is accounts/admin-only (a CM PATCH 403s), so both
+                    accounts-gated field groups are on. */}
                 <PaymentForm
                   mode="edit"
                   payment={props.payment}
                   canFillDocs={true}
+                  canSetStatus={true}
                   submitting={submitting()}
                   error={error()}
                   onSubmit={handleSubmit}

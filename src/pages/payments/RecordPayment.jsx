@@ -165,6 +165,7 @@ export default function RecordPayment() {
         <PaymentForm
           mode="create"
           canFillDocs={isAccounts()}
+          canSetStatus={isAccounts()}
           submitting={submitting()}
           error={error()}
           onSubmit={handleSubmit}

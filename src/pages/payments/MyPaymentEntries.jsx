@@ -2,7 +2,9 @@ import {
   createSignal,
   createResource,
   createMemo,
+  createEffect,
   onCleanup,
+  batch,
   Show,
   For,
 } from "solid-js";
@@ -49,15 +51,12 @@ export default function MyPaymentEntries() {
   const [page, setPage] = createSignal(1);
   const [pageSize, setPageSize] = createSignal(50);
 
-  const resetPage = () => setPage(1);
-
   let searchTimer;
   const onSearchInput = (v) => {
     setQuery(v);
     clearTimeout(searchTimer);
     searchTimer = setTimeout(() => {
-      setSearch(v.trim());
-      resetPage();
+      applyFilter(() => setSearch(v.trim()));
     }, 350);
   };
   onCleanup(() => clearTimeout(searchTimer));
@@ -89,6 +88,27 @@ export default function MyPaymentEntries() {
   const rows = () => payload()?.rows ?? [];
   const pagination = () => payload()?.pagination ?? {};
   const loading = () => payload.loading;
+  // Same page-safety contract as the accounts ledger: a filter write and the
+  // page reset must land in ONE batch, or listKey recomputes twice and fires an
+  // interim request for (new filter, OLD page) — the out-of-range combination
+  // the API rejects with "Invalid page". gotoPage then clamps to total_pages.
+  const applyFilter = (fn) =>
+    batch(() => {
+      fn();
+      setPage(1);
+    });
+
+  const gotoPage = (n) => {
+    const target = Math.max(1, Math.floor(Number(n)) || 1);
+    const tp = pagination().totalPages;
+    setPage(tp != null && tp >= 1 ? Math.min(target, tp) : target);
+  };
+
+  createEffect(() => {
+    const tp = pagination().totalPages;
+    if (tp != null && tp >= 1 && page() > tp) setPage(tp);
+  });
+
   const total = () => pagination().total ?? null;
   const awaitingDocs = () =>
     docsStatus() === "pending" ? total() : (pendingProbe() ?? null);
@@ -152,8 +172,7 @@ export default function MyPaymentEntries() {
             fallback={
               <button
                 onClick={() => {
-                  setMonth(currentMonthStr());
-                  resetPage();
+                  applyFilter(() => setMonth(currentMonthStr()));
                 }}
                 class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[#E2E8F1] dark:border-gray-700 text-sm font-semibold text-[#54657E] dark:text-gray-300 hover:bg-white dark:hover:bg-gray-800 transition-colors"
               >
@@ -169,14 +188,12 @@ export default function MyPaymentEntries() {
                 value={month()}
                 max={currentMonthStr()}
                 onChange={(m) => {
-                  setMonth(m);
-                  resetPage();
+                  applyFilter(() => setMonth(m));
                 }}
               />
               <button
                 onClick={() => {
-                  setMonth("");
-                  resetPage();
+                  applyFilter(() => setMonth(""));
                 }}
                 aria-label="Show all months"
                 title="Show all months"
@@ -284,8 +301,7 @@ export default function MyPaymentEntries() {
             <select
               value={docsStatus()}
               onChange={(e) => {
-                setDocsStatus(e.currentTarget.value);
-                resetPage();
+                applyFilter(() => setDocsStatus(e.currentTarget.value));
               }}
               class={fieldClass}
             >
@@ -308,10 +324,9 @@ export default function MyPaymentEntries() {
         totalPages={() => pagination().totalPages}
         hasNext={() => pagination().hasNext}
         hasPrev={() => pagination().hasPrev}
-        onPageChange={setPage}
+        onPageChange={gotoPage}
         onPageSizeChange={(n) => {
-          setPageSize(n);
-          resetPage();
+          applyFilter(() => setPageSize(n));
         }}
         emptyHint={
           hasFilters()

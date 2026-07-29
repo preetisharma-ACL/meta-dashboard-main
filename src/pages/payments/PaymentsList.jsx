@@ -2,7 +2,9 @@ import {
   createSignal,
   createResource,
   createMemo,
+  createEffect,
   onCleanup,
+  batch,
   Show,
   For,
 } from "solid-js";
@@ -93,10 +95,6 @@ export default function PaymentsList(props) {
 
   const [editing, setEditing] = createSignal(null);
 
-  // Any filter change invalidates the current page number — page 7 of an
-  // unfiltered ledger is usually past the end of a filtered one.
-  const resetPage = () => setPage(1);
-
   // Debounce the search box: it drives a server request, so a fetch per
   // keystroke would be both wasteful and racy.
   let searchTimer;
@@ -104,8 +102,7 @@ export default function PaymentsList(props) {
     setQuery(v);
     clearTimeout(searchTimer);
     searchTimer = setTimeout(() => {
-      setSearch(v.trim());
-      resetPage();
+      applyFilter(() => setSearch(v.trim()));
     }, 350);
   };
   onCleanup(() => clearTimeout(searchTimer));
@@ -143,6 +140,38 @@ export default function PaymentsList(props) {
   const rows = () => payload()?.rows ?? [];
   const pagination = () => payload()?.pagination ?? {};
   const loading = () => payload.loading;
+  // ── Page safety ───────────────────────────────────────────────────────────
+  // Any filter change invalidates the current page number — page 7 of an
+  // unfiltered ledger is usually past the end of a filtered one, and the API
+  // answers an out-of-range page with "Invalid page".
+  //
+  // The reset MUST be batched with the filter write. listKey reads both, so two
+  // unbatched writes recompute it twice and fire an interim request for
+  // (new filter, OLD page) — which is exactly the out-of-range combination.
+  // batch() collapses them into one recompute, so only (new filter, page 1)
+  // is ever requested.
+  const applyFilter = (fn) =>
+    batch(() => {
+      fn();
+      setPage(1);
+    });
+
+  // Never ask for a page outside [1, total_pages].
+  const gotoPage = (n) => {
+    const target = Math.max(1, Math.floor(Number(n)) || 1);
+    const tp = pagination().totalPages;
+    setPage(tp != null && tp >= 1 ? Math.min(target, tp) : target);
+  };
+
+  // Backstop for the case the clamp can't see: the page count SHRANK under us
+  // (another operator deleted rows, or a refetch returned fewer pages). Snap
+  // back to the last real page. Converges — the new page is <= tp by
+  // construction, so this can't ping-pong.
+  createEffect(() => {
+    const tp = pagination().totalPages;
+    if (tp != null && tp >= 1 && page() > tp) setPage(tp);
+  });
+
 
   const total = () => pagination().total ?? null;
   const awaitingDocs = () =>
@@ -182,15 +211,15 @@ export default function PaymentsList(props) {
     method() !== "" ||
     (!queueMode() && docsStatus() !== "");
 
-  const clearFilters = () => {
-    setQuery("");
-    setSearch("");
-    setMonth("");
-    setClientType("");
-    setMethod("");
-    if (!queueMode()) setDocsStatus("");
-    resetPage();
-  };
+  const clearFilters = () =>
+    applyFilter(() => {
+      setQuery("");
+      setSearch("");
+      setMonth("");
+      setClientType("");
+      setMethod("");
+      if (!queueMode()) setDocsStatus("");
+    });
 
   // Swap the saved row in place using what the SERVER returned. An amount edit
   // recomputes GST/final server-side, so patching a local copy would print a
@@ -288,8 +317,7 @@ export default function PaymentsList(props) {
             fallback={
               <button
                 onClick={() => {
-                  setMonth(currentMonthStr());
-                  resetPage();
+                  applyFilter(() => setMonth(currentMonthStr()));
                 }}
                 class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[#E2E8F1] dark:border-gray-700 text-sm font-semibold text-[#54657E] dark:text-gray-300 hover:bg-white dark:hover:bg-gray-800 transition-colors"
               >
@@ -305,14 +333,12 @@ export default function PaymentsList(props) {
                 value={month()}
                 max={currentMonthStr()}
                 onChange={(m) => {
-                  setMonth(m);
-                  resetPage();
+                  applyFilter(() => setMonth(m));
                 }}
               />
               <button
                 onClick={() => {
-                  setMonth("");
-                  resetPage();
+                  applyFilter(() => setMonth(""));
                 }}
                 aria-label="Show all months"
                 title="Show all months"
@@ -414,8 +440,7 @@ export default function PaymentsList(props) {
             return (
               <button
                 onClick={() => {
-                  setClientType(t.key);
-                  resetPage();
+                  applyFilter(() => setClientType(t.key));
                 }}
                 aria-pressed={on()}
                 class={`px-3.5 py-1.5 rounded-full text-[13px] font-semibold border transition-colors whitespace-nowrap ${
@@ -451,8 +476,7 @@ export default function PaymentsList(props) {
               <select
                 value={docsStatus()}
                 onChange={(e) => {
-                  setDocsStatus(e.currentTarget.value);
-                  resetPage();
+                  applyFilter(() => setDocsStatus(e.currentTarget.value));
                 }}
                 class={fieldClass}
               >
@@ -468,8 +492,7 @@ export default function PaymentsList(props) {
             <select
               value={method()}
               onChange={(e) => {
-                setMethod(e.currentTarget.value);
-                resetPage();
+                applyFilter(() => setMethod(e.currentTarget.value));
               }}
               class={fieldClass}
             >
@@ -528,10 +551,9 @@ export default function PaymentsList(props) {
         totalPages={() => pagination().totalPages}
         hasNext={() => pagination().hasNext}
         hasPrev={() => pagination().hasPrev}
-        onPageChange={setPage}
+        onPageChange={gotoPage}
         onPageSizeChange={(n) => {
-          setPageSize(n);
-          resetPage();
+          applyFilter(() => setPageSize(n));
         }}
         emptyHint={
           hasFilters()

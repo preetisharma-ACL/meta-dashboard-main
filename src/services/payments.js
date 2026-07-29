@@ -97,6 +97,9 @@ export const normalizePayment = (r = {}) => ({
   docsStatus: first(r, ["docs_status"]),
   docsStatusLabel: first(r, ["docs_status_label"]),
 
+  organization: first(r, ["organization", "organization_id", "org_id"]),
+  organizationName: first(r, ["organization_name", "org_name"]),
+
   project: first(r, ["project_name", "project_nomen_name", "project"]),
   referenceId: first(r, ["reference_id", "reference"]),
   invoiceUrl: first(r, ["invoice_url", "invoice"]),
@@ -130,6 +133,26 @@ const normalizeClientOption = (c = {}) => ({
       "label",
     ]) ?? null,
 });
+
+const normalizeOrgOption = (o = {}) => ({
+  id: first(o, ["id", "organization_id", "org_id", "value"]),
+  name: first(o, ["name", "organization_name", "org_name", "label"]) ?? null,
+});
+
+// Shared tail for both pickers: drop entries with no usable id, give the rest a
+// readable fallback name, sort alphabetically.
+//
+// NOTE — nothing is filtered by NAME. "NA" (id 87) is a real organization for
+// clients with no distinct company, not a placeholder, and dropping it would
+// silently remove a legitimate choice from a 141-entry list.
+const toOptions = (rows, normalize, noun) =>
+  rows
+    .map(normalize)
+    .filter((o) => o.id !== null && o.id !== undefined)
+    .map((o) => ({ ...o, name: o.name || `${noun} #${o.id}` }))
+    .sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
+    );
 
 // A list body can be a bare array, a DRF page ({count, results}) or an
 // envelope wrapping either. Normalize all of them to { rows, count }.
@@ -228,14 +251,20 @@ export const fetchPaymentsCount = async (filters = {}) => {
 // Sorted by name so the dropdown is scannable; ids are preserved verbatim.
 export const fetchPaymentClients = async () => {
   const res = await api(`/payments/clients/`, { method: "GET" });
-  const { rows } = unwrapList(res);
-  return rows
-    .map(normalizeClientOption)
-    .filter((c) => c.id !== null && c.id !== undefined)
-    .map((c) => ({ ...c, name: c.name || `Client #${c.id}` }))
-    .sort((a, b) =>
-      a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
-    );
+  return toOptions(unwrapList(res).rows, normalizeClientOption, "Client");
+};
+
+// GET /payments/organizations/ — the full organization roster (~141), open to
+// accounts AND tier-1 CMs; anyone else gets 403.
+//
+// This is NOT scoped or derived from the selected client. The client→org link
+// is campaign-derived and unreliable, so auto-filling it from the client would
+// book money against the wrong org some of the time — a deliberate pick from
+// the full list is the safer contract. Leaving it unset is also safe: the
+// backend falls back to deriving the org itself.
+export const fetchPaymentOrganizations = async () => {
+  const res = await api(`/payments/organizations/`, { method: "GET" });
+  return toOptions(unwrapList(res).rows, normalizeOrgOption, "Organization");
 };
 
 // ── Writes ────────────────────────────────────────────────────────────────────
@@ -280,6 +309,13 @@ export const recordPayment = async (input) => {
   if (input.referenceId) body.reference_id = input.referenceId;
   if (input.invoiceUrl) body.invoice_url = input.invoiceUrl;
   if (input.paidAt) body.paid_at = input.paidAt;
+  // Optional. Unset is SAFE and backward-compatible: the backend derives the
+  // org from the client's campaigns when this is absent.
+  if (input.organization !== null && input.organization !== undefined)
+    body.organization = input.organization;
+  // Accounts only — the CM form never renders a status control, so this is
+  // simply absent for them and the server applies its "pending" default.
+  if (input.status) body.status = input.status;
 
   const res = await api(`/payments/add-funds/`, {
     method: "POST",
@@ -309,6 +345,11 @@ export const updatePayment = async (id, patch = {}) => {
     tdsApplied: "tds_applied",
     tdsAmount: "tds_amount",
     gstPct: "gst_pct",
+    // Included so accounts can correct a mis-orged or mis-statused row. If the
+    // PATCH serializer doesn't accept one of these yet it's ignored server-side
+    // — harmless, and it starts working the moment the field is whitelisted.
+    organization: "organization",
+    status: "status",
   };
   for (const [camel, snake] of Object.entries(map)) {
     if (patch[camel] !== undefined) body[snake] = patch[camel];

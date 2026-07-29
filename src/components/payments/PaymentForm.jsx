@@ -1,11 +1,16 @@
 import { createSignal, createMemo, For, Show, batch } from "solid-js";
-import PaymentClientPicker from "./PaymentClientPicker";
+import EntityPicker from "./EntityPicker";
+import {
+  fetchPaymentClients,
+  fetchPaymentOrganizations,
+} from "../../services/payments";
 import { computeGstPreview, GST_OPTIONS } from "./gst";
 import {
   fieldClass,
   labelClass,
   fmtMoney,
   PAYMENT_METHODS,
+  PAYMENT_STATUSES,
   methodLabel,
   toDateTimeInput,
   fromDateTimeInput,
@@ -16,13 +21,24 @@ import {
 // Record, and the Needs-Docs completion) so the GST preview and the validation
 // rules can't drift between them. What differs is passed in, not forked:
 //
-//   mode        "create" | "edit"
-//   canFillDocs true for accounts/admin → reveals reference_id / invoice_url /
-//               paid_at. A tier-1 CM never sees these; accounts fills them, and
-//               the API 403s a CM PATCH regardless.
-//   payment     the existing normalized row (edit only) — prefills the inputs.
-//   onSubmit    (values) => Promise. The PARENT owns the API call so this
-//               component stays presentational.
+//   mode         "create" | "edit"
+//   canFillDocs  true for accounts/admin → reveals reference_id / invoice_url /
+//                paid_at. A tier-1 CM never sees these; accounts fills them, and
+//                the API 403s a CM PATCH regardless.
+//   canSetStatus true for accounts/admin → reveals the SETTLEMENT status
+//                dropdown. Deliberately a separate flag from canFillDocs even
+//                though both are currently "is accounts": they gate different
+//                fields for different reasons, and collapsing them would make
+//                the next role change ambiguous.
+//   payment      the existing normalized row (edit only) — prefills the inputs.
+//   onSubmit     (values) => Promise. The PARENT owns the API call so this
+//                component stays presentational.
+//
+// The ORGANIZATION picker is shown to every role that can reach this form
+// (accounts and tier-1 CM alike). It is never auto-filled from the client: that
+// link is campaign-derived and unreliable, and a wrong auto-fill silently books
+// money against the wrong org. Left empty, the backend derives it — so blank is
+// safe, just less deliberate.
 //
 // The preview panel is explicitly labelled as a preview: the server recomputes
 // on save and the caller re-renders the returned row.
@@ -46,6 +62,10 @@ export default function PaymentForm(props) {
     existing()?.gstPct != null ? String(existing().gstPct) : String(GST_OPTIONS[1]),
   );
   const [method, setMethod] = createSignal(existing()?.method ?? "");
+  const [organization, setOrganization] = createSignal(
+    existing()?.organization ?? null,
+  );
+  const [status, setStatus] = createSignal(existing()?.status ?? "");
   const [project, setProject] = createSignal(existing()?.project ?? "");
   const [notes, setNotes] = createSignal(existing()?.notes ?? "");
   const [referenceId, setReferenceId] = createSignal(
@@ -131,6 +151,9 @@ export default function PaymentForm(props) {
       out.paidAt = fromDateTimeInput(paidAt());
     put("baseAmount", baseNum(), before.baseAmount);
     put("gstPct", Number(gstPct()), before.gstPct);
+    if (String(organization() ?? "") !== String(before.organization ?? ""))
+      out.organization = organization();
+    if (props.canSetStatus) put("status", status(), before.status);
     if (tdsApplied() !== !!before.tdsApplied) out.tdsApplied = tdsApplied();
     const nextTds = tdsApplied() ? (tdsNum() ?? 0) : 0;
     if (String(nextTds) !== String(before.tdsAmount ?? 0))
@@ -162,6 +185,10 @@ export default function PaymentForm(props) {
         referenceId: referenceId().trim(),
         invoiceUrl: invoiceUrl().trim(),
         paidAt: fromDateTimeInput(paidAt()),
+        // Optional; the backend derives the org when this is null.
+        organization: organization(),
+        // Accounts only. Omitted for a CM, so the server applies "pending".
+        status: props.canSetStatus ? status() : "",
       });
     }
   };
@@ -174,6 +201,8 @@ export default function PaymentForm(props) {
       setTdsAmount("");
       setGstPct(String(GST_OPTIONS[1]));
       setMethod("");
+      setOrganization(null);
+      setStatus("");
       setProject("");
       setNotes("");
       setReferenceId("");
@@ -229,13 +258,37 @@ export default function PaymentForm(props) {
             </div>
           }
         >
-          <PaymentClientPicker
+          <EntityPicker
+            fetcher={fetchPaymentClients}
+            label="Client"
+            required
+            placeholder="Select a client…"
             value={clientNomen()}
             onChange={setClientNomen}
             disabled={props.submitting}
             error={show("client")}
+            forbiddenMsg="You don't have access to the client list for payments."
+            errorMsg="Could not load the client list. Please retry."
+            emptyMsg="No clients available to you."
           />
         </Show>
+
+        {/* Organization — both roles. Optional, never auto-filled from the
+            client (that link is campaign-derived and unreliable). "NA" is a
+            real org in this list, not a placeholder. */}
+        <EntityPicker
+          fetcher={fetchPaymentOrganizations}
+          label="Organization"
+          placeholder="Select an organization…"
+          allowClear
+          clearLabel="Let the system decide"
+          value={organization()}
+          onChange={setOrganization}
+          disabled={props.submitting}
+          hint="Optional — if you leave this unset, the org is derived from the client's campaigns."
+          forbiddenMsg="You don't have access to the organization list."
+          errorMsg="Could not load organizations. You can still save without one."
+        />
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
           {/* Base amount */}
@@ -367,6 +420,30 @@ export default function PaymentForm(props) {
               </p>
             </Show>
           </div>
+
+          {/* Settlement status — ACCOUNTS ONLY. This is the "has the money
+              landed" axis, not the paperwork one; a CM never sets it and the
+              server defaults their entries to pending. */}
+          <Show when={props.canSetStatus}>
+            <div>
+              <label class={labelClass}>Payment status</label>
+              <select
+                value={status()}
+                disabled={props.submitting}
+                onChange={(e) => setStatus(e.currentTarget.value)}
+                class={fieldClass}
+              >
+                <option value="">Pending (default)</option>
+                <For each={PAYMENT_STATUSES}>
+                  {(s) => <option value={s.value}>{s.label}</option>}
+                </For>
+              </select>
+              <p class="mt-1.5 text-xs text-[#8593A8] dark:text-gray-500">
+                Whether the money has settled — separate from the paperwork
+                state below.
+              </p>
+            </div>
+          </Show>
 
           {/* Project (optional) */}
           <div>
