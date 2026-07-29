@@ -75,6 +75,32 @@ export default function PaymentForm(props) {
   const [paidAt, setPaidAt] = createSignal(toDateTimeInput(existing()?.paidAt));
 
   const [touched, setTouched] = createSignal(false);
+  // Tracks whether the org currently in the box came from the client rather
+  // than from the operator, purely so the hint can say so.
+  const [orgFromClient, setOrgFromClient] = createSignal(false);
+
+  // ── Client → organization pre-select (RECORD ONLY) ────────────────────────
+  // /payments/clients/ now carries each client's real organization_id, so
+  // picking a client seeds the org dropdown. It stays fully editable — this is
+  // a starting point, not a lock.
+  //
+  // Record only, never Edit: an existing row already has an organization, and
+  // re-seeding it from the client would quietly rewrite a value accounts may
+  // have deliberately corrected.
+  //
+  // A null organization_id (the ~14 clients whose user has no org) clears the
+  // field instead of leaving the previous client's org sitting there — a stale
+  // org is worse than a blank one, because blank makes the backend derive it.
+  const handleClientChange = (id, option) => {
+    batch(() => {
+      setClientNomen(id);
+      if (!isEdit()) {
+        const orgId = option?.organizationId ?? null;
+        setOrganization(orgId);
+        setOrgFromClient(orgId !== null);
+      }
+    });
+  };
 
   // A historical row may carry a method from before the enum was enforced.
   // Surfacing it as a disabled option keeps the select from silently showing
@@ -202,6 +228,7 @@ export default function PaymentForm(props) {
       setGstPct(String(GST_OPTIONS[1]));
       setMethod("");
       setOrganization(null);
+      setOrgFromClient(false);
       setStatus("");
       setProject("");
       setNotes("");
@@ -264,7 +291,7 @@ export default function PaymentForm(props) {
             required
             placeholder="Select a client…"
             value={clientNomen()}
-            onChange={setClientNomen}
+            onChange={handleClientChange}
             disabled={props.submitting}
             error={show("client")}
             forbiddenMsg="You don't have access to the client list for payments."
@@ -273,9 +300,9 @@ export default function PaymentForm(props) {
           />
         </Show>
 
-        {/* Organization — both roles. Optional, never auto-filled from the
-            client (that link is campaign-derived and unreliable). "NA" is a
-            real org in this list, not a placeholder. */}
+        {/* Organization — both roles. Pre-filled from the selected client on
+            the record form (see handleClientChange) and always editable. "NA"
+            is a real org in this list, not a placeholder. */}
         <EntityPicker
           fetcher={fetchPaymentOrganizations}
           label="Organization"
@@ -283,9 +310,16 @@ export default function PaymentForm(props) {
           allowClear
           clearLabel="Let the system decide"
           value={organization()}
-          onChange={setOrganization}
+          onChange={(id) => {
+            setOrganization(id);
+            setOrgFromClient(false); // an explicit pick is no longer the client's
+          }}
           disabled={props.submitting}
-          hint="Optional — if you leave this unset, the org is derived from the client's campaigns."
+          hint={
+            orgFromClient()
+              ? "Pre-filled from the selected client — change it if that's wrong."
+              : "Optional — if you leave this unset, the org is derived from the client's campaigns."
+          }
           forbiddenMsg="You don't have access to the organization list."
           errorMsg="Could not load organizations. You can still save without one."
         />

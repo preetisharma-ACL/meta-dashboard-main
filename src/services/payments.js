@@ -132,6 +132,11 @@ const normalizeClientOption = (c = {}) => ({
       "nomen_name",
       "label",
     ]) ?? null,
+  // The client's REAL organization, carried on the picker payload so the record
+  // form can pre-select it. Null for the handful of clients whose user has no
+  // org — those stay blank for a manual pick rather than defaulting to
+  // something plausible-but-wrong.
+  organizationId: first(c, ["organization_id", "organization", "org_id"]),
 });
 
 const normalizeOrgOption = (o = {}) => ({

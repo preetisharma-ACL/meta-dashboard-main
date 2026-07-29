@@ -58,8 +58,13 @@ export default function EntityPicker(props) {
     onCleanup(() => document.removeEventListener("click", onDocClick));
   });
 
-  const choose = (id) => {
-    props.onChange?.(id);
+  // onChange receives the WHOLE option as a second argument, not just the id.
+  // The client option carries organization_id, and the record form needs it to
+  // pre-select the org — re-finding the row by id in the caller would mean
+  // duplicating this component's fetch. Callers that only want the id ignore
+  // the second arg. Clearing passes (null, null).
+  const choose = (id, option = null) => {
+    props.onChange?.(id, option);
     setOpen(false);
     setQuery("");
   };
@@ -158,7 +163,7 @@ export default function EntityPicker(props) {
               {(o) => (
                 <button
                   type="button"
-                  onClick={() => choose(o.id)}
+                  onClick={() => choose(o.id, o)}
                   class={`w-full text-left px-3 py-2 text-sm transition-colors hover:bg-[#F6F9FC] dark:hover:bg-gray-800 ${
                     String(o.id) === String(props.value ?? "")
                       ? "text-[#AC2334] dark:text-red-300 font-semibold"
