@@ -9,6 +9,7 @@ import {
   // ← CHANGED: removed fetchProjects, added this
 } from "../services/projectDisplayConfig";
 import Avatar from "../../../components/common/Avatar";
+import RowsPerPageSelect from "../../../components/common/RowsPerPageSelect";
 import DateTimePicker from "../../../components/DateTimePicker";
 import { fetchProjectsByClient } from "../services/fetchProjectsByClient"; // ← NEW
 import { fetchAllowedBudgetClients } from "../../../services/allowedBudget"; // ← CM-scoped client source
@@ -196,8 +197,18 @@ export default function ProjectDisplayConfig() {
     }
   };
 
-  const PAGE_SIZE = 20;
+  // Pagination is client-side (every config is already loaded), so a rows-per-page
+  // change only re-slices.
   const [page, setPage] = createSignal(1);
+  const [pageSize, setPageSize] = createSignal(
+    Number(localStorage.getItem("projectDisplayConfigRowsPerPage")) || 20,
+  );
+
+  const changePageSize = (size) => {
+    setPageSize(size);
+    localStorage.setItem("projectDisplayConfigRowsPerPage", String(size));
+    setPage(1); // the old page number can be past the end once rows grow
+  };
 
   // ── CHANGED: removed fetchProjects() — projects are loaded on demand ──────
   onMount(async () => {
@@ -361,12 +372,12 @@ export default function ProjectDisplayConfig() {
   });
 
   const paginated = createMemo(() => {
-    const start = (page() - 1) * PAGE_SIZE;
-    return filtered().slice(start, start + PAGE_SIZE);
+    const start = (page() - 1) * pageSize();
+    return filtered().slice(start, start + pageSize());
   });
 
   const totalPages = createMemo(() =>
-    Math.max(1, Math.ceil(filtered().length / PAGE_SIZE)),
+    Math.max(1, Math.ceil(filtered().length / pageSize())),
   );
 
   const filteredClients = createMemo(() => {
@@ -773,7 +784,7 @@ export default function ProjectDisplayConfig() {
                                }`}
                   >
                     <td class="p-3 text-center text-gray-500 dark:text-gray-400 tabular-nums">
-                      {(page() - 1) * PAGE_SIZE + i() + 1}
+                      {(page() - 1) * pageSize() + i() + 1}
                     </td>
                     {/* Client — maps to client_email */}
                     <td class="p-3 text-purple-700 dark:text-gray-300 font-medium">
@@ -921,11 +932,15 @@ export default function ProjectDisplayConfig() {
       </div>
       {/* Pagination */}
       <div class="flex items-center justify-between mt-5 flex-wrap gap-3">
-        <span class="text-sm text-gray-500 dark:text-gray-400">
-          {filtered().length === 0
-            ? "No results"
-            : `Showing ${(page() - 1) * PAGE_SIZE + 1}–${Math.min(page() * PAGE_SIZE, filtered().length)} of ${filtered().length} configs`}
-        </span>
+        <div class="flex items-center gap-3">
+          <span class="text-sm text-gray-500 dark:text-gray-400">
+            {filtered().length === 0
+              ? "No results"
+              : `Showing ${(page() - 1) * pageSize() + 1}–${Math.min(page() * pageSize(), filtered().length)} of ${filtered().length} configs`}
+          </span>
+
+          <RowsPerPageSelect value={pageSize()} onChange={changePageSize} />
+        </div>
 
         <div class="flex items-center gap-2">
           <button

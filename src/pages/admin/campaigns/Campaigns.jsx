@@ -1,6 +1,7 @@
 import { createSignal, createMemo, onMount, For, Show } from "solid-js";
 import { fetchCampaigns, resolveDateRange } from "../services/campaigns";
 import Avatar from "../../../components/common/Avatar";
+import RowsPerPageSelect from "../../../components/common/RowsPerPageSelect";
 import CampaignStatusControl from "../../../components/CampaignStatusControl";
 import { canWriteCampaigns } from "../../../stores/currentUser";
 
@@ -34,7 +35,7 @@ const DATE_OPTIONS = [
   { label: "Last Month", value: "lastMonth" },
 ];
 
-const PAGE_SIZE = 20;
+const DEFAULT_PAGE_SIZE = 20;
 
 // ─── SearchableSelect ─────────────────────────────────────────────────────────
 function SearchableSelect(props) {
@@ -152,8 +153,19 @@ export default function Campaigns() {
   const [sortKey, setSortKey] = createSignal("id");
   const [sortDir, setSortDir] = createSignal("desc");
 
-  // Pagination (client-side)
+  // Pagination (client-side) — every row is already loaded, so a size change
+  // only re-slices.
   const [page, setPage] = createSignal(1);
+  const [pageSize, setPageSize] = createSignal(
+    Number(localStorage.getItem("adminCampaignsRowsPerPage")) ||
+      DEFAULT_PAGE_SIZE,
+  );
+
+  const changePageSize = (size) => {
+    setPageSize(size);
+    localStorage.setItem("adminCampaignsRowsPerPage", String(size));
+    setPage(1); // the old page number can be past the end once rows grow
+  };
 
   // Pull the row array out of a response, tolerating both the flat envelope
   // ({ data: [...] }) and the older nested one ({ data: { results: [...] } }).
@@ -364,11 +376,13 @@ export default function Campaigns() {
   });
 
   const total = createMemo(() => filtered().length);
-  const totalPages = createMemo(() => Math.max(1, Math.ceil(total() / PAGE_SIZE)));
+  const totalPages = createMemo(() =>
+    Math.max(1, Math.ceil(total() / pageSize())),
+  );
   const campaigns = createMemo(() => {
     const p = Math.min(page(), totalPages());
-    const start = (p - 1) * PAGE_SIZE;
-    return filtered().slice(start, start + PAGE_SIZE);
+    const start = (p - 1) * pageSize();
+    return filtered().slice(start, start + pageSize());
   });
 
   // ─── Render ───────────────────────────────────────────────────────────────
@@ -796,11 +810,15 @@ export default function Campaigns() {
 
       {/* Pagination */}
       <div class="flex items-center justify-between mt-5 flex-wrap gap-3">
-        <span class="text-sm text-gray-500 dark:text-gray-400">
-          {campaigns().length === 0
-            ? "No results"
-            : `Showing ${(page() - 1) * PAGE_SIZE + 1}–${Math.min(page() * PAGE_SIZE, total())} of ${total()} campaigns`}
-        </span>
+        <div class="flex items-center gap-3">
+          <span class="text-sm text-gray-500 dark:text-gray-400">
+            {campaigns().length === 0
+              ? "No results"
+              : `Showing ${(page() - 1) * pageSize() + 1}–${Math.min(page() * pageSize(), total())} of ${total()} campaigns`}
+          </span>
+
+          <RowsPerPageSelect value={pageSize()} onChange={changePageSize} />
+        </div>
         <div class="flex items-center gap-2">
           <button
             onClick={() => setPage((p) => Math.max(1, p - 1))}

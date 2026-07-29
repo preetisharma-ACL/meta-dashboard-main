@@ -1,6 +1,7 @@
 import { createSignal, createMemo, onMount, For, Show } from "solid-js";
 import { fetchProjects } from "../services/fetchProjects"; // ← adjust path
 import Avatar from "../../../components/common/Avatar";
+import RowsPerPageSelect from "../../../components/common/RowsPerPageSelect";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -23,7 +24,7 @@ const STATUS_DOT = {
   paused: "bg-yellow-400",
 };
 
-const PAGE_SIZE = 20;
+const DEFAULT_PAGE_SIZE = 20;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -43,6 +44,14 @@ export default function Projects() {
   const [totalPages, setTotalPages] = createSignal(1);
   const [page, setPage] = createSignal(1);
 
+  // Rows per page — requested size is remembered; the display uses the size the
+  // server actually applied (it may cap large values).
+  const [rowsPerPage, setRowsPerPage] = createSignal(
+    Number(localStorage.getItem("adminProjectsRowsPerPage")) ||
+      DEFAULT_PAGE_SIZE,
+  );
+  const [appliedPageSize, setAppliedPageSize] = createSignal(rowsPerPage());
+
   // Client-side filter/sort (applied on the current page's 20 rows)
   const [search, setSearch] = createSignal("");
   const [statusFilter, setStatusFilter] = createSignal("all");
@@ -57,8 +66,11 @@ export default function Projects() {
     setLoading(true);
 
     try {
+      const size = overrides.pageSize ?? rowsPerPage();
+
       const res = await fetchProjects({
         page: p,
+        pageSize: size,
         search: overrides.search ?? search(),
         status: overrides.status ?? statusFilter(),
         propertyType: overrides.propertyType ?? typeFilter(),
@@ -73,6 +85,7 @@ export default function Projects() {
       setProjects(raw);
       setTotalCount(pagination?.total ?? raw.length);
       setTotalPages(pagination?.total_pages ?? 1);
+      setAppliedPageSize(Number(pagination?.page_size) || size);
       setPage(p);
     } catch (err) {
       console.error("Failed to load projects:", err);
@@ -86,6 +99,15 @@ export default function Projects() {
   const goToPage = (p) => {
     setPage(p);
     load(p);
+  };
+
+  // Changing the page size always restarts at page 1 — the old page number can
+  // be past the end once rows per page grows.
+  const changeRowsPerPage = (size) => {
+    if (size === rowsPerPage()) return;
+    setRowsPerPage(size);
+    localStorage.setItem("adminProjectsRowsPerPage", String(size));
+    load(1, { pageSize: size });
   };
 
   // ── Client-side filter + sort (on the current page's rows) ────────────────
@@ -448,11 +470,18 @@ export default function Projects() {
 
       {/* Pagination */}
       <div class="flex items-center justify-between mt-5 flex-wrap gap-3">
-        <span class="text-sm text-gray-500 dark:text-gray-400">
-          {totalCount() === 0
-            ? "No results"
-            : `Showing ${(page() - 1) * PAGE_SIZE + 1}–${Math.min(page() * PAGE_SIZE, totalCount())} of ${totalCount()} projects`}
-        </span>
+        <div class="flex items-center gap-3">
+          <span class="text-sm text-gray-500 dark:text-gray-400">
+            {totalCount() === 0
+              ? "No results"
+              : `Showing ${(page() - 1) * appliedPageSize() + 1}–${Math.min(page() * appliedPageSize(), totalCount())} of ${totalCount()} projects`}
+          </span>
+
+          <RowsPerPageSelect
+            value={rowsPerPage()}
+            onChange={changeRowsPerPage}
+          />
+        </div>
 
         <div class="flex items-center gap-2">
           <button

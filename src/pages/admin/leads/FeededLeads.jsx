@@ -4,6 +4,7 @@ import { fetchClients } from "../services/fetchClients";
 import { fetchProjectDisplayConfig } from "../services/projectDisplayConfig";
 import { fetchProjectsByClient } from "../services/fetchProjectsByClient";
 import Avatar from "../../../components/common/Avatar";
+import RowsPerPageSelect from "../../../components/common/RowsPerPageSelect";
 import SuccessToast, {showToast} from "../../../components/common/SuccessToast";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -55,6 +56,11 @@ export default function ManualBatches() {
   const [total, setTotal] = createSignal(0);
   const [hasNext, setHasNext] = createSignal(false);
   const [hasPrev, setHasPrev] = createSignal(false);
+  // Requested rows per page (remembered) vs. the size the server applied.
+  const [pageSize, setPageSize] = createSignal(
+    Number(localStorage.getItem("feededLeadsRowsPerPage")) || 20,
+  );
+  const [appliedPageSize, setAppliedPageSize] = createSignal(pageSize());
   const [formData, setFormData] = createSignal({
     target_client_id: "",
     project_id: "",
@@ -66,12 +72,12 @@ export default function ManualBatches() {
 
   // ── Fetch ─────────────────────────────────────────────────────────────────
 
-  const loadBatches = async (pageNum = 1) => {
+  const loadBatches = async (pageNum = 1, size = pageSize()) => {
     try {
       setLoading(true);
       setError(null);
 
-      const res = await fetchManualBatches(pageNum);
+      const res = await fetchManualBatches(pageNum, size);
 
       const raw = Array.isArray(res.data)
         ? res.data
@@ -83,6 +89,7 @@ export default function ManualBatches() {
       setPage(pageNum);
       setTotalPages(pagination?.total_pages ?? 1);
       setTotal(pagination?.total ?? raw.length);
+      setAppliedPageSize(Number(pagination?.page_size) || size);
       setHasNext(pagination?.has_next ?? false);
       setHasPrev(pagination?.has_prev ?? false);
     } catch (err) {
@@ -91,6 +98,15 @@ export default function ManualBatches() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Rows per page — always restart at page 1; the old page number can be past
+  // the end once the page grows.
+  const changeRowsPerPage = (size) => {
+    if (size === pageSize()) return;
+    setPageSize(size);
+    localStorage.setItem("feededLeadsRowsPerPage", String(size));
+    loadBatches(1, size);
   };
 
   onMount(async () => {
@@ -665,11 +681,18 @@ export default function ManualBatches() {
 
       {/* Pagination */}
       <div class="flex items-center justify-between mt-5 flex-wrap gap-3">
-        <span class="text-sm text-gray-500 dark:text-gray-400">
-          {total() === 0
-            ? "No results"
-            : `Page ${page()} of ${totalPages()} · ${total()} total`}
-        </span>
+        <div class="flex items-center gap-3">
+          <span class="text-sm text-gray-500 dark:text-gray-400">
+            {total() === 0
+              ? "No results"
+              : `Showing ${(page() - 1) * appliedPageSize() + 1}–${Math.min(
+                  page() * appliedPageSize(),
+                  total(),
+                )} of ${total()} batches`}
+          </span>
+
+          <RowsPerPageSelect value={pageSize()} onChange={changeRowsPerPage} />
+        </div>
 
         <div class="flex items-center gap-2">
           <button

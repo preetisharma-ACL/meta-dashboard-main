@@ -1,6 +1,7 @@
 import { createSignal, createEffect, onCleanup, For, Show } from "solid-js";
 import { A } from "@solidjs/router";
 import { getActivities } from "../services/activityLog";
+import RowsPerPageSelect from "../components/common/RowsPerPageSelect";
 
 // ─── Activity Log ─────────────────────────────────────────────────────────────
 // Read-only view of the append-only activity trail (GET /api/activity/). There is
@@ -42,7 +43,10 @@ const RESULT_STYLES = {
   info: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
 };
 
-const PAGE_SIZE = 50;
+// Rows-per-page: 50 stays the default (this log is skimmed in bulk), but the
+// size is user-selectable and remembered across visits.
+const DEFAULT_PAGE_SIZE = 50;
+const ROWS_PER_PAGE_OPTIONS = [25, 50, 100, 200];
 
 export default function Activity() {
   const [search, setSearch] = createSignal("");
@@ -50,6 +54,15 @@ export default function Activity() {
   const [resultFilter, setResultFilter] = createSignal("all");
   const [actionFilter, setActionFilter] = createSignal("all");
   const [page, setPage] = createSignal(1);
+  const [pageSize, setPageSize] = createSignal(
+    Number(localStorage.getItem("activityRowsPerPage")) || DEFAULT_PAGE_SIZE,
+  );
+
+  const changePageSize = (size) => {
+    setPageSize(size);
+    localStorage.setItem("activityRowsPerPage", String(size));
+    setPage(1); // the current page number can be past the end at a bigger size
+  };
 
   const [entries, setEntries] = createSignal([]);
   const [pagination, setPagination] = createSignal(null);
@@ -70,7 +83,7 @@ export default function Activity() {
   createEffect(() => {
     const params = {
       page: page(),
-      pageSize: PAGE_SIZE,
+      pageSize: pageSize(),
       filters: {
         search: debouncedSearch(),
         action: actionFilter(),
@@ -298,12 +311,20 @@ export default function Activity() {
       </div>
 
       {/* Pagination */}
-      <div class="mt-4 flex items-center justify-between gap-3 text-sm">
-        <span class="text-gray-500 dark:text-gray-400">
-          <Show when={pagination()} fallback={`${entries().length} shown`}>
-            Page {pagination().page} of {pagination().total_pages || 1}
-          </Show>
-        </span>
+      <div class="mt-4 flex items-center justify-between gap-3 text-sm flex-wrap">
+        <div class="flex items-center gap-3">
+          <span class="text-gray-500 dark:text-gray-400">
+            <Show when={pagination()} fallback={`${entries().length} shown`}>
+              Page {pagination().page} of {pagination().total_pages || 1} ·{" "}
+              {total()} total
+            </Show>
+          </span>
+          <RowsPerPageSelect
+            value={pageSize()}
+            options={ROWS_PER_PAGE_OPTIONS}
+            onChange={changePageSize}
+          />
+        </div>
         <div class="flex items-center gap-2">
           <button
             onClick={() => hasPrev() && setPage((p) => Math.max(1, p - 1))}

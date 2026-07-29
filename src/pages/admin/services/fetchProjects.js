@@ -2,6 +2,7 @@ import { api } from "../../../api/api";
 
 export const fetchProjects = async ({
   page = 1,
+  pageSize,
   search = "",
   status = "",
   propertyType = "",
@@ -10,6 +11,8 @@ export const fetchProjects = async ({
   const params = new URLSearchParams();
 
   params.append("page", page);
+
+  if (pageSize) params.append("page_size", pageSize);
 
   if (search) params.append("search", search);
 

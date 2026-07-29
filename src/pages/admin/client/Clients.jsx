@@ -18,6 +18,7 @@ import {
 } from "../../../services/cmAdmin";
 import { setProjectsCache } from "../../../cacheStore/appStore";
 import Avatar from "../../../components/common/Avatar";
+import RowsPerPageSelect from "../../../components/common/RowsPerPageSelect";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -103,7 +104,6 @@ const adaptHierarchyClient = (c) => ({
 export default function Clients() {
   const navigate = useNavigate();
 
-  const [clients, setClients] = createSignal([]);
   const [loading, setLoading] = createSignal(true);
   const [search, setSearch] = createSignal("");
   const [clientTypes, setClientTypes] = createSignal(DEFAULT_CLIENT_TYPES); // multi-select
@@ -192,55 +192,38 @@ export default function Clients() {
   const [allClients, setAllClients] = createSignal([]);
 
   // ── pagination state ──────────────────────────────────────────────────────
+  // Paging is client-side: the table renders allClients(), which loadAllClients()
+  // fetches in full (the API is paged at 1000/request, then joined). Driving the
+  // paginator off the server's page meta put every row on one page, so page and
+  // size here just slice the filtered set.
   const [page, setPage] = createSignal(1);
-  const [pageSize] = createSignal(20);
-  const [total, setTotal] = createSignal(0);
-  const [totalPages, setTotalPages] = createSignal(1);
-  const [hasNext, setHasNext] = createSignal(false);
-  const [hasPrev, setHasPrev] = createSignal(false);
+  const [pageSize, setPageSize] = createSignal(
+    Number(localStorage.getItem("adminClientsRowsPerPage")) || 20,
+  );
 
   // ── load ──────────────────────────────────────────────────────────────────
-  const loadClients = async (pageNo = 1) => {
-    setLoading(true);
-    try {
-      // CMs: one CM-scoped call returns their whole (small) client set — no
-      // server pagination, so we render it as a single page.
-      if (isCampaignManager()) {
-        const res = await fetchHierarchyClients();
-        const rows = (Array.isArray(res?.data) ? res.data : []).map(
-          adaptHierarchyClient,
-        );
-        setClients(rows);
-        setAllClients(rows);
-        setPage(1);
-        setTotal(rows.length);
-        setTotalPages(1);
-        setHasNext(false);
-        setHasPrev(false);
-        return;
-      }
+  // CMs: one CM-scoped call returns their whole (small) client set.
+  const loadCmClients = async () => {
+    const res = await fetchHierarchyClients();
+    const rows = (Array.isArray(res?.data) ? res.data : []).map(
+      adaptHierarchyClient,
+    );
+    setAllClients(rows);
+    setPage(1);
+  };
 
-      const res = await fetchClients(pageNo, pageSize());
-      setClients(res.data ?? []);
-
-      // Wire up pagination meta from API response
-      const pagination = res.meta?.pagination;
-      if (pagination) {
-        setPage(pagination.page);
-        setTotal(pagination.total);
-        setTotalPages(pagination.total_pages);
-        setHasNext(pagination.has_next);
-        setHasPrev(pagination.has_prev);
-      }
-    } catch (err) {
-      console.error("Failed to load clients:", err);
-    } finally {
-      setLoading(false);
-    }
+  // Rows per page — restart at page 1, the old page number can be past the end
+  // once the page grows. Select-all is per-page, so the selection clears too.
+  const changeRowsPerPage = (size) => {
+    if (size === pageSize()) return;
+    setPageSize(size);
+    localStorage.setItem("adminClientsRowsPerPage", String(size));
+    setSelected(new Set());
+    setPage(1);
   };
 
   const loadAllClients = async () => {
-    // CMs already have their full set from loadClients (hierarchy has no paging).
+    // CMs already have their full set from loadCmClients (hierarchy has no paging).
     if (isCampaignManager()) return;
     try {
       let currentPage = 1;
@@ -265,9 +248,15 @@ export default function Clients() {
     }
   };
 
-  onMount(() => {
-    loadClients(1);
-    loadAllClients();
+  onMount(async () => {
+    setLoading(true);
+    try {
+      await (isCampaignManager() ? loadCmClients() : loadAllClients());
+    } catch (err) {
+      console.error("Failed to load clients:", err);
+    } finally {
+      setLoading(false);
+    }
   });
 
   // ── sort ──────────────────────────────────────────────────────────────────
@@ -338,14 +327,39 @@ export default function Clients() {
     return data;
   });
 
-  // ── select-all (scoped to current filtered page) ──────────────────────────
+  // ── client-side pagination over the filtered set ──────────────────────────
+  const totalPages = createMemo(() =>
+    Math.max(1, Math.ceil(filtered().length / pageSize())),
+  );
+
+  // Clamped: a filter can shrink the result set below the page we were on.
+  const currentPage = () => Math.min(page(), totalPages());
+
+  const paginated = createMemo(() => {
+    const start = (currentPage() - 1) * pageSize();
+    return filtered().slice(start, start + pageSize());
+  });
+
+  const hasPrev = () => currentPage() > 1;
+  const hasNext = () => currentPage() < totalPages();
+
+  // Snap back to page 1 when the result set changes underneath us.
+  createEffect(
+    on(
+      [search, clientTypes, assignFilter, cmFilter, activeFilter],
+      () => setPage(1),
+      { defer: true },
+    ),
+  );
+
+  // ── select-all (scoped to the rows visible on this page) ───────────────────
   const allSelected = createMemo(
     () =>
-      filtered().length > 0 && filtered().every((c) => selected().has(c.id)),
+      paginated().length > 0 && paginated().every((c) => selected().has(c.id)),
   );
   const toggleAll = () => {
     setSelected(
-      allSelected() ? new Set() : new Set(filtered().map((c) => c.id)),
+      allSelected() ? new Set() : new Set(paginated().map((c) => c.id)),
     );
   };
   const toggleOne = (id) => {
@@ -423,7 +437,8 @@ export default function Clients() {
             Clients
           </h1>
           <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-            {total()} total · click a row to open that client's dashboard
+            {allClients().length} total · click a row to open that client's
+            dashboard
           </p>
         </div>
       </div>
@@ -670,7 +685,7 @@ export default function Clients() {
             }
           >
             <tbody>
-              <For each={filtered()}>
+              <For each={paginated()}>
                 {(client, i) => (
                   <tr
                     class={`border-b border-gray-100 dark:border-gray-800
@@ -831,8 +846,8 @@ export default function Clients() {
                 colspan={isCampaignManager() ? 7 : 8}
                 class="px-4 py-2.5 text-xs text-gray-500 dark:text-gray-400"
               >
-                {filtered().length} client{filtered().length !== 1 ? "s" : ""}{" "}
-                on this page
+                {paginated().length} client
+                {paginated().length !== 1 ? "s" : ""} on this page
                 {selected().size > 0 && ` · ${selected().size} selected`}
               </td>
             </tr>
@@ -842,21 +857,29 @@ export default function Clients() {
 
       {/* ── Pagination ── */}
       <div class="flex items-center justify-between mt-5 flex-wrap gap-3">
-        <span class="text-sm text-gray-500 dark:text-gray-400">
-          {total() === 0
-            ? "No results"
-            : `Showing ${(page() - 1) * pageSize() + 1}–${Math.min(
-                page() * pageSize(),
-                total(),
-              )} of ${total()} clients`}
-        </span>
+        <div class="flex items-center gap-3">
+          <span class="text-sm text-gray-500 dark:text-gray-400">
+            {filtered().length === 0
+              ? "No results"
+              : `Showing ${(currentPage() - 1) * pageSize() + 1}–${Math.min(
+                  currentPage() * pageSize(),
+                  filtered().length,
+                )} of ${filtered().length} clients${
+                  filtered().length === allClients().length
+                    ? ""
+                    : ` (filtered from ${allClients().length})`
+                }`}
+          </span>
+
+          <RowsPerPageSelect value={pageSize()} onChange={changeRowsPerPage} />
+        </div>
 
         <div class="flex items-center gap-2">
           <button
             onClick={() => {
               if (hasPrev()) {
                 setSelected(new Set()); // clear selection on page change
-                loadClients(page() - 1);
+                setPage(currentPage() - 1);
               }
             }}
             disabled={!hasPrev() || loading()}
@@ -878,14 +901,14 @@ export default function Clients() {
           </button>
 
           <span class="text-sm text-gray-500 dark:text-gray-400 px-1">
-            Page {page()} of {totalPages()}
+            Page {currentPage()} of {totalPages()}
           </span>
 
           <button
             onClick={() => {
               if (hasNext()) {
                 setSelected(new Set()); // clear selection on page change
-                loadClients(page() + 1);
+                setPage(currentPage() + 1);
               }
             }}
             disabled={!hasNext() || loading()}

@@ -378,6 +378,7 @@ export default function ClientBilling() {
       <PaymentsTable
         rows={filteredRows}
         loading={loading}
+        storageKey="clientPaymentsRowsPerPage"
         emptyHint={
           isFiltered()
             ? "No clients match the current search or client-type filter."

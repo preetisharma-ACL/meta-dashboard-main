@@ -1,6 +1,6 @@
-import { createSignal, createMemo, onMount, For, Show } from "solid-js";
-import { fetchClientNomen } from "../services/clientNomen";
+import { createSignal, createMemo, createEffect, For, Show } from "solid-js";
 import Avatar from "../../../components/common/Avatar";
+import RowsPerPageSelect from "../../../components/common/RowsPerPageSelect";
 import { useClientNomen } from "../../../hooks/useClientNomen";
 
 // ─── Format date ──────────────────────────────────────────────────────────────
@@ -15,57 +15,28 @@ const formatDate = (iso) => {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function ClientNomen() {
-  const [nomens, setNomens] = createSignal([]);
-  const [allNomens, setAllNomens] = createSignal([]);
   const [search, setSearch] = createSignal("");
   const [hasClientFilter, setHasClientFilter] = createSignal("All");
   const [sortKey, setSortKey] = createSignal("id");
   const [sortDir, setSortDir] = createSignal("asc");
 
-  // Pagination — server-driven
+  // Pagination — client-side. The nomenclature list arrives whole from
+  // useClientNomen(), so paging and rows-per-page only re-slice it.
   const [page, setPage] = createSignal(1);
-  const [totalPages, setTotalPages] = createSignal(1);
-  const [hasNext, setHasNext] = createSignal(false);
-  const [hasPrev, setHasPrev] = createSignal(false);
+  const [pageSize, setPageSize] = createSignal(
+    Number(localStorage.getItem("clientNomenRowsPerPage")) || 20,
+  );
+
+  const changePageSize = (size) => {
+    setPageSize(size);
+    localStorage.setItem("clientNomenRowsPerPage", String(size));
+    setPage(1); // the old page number can be past the end once rows grow
+  };
 
   const nomen = useClientNomen();
 
   const loading = () => nomen.isLoading;
   const total = () => (nomen.data ?? []).length;
-
-  // ── Fetch one page from server ────────────────────────────────────────────
-  const loadNomens = async () => {
-    setLoading(true);
-
-    try {
-      let pageNo = 1;
-      let allData = [];
-      let hasNextPage = true;
-
-      while (hasNextPage) {
-        const res = await fetchClientNomen(pageNo);
-
-        allData = [...allData, ...(res.data ?? [])];
-
-        const p = res.meta?.pagination;
-
-        hasNextPage = p?.has_next;
-        pageNo++;
-      }
-
-      setAllNomens(allData);
-      setNomens(allData);
-
-      setTotal(allData.length);
-      setTotalPages(1);
-      setPage(1);
-    } catch (err) {
-      console.error("Failed to load client nomens:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-  onMount(() => loadNomens());
 
   // ── Sort toggle ───────────────────────────────────────────────────────────
   const toggleSort = (key) => {
@@ -122,6 +93,26 @@ export default function ClientNomen() {
     });
 
     return data;
+  });
+
+  const totalPages = createMemo(() =>
+    Math.max(1, Math.ceil(filtered().length / pageSize())),
+  );
+
+  const paginated = createMemo(() => {
+    const p = Math.min(page(), totalPages());
+    const start = (p - 1) * pageSize();
+    return filtered().slice(start, start + pageSize());
+  });
+
+  const hasPrev = () => page() > 1;
+  const hasNext = () => page() < totalPages();
+
+  // Snap back to page 1 when the result set changes underneath us.
+  createEffect(() => {
+    search();
+    hasClientFilter();
+    setPage(1);
   });
 
   // ─── Render ───────────────────────────────────────────────────────────────
@@ -259,7 +250,7 @@ export default function ClientNomen() {
             }
           >
             <tbody>
-              <For each={filtered()}>
+              <For each={paginated()}>
                 {(nomen, i) => (
                   <tr
                     class={`border-b border-gray-100 dark:border-gray-800
@@ -349,25 +340,34 @@ export default function ClientNomen() {
                 colspan="4"
                 class="px-4 py-2.5 text-xs text-gray-500 dark:text-gray-400"
               >
-                {filtered().length} result{filtered().length !== 1 ? "s" : ""}{" "}
-                on this page
+                {paginated().length} result
+                {paginated().length !== 1 ? "s" : ""} on this page
               </td>
             </tr>
           </tfoot>
         </table>
       </div>
 
-      {/* Pagination — server-driven */}
+      {/* Pagination — client-side over the full nomenclature list */}
       <div class="flex items-center justify-between mt-5 flex-wrap gap-3">
-        <span class="text-sm text-gray-500 dark:text-gray-400">
-          {total() === 0
-            ? "No results"
-            : `Page ${page()} of ${totalPages()} · ${total()} total`}
-        </span>
+        <div class="flex items-center gap-3">
+          <span class="text-sm text-gray-500 dark:text-gray-400">
+            {filtered().length === 0
+              ? "No results"
+              : `Showing ${(page() - 1) * pageSize() + 1}–${Math.min(
+                  page() * pageSize(),
+                  filtered().length,
+                )} of ${filtered().length} nomenclatures${
+                  filtered().length === total() ? "" : ` (filtered from ${total()})`
+                }`}
+          </span>
+
+          <RowsPerPageSelect value={pageSize()} onChange={changePageSize} />
+        </div>
 
         <div class="flex items-center gap-2">
           <button
-            onClick={() => loadNomens(page() - 1)}
+            onClick={() => hasPrev() && setPage((p) => p - 1)}
             disabled={!hasPrev() || loading()}
             class="flex items-center gap-1.5 px-4 h-9 text-sm rounded-lg border
                    border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900
@@ -391,7 +391,7 @@ export default function ClientNomen() {
           </span>
 
           <button
-            onClick={() => loadNomens(page() + 1)}
+            onClick={() => hasNext() && setPage((p) => p + 1)}
             disabled={!hasNext() || loading()}
             class="flex items-center gap-1.5 px-4 h-9 text-sm rounded-lg
                    bg-purple-600 border border-purple-600 text-white

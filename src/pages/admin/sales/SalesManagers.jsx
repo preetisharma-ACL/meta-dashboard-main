@@ -341,6 +341,7 @@ export default function SalesManagers() {
         <PaymentsTable
           rows={managerRows}
           loading={moneyLoading}
+          storageKey="salesManagerClientsRowsPerPage"
           emptyHint="None of this manager's clients have payments data this month."
         />
       </Show>

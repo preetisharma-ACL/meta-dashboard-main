@@ -1,7 +1,8 @@
 import { api } from "../../../api/api";
 
-export const fetchManualBatches = async (page = 1) => {
-  return await api(`/leads/manual-batches/?page=${page}`, { method: "GET" });
+export const fetchManualBatches = async (page = 1, pageSize) => {
+  const qs = pageSize ? `?page=${page}&page_size=${pageSize}` : `?page=${page}`;
+  return await api(`/leads/manual-batches/${qs}`, { method: "GET" });
 };
 
 export const createManualBatch = async (payload) => {

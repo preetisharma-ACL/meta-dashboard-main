@@ -1,4 +1,4 @@
-import { For, Show, createSignal, createMemo } from "solid-js";
+import { For, Show, createSignal, createMemo, createEffect, on } from "solid-js";
 import {
   fmtMoney,
   fmtNum,
@@ -7,6 +7,7 @@ import {
   isMissing,
 } from "./salesFormat";
 import Avatar from "../common/Avatar";
+import RowsPerPageSelect from "../common/RowsPerPageSelect";
 
 // ─── Shared sales UI ──────────────────────────────────────────────────────────
 // One copy of the payments table + money tiles + chips, serving SalesPayments
@@ -118,7 +119,11 @@ const PAY_COL = Object.fromEntries(PAY_COLUMNS.map((c) => [c.key, c]));
 // Per-client payments table. Server order (debtors first) is the DEFAULT — sort
 // is opt-in: click a header to sort, click again to reverse, a third time to
 // restore the server order. Columns: Client · Type · Opening · Received ·
-// Billed · Remaining · Leads · Status. props.rows(): clients[]; props.loading().
+// Billed · Remaining · Leads · Status.
+//
+// props.rows(): clients[]; props.loading(); props.emptyHint;
+// props.storageKey — where the rows-per-page choice is remembered (one key per
+// screen, so Client Payments and Sales Payments don't overwrite each other).
 export function PaymentsTable(props) {
   const cellTone = (v, negTone, posTone) =>
     "px-4 py-3 text-right tabular-nums font-medium " +
@@ -186,7 +191,39 @@ export function PaymentsTable(props) {
     return [...rows].sort(missingLast);
   });
 
+  // ── Pagination (client-side) ───────────────────────────────────────────────
+  // Every screen that mounts this table already has the whole month in one
+  // payload, so paging is a slice: no refetch, and sorting still spans all rows.
+  const storageKey = () => props.storageKey ?? "salesPaymentsRowsPerPage";
+
+  const [page, setPage] = createSignal(1);
+  const [pageSize, setPageSize] = createSignal(
+    Number(localStorage.getItem(storageKey())) || 20,
+  );
+
+  const changePageSize = (size) => {
+    setPageSize(size);
+    localStorage.setItem(storageKey(), String(size));
+    setPage(1); // the old page number can be past the end once rows grow
+  };
+
+  const totalRows = () => sortedRows().length;
+  const totalPages = createMemo(() =>
+    Math.max(1, Math.ceil(totalRows() / pageSize())),
+  );
+  // Clamped: a filter can shrink the set below the page we were on.
+  const currentPage = () => Math.min(page(), totalPages());
+  const rowOffset = () => (currentPage() - 1) * pageSize();
+
+  const pagedRows = createMemo(() =>
+    sortedRows().slice(rowOffset(), rowOffset() + pageSize()),
+  );
+
+  // A new month, search or filter replaces the row set → back to page 1.
+  createEffect(on(() => props.rows(), () => setPage(1), { defer: true }));
+
   return (
+    <>
     <div class="overflow-x-auto bg-gray-50 dark:bg-gray-800 rounded-xl border border-[#E2E8F1] dark:border-gray-700 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)]">
       <table class="w-full text-sm table-auto">
         <thead class="bg-[#F8FAFC] dark:bg-gray-800">
@@ -249,7 +286,7 @@ export function PaymentsTable(props) {
           }
         >
           <tbody>
-            <For each={sortedRows()}>
+            <For each={pagedRows()}>
               {(c, i) => (
                 <tr
                   class={
@@ -259,10 +296,10 @@ export function PaymentsTable(props) {
                       : "bg-[#FAFBFD] dark:bg-gray-800")
                   }
                 >
-                  {/* S.No */}
+                  {/* S.No — keeps counting across pages */}
                   <td class="px-4 py-3 text-center">
                     <span class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-[#FBEEF0] dark:bg-red-900/30 text-[#AC2334] dark:text-red-300 text-xs font-bold">
-                      {i() + 1}
+                      {rowOffset() + i() + 1}
                     </span>
                   </td>
                   {/* Client */}
@@ -343,5 +380,68 @@ export function PaymentsTable(props) {
         </div>
       </Show>
     </div>
+
+    {/* ── Paginator ── */}
+    <Show when={!props.loading() && totalRows() > 0}>
+      <div class="flex items-center justify-between mt-4 flex-wrap gap-3">
+        <div class="flex items-center gap-3">
+          <span class="text-sm text-[#8593A8] dark:text-gray-400">
+            {`Showing ${rowOffset() + 1}–${Math.min(
+              rowOffset() + pageSize(),
+              totalRows(),
+            )} of ${totalRows()} clients`}
+          </span>
+
+          <RowsPerPageSelect value={pageSize()} onChange={changePageSize} />
+        </div>
+
+        <Show when={totalPages() > 1}>
+          <div class="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => currentPage() > 1 && setPage(currentPage() - 1)}
+              disabled={currentPage() === 1}
+              class="flex items-center gap-1.5 px-4 h-9 text-sm rounded-lg border border-[#E2E8F1] dark:border-gray-700 bg-white dark:bg-gray-900 text-[#54657E] dark:text-gray-200 hover:bg-[#F6F9FC] dark:hover:bg-gray-800 disabled:opacity-35 disabled:cursor-default transition-colors"
+            >
+              <svg
+                class="w-3.5 h-3.5"
+                fill="none"
+                viewBox="0 0 16 16"
+                stroke="currentColor"
+                stroke-width="1.8"
+              >
+                <path d="M10 12L6 8l4-4" />
+              </svg>
+              Prev
+            </button>
+
+            <span class="text-sm text-[#8593A8] dark:text-gray-400 px-1">
+              Page {currentPage()} of {totalPages()}
+            </span>
+
+            <button
+              type="button"
+              onClick={() =>
+                currentPage() < totalPages() && setPage(currentPage() + 1)
+              }
+              disabled={currentPage() >= totalPages()}
+              class="flex items-center gap-1.5 px-4 h-9 text-sm rounded-lg bg-[#AC2334] border border-[#AC2334] text-white hover:bg-[#8E1C2B] disabled:opacity-35 disabled:cursor-default transition-colors"
+            >
+              Next
+              <svg
+                class="w-3.5 h-3.5"
+                fill="none"
+                viewBox="0 0 16 16"
+                stroke="currentColor"
+                stroke-width="1.8"
+              >
+                <path d="M6 4l4 4-4 4" />
+              </svg>
+            </button>
+          </div>
+        </Show>
+      </div>
+    </Show>
+    </>
   );
 }
