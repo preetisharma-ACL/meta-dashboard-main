@@ -28,6 +28,7 @@ import {
 } from "solid-js";
 import { fetchPaymentsOverview } from "../services/coDashboard-service";
 import Avatar from "../../../components/common/Avatar";
+import RowsPerPageSelect from "../../../components/common/RowsPerPageSelect";
 
 // Distinct badge colors per client type (v4 theme tokens)
 const TYPE_BADGE = {
@@ -74,7 +75,17 @@ export default function CoordinationDashboard() {
   const [sortKey, setSortKey] = createSignal("closing"); // default sort
   const [sortDir, setSortDir] = createSignal("asc"); // debtors first
   const [page, setPage] = createSignal(1);
-  const PAGE_SIZE = 30;
+  // Rows-per-page. Everything is client-side here, so a change only re-slices.
+  // 30 stays in the list because it is this table's long-standing default.
+  const ROWS_PER_PAGE_OPTIONS = [10, 20, 30, 50, 100];
+  const [pageSize, setPageSize] = createSignal(
+    Number(localStorage.getItem("coordinationRowsPerPage")) || 30,
+  );
+  const changePageSize = (size) => {
+    setPageSize(size);
+    localStorage.setItem("coordinationRowsPerPage", String(size));
+    setPage(1); // the old page number can be past the end once rows grow
+  };
 
   // ── Data loading ─────────────────────────────────────────────────────────────
   const load = async (refresh = false) => {
@@ -224,12 +235,12 @@ export default function CoordinationDashboard() {
   });
 
   const totalPages = createMemo(() =>
-    Math.max(1, Math.ceil(filteredRows().length / PAGE_SIZE)),
+    Math.max(1, Math.ceil(filteredRows().length / pageSize())),
   );
 
   const pagedRows = createMemo(() => {
-    const start = (page() - 1) * PAGE_SIZE;
-    return filteredRows().slice(start, start + PAGE_SIZE);
+    const start = (page() - 1) * pageSize();
+    return filteredRows().slice(start, start + pageSize());
   });
 
   const handleSort = (key) => {
@@ -712,11 +723,28 @@ export default function CoordinationDashboard() {
 
       {/* Footer count */}
       <div class="flex items-center justify-between mt-5 flex-wrap gap-3">
-        <span class="text-sm text-[#8593A8] dark:text-gray-400">
-          {filteredRows().length === rows().length
-            ? `${rows().length} clients`
-            : `Showing ${filteredRows().length} of ${rows().length} clients`}
-        </span>
+        <div class="flex items-center gap-3">
+          <span class="text-sm text-[#8593A8] dark:text-gray-400">
+            {filteredRows().length === 0
+              ? "No clients"
+              : `Showing ${(page() - 1) * pageSize() + 1}–${Math.min(
+                  page() * pageSize(),
+                  filteredRows().length,
+                )} of ${filteredRows().length} clients${
+                  filteredRows().length === rows().length
+                    ? ""
+                    : ` (filtered from ${rows().length})`
+                }`}
+          </span>
+
+          <Show when={filteredRows().length > 0}>
+            <RowsPerPageSelect
+              value={pageSize()}
+              options={ROWS_PER_PAGE_OPTIONS}
+              onChange={changePageSize}
+            />
+          </Show>
+        </div>
 
         <Show when={totalPages() > 1}>
           <div class="flex items-center gap-2">

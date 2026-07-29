@@ -53,6 +53,7 @@ import { fetchAllCampaigns } from "../services/campaigns";
 import { fetchAllAdminClients } from "./admin/services/fetchClients";
 import { fetchSalesClients } from "../services/sales";
 import Avatar from "../components/common/Avatar";
+import RowsPerPageSelect from "../components/common/RowsPerPageSelect";
 import CountUp from "../components/CountUp";
 import ClientAIInsightButton from "../components/ClientAIInsightButton";
 import {
@@ -265,6 +266,16 @@ export default function MainDashboard() {
   const setCardRange = (v) => setDashboardFilter("cardRange", v);
   const [manualBatches, setManualBatches] = createSignal([]);
   const [currentPage, setCurrentPage] = createSignal(1);
+  // Rows-per-page. This table paginates client-side over allProjects(), so the
+  // choice only re-slices — no refetch. Persisted so it survives navigation.
+  const [rowsPerPage, setRowsPerPage] = createSignal(
+    Number(localStorage.getItem("clientDashboardRowsPerPage")) || 20,
+  );
+  const changeRowsPerPage = (size) => {
+    setRowsPerPage(size);
+    localStorage.setItem("clientDashboardRowsPerPage", String(size));
+    setCurrentPage(1); // the old page number can be past the end once rows grow
+  };
   const allProjects = () => projectsCache.allProjects;
 
   // ── Premium date range sent to the API (premium_metrics is server-computed
@@ -286,7 +297,9 @@ export default function MainDashboard() {
   const projectInsightsMap = () => projectsCache.insightsMap;
   const loading = () => projectsCache.loading;
   const page = () => projectsCache.meta?.page ?? 1;
-  const pageSize = () => projectsCache.meta?.page_size ?? 20;
+  // Slicing/labelling follow the user's rows-per-page choice, not the size the
+  // server happened to page at (the table renders the fully swept allProjects()).
+  const pageSize = () => rowsPerPage();
   const total = () => projectsCache.meta?.total ?? 0;
   const totalPages = () => projectsCache.meta?.total_pages ?? 1;
   const hasNext = () => projectsCache.meta?.has_next ?? false;
@@ -3319,12 +3332,19 @@ export default function MainDashboard() {
           </Show>
         </table>
       </div>
-      <div class="flex items-center justify-between mt-5 flex-wrap gap-3">
-        <span class="text-sm text-[#8593A8] dark:text-gray-400">
-          {total() === 0
-            ? "No results"
-            : `Showing ${(currentPage() - 1) * pageSize() + 1}–${Math.min(page() * pageSize(), total())} of ${total()} results`}
-        </span>
+      <div class="flex items-center justify-between mt-5 mb-4 flex-wrap gap-3">
+        <div class="flex items-center gap-3">
+          <span class="text-sm text-[#8593A8] dark:text-gray-400">
+            {total() === 0
+              ? "No results"
+              : `Showing ${(currentPage() - 1) * pageSize() + 1}–${Math.min(currentPage() * pageSize(), total())} of ${total()} results`}
+          </span>
+
+          <RowsPerPageSelect
+            value={rowsPerPage()}
+            onChange={changeRowsPerPage}
+          />
+        </div>
 
         <div class="flex items-center gap-2">
           <button
