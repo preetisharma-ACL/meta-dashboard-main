@@ -52,12 +52,18 @@ export const isGlobalRead = () => {
 };
 
 // ─── Campaign write gate (pause/resume) ───────────────────────────────────────
-// Who may write a campaign's status: admins + the other GLOBAL_READ roles
-// (coordination, accounts), and Tier-1 campaign managers. Tier-2 CMs, clients,
-// and sales cannot. The backend is the real authority (it also scope-checks that
-// a CM owns the campaign); this gate just decides whether to SHOW the control so
-// non-writers don't see a button that always 403s.
-const CAMPAIGN_WRITE_ROLES = new Set(["admin", "coordination", "accounts"]);
+// Who may write a campaign's status: admins, coordination, and Tier-1 campaign
+// managers. Tier-2 CMs, clients, sales and ACCOUNTS cannot. The backend is the
+// real authority (it also scope-checks that a CM owns the campaign); this gate
+// just decides whether to SHOW the control so non-writers don't see a button
+// that always 403s.
+//
+// NOTE — this set is deliberately NOT the GLOBAL_READ set. Accounts is a
+// global READER (it needs to see money across every client) but never a
+// campaign writer: its job is the payments desk. Removing it here also strips
+// the campaign write controls it could previously see in CMHierarchy,
+// CampaignBudgetControl and CampaignStatusControl, which is the point.
+const CAMPAIGN_WRITE_ROLES = new Set(["admin", "coordination"]);
 
 export const canWriteCampaigns = () => {
   // Primary source of truth: the loaded /auth/me store.

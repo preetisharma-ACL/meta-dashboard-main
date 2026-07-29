@@ -211,12 +211,15 @@ function App() {
               )}
             />
             {/* Bulk campaign ops — route-gated to write-capable roles; the page
-                further gates Tier-2 CMs out via canWriteCampaigns(). */}
+                further gates Tier-2 CMs out via canWriteCampaigns(). "accounts"
+                is deliberately absent: they run the payments desk and never
+                write campaigns, so a direct URL redirects rather than rendering
+                a page whose every control is disabled. */}
             <Route
               path="/bulk-campaign-operations"
               component={() => (
                 <AdminRoute
-                  roles={["admin", "coordination", "accounts", "campaign_manager"]}
+                  roles={["admin", "coordination", "campaign_manager"]}
                 >
                   <BulkCampaignOperations />
                 </AdminRoute>
