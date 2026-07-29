@@ -1,5 +1,6 @@
-import { For, Show } from "solid-js";
+import { For, Show, createSignal, createMemo } from "solid-js";
 import RowsPerPageSelect from "../common/RowsPerPageSelect";
+import Avatar from "../common/Avatar";
 import {
   fmtMoney,
   fmtDate,
@@ -34,8 +35,59 @@ import {
 //   emptyHint
 
 const TH =
-  "px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400 whitespace-nowrap";
+  "px-4 py-4 text-[12.5px] font-bold uppercase tracking-wide text-[#54657E] dark:text-gray-300 whitespace-nowrap";
 const TD = "px-4 py-3 text-sm text-[#14233A] dark:text-gray-200 align-middle";
+
+// ── Sortable columns ──────────────────────────────────────────────────────────
+// Header metadata + sort accessors only — the cells themselves stay hand-written
+// below (they carry sub-lines: +TDS, @gst%, "by <who>", "Ref …"). The order here
+// MUST match the order of the <td>s in the row.
+//
+// `num`/`date` columns open largest/newest-first; `str` columns A→Z.
+const COLUMNS = [
+  {
+    key: "client",
+    label: "Client",
+    align: "left",
+    type: "str",
+    get: (p) => p.clientName ?? (p.clientNomen != null ? `Client #${p.clientNomen}` : null),
+  },
+  { key: "base", label: "Base", align: "right", type: "num", get: (p) => p.baseAmount },
+  { key: "gst", label: "GST", align: "right", type: "num", get: (p) => p.gstAmount },
+  { key: "final", label: "Final", align: "right", type: "num", get: (p) => p.finalAmount },
+  { key: "method", label: "Method", align: "left", type: "str", get: (p) => methodLabel(p.method) },
+  {
+    key: "docs",
+    label: "Docs status",
+    align: "center",
+    type: "str",
+    get: (p) => p.docsStatusLabel ?? p.docsStatus,
+  },
+  { key: "date", label: "Date", align: "left", type: "date", get: (p) => p.paidAt },
+  { key: "recordedBy", label: "Recorded by", align: "left", type: "str", get: (p) => p.createdBy },
+];
+const COL = Object.fromEntries(COLUMNS.map((c) => [c.key, c]));
+
+const alignClass = (a) =>
+  a === "right" ? " text-right" : a === "center" ? " text-center" : " text-left";
+
+const isMissing = (v) => v === null || v === undefined || v === "";
+
+// Comparable value, or null for "missing". Missing never coerces to 0 — a row
+// with no base amount must sort to the bottom, not sit among the ₹0s.
+const sortValue = (row, col) => {
+  const v = col.get(row);
+  if (isMissing(v)) return null;
+  if (col.type === "num") {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  if (col.type === "date") {
+    const t = Date.parse(v);
+    return Number.isFinite(t) ? t : null;
+  }
+  return String(v).toLowerCase();
+};
 
 export default function PaymentsTable(props) {
   const rows = () => props.rows?.() ?? [];
@@ -61,20 +113,95 @@ export default function PaymentsTable(props) {
 
   const colCount = () => (props.canManage ? 9 : 8);
 
+  // ── Sorting ───────────────────────────────────────────────────────────────
+  // SCOPE: this reorders THE CURRENT PAGE ONLY. `rows()` is one server slice —
+  // the service sends no ordering param, so there is nothing here that could
+  // reorder the other 200-odd rows sitting on later pages. Rather than let that
+  // read as a whole-ledger sort, the default is the server's own order and an
+  // explicit "this page only" note appears the moment a sort is on.
+  //
+  // Click a header to sort, again to reverse, a third time to restore the
+  // server order.
+  const [sortKey, setSortKey] = createSignal(null);
+  const [sortDir, setSortDir] = createSignal("asc");
+
+  const toggleSort = (key) => {
+    const primary = COL[key].type === "str" ? "asc" : "desc";
+    const secondary = primary === "asc" ? "desc" : "asc";
+    if (sortKey() !== key) {
+      setSortKey(key);
+      setSortDir(primary);
+    } else if (sortDir() === primary) {
+      setSortDir(secondary);
+    } else {
+      setSortKey(null); // third click → back to server order
+      setSortDir("asc");
+    }
+  };
+
+  const sortedRows = createMemo(() => {
+    const list = rows();
+    const key = sortKey();
+    if (!key) return list; // server order
+    const col = COL[key];
+    const dir = sortDir() === "asc" ? 1 : -1;
+    // Missing values pin to the bottom in BOTH directions, so reversing a sort
+    // never floats a row of "—" to the top.
+    return [...list].sort((a, b) => {
+      const va = sortValue(a, col);
+      const vb = sortValue(b, col);
+      if (va === null && vb === null) return 0;
+      if (va === null) return 1;
+      if (vb === null) return -1;
+      return (va < vb ? -1 : va > vb ? 1 : 0) * dir;
+    });
+  });
+
+  // Only worth saying when there ARE other pages to be wrong about.
+  const sortIsPartial = () =>
+    sortKey() !== null && total() != null && total() > rows().length;
+
   return (
     <div>
       <div class="overflow-x-auto rounded-2xl border border-[#E2E8F1] dark:border-gray-700 bg-white dark:bg-gray-800 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)]">
         <table class="w-full min-w-[960px]">
-          <thead class="bg-[#F6F9FC] dark:bg-gray-900/60 border-b border-[#E2E8F1] dark:border-gray-700">
+          <thead class="bg-[#E8EEF6] dark:bg-gray-900/80 border-b border-[#D3DDEA] dark:border-gray-700">
             <tr>
-              <th class={TH + " text-left"}>Client</th>
-              <th class={TH + " text-right"}>Base</th>
-              <th class={TH + " text-right"}>GST</th>
-              <th class={TH + " text-right"}>Final</th>
-              <th class={TH + " text-left"}>Method</th>
-              <th class={TH + " text-center"}>Docs status</th>
-              <th class={TH + " text-left"}>Date</th>
-              <th class={TH + " text-left"}>Recorded by</th>
+              <For each={COLUMNS}>
+                {(col) => (
+                  <th
+                    class={TH + alignClass(col.align)}
+                    aria-sort={
+                      sortKey() === col.key
+                        ? sortDir() === "asc"
+                          ? "ascending"
+                          : "descending"
+                        : "none"
+                    }
+                  >
+                    <button
+                      type="button"
+                      onClick={() => toggleSort(col.key)}
+                      title={`Sort by ${col.label} (this page)`}
+                      class="inline-flex items-center uppercase tracking-wider font-bold hover:text-[#AC2334] dark:hover:text-red-300 transition-colors"
+                    >
+                      {col.label}
+                      <Show
+                        when={sortKey() === col.key}
+                        fallback={
+                          <span class="ml-1 text-[#C3CDDB] dark:text-gray-600">
+                            ⇅
+                          </span>
+                        }
+                      >
+                        <span class="ml-1 text-[#AC2334] dark:text-red-300">
+                          {sortDir() === "asc" ? "↑" : "↓"}
+                        </span>
+                      </Show>
+                    </button>
+                  </th>
+                )}
+              </For>
               <Show when={props.canManage}>
                 <th class={TH + " text-right"}>Actions</th>
               </Show>
@@ -115,21 +242,43 @@ export default function PaymentsTable(props) {
 
             {/* Rows */}
             <Show when={!props.loading?.()}>
-              <For each={rows()}>
-                {(p) => (
+              <For each={sortedRows()}>
+                {(p) => {
+                  // One read, shared by the avatar and the label, so the
+                  // initials can never disagree with the name beside them.
+                  const clientLabel =
+                    p.clientName ??
+                    (p.clientNomen != null ? `Client #${p.clientNomen}` : null);
+                  return (
                   <tr class="hover:bg-[#F6F9FC] dark:hover:bg-gray-900/40 transition-colors">
                     <td class={TD}>
-                      <span class="font-semibold">
-                        {p.clientName ??
-                          (p.clientNomen != null
-                            ? `Client #${p.clientNomen}`
-                            : "—")}
-                      </span>
-                      <Show when={p.project}>
-                        <span class="block text-xs text-[#8593A8] dark:text-gray-500">
-                          {p.project}
-                        </span>
-                      </Show>
+                      <div class="flex items-center gap-3">
+                        {/* An unattributed row gets a neutral placeholder, not
+                            a coloured avatar for a client that isn't there. */}
+                        <Show
+                          when={clientLabel}
+                          fallback={
+                            <span class="w-8 h-8 flex-shrink-0 rounded-full bg-[#E2E8F1] dark:bg-gray-700 grid place-items-center text-xs font-bold text-[#8593A8] dark:text-gray-500">
+                              —
+                            </span>
+                          }
+                        >
+                          <Avatar name={clientLabel} />
+                        </Show>
+                        <div class="min-w-0">
+                          <span
+                            class="font-semibold block truncate max-w-[200px]"
+                            title={clientLabel ?? undefined}
+                          >
+                            {clientLabel ?? "—"}
+                          </span>
+                          <Show when={p.project}>
+                            <span class="block text-xs text-[#8593A8] dark:text-gray-500 truncate max-w-[200px]">
+                              {p.project}
+                            </span>
+                          </Show>
+                        </div>
+                      </div>
                     </td>
 
                     <td class={TD + " text-right tabular-nums"}>
@@ -238,7 +387,8 @@ export default function PaymentsTable(props) {
                       </td>
                     </Show>
                   </tr>
-                )}
+                  );
+                }}
               </For>
             </Show>
           </tbody>
@@ -265,6 +415,23 @@ export default function PaymentsTable(props) {
               value={pageSize()}
               onChange={(n) => props.onPageSizeChange?.(n)}
             />
+            {/* The ledger is server-paginated, so a header click can only
+                reorder the slice in hand. Say so rather than let it read as a
+                whole-ledger sort — clearing it restores the server order. */}
+            <Show when={sortIsPartial()}>
+              <button
+                type="button"
+                onClick={() => {
+                  setSortKey(null);
+                  setSortDir("asc");
+                }}
+                title="Clear the sort and restore the server order"
+                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold text-[#8A6410] dark:text-yellow-200 bg-[#FBF3E2] dark:bg-yellow-900/15 border border-[#B07A14]/30 hover:bg-[#F7E9C9] dark:hover:bg-yellow-900/25 transition-colors"
+              >
+                Sorted within this page only
+                <span class="text-[#B07A14] dark:text-yellow-300">✕</span>
+              </button>
+            </Show>
           </div>
 
           <Show when={hasNext() || hasPrev()}>

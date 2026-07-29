@@ -191,6 +191,7 @@ export default function PaymentsList(props) {
       value: fmtCount(awaitingDocs()),
       tone: "text-[#B07A14] dark:text-yellow-300",
       caption: "across all pages",
+      divider: true, // vertical rule before this stat (matches the billing panel)
     },
     {
       // Deliberately page-scoped and LABELLED page-scoped. There's no
@@ -201,8 +202,30 @@ export default function PaymentsList(props) {
       value: fmtMoney(sumMoney(rows(), "finalAmount"), 0),
       tone: "text-[#15966A] dark:text-green-300",
       caption: `${rows().length} row${rows().length === 1 ? "" : "s"} shown`,
+      divider: true,
     },
   ]);
+
+  // ── Focal ratio for the summary panel ─────────────────────────────────────
+  // Share of the filtered ledger that has its paperwork in. Both reads are
+  // server totals for the WHOLE filtered set (not the current page), so this
+  // describes every matching payment. null whenever it can't be computed
+  // honestly — total/pending still loading, or nothing matches — so the donut
+  // prints "—" rather than a fake 0%. NOTE the `== null` guards: Number(null)
+  // is 0, so a plain isFinite check would read "loading" as "zero payments".
+  const docsComplete = createMemo(() => {
+    const t = total();
+    const p = awaitingDocs();
+    if (t == null || p == null) return null;
+    return Number(t) - Number(p);
+  });
+
+  const docsCompletePct = createMemo(() => {
+    const t = Number(total());
+    const done = docsComplete();
+    if (done == null || !Number.isFinite(t) || t <= 0) return null;
+    return (done / t) * 100;
+  });
 
   const hasFilters = () =>
     query().trim() !== "" ||
@@ -403,30 +426,137 @@ export default function PaymentsList(props) {
         </div>
       </Show>
 
-      {/* ════════ SUMMARY TILES ════════ */}
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <For each={tiles()}>
-          {(t) => (
-            <div class="bg-white dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] p-5">
-              <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
-                {t.label}
-              </p>
-              <p class={`text-2xl font-bold mt-1.5 tracking-tight tabular-nums ${t.tone}`}>
-                <Show
-                  when={!loading()}
-                  fallback={
-                    <span class="inline-block h-8 w-28 bg-gray-200 dark:bg-gray-700 rounded animate-pulse align-middle" />
+      {/* ════════ SUMMARY PANEL (focal donut + stats + backlog pill) ═══════════
+          Same shape as the Client Billing summary panel: one card, a focal
+          ring, divider-separated stats, and a progress band along the bottom.
+          The numbers are the exact same three reads as the old tiles — only
+          the presentation changed.
+
+          The donut is HIDDEN in queue mode: there every row is pending by
+          construction, so "paperwork complete" would be a permanent 0% that
+          says nothing about the backlog. */}
+      <div class="bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-2xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] px-5 sm:px-7 py-5 mb-6">
+        <div class="flex flex-wrap items-center gap-x-6 gap-y-4">
+          {/* focal — share of the filtered ledger whose paperwork is in */}
+          <Show when={!queueMode()}>
+            <div class="flex items-center gap-4 sm:pr-6 sm:border-r border-[#E2E8F1] dark:border-gray-700">
+              <div class="relative w-14 h-14 grid place-items-center flex-none">
+                <svg viewBox="0 0 56 56" class="absolute inset-0 -rotate-90">
+                  <circle cx="28" cy="28" r="25" fill="none" stroke="#D8EFE6" stroke-width="5" />
+                  <circle
+                    cx="28"
+                    cy="28"
+                    r="25"
+                    fill="none"
+                    stroke="#15966A"
+                    stroke-width="5"
+                    stroke-linecap="round"
+                    stroke-dasharray={2 * Math.PI * 25}
+                    stroke-dashoffset={
+                      2 *
+                      Math.PI *
+                      25 *
+                      (1 -
+                        Math.max(
+                          0,
+                          Math.min((docsCompletePct() ?? 0) / 100, 1),
+                        ))
+                    }
+                  />
+                </svg>
+                <span class="text-[15px] font-extrabold text-[#15966A] dark:text-green-300 tabular-nums">
+                  <Show when={!loading()} fallback="…">
+                    <Show when={docsCompletePct() !== null} fallback="—">
+                      {Math.round(docsCompletePct())}%
+                    </Show>
+                  </Show>
+                </span>
+              </div>
+              <div>
+                <p class="text-[15px] font-extrabold text-[#14233A] dark:text-white">
+                  Documented
+                </p>
+                <p class="text-xs text-[#54657E] dark:text-gray-400 max-w-[180px]">
+                  of every payment matching these filters
+                </p>
+              </div>
+            </div>
+          </Show>
+
+          {/* stats — same tiles(), laid out as minis */}
+          <div class="flex flex-wrap gap-x-7 gap-y-3">
+            <For each={tiles()}>
+              {(t) => (
+                <div
+                  class={
+                    t.divider
+                      ? "sm:pl-7 sm:border-l border-[#E2E8F1] dark:border-gray-700"
+                      : ""
                   }
                 >
-                  {t.value}
-                </Show>
-              </p>
-              <p class="text-xs text-[#54657E] dark:text-gray-400 mt-0.5">
-                {t.caption}
-              </p>
+                  <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
+                    {t.label}
+                  </p>
+                  <p class={`text-xl font-bold mt-1 tabular-nums ${t.tone}`}>
+                    <Show
+                      when={!loading()}
+                      fallback={
+                        <span class="inline-block h-6 w-24 bg-gray-200 dark:bg-gray-700 rounded animate-pulse align-middle" />
+                      }
+                    >
+                      {t.value}
+                    </Show>
+                  </p>
+                  <p class="text-xs text-[#54657E] dark:text-gray-400">
+                    {t.caption}
+                  </p>
+                </div>
+              )}
+            </For>
+          </div>
+
+          {/* A healthy-looking ledger can still hide a paperwork backlog —
+              surface it, and make the pill itself the way into the queue. */}
+          <Show when={!queueMode() && !loading() && (awaitingDocs() ?? 0) > 0}>
+            <A
+              href="/payments/needs-docs"
+              class="ml-auto inline-flex items-center gap-3 px-4 py-2.5 rounded-xl bg-[#FBF3E2] dark:bg-yellow-900/15 border border-[#B07A14]/30 dark:border-yellow-800 hover:bg-[#F7E9C9] dark:hover:bg-yellow-900/25 transition-colors"
+            >
+              <span class="w-8 h-8 flex-none rounded-lg bg-[#B07A14] text-white grid place-items-center font-extrabold text-sm tabular-nums">
+                {awaitingDocs()}
+              </span>
+              <span class="text-left">
+                <span class="block text-[13px] font-bold text-[#8A6410] dark:text-yellow-200">
+                  of {fmtCount(total())} still need paperwork
+                </span>
+                <span class="block text-[11.5px] font-semibold text-[#54657E] dark:text-gray-400">
+                  Open the queue →
+                </span>
+              </span>
+            </A>
+          </Show>
+        </div>
+
+        {/* paperwork band — the focal ratio, drawn wide */}
+        <Show when={!queueMode() && !loading() && docsCompletePct() !== null}>
+          <div class="mt-5 pt-4 border-t border-[#E2E8F1] dark:border-gray-700">
+            <div class="flex items-center justify-between mb-2.5">
+              <span class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
+                Paperwork progress
+              </span>
+              <span class="text-xs font-semibold text-[#54657E] dark:text-gray-400 tabular-nums">
+                {fmtCount(docsComplete())} documented of {fmtCount(total())}{" "}
+                payments
+              </span>
             </div>
-          )}
-        </For>
+            <div class="h-1.5 rounded-full overflow-hidden bg-[#E2E8F1] dark:bg-gray-700">
+              <div
+                class="h-full rounded-full bg-[#15966A]"
+                style={`width:${Math.max(0, Math.min(docsCompletePct(), 100))}%`}
+              />
+            </div>
+          </div>
+        </Show>
       </div>
 
       {/* ════════ CLIENT TYPE ════════ */}
@@ -522,21 +652,8 @@ export default function PaymentsList(props) {
         </Show>
       </div>
 
-      {/* Non-queue pages still surface the backlog, with a way to act on it. */}
-      <Show when={!queueMode() && !loading() && (awaitingDocs() ?? 0) > 0}>
-        <div class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#B07A14]/25 bg-[#FBF3E2] dark:bg-yellow-900/15 px-4 py-3">
-          <p class="text-sm font-semibold text-[#8A6410] dark:text-yellow-200">
-            {awaitingDocs()} payment{awaitingDocs() === 1 ? "" : "s"} still need
-            paperwork.
-          </p>
-          <A
-            href="/payments/needs-docs"
-            class="text-sm font-bold text-[#8A6410] dark:text-yellow-200 underline underline-offset-2 hover:text-[#B07A14]"
-          >
-            Open the queue →
-          </A>
-        </div>
-      </Show>
+      {/* The backlog callout that used to live here is now the pill inside the
+          summary panel above — same count, same link into the queue. */}
 
       {/* ════════ TABLE ════════ */}
       <PaymentsTable
