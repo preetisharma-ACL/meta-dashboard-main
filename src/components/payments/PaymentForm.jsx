@@ -5,9 +5,10 @@ import {
   fieldClass,
   labelClass,
   fmtMoney,
-  METHOD_SUGGESTIONS,
+  PAYMENT_METHODS,
   methodLabel,
-  toDateInput,
+  toDateTimeInput,
+  fromDateTimeInput,
 } from "./paymentsFormat";
 
 // ─── Shared record / edit payment form ────────────────────────────────────────
@@ -45,30 +46,26 @@ export default function PaymentForm(props) {
     existing()?.gstPct != null ? String(existing().gstPct) : String(GST_OPTIONS[1]),
   );
   const [method, setMethod] = createSignal(existing()?.method ?? "");
-  // "Other…" escape hatch — the backend's method vocabulary isn't published, so
-  // an operator can always type the exact value the server expects.
-  const [customMethod, setCustomMethod] = createSignal(false);
   const [project, setProject] = createSignal(existing()?.project ?? "");
   const [notes, setNotes] = createSignal(existing()?.notes ?? "");
   const [referenceId, setReferenceId] = createSignal(
     existing()?.referenceId ?? "",
   );
   const [invoiceUrl, setInvoiceUrl] = createSignal(existing()?.invoiceUrl ?? "");
-  const [paidAt, setPaidAt] = createSignal(toDateInput(existing()?.paidAt));
+  const [paidAt, setPaidAt] = createSignal(toDateTimeInput(existing()?.paidAt));
 
   const [touched, setTouched] = createSignal(false);
 
-  // Union of the suggested vocabulary and whatever methods already exist in the
-  // ledger, so the picker offers real values even if our guesses are wrong.
-  const methodOptions = createMemo(() => {
-    const seen = new Set(
-      (props.methodOptions ?? [])
-        .filter(Boolean)
-        .map((m) => String(m).toLowerCase()),
-    );
-    METHOD_SUGGESTIONS.forEach((m) => seen.add(m));
-    if (method()) seen.add(String(method()).toLowerCase());
-    return [...seen].sort();
+  // A historical row may carry a method from before the enum was enforced.
+  // Surfacing it as a disabled option keeps the select from silently showing
+  // blank (which would look like "no method" and re-save as a change) while
+  // still making the six valid choices the only selectable ones.
+  const legacyMethod = createMemo(() => {
+    const m = existing()?.method;
+    if (!m) return null;
+    return PAYMENT_METHODS.some((o) => o.value === String(m).toLowerCase())
+      ? null
+      : m;
   });
 
   // ── Live preview — mirrors Payment.save(), never transmitted ───────────────
@@ -129,7 +126,9 @@ export default function PaymentForm(props) {
     put("invoiceUrl", invoiceUrl().trim(), before.invoiceUrl);
     put("notes", notes(), before.notes);
     put("method", method(), before.method);
-    put("paidAt", paidAt(), toDateInput(before.paidAt));
+    // Compare in the input's local format, but SEND an absolute instant.
+    if (paidAt() !== toDateTimeInput(before.paidAt))
+      out.paidAt = fromDateTimeInput(paidAt());
     put("baseAmount", baseNum(), before.baseAmount);
     put("gstPct", Number(gstPct()), before.gstPct);
     if (tdsApplied() !== !!before.tdsApplied) out.tdsApplied = tdsApplied();
@@ -156,6 +155,13 @@ export default function PaymentForm(props) {
         method: method(),
         project: project().trim(),
         notes: notes().trim(),
+        // Optional paperwork — add-funds now accepts these, so accounts can
+        // file the reference at record-time instead of recording and then
+        // re-opening the row in Edit. Blank stays blank; the service drops
+        // empty values rather than posting "".
+        referenceId: referenceId().trim(),
+        invoiceUrl: invoiceUrl().trim(),
+        paidAt: fromDateTimeInput(paidAt()),
       });
     }
   };
@@ -168,9 +174,11 @@ export default function PaymentForm(props) {
       setTdsAmount("");
       setGstPct(String(GST_OPTIONS[1]));
       setMethod("");
-      setCustomMethod(false);
       setProject("");
       setNotes("");
+      setReferenceId("");
+      setInvoiceUrl("");
+      setPaidAt("");
       setTouched(false);
     });
   };
@@ -329,55 +337,30 @@ export default function PaymentForm(props) {
             <label class={labelClass}>
               Method <span class="text-[#AC2334]">*</span>
             </label>
-            <Show
-              when={!customMethod()}
-              fallback={
-                <div class="flex gap-2">
-                  <input
-                    type="text"
-                    value={method()}
-                    disabled={props.submitting}
-                    onInput={(e) => setMethod(e.currentTarget.value)}
-                    placeholder="Enter method…"
-                    class={fieldClass}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCustomMethod(false);
-                      setMethod("");
-                    }}
-                    class="px-3 rounded-lg border border-[#E2E8F1] dark:border-gray-700 text-xs font-semibold text-[#54657E] dark:text-gray-300 hover:bg-[#F6F9FC] dark:hover:bg-gray-800"
-                  >
-                    List
-                  </button>
-                </div>
+            {/* Exactly the six PaymentMethod enum values — no free-text escape.
+                The API rejects anything else, so offering more would only
+                manufacture 400s. */}
+            <select
+              value={method()}
+              disabled={props.submitting}
+              onChange={(e) => setMethod(e.currentTarget.value)}
+              class={
+                fieldClass +
+                (show("method")
+                  ? " border-[#AC2334] focus:ring-[#AC2334]/25"
+                  : "")
               }
             >
-              <select
-                value={method()}
-                disabled={props.submitting}
-                onChange={(e) => {
-                  const v = e.currentTarget.value;
-                  if (v === "__other__") {
-                    setCustomMethod(true);
-                    setMethod("");
-                  } else setMethod(v);
-                }}
-                class={
-                  fieldClass +
-                  (show("method")
-                    ? " border-[#AC2334] focus:ring-[#AC2334]/25"
-                    : "")
-                }
-              >
-                <option value="">Select method…</option>
-                <For each={methodOptions()}>
-                  {(m) => <option value={m}>{methodLabel(m)}</option>}
-                </For>
-                <option value="__other__">Other…</option>
-              </select>
-            </Show>
+              <option value="">Select method…</option>
+              <For each={PAYMENT_METHODS}>
+                {(m) => <option value={m.value}>{m.label}</option>}
+              </For>
+              <Show when={legacyMethod()}>
+                <option value={legacyMethod()} disabled>
+                  {methodLabel(legacyMethod())} (no longer available)
+                </option>
+              </Show>
+            </select>
             <Show when={show("method")}>
               <p class="mt-1.5 text-xs font-medium text-[#AC2334] dark:text-red-400">
                 {show("method")}
@@ -405,9 +388,20 @@ export default function PaymentForm(props) {
             the same rule. */}
         <Show when={props.canFillDocs}>
           <div class="rounded-xl border border-[#E2E8F1] dark:border-gray-700 p-4 space-y-5">
-            <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
-              Paperwork
-            </p>
+            <div>
+              <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
+                Paperwork
+              </p>
+              <p class="mt-1 text-xs text-[#54657E] dark:text-gray-400">
+                <Show
+                  when={isEdit()}
+                  fallback="All optional — fill what you have now, or add it later from the ledger. Leaving the date blank records the payment as of now."
+                >
+                  Editable at any time; an amount change is recomputed by the
+                  server.
+                </Show>
+              </p>
+            </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
               <div>
@@ -422,9 +416,9 @@ export default function PaymentForm(props) {
                 />
               </div>
               <div>
-                <label class={labelClass}>Payment date</label>
+                <label class={labelClass}>Payment date &amp; time</label>
                 <input
-                  type="date"
+                  type="datetime-local"
                   value={paidAt()}
                   disabled={props.submitting}
                   onInput={(e) => setPaidAt(e.currentTarget.value)}

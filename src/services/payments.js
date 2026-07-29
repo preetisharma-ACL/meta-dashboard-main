@@ -251,6 +251,18 @@ export const fetchPaymentClients = async () => {
 //
 // docs_status is set by the SERVER from the caller's role: accounts → complete,
 // tier-1 CM → pending (and 403 for a client outside their set / for tier-2).
+//
+// `method` must be one of the six PaymentMethod enum values — see
+// PAYMENT_METHODS in components/payments/paymentsFormat. The forms only ever
+// offer those, so anything else here is a bug, not user input.
+//
+// reference_id / invoice_url / paid_at are OPTIONAL and only sent when filled.
+// (The endpoint used to drop them, which is why the record form omitted them;
+// it accepts them as of the 655cc1e backend, so accounts can file the reference
+// at record-time rather than only through Edit afterwards.) Omitting an empty
+// one matters: posting "" would overwrite a server-side default such as
+// paid_at=now with a blank.
+//
 // Returns the created row, normalized.
 export const recordPayment = async (input) => {
   const body = {
@@ -265,6 +277,9 @@ export const recordPayment = async (input) => {
   };
   if (input.project) body.project = input.project;
   if (input.notes) body.notes = input.notes;
+  if (input.referenceId) body.reference_id = input.referenceId;
+  if (input.invoiceUrl) body.invoice_url = input.invoiceUrl;
+  if (input.paidAt) body.paid_at = input.paidAt;
 
   const res = await api(`/payments/add-funds/`, {
     method: "POST",

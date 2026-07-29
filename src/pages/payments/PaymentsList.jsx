@@ -19,7 +19,7 @@ import EditPaymentModal from "../../components/payments/EditPaymentModal";
 import MonthPicker from "../../components/sales/MonthPicker";
 import {
   fmtMoney,
-  methodLabel,
+  PAYMENT_METHODS,
   fieldClass,
   labelClass,
 } from "../../components/payments/paymentsFormat";
@@ -147,15 +147,6 @@ export default function PaymentsList(props) {
   const total = () => pagination().total ?? null;
   const awaitingDocs = () =>
     queueMode() ? total() : (pendingTotal() ?? null);
-
-  // Method options come from the DATA, not a hardcoded list. Note this only
-  // sees the current page — it's a convenience, not an exhaustive vocabulary,
-  // which is why the current value is always kept in the list.
-  const methodsSeen = createMemo(() => {
-    const set = new Set(rows().map((r) => r.method).filter(Boolean));
-    if (method()) set.add(method());
-    return [...set].sort();
-  });
 
   const fmtCount = (v) => (v == null ? "—" : String(v));
 
@@ -482,9 +473,12 @@ export default function PaymentsList(props) {
               }}
               class={fieldClass}
             >
+              {/* The six PaymentMethod enum values — the same list the form
+                  offers. Previously this was scraped from the current page,
+                  which meant the options changed as you paged. */}
               <option value="">All</option>
-              <For each={methodsSeen()}>
-                {(m) => <option value={m}>{methodLabel(m)}</option>}
+              <For each={PAYMENT_METHODS}>
+                {(m) => <option value={m.value}>{m.label}</option>}
               </For>
             </select>
           </div>

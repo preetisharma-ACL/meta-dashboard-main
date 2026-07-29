@@ -34,35 +34,59 @@ export const fmtDate = (v) => {
   });
 };
 
-// YYYY-MM-DD for <input type="date"> round-tripping.
-export const toDateInput = (v) => {
+// paid_at is a DATETIME server-side, so the forms use <input
+// type="datetime-local">. That control speaks LOCAL "YYYY-MM-DDTHH:mm" with no
+// zone, so the pair below converts at the boundary: parse to local for display,
+// and send an absolute ISO instant. Posting the raw local string would leave
+// the server to guess a timezone and could book a late-evening payment on the
+// wrong date.
+const pad2 = (n) => String(n).padStart(2, "0");
+
+export const toDateTimeInput = (v) => {
   if (isMissing(v)) return "";
   const d = new Date(v);
   if (Number.isNaN(d.getTime())) return "";
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  return (
+    `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}` +
+    `T${pad2(d.getHours())}:${pad2(d.getMinutes())}`
+  );
+};
+
+// Local "YYYY-MM-DDTHH:mm" → absolute ISO instant. Blank → null (the field is
+// optional; null means "don't send it", not "epoch").
+export const fromDateTimeInput = (v) => {
+  if (!v) return null;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
 };
 
 // ── Payment method ────────────────────────────────────────────────────────────
-// The backend's method vocabulary isn't published in the spec, so we never
-// hardcode it as the only truth: these are SUGGESTIONS, and the picker unions
-// them with whatever values already appear in the loaded ledger, plus a free
-// "Other" escape. A wrong guess would 400 on save rather than fail silently.
-export const METHOD_SUGGESTIONS = [
-  "bank_transfer",
-  "neft",
-  "rtgs",
-  "imps",
-  "upi",
-  "cheque",
-  "cash",
-  "card",
+// The backend PaymentMethod enum, in full. These SIX are the only values the
+// API accepts, so every picker renders exactly this list — no free-text escape,
+// no values inferred from whatever happens to be on the current page. (The
+// earlier guessed vocabulary offered Cash/Cheque/NEFT/RTGS/IMPS, none of which
+// are enum members; the business books cash as "points".)
+export const PAYMENT_METHODS = [
+  { value: "card", label: "Card" },
+  { value: "net_banking", label: "Net Banking" },
+  { value: "upi", label: "UPI" },
+  { value: "bank_transfer", label: "Bank Transfer" },
+  { value: "wallet", label: "Wallet" },
+  { value: "points", label: "Points" },
 ];
 
-// "bank_transfer" → "Bank Transfer". Unknown values pass through title-cased,
-// so a method the frontend has never seen still reads properly.
+const METHOD_LABELS = Object.fromEntries(
+  PAYMENT_METHODS.map((m) => [m.value, m.label]),
+);
+
+// "bank_transfer" → "Bank Transfer". A value outside the enum still renders
+// title-cased rather than blank: historical rows predate the enum being
+// enforced, and hiding what the server actually stored would be worse than
+// showing it. Only the PICKERS are restricted to the six.
 export const methodLabel = (m) => {
   if (isMissing(m)) return "—";
+  const known = METHOD_LABELS[String(m).toLowerCase()];
+  if (known) return known;
   return String(m)
     .replace(/[_-]+/g, " ")
     .trim()

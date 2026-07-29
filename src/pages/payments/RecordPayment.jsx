@@ -157,15 +157,14 @@ export default function RecordPayment() {
 
       {/* ════════ FORM ════════ */}
       <div class="bg-white dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-2xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] p-5 sm:p-6">
-        {/* canFillDocs is FALSE for everyone here, accounts included: the
-            add-funds body has no reference_id / invoice_url / paid_at, so
-            rendering those fields would let accounts type a reference that is
-            never transmitted and silently lost. Accounts' own entries save as
-            complete regardless; the reference is added later via Edit, which
-            PATCHes the fields the API actually accepts. */}
+        {/* Accounts get the paperwork fields; a tier-1 CM does not (accounts
+            owns the reference, and a CM PATCH 403s anyway). add-funds accepts
+            reference_id / invoice_url / paid_at as of the 655cc1e backend — it
+            previously dropped them, which is why this was hard-off. They stay
+            optional: an accounts entry saves as complete either way. */}
         <PaymentForm
           mode="create"
-          canFillDocs={false}
+          canFillDocs={isAccounts()}
           submitting={submitting()}
           error={error()}
           onSubmit={handleSubmit}
