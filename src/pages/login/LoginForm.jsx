@@ -159,6 +159,31 @@ export default function Login() {
   return (
     <>
       <div class="login-root">
+        {/* ── Back to the landing page — top-left, over the gradient panel ──
+            Always "/" rather than history.back(): /login is often opened
+            directly (bookmark, session expiry, logout redirect), where going
+            back would leave the app entirely. Mounted on .login-root rather
+            than inside .login-left so it survives the <900px breakpoint that
+            hides that panel (the CSS re-parks it on the form side there). */}
+        <button
+          type="button"
+          class="lp-back"
+          onClick={() => navigate("/")}
+          aria-label="Back to home"
+        >
+          <svg
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M10 12L6 8l4-4" />
+          </svg>
+          Back
+        </button>
+
         {/* ── LEFT DECORATIVE PANEL ── */}
         <div class="login-left">
           <div class="blob blob-1" />
