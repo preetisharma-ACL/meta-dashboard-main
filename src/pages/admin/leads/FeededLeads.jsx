@@ -723,8 +723,8 @@ export default function ManualBatches() {
             onClick={() => loadBatches(page() + 1)}
             disabled={!hasNext() || loading()}
             class="flex items-center gap-1.5 px-4 h-9 text-sm rounded-lg
-                   bg-purple-600 border border-purple-600 text-white
-                   hover:bg-purple-700 disabled:opacity-35 disabled:cursor-default transition-colors"
+                   bg-red-800 border border-red-800 text-white
+                   hover:bg-red-700 disabled:opacity-35 disabled:cursor-default transition-colors"
           >
             Next
             <svg
