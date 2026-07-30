@@ -397,20 +397,15 @@ export default function PaymentsTable(props) {
 
       {/* ── Paginator (server-driven) ──────────────────────────────────────── */}
       <Show when={!props.loading?.() && rows().length > 0}>
-        <div class="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div class="mt-5 mb-4 flex items-center justify-between flex-wrap gap-3">
           <div class="flex items-center gap-3">
-            <p class="text-sm text-[#54657E] dark:text-gray-400">
-              Showing{" "}
-              <b class="text-[#14233A] dark:text-gray-200 tabular-nums">
-                {rangeStart()}–{rangeEnd()}
-              </b>{" "}
-              of{" "}
-              <Show when={total() != null} fallback={<span>many</span>}>
-                <b class="text-[#14233A] dark:text-gray-200 tabular-nums">
-                  {total()}
-                </b>
-              </Show>
-            </p>
+            <span class="text-sm text-[#8593A8] dark:text-gray-400">
+              Showing {rangeStart()}–{rangeEnd()} of{" "}
+              <Show when={total() != null} fallback={<>many</>}>
+                {total()}
+              </Show>{" "}
+              results
+            </span>
             <RowsPerPageSelect
               value={pageSize()}
               onChange={(n) => props.onPageSizeChange?.(n)}
@@ -440,21 +435,39 @@ export default function PaymentsTable(props) {
                 type="button"
                 onClick={() => props.onPageChange?.(Math.max(1, page() - 1))}
                 disabled={!hasPrev()}
-                class="px-3 h-9 rounded-lg border border-[#E2E8F1] dark:border-gray-700 text-sm font-semibold text-[#54657E] dark:text-gray-300 hover:bg-[#F6F9FC] dark:hover:bg-gray-800 disabled:opacity-40 disabled:cursor-default transition-colors"
+                class="flex items-center gap-1.5 px-4 h-9 text-sm rounded-lg border border-[#E2E8F1] dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-[#54657E] dark:text-gray-200 hover:bg-[#F6F9FC] disabled:opacity-35 disabled:cursor-default transition-colors"
               >
-                Previous
+                <svg
+                  class="w-3.5 h-3.5"
+                  fill="none"
+                  viewBox="0 0 16 16"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                >
+                  <path d="M10 12L6 8l4-4" />
+                </svg>
+                Prev
               </button>
-              <span class="text-sm text-[#54657E] dark:text-gray-400 tabular-nums px-1">
-                {page()}
-                <Show when={totalPages() != null}> / {totalPages()}</Show>
+              <span class="text-sm text-[#8593A8] dark:text-gray-400 px-1">
+                Page {page()}
+                <Show when={totalPages() != null}> of {totalPages()}</Show>
               </span>
               <button
                 type="button"
                 onClick={() => props.onPageChange?.(page() + 1)}
                 disabled={!hasNext()}
-                class="px-3 h-9 rounded-lg border border-[#E2E8F1] dark:border-gray-700 text-sm font-semibold text-[#54657E] dark:text-gray-300 hover:bg-[#F6F9FC] dark:hover:bg-gray-800 disabled:opacity-40 disabled:cursor-default transition-colors"
+                class="flex items-center gap-1.5 px-4 h-9 text-sm rounded-lg bg-[#AC2334] border border-[#AC2334] text-white hover:bg-[#8E1C2B] disabled:opacity-35 disabled:cursor-default transition-colors"
               >
                 Next
+                <svg
+                  class="w-3.5 h-3.5"
+                  fill="none"
+                  viewBox="0 0 16 16"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                >
+                  <path d="M6 4l4 4-4 4" />
+                </svg>
               </button>
             </div>
           </Show>
