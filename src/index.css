@@ -551,20 +551,20 @@
 }
 
 /* ── Back to landing — top left, over the gradient panel ──
-   A round glass lens, arrow only. The label is gone from the DOM but NOT from
-   the accessibility tree: the button keeps aria-label="Back to home", so a
-   screen reader still announces it. A bare icon needs a bigger target than a
-   labelled pill did, hence the fixed 46px circle (above the 44px touch
-   minimum) rather than padding around a 14px glyph.
+   Gradient pill + circular arrow badge, in the LEFT PANEL'S OWN palette: the
+   same #5b7fa6 blue → #8a6fc4 purple → #f0a8b8 pink that the brand dots and
+   the form-logo gradient already use. The reference for this shape was a solid
+   coral button; a solid fill would have sat on the artwork as a sticker, so the
+   gradient is laid over glass instead — tinted, blurred, and translucent enough
+   that the drifting background still reads through it.
 
-   The "glass" is four stacked cues, none of which is a flat white fill:
-     · a top-lit gradient wash, brighter at the top edge like a real lens
-     · blur + saturate, so the pastel blobs behind stay saturated through it
-     · an inset highlight along the top and a soft inset shade at the bottom,
-       which is what reads as thickness
-     · a wide, very soft drop shadow to lift it off the artwork
-   The ::before is the specular sheen — a diagonal glare across the upper half
-   that slides on hover, which is what stops it reading as a flat grey disc. */
+   Layout is padding + one absolutely-positioned badge rather than a flex gap,
+   so the circle can overhang the pill's right edge the way it does in the
+   reference without dragging the label off-centre.
+
+   The gradient is sized 220% and its POSITION animated — that's the slow colour
+   drift. Because background-position is already spoken for, the sheen lives on
+   ::after rather than as a second background layer. */
 .lp-back {
   position: absolute;
   top: 30px;
@@ -572,120 +572,225 @@
   z-index: 20;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 46px;
-  height: 46px;
-  padding: 0;
-  border-radius: 50%;
-  background:
-    linear-gradient(
-      160deg,
-      rgb(255 255 255 / 42%) 0%,
-      rgb(255 255 255 / 18%) 46%,
-      rgb(255 255 255 / 10%) 100%
-    );
-  backdrop-filter: blur(14px) saturate(150%);
-  -webkit-backdrop-filter: blur(14px) saturate(150%);
-  border: 1px solid rgba(255, 255, 255, 0.5);
+  height: 38px;
+  /* right padding clears the 42px badge, which overhangs the edge by 5px */
+  padding: 0 46px 0 19px;
+  border-radius: 999px;
+  /* LIGHT tint — the same three hues, at roughly a third of the opacity they
+     had. Below ~0.3 the gradient stops reading as three colours at all, so
+     this is about as pale as it can go and still look like the brand ramp
+     rather than plain frosted white. */
+  background-image: linear-gradient(
+    110deg,
+    rgba(91, 127, 166, 0.32) 0%,
+    rgba(138, 111, 196, 0.28) 42%,
+    rgba(240, 168, 184, 0.34) 78%,
+    rgba(91, 127, 166, 0.32) 100%
+  );
+  background-size: 220% 100%;
+  background-position: 0% 50%;
+  /* Higher white floor + more blur: with the tint this pale, the frost is what
+     carries the glass, and it keeps the label legible over the busy artwork. */
+  background-color: rgba(255, 255, 255, 0.42);
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.6);
   box-shadow:
-    inset 0 1px 1px rgba(255, 255, 255, 0.7),
-    inset 0 -2px 6px rgba(120, 130, 165, 0.14),
-    0 8px 22px rgba(86, 97, 122, 0.16);
-  color: #4a5573;
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    inset 0 -2px 6px rgba(120, 130, 165, 0.1),
+    0 5px 14px rgba(91, 100, 150, 0.14);
   cursor: pointer;
-  overflow: hidden;
+  /* NO overflow:hidden here — the badge overhangs the right edge and would be
+     clipped at the pill's rounded end. The glare is clipped by .lp-back__sheen
+     instead, which is exactly the pill's shape. */
+  isolation: isolate;
   -webkit-tap-highlight-color: transparent;
+  animation: lpBackDrift 9s ease-in-out infinite alternate;
   transition:
-    background 0.25s ease,
-    border-color 0.25s ease,
-    box-shadow 0.25s ease,
-    color 0.25s ease,
-    transform 0.2s ease;
+    box-shadow 0.28s ease,
+    border-color 0.28s ease,
+    transform 0.24s cubic-bezier(0.34, 1.4, 0.64, 1);
 }
 
-/* Specular sheen — a soft diagonal glare over the top-left of the lens. */
-.lp-back::before {
+/* Ambient colour drift along the gradient. Deliberately the same unhurried
+   tempo as the card float and the background image (8-9s) so the three
+   ambient animations on this panel read as one system, not three tics. */
+@keyframes lpBackDrift {
+  0%   { background-position: 0% 50%; }
+  100% { background-position: 100% 50%; }
+}
+
+/* Clip layer for the glare — the pill's exact shape, nothing else in it. */
+.lp-back__sheen {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Specular sheen — a narrow diagonal glare parked off the left edge that
+   sweeps across the pill on hover. This is the glass cue a flat tint can't
+   give you. */
+.lp-back__sheen::after {
   content: "";
   position: absolute;
-  inset: -30%;
+  top: -60%;
+  left: -70%;
+  width: 55%;
+  height: 220%;
   background: linear-gradient(
-    125deg,
-    rgba(255, 255, 255, 0.55) 0%,
-    rgba(255, 255, 255, 0.12) 34%,
-    rgba(255, 255, 255, 0) 58%
+    100deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.42) 50%,
+    rgba(255, 255, 255, 0) 100%
   );
-  pointer-events: none;
-  transition: transform 0.45s ease, opacity 0.25s ease;
+  transform: skewX(-18deg);
+  transition: left 0.62s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Hover: the lens brightens, lifts, and the glare slides across it. */
-.lp-back:hover {
-  background:
-    linear-gradient(
-      160deg,
-      rgb(255 255 255 / 58%) 0%,
-      rgb(255 255 255 / 30%) 46%,
-      rgb(255 255 255 / 18%) 100%
-    );
-  border-color: rgba(255, 255, 255, 0.72);
+.lp-back__label {
+  position: relative;
+  z-index: 2;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  line-height: 1;
+  text-transform: uppercase;
+  /* NOT white any more — the pale tint can't carry white text. This is the
+     panel's own body-copy navy (#3a4a62, as .left-desc), which clears contrast
+     against the light glass at every point in the gradient drift. The shadow
+     is now a white lift rather than a dark one, for the same reason. */
+  color: #3a4a62;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
+  transition: transform 0.24s ease, color 0.24s ease;
+}
+
+/* Arrow badge — a white glass disc at full pill height, overhanging the right
+   edge. Its "ring" is the pill's own gradient showing past a translucent
+   fill, not a second colour introduced to the palette. */
+.lp-back__badge {
+  position: absolute;
+  top: 50%;
+  right: -5px;
+  transform: translateY(-50%);
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  /* 42px against a 38px pill — the circle stands 2px proud top and bottom and
+     5px past the right edge, which is the protruding badge from the reference.
+     This is the reason the button can't clip its own overflow. */
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: linear-gradient(
+    150deg,
+    rgba(255, 255, 255, 0.96) 0%,
+    rgba(255, 255, 255, 0.86) 100%
+  );
+  border: 1px solid rgba(255, 255, 255, 0.95);
   box-shadow:
-    inset 0 1px 1px rgba(255, 255, 255, 0.85),
-    inset 0 -2px 6px rgba(120, 130, 165, 0.12),
-    0 12px 28px rgba(86, 97, 122, 0.22);
-  color: #1a2340;
-  transform: translateY(-2px);
+    inset 0 1px 2px rgba(255, 255, 255, 0.95),
+    0 2px 8px rgba(70, 80, 130, 0.14);
+  transition:
+    transform 0.3s cubic-bezier(0.34, 1.4, 0.64, 1),
+    box-shadow 0.28s ease;
 }
 
-.lp-back:hover::before {
-  transform: translateX(22%) translateY(-8%);
+.lp-back__badge svg {
+  width: 17px;
+  height: 17px;
+  /* The panel's accent blue — the same colour .left-tagline em uses. On a
+     near-white badge this is the one element that should stay reasonably
+     saturated, or the arrow disappears into the disc. */
+  color: #5b7fa6;
+  transition: transform 0.3s cubic-bezier(0.34, 1.4, 0.64, 1), color 0.28s ease;
+}
+
+/* ── Hover: lift, sweep the glare, nudge the label, tilt the badge ── */
+/* Hover warms the tint a little rather than darkening it — the pill stays in
+   the pale register, it just gains a touch more colour. */
+.lp-back:hover {
+  transform: translateY(-2px);
+  background-color: rgba(255, 255, 255, 0.52);
+  border-color: rgba(255, 255, 255, 0.8);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.85),
+    inset 0 -2px 6px rgba(120, 130, 165, 0.08),
+    0 8px 20px rgba(91, 100, 150, 0.18);
+}
+
+.lp-back:hover .lp-back__label {
+  color: #1a2340;
+}
+
+.lp-back:hover .lp-back__sheen::after {
+  left: 118%;
+}
+
+/* Label and arrow both move LEFT — the direction the button actually takes
+   you. Moving them apart would animate against the meaning. */
+.lp-back:hover .lp-back__label {
+  transform: translateX(-3px);
+}
+
+.lp-back:hover .lp-back__badge {
+  transform: translateY(-50%) scale(1.07);
+  box-shadow:
+    inset 0 1px 2px rgba(255, 255, 255, 0.95),
+    0 4px 12px rgba(70, 80, 130, 0.18);
+}
+
+.lp-back:hover .lp-back__badge svg {
+  color: #46688f;
+  transform: translateX(-2px) rotate(-12deg);
 }
 
 .lp-back:active {
-  transform: translateY(0) scale(0.96);
+  transform: translateY(0) scale(0.975);
   box-shadow:
-    inset 0 2px 5px rgba(120, 130, 165, 0.2),
-    0 4px 12px rgba(86, 97, 122, 0.16);
+    inset 0 2px 5px rgba(120, 130, 165, 0.16),
+    0 2px 8px rgba(91, 100, 150, 0.14);
 }
 
+/* A white halo inside the accent ring — the ring alone would disappear
+   against the blue end of the pill's own gradient. */
 .lp-back:focus-visible {
   outline: none;
   box-shadow:
-    0 0 0 3px rgba(91, 127, 166, 0.3),
-    inset 0 1px 1px rgba(255, 255, 255, 0.7),
-    0 8px 22px rgba(86, 97, 122, 0.16);
+    0 0 0 3px rgba(255, 255, 255, 0.9),
+    0 0 0 5px rgba(91, 127, 166, 0.45),
+    0 5px 14px rgba(91, 100, 150, 0.14);
 }
 
-/* Arrow — the card's accent blue, nudged 1px left so it reads optically
-   centred in the circle (a chevron's visual mass sits right of its box). */
-.lp-back svg {
-  position: relative;
-  width: 19px;
-  height: 19px;
-  flex: none;
-  margin-left: -1px;
-  color: #5b7fa6;
-  transition: transform 0.25s ease, color 0.25s ease;
-}
-
-.lp-back:hover svg {
-  color: #3f5f85;
-  transform: translateX(-2px);
-}
-
-/* Respect a reduced-motion preference: keep the colour changes, drop the
-   slide, lift and glare travel. */
+/* Reduced motion: keep the colour and the glass, drop everything that moves —
+   including the ambient drift, which runs without the user asking for it. */
 @media (prefers-reduced-motion: reduce) {
+  .lp-back {
+    animation: none;
+    background-position: 12% 50%;
+  }
   .lp-back,
-  .lp-back::before,
-  .lp-back svg {
-    transition: background 0.25s ease, border-color 0.25s ease, color 0.25s ease;
+  .lp-back__sheen::after,
+  .lp-back__label,
+  .lp-back__badge,
+  .lp-back__badge svg {
+    transition: box-shadow 0.28s ease, border-color 0.28s ease, color 0.28s ease;
   }
   .lp-back:hover,
-  .lp-back:active {
+  .lp-back:active,
+  .lp-back:hover .lp-back__label {
     transform: none;
   }
-  .lp-back:hover::before,
-  .lp-back:hover svg {
+  .lp-back:hover .lp-back__sheen::after {
+    left: -70%;
+  }
+  .lp-back:hover .lp-back__badge {
+    transform: translateY(-50%);
+  }
+  .lp-back:hover .lp-back__badge svg {
     transform: none;
   }
 }
@@ -729,31 +834,38 @@
     top: 20px;
     left: 20px;
   }
-  /* The gradient panel is hidden at this width, so the lens re-parks on the
-     form side — top-right, clear of the logo that holds the top-left. There's
-     no artwork to refract on the flat cream panel, so the glass is dialled
-     back: a white hairline would be invisible there, and the specular sheen
-     has nothing to catch. It keeps a legible tinted edge instead. Size stays
-     42px — still above the 44px-ish touch target once the ring is counted,
-     and this is the breakpoint where it's most likely to be tapped. */
+  /* The gradient panel is hidden at this width, so the pill re-parks on the
+     form side — top-right, clear of the logo that holds the top-left.
+     It stays the full gradient pill: on the flat cream panel there's no
+     artwork to refract, but the gradient is the button's identity and the
+     backdrop-filter simply has nothing to blur, which is harmless. Only the
+     scale comes down, and the drift keeps running — it's a colour animation,
+     not a layout one, so it costs nothing here. */
   .lp-back {
     top: 22px;
     left: auto;
     right: 16px;
-    width: 42px;
-    height: 42px;
-    background: rgba(255, 255, 255, 0.55);
-    border-color: rgba(26, 35, 64, 0.12);
+    height: 34px;
+    padding: 0 42px 0 16px;
+    /* Cream panel, no artwork behind it — the pale tint alone leaves no visible
+       edge here, so the border picks up a faint navy instead of white. */
+    border-color: rgba(26, 35, 64, 0.1);
     box-shadow:
-      inset 0 1px 1px rgba(255, 255, 255, 0.8),
-      0 4px 14px rgba(86, 97, 122, 0.12);
+      inset 0 1px 0 rgba(255, 255, 255, 0.7),
+      0 3px 10px rgba(91, 100, 150, 0.12);
   }
-  .lp-back::before {
-    opacity: 0.35;
+  .lp-back__label {
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
   }
-  .lp-back svg {
-    width: 17px;
-    height: 17px;
+  .lp-back__badge {
+    width: 38px;
+    height: 38px;
+    right: -4px;
+  }
+  .lp-back__badge svg {
+    width: 16px;
+    height: 16px;
   }
   .rp-powered {
     bottom: 16px;

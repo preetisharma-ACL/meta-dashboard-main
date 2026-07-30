@@ -166,10 +166,10 @@ export default function Login() {
             than inside .login-left so it survives the <900px breakpoint that
             hides that panel (the CSS re-parks it on the form side there).
 
-            ARROW ONLY — no visible label. aria-label and title carry the name
-            instead, so it still announces as "Back to home" to a screen reader
-            and gets a native tooltip on hover; an unlabelled icon button would
-            otherwise announce as just "button". */}
+            Gradient pill + circular arrow badge. The label is a real text node
+            (uppercased in CSS, not in the markup) so it still reads as "Back to
+            home" when copied or announced; aria-label names the whole control
+            and the badge svg is decorative. */}
         <button
           type="button"
           class="lp-back"
@@ -177,17 +177,24 @@ export default function Login() {
           aria-label="Back to home"
           title="Back to home"
         >
-          <svg
-            viewBox="0 0 16 16"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M10 12L6 8l4-4" />
-          </svg>
+          {/* The travelling glare needs clipping to the pill; the badge must
+              NOT be clipped (it overhangs the right edge). So the clip lives on
+              this layer rather than on the button, which would cut the badge
+              off at the pill's rounded edge. */}
+          <span class="lp-back__sheen" aria-hidden="true" />
+          <span class="lp-back__label">Back</span>
+          <span class="lp-back__badge" aria-hidden="true">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
+            </svg>
+          </span>
         </button>
 
         {/* ── LEFT DECORATIVE PANEL ── */}
