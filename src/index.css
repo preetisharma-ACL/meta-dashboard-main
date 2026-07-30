@@ -289,9 +289,11 @@
   border-radius: 50%;
 }
 
-.brand-dot:nth-child(1) { animation: dotPulse 3s ease-in-out 0s   infinite; }
-.brand-dot:nth-child(2) { animation: dotPulse 3s ease-in-out 0.6s infinite; }
-.brand-dot:nth-child(3) { animation: dotPulse 3s ease-in-out 1.2s infinite; }
+/* Colours were inline on the elements until the mobile design needed to
+   restate them; an inline style would have forced !important. */
+.brand-dot:nth-child(1) { background: #5b7fa6; animation: dotPulse 3s ease-in-out 0s   infinite; }
+.brand-dot:nth-child(2) { background: #8a6fc4; animation: dotPulse 3s ease-in-out 0.6s infinite; }
+.brand-dot:nth-child(3) { background: #f0a8b8; animation: dotPulse 3s ease-in-out 1.2s infinite; }
 
 @keyframes dotPulse {
   0%, 100% { transform: scale(1);    opacity: 0.75; }
@@ -829,48 +831,369 @@
 }
 
 /* ── Responsive guard — keep them from overlapping the form on small screens ── */
+/* ── Elements that belong only to the <900px login design ──
+   Hidden by default so the >=900px split-screen renders exactly as it did
+   before they were added to the markup. */
+.login-bg,
+.field-ico,
+.ff-shield {
+  display: none;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   MOBILE LOGIN  (<900px)  — port of src/pages/login/demo-page.html
+   ──────────────────────────────────────────────────────────────────────────
+   The >=900px layout is a split screen: artwork panel left, cream form panel
+   right. That doesn't shrink down, so below 900px the same DOM is restyled
+   into the single-column design: one full-bleed drawn backdrop, the tagline
+   sitting bare on top of it, and the form in a frosted card at the bottom.
+
+   Mapping from the demo to the existing elements — the markup was NOT
+   restructured to match the demo's, so that the desktop layout keeps working:
+     demo .backdrop  → .login-bg (rings + bubbles)
+     demo .topbar    → .lp-back (left) + .rp-logo (right)
+     demo .hero      → .left-glass-card, stripped of its glass
+     demo .card      → .form-wrapper, given the glass instead
+   Nothing outside this block and the display:none rule above was touched.
+   ══════════════════════════════════════════════════════════════════════════ */
 @media (max-width: 899px) {
-  .rp-logo {
-    top: 20px;
-    left: 20px;
+  .login-root {
+    flex-direction: column;
+    background: #f3ecf7;
+    overflow: hidden; /* the bubbles overhang the edges by design */
   }
-  /* The gradient panel is hidden at this width, so the pill re-parks on the
-     form side — top-right, clear of the logo that holds the top-left.
-     It stays the full gradient pill: on the flat cream panel there's no
-     artwork to refract, but the gradient is the button's identity and the
-     backdrop-filter simply has nothing to blur, which is harmless. Only the
-     scale comes down, and the drift keeps running — it's a colour animation,
-     not a layout one, so it costs nothing here. */
-  .lp-back {
-    top: 22px;
-    left: auto;
-    right: 16px;
-    height: 34px;
-    padding: 0 42px 0 16px;
-    /* Cream panel, no artwork behind it — the pale tint alone leaves no visible
-       edge here, so the border picks up a faint navy instead of white. */
-    border-color: rgba(26, 35, 64, 0.1);
+
+  /* ── Backdrop ──────────────────────────────────────────────────────────── */
+  .login-bg {
+    display: block;
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    z-index: 0;
+  }
+
+  /* inset:-10% so the gradient's soft edges fall outside the viewport rather
+     than banding across it. */
+  .login-bg::before {
+    content: '';
+    position: absolute;
+    inset: -10%;
+    background:
+      radial-gradient(60% 45% at 22% 18%, #e6d7f2 0%, transparent 62%),
+      radial-gradient(55% 40% at 88% 26%, #f6d9e2 0%, transparent 60%),
+      radial-gradient(70% 55% at 50% 108%, #d4ec86 0%, transparent 60%),
+      radial-gradient(90% 70% at 78% 88%, #cfe86a 0%, transparent 55%),
+      linear-gradient(160deg, #f3ecf7 0%, #f7eef0 45%, #f3f4e6 100%);
+  }
+
+  .lb-ring {
+    position: absolute;
+    border: 1.5px solid rgba(190, 205, 120, 0.4);
+    border-radius: 50%;
+    transform: rotate(-24deg);
+  }
+  .lb-ring-1 { width: 340px; height: 170px; top: 120px; left: -40px; }
+  .lb-ring-2 {
+    width: 260px; height: 120px; top: 200px; right: -70px;
+    border-color: rgba(200, 180, 220, 0.35);
+    transform: rotate(20deg);
+  }
+
+  .lb-bubble {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(0.3px);
+    background:
+      radial-gradient(circle at 32% 28%, rgba(255,255,255,.85), rgba(255,255,255,.15) 42%, transparent 60%),
+      radial-gradient(circle at 70% 78%, rgba(197,232,74,.55), transparent 55%);
     box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.7),
-      0 3px 10px rgba(91, 100, 150, 0.12);
+      inset 0 0 22px rgba(255, 255, 255, 0.5),
+      0 8px 24px rgba(120, 110, 160, 0.18);
+    opacity: 0.85;
+    animation: lbFloat 12s ease-in-out infinite;
   }
-  .lp-back__label {
-    font-size: 0.68rem;
-    letter-spacing: 0.1em;
+  .lb-b1 { width: 120px; height: 120px; top: 88px;  left: -26px;  animation-delay: 0s; }
+  .lb-b2 {
+    width: 64px; height: 64px; top: 150px; right: 34px; animation-delay: -3s;
+    background:
+      radial-gradient(circle at 34% 30%, rgba(255,255,255,.9), transparent 60%),
+      radial-gradient(circle at 70% 75%, rgba(224,190,236,.6), transparent 55%);
   }
-  .lp-back__badge {
-    width: 38px;
-    height: 38px;
-    right: -4px;
+  .lb-b3 { width: 44px; height: 44px; top: 250px; left: 54px; animation-delay: -6s; }
+  .lb-b4 {
+    width: 30px; height: 30px; top: 110px; right: 120px; animation-delay: -1.5s;
+    background:
+      radial-gradient(circle at 34% 30%, rgba(255,255,255,.95), transparent 60%),
+      radial-gradient(circle at 70% 75%, rgba(197,232,74,.7), transparent 55%);
   }
-  .lp-back__badge svg {
-    width: 16px;
-    height: 16px;
+
+  /* ── Top bar: Back pill left, logo right ───────────────────────────────── */
+  /* POSITION ONLY. The pill keeps the app's own design at every width —
+     gradient tint, travelling sheen, white border, overhanging circular badge,
+     DM Sans label, colour drift — all inherited from the base rule. The demo's
+     flat frosted chip with a plain left chevron was deliberately not used.
+     It moves to the left because .rp-logo now holds the top-right corner (the
+     pre-900px layout had these two the other way round). */
+  .lp-back {
+    top: 26px;
+    left: 22px;
+    right: auto;
   }
+
+  .rp-logo {
+    position: absolute;   /* .login-right goes static below, so this anchors
+                             to .login-root and rides the top bar */
+    top: 20px;
+    left: auto;
+    right: 22px;
+    z-index: 25;
+  }
+  .rp-logo-img { height: 34px; }
+
+  /* ── Hero: the glass card gives up its glass and becomes bare type ─────── */
+  .login-left {
+    display: block;
+    flex: none;
+    position: relative;
+    z-index: 2;
+    background: transparent;
+    overflow: visible;
+    padding: 92px 22px 0;
+  }
+  /* The artwork image and its colour wash are the desktop panel's, not this
+     layout's — .login-bg replaces both. */
+  .login-left::after,
+  .login-left::before { display: none; }
+
+  .left-glass-card {
+    width: 100%;
+    max-width: none;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+    animation: none;
+  }
+  .brand-dots { gap: 7px; margin-bottom: 16px; }
+  .brand-dot  { width: 9px; height: 9px; }
+  .brand-dot:nth-child(1) { background: #8a90b0; }
+  .brand-dot:nth-child(2) { background: #5b7fb8; }
+  .brand-dot:nth-child(3) { background: #e2a7b8; }
+
+  /* Font family and weight come from the base rule (DM Serif Display) — the
+     demo's Cormorant Garamond was dropped so the login keeps the app's own
+     display face. DM Serif is a noticeably wider face, so the demo's flat 34px
+     no longer fits "Insights that matter." on one line below ~390px. The vw
+     term shrinks it on narrower phones; 32px is the demo's intent as the cap. */
+  .left-tagline {
+    font-size: min(32px, 8vw);
+    line-height: 1.08;
+    letter-spacing: -0.005em;
+    color: #16294b;
+    margin: 0;
+    text-shadow: none;
+  }
+  .left-tagline em { color: #5b7fb8; }
+
+  .left-desc {
+    margin: 12px 0 0;
+    max-width: 270px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #16294b;
+    opacity: 0.6;
+  }
+  .orb-ring { display: none; }
+
+  /* ── Form card ─────────────────────────────────────────────────────────── */
+  .login-right {
+    position: static;     /* hands .rp-logo's containing block to .login-root */
+    flex: 1;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    z-index: 2;
+    background: transparent;
+    padding: 26px 22px 22px;
+  }
+
+  .form-wrapper {
+    max-width: 420px;
+    background: rgba(255, 255, 255, 0.3);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    border-radius: 26px;
+    padding: 24px 22px 22px;
+    box-shadow: 0 18px 44px -18px rgba(40, 30, 70, 0.35);
+  }
+
+  /* One line, always. "Aajneeti Reporting Dashboard" is 28 characters, so at
+     the demo's 26px it wrapped inside the card. The size is tied to the
+     viewport (the card's width tracks it) so the line stays intact down to
+     small phones instead of breaking at one fixed cut-off. Family and weight
+     are inherited — DM Serif Display, as everywhere else on this page. */
+  .form-heading {
+    font-size: min(22px, 5.4vw);
+    line-height: 1.2;
+    white-space: nowrap;
+    color: #16294b;
+    margin: 0;
+  }
+  .form-subheading {
+    font-size: 12.5px;
+    color: #6a6e7e;
+    margin: 3px 0 0;
+  }
+
+  .input-group { margin-top: 16px; margin-bottom: 0; }
+  .input-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    color: #2a3e63;
+    opacity: 0.75;
+    margin-bottom: 7px;
+  }
+
+  /* The border and fill move from the input to the row, so the leading icon
+     and the eye button sit inside the same bordered box. */
+  .input-wrapper {
+    background: rgba(255, 255, 255, 0.62);
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    border-radius: 14px;
+    padding: 0 14px;
+    height: 50px;
+    transition: border-color 0.18s, box-shadow 0.18s, background 0.18s;
+  }
+  .input-wrapper:focus-within {
+    border-color: #5b7fb8;
+    background: rgba(255, 255, 255, 0.85);
+    box-shadow: 0 0 0 3px rgba(91, 127, 184, 0.18);
+  }
+
+  .field-ico {
+    display: block;
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
+    color: #16294b;
+    opacity: 0.45;
+  }
+
+  .input-field {
+    flex: 1;
+    min-width: 0;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    padding: 0 10px;
+    font-size: 14.5px;
+    color: #16294b;
+  }
+  .input-field:focus { box-shadow: none; }
+  .input-field::placeholder { color: #9aa0b2; }
+  .input-wrapper--eye .input-field { padding-right: 6px; }
+
+  /* Autofill still needs an opaque inset to beat Chrome's blue wash; the
+     translucent field colour can't do that, so this is its flattened value. */
+  .login-root .input-field:-webkit-autofill,
+  .login-root .input-field:-webkit-autofill:hover,
+  .login-root .input-field:-webkit-autofill:active,
+  .login-root .input-field:-webkit-autofill:focus {
+    -webkit-box-shadow: 0 0 0 1000px #f4f2f7 inset;
+    box-shadow: 0 0 0 1000px #f4f2f7 inset;
+    -webkit-text-fill-color: #16294b;
+    caret-color: #16294b;
+  }
+
+  .eye-btn {
+    position: static;
+    flex: 0 0 auto;
+    padding: 4px;
+    color: #16294b;
+    opacity: 0.5;
+  }
+  .eye-btn:hover { opacity: 0.8; color: #16294b; }
+  .eye-btn svg { width: 19px; height: 19px; }
+
+  .submit-btn {
+    height: 52px;
+    padding: 0;
+    margin-top: 16px;
+    border-radius: 15px;
+    background: linear-gradient(180deg, #243c66 0%, #16294b 100%);
+    font-size: 15px;
+    font-weight: 600;
+    box-shadow: 0 12px 26px -10px rgba(22, 41, 75, 0.7);
+  }
+  .submit-btn:hover:not(:disabled) {
+    opacity: 1;
+    transform: none;
+    box-shadow: 0 16px 30px -10px rgba(22, 41, 75, 0.8);
+  }
+  .submit-btn:active:not(:disabled) { transform: translateY(1px) scale(0.995); }
+
+  .error-box {
+    margin: 14px 0 0;
+    background: rgba(255, 245, 245, 0.85);
+    font-size: 12.5px;
+  }
+
+  .form-footer {
+    margin-top: 15px;
+    font-size: 10.5px;
+    color: #6a6e7e;
+    opacity: 0.85;
+    line-height: 1.5;
+  }
+  .form-footer br { display: none; }
+  .ff-secure {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 11px;
+  }
+  .ff-shield {
+    display: block;
+    width: 13px;
+    height: 13px;
+    opacity: 0.7;
+    flex: 0 0 auto;
+  }
+  .ff-copy { display: block; margin-top: 9px; }
+
+  /* Out of the bottom-right corner and into the card, as its last line. */
   .rp-powered {
-    bottom: 16px;
-    right: 16px;
+    position: static;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    margin-top: 6px;
+    opacity: 0.9;
   }
+  .rp-powered-label {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #6a6e7e;
+  }
+  .logo-imgs { height: 14px; }
+}
+
+@keyframes lbFloat {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-14px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lb-bubble { animation: none; }
 }
 .input-wrapper {
     position: relative;
@@ -880,7 +1203,13 @@
 
 .input-wrapper .input-field {
     width: 100%;
-    padding-right: 2.8rem; /* make room for the eye button */
+}
+
+/* Only the password row has an eye button to clear. Scoped to --eye so that
+   wrapping the email field (which the mobile layout needs for its leading icon)
+   doesn't silently give it 2.8rem of dead right padding too. */
+.input-wrapper--eye .input-field {
+    padding-right: 2.8rem;
 }
 
 .eye-btn {

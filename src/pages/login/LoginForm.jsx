@@ -159,6 +159,21 @@ export default function Login() {
   return (
     <>
       <div class="login-root">
+        {/* ── Ambient backdrop (mobile only; display:none from 900px up) ──
+            The >=900px layout gets its atmosphere from the artwork image on
+            .login-left. Below that the artwork panel is gone, so these drawn
+            layers — gradient wash, two orbit rings, four drifting bubbles —
+            carry the whole screen behind the hero and the form card. Purely
+            decorative, hence aria-hidden and no content of its own. */}
+        <div class="login-bg" aria-hidden="true">
+          <div class="lb-ring lb-ring-1" />
+          <div class="lb-ring lb-ring-2" />
+          <div class="lb-bubble lb-b1" />
+          <div class="lb-bubble lb-b2" />
+          <div class="lb-bubble lb-b3" />
+          <div class="lb-bubble lb-b4" />
+        </div>
+
         {/* ── Back to the landing page — top-left, over the gradient panel ──
             Always "/" rather than history.back(): /login is often opened
             directly (bookmark, session expiry, logout redirect), where going
@@ -203,10 +218,13 @@ export default function Login() {
           <div class="blob blob-2" />
           <div class="blob blob-3" />
           <div class="left-glass-card">
+            {/* Colours live in CSS (.brand-dot:nth-child) rather than inline,
+                so the mobile design can restate them — an inline style would
+                have needed !important to override. */}
             <div class="brand-dots">
-              <div class="brand-dot" style="background:#5b7fa6" />
-              <div class="brand-dot" style="background:#8a6fc4" />
-              <div class="brand-dot" style="background:#f0a8b8" />
+              <div class="brand-dot" />
+              <div class="brand-dot" />
+              <div class="brand-dot" />
             </div>
             <h2 class="left-tagline">
               Campaigns that
@@ -252,19 +270,46 @@ export default function Login() {
               <form onSubmit={handleSubmit}>
                 <div class="input-group">
                   <label class="input-label">Email</label>
-                  <input
-                    type="email"
-                    value={email()}
-                    onInput={(e) => setEmail(e.target.value)}
-                    class="input-field"
-                    placeholder="you@company.com"
-                    required
-                  />
+                  {/* The wrapper carries no styling above 900px — it exists so
+                      the mobile layout can put the border on the row and the
+                      leading icon inside it. .field-ico is display:none there. */}
+                  <div class="input-wrapper">
+                    <svg
+                      class="field-ico"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                      aria-hidden="true"
+                    >
+                      <rect x="3" y="5" width="18" height="14" rx="2.5" />
+                      <path d="M3.5 7l8.5 6 8.5-6" stroke-linecap="round" />
+                    </svg>
+                    <input
+                      type="email"
+                      value={email()}
+                      onInput={(e) => setEmail(e.target.value)}
+                      class="input-field"
+                      placeholder="you@company.com"
+                      required
+                    />
+                  </div>
                 </div>
 
                 <div class="input-group">
                   <label class="input-label">Password</label>
-                  <div class="input-wrapper">
+                  <div class="input-wrapper input-wrapper--eye">
+                    <svg
+                      class="field-ico"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                      aria-hidden="true"
+                    >
+                      <rect x="4" y="10.5" width="16" height="10" rx="2.5" />
+                      <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" stroke-linecap="round" />
+                    </svg>
                     <input
                       type={showPassword() ? "text" : "password"}
                       value={password()}
@@ -333,18 +378,41 @@ export default function Login() {
               </button>
             )}
 
+            {/* Both lines were bare text either side of a <br>. They're wrapped
+                now so the mobile card can lay the security line out as an
+                icon + label row; above 900px the spans stay inline and the
+                shield is display:none, so it renders exactly as before. */}
             <p class="form-footer">
-              Protected by enterprise-grade security.
+              <span class="ff-secure">
+                <svg
+                  class="ff-shield"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  aria-hidden="true"
+                >
+                  <path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3Z" />
+                </svg>
+                Protected by enterprise-grade security.
+              </span>
               <br />
-              &copy; {new Date().getFullYear()} Aajneeti Connect Limited. All
-              rights reserved.
+              <span class="ff-copy">
+                &copy; {new Date().getFullYear()} Aajneeti Connect Limited. All
+                rights reserved.
+              </span>
             </p>
-          </div>
 
-          {/* ── Powered by — bottom-right ── */}
-          <div class="rp-powered ">
-            <span class="rp-powered-label">Powered by</span>
-            <img src="/logo.webp" alt="Company Logo" class="logo-imgs" />
+            {/* ── Powered by ──
+                Moved inside .form-wrapper so the mobile card can carry it as
+                its last line. This does NOT move it above 900px: it stays
+                position:absolute and .form-wrapper is static, so its containing
+                block is still .login-right and it renders bottom-right exactly
+                as before. */}
+            <div class="rp-powered ">
+              <span class="rp-powered-label">Powered by</span>
+              <img src="/logo.webp" alt="Company Logo" class="logo-imgs" />
+            </div>
           </div>
         </div>
       </div>
