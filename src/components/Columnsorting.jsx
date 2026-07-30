@@ -1,9 +1,13 @@
 import { createSignal } from "solid-js";
 
-export default function useColumnSort() {
+// `initial` lets a table open on a meaningful column (e.g. the coordination
+// payments table starts on closing-balance ascending so debtors are on top).
+// Omit it and the behaviour is what every existing caller already gets: no
+// column selected, so the incoming API order is preserved.
+export default function useColumnSort(initial = { key: "", direction: "desc" }) {
   const [columnSort, setColumnSort] = createSignal({
-    key: "",
-    direction: "desc",
+    key: initial.key ?? "",
+    direction: initial.direction ?? "desc",
   });
 
   const handleSort = (key) => {
@@ -58,8 +62,8 @@ export default function useColumnSort() {
 
   const resetSort = () => {
     setColumnSort({
-      key: "",
-      direction: "desc",
+      key: initial.key ?? "",
+      direction: initial.direction ?? "desc",
     });
   };
 

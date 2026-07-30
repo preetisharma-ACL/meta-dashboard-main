@@ -29,6 +29,7 @@ import {
 import { fetchPaymentsOverview } from "../services/coDashboard-service";
 import Avatar from "../../../components/common/Avatar";
 import RowsPerPageSelect from "../../../components/common/RowsPerPageSelect";
+import useColumnSort from "../../../components/Columnsorting";
 
 // Distinct badge colors per client type (v4 theme tokens)
 const TYPE_BADGE = {
@@ -72,8 +73,25 @@ export default function CoordinationDashboard() {
   };
   const [searchText, setSearchText] = createSignal("");
   const [incGst, setIncGst] = createSignal(true); // GST toggle, default Including
-  const [sortKey, setSortKey] = createSignal("closing"); // default sort
-  const [sortDir, setSortDir] = createSignal("asc"); // debtors first
+
+  // Same shared hook + ⇅/↑/↓ icons as the rest of the project. Opens on the
+  // closing balance ascending so the debtors this page exists to chase are on
+  // top. The comparator below is custom because the money columns have to
+  // resolve through the GST-aware field picker.
+  const { columnSort, handleSort, getSortIcon } = useColumnSort({
+    key: "closing",
+    direction: "asc",
+  });
+
+  // Sort arrow next to a header label: brand-red when active, slate when idle.
+  const SortIcon = (props) => (
+    <span
+      class={`ml-1 text-xs font-bold ${columnSort().key === props.col ? "text-[#AC2334] dark:text-red-400" : "text-[#8593A8] dark:text-gray-400"}`}
+    >
+      {getSortIcon(props.col)}
+    </span>
+  );
+
   const [page, setPage] = createSignal(1);
   // Rows-per-page. Everything is client-side here, so a change only re-slices.
   // 30 stays in the list because it is this table's long-standing default.
@@ -201,8 +219,8 @@ export default function CoordinationDashboard() {
 
     // Sort client-side. Money keys resolve through the GST-aware picker so the
     // visible numbers and the sort always agree.
-    const key = sortKey();
-    const dir = sortDir() === "asc" ? 1 : -1;
+    const { key, direction } = columnSort();
+    const dir = direction === "asc" ? 1 : -1;
 
     const valueOf = (c) => {
       switch (key) {
@@ -242,21 +260,6 @@ export default function CoordinationDashboard() {
     const start = (page() - 1) * pageSize();
     return filteredRows().slice(start, start + pageSize());
   });
-
-  const handleSort = (key) => {
-    if (sortKey() === key) {
-      setSortDir(sortDir() === "asc" ? "desc" : "asc");
-    } else {
-      setSortKey(key);
-      // Money columns most useful descending first; closing keeps asc (debtors).
-      setSortDir(key === "closing" ? "asc" : "desc");
-    }
-  };
-
-  const sortIcon = (key) => {
-    if (sortKey() !== key) return "";
-    return sortDir() === "asc" ? " ▲" : " ▼";
-  };
 
   // ── Small presentational helpers ──────────────────────────────────────────────
   const StatusBadge = (props) => {
@@ -302,6 +305,9 @@ export default function CoordinationDashboard() {
       <For each={Array(8).fill(0)}>
         {() => (
           <tr class="border-t border-[#E2E8F1] dark:border-gray-700 animate-pulse">
+            <td class="p-3">
+              <div class="h-4 w-6 bg-gray-200 dark:bg-gray-700 rounded"></div>
+            </td>
             <td class="p-3">
               <div class="h-4 w-40 bg-gray-200 dark:bg-gray-700 rounded"></div>
             </td>
@@ -588,30 +594,63 @@ export default function CoordinationDashboard() {
       <div class="overflow-x-auto bg-white dark:bg-gray-800 rounded-xl border border-[#E2E8F1] dark:border-gray-700 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)]">
         <table class="w-full text-sm table-auto">
           <thead class="bg-[#F8FAFC] dark:bg-gray-800">
-            <tr class="[&_th]:cursor-pointer [&_th]:whitespace-nowrap [&_th]:text-xs [&_th]:uppercase [&_th]:tracking-wider [&_th]:font-bold [&_th]:px-4 [&_th]:py-3.5 text-[#54657E] dark:text-gray-300 border-b border-[#D4DDE9] dark:border-gray-700">
+            <tr class="[&_th]:cursor-pointer [&_th]:select-none [&_th]:whitespace-nowrap [&_th]:text-xs [&_th]:uppercase [&_th]:tracking-wider [&_th]:font-bold [&_th]:px-4 [&_th]:py-3.5 text-[#54657E] dark:text-gray-300 border-b border-[#D4DDE9] dark:border-gray-700">
+              {/* S.No — a running row counter, not a data column, so it never
+                  sorts. Sticky at left:0 with Client parked just after it. */}
               <th
-                class="text-left md:sticky md:left-0 md:z-20 bg-[#F8FAFC] dark:bg-gray-800"
+                class="!cursor-default !px-3 text-left md:sticky md:left-0 md:z-20 bg-[#F8FAFC] dark:bg-gray-800"
+                style="width:72px"
+              >
+                S.No
+              </th>
+              <th
+                class="text-left md:sticky md:left-[72px] md:z-20 bg-[#F8FAFC] dark:bg-gray-800 hover:text-[#14233A] dark:hover:text-gray-200 transition-colors"
                 onClick={() => handleSort("client")}
               >
-                Client{sortIcon("client")}
+                Client
+                <SortIcon col="client" />
               </th>
-              <th class="text-center" onClick={() => handleSort("type")}>
-                Type{sortIcon("type")}
+              <th
+                class="text-center hover:text-[#14233A] dark:hover:text-gray-200 transition-colors"
+                onClick={() => handleSort("type")}
+              >
+                Type
+                <SortIcon col="type" />
               </th>
-              <th class="text-right" onClick={() => handleSort("opening")}>
-                Opening{sortIcon("opening")}
+              <th
+                class="text-right hover:text-[#14233A] dark:hover:text-gray-200 transition-colors"
+                onClick={() => handleSort("opening")}
+              >
+                Opening
+                <SortIcon col="opening" />
               </th>
-              <th class="text-right" onClick={() => handleSort("received")}>
-                Received{sortIcon("received")}
+              <th
+                class="text-right hover:text-[#14233A] dark:hover:text-gray-200 transition-colors"
+                onClick={() => handleSort("received")}
+              >
+                Received
+                <SortIcon col="received" />
               </th>
-              <th class="text-right" onClick={() => handleSort("utilized")}>
-                Utilized{sortIcon("utilized")}
+              <th
+                class="text-right hover:text-[#14233A] dark:hover:text-gray-200 transition-colors"
+                onClick={() => handleSort("utilized")}
+              >
+                Utilized
+                <SortIcon col="utilized" />
               </th>
-              <th class="text-right" onClick={() => handleSort("closing")}>
-                Closing{sortIcon("closing")}
+              <th
+                class="text-right hover:text-[#14233A] dark:hover:text-gray-200 transition-colors"
+                onClick={() => handleSort("closing")}
+              >
+                Closing
+                <SortIcon col="closing" />
               </th>
-              <th class="text-center" onClick={() => handleSort("status")}>
-                Status{sortIcon("status")}
+              <th
+                class="text-center hover:text-[#14233A] dark:hover:text-gray-200 transition-colors"
+                onClick={() => handleSort("status")}
+              >
+                Status
+                <SortIcon col="status" />
               </th>
             </tr>
           </thead>
@@ -629,10 +668,24 @@ export default function CoordinationDashboard() {
                       
                     }
                   >
+                    {/* S.No — continuous across pages, so page 2 starts at
+                        pageSize + 1 rather than restarting at 1. */}
+                    <td
+                      class={
+                        "px-3 py-3 text-left tabular-nums text-xs font-semibold text-[#8593A8] dark:text-gray-400 md:sticky md:left-0 md:z-10 " +
+                        (index() % 2 === 0
+                          ? "bg-white dark:bg-gray-900"
+                          : "bg-[#FAFBFD] dark:bg-gray-900")
+                      }
+                      style="width:72px"
+                    >
+                      {(page() - 1) * pageSize() + index() + 1}
+                    </td>
+
                     {/* Client */}
                     <td
                       class={
-                        "px-4 py-3 md:sticky md:left-0 md:z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.06)] " +
+                        "px-4 py-3 md:sticky md:left-[72px] md:z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.06)] " +
                         (index() % 2 === 0
                           ? "bg-white dark:bg-gray-900"
                           : "bg-[#FAFBFD] dark:bg-gray-900")
