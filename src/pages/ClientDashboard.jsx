@@ -2659,12 +2659,15 @@ export default function MainDashboard() {
 
       {/* ── Non-CPL clients: original two-column ledger (spend + rail + stats) ── */}
       <Show when={!iscpl()}>
-        <div class="bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] p-5 sm:p-8 mb-8 grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-8 lg:gap-12 items-start">
-          <div>
+        <div class="bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] p-4 sm:p-8 mb-8 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_300px] gap-6 lg:gap-12 items-start">
+          {/* min-w-0: a grid track defaults to min-content, so a long
+              non-wrapping figure would otherwise widen the card past the
+              viewport instead of shrinking inside it. */}
+          <div class="min-w-0">
             <p class="text-sm text-[#54657E] dark:text-gray-400 font-medium mb-1">
               Total spend till date
             </p>
-            <h2 class="text-xl sm:text-2xl font-bold tracking-tight text-gray-700 dark:text-white">
+            <h2 class="text-xl sm:text-2xl font-bold tracking-tight text-gray-700 dark:text-white break-words">
               {"₹"}
               <CountUp
                 value={overviewStatsCards().totalSpent}
@@ -2701,14 +2704,28 @@ export default function MainDashboard() {
                       class="absolute -top-2 -bottom-2 w-0.5 bg-[#14233A] dark:bg-gray-50 rounded"
                       style={`left:${heroPacing().calendarPct}%`}
                     >
-                      <span class="absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap text-[11px] font-bold uppercase tracking-wide text-[#14233A] dark:text-white">
+                      {/* The caption is far wider than the tick it hangs off,
+                          so centring it spills past the card near the ends of
+                          the month — on a phone that gives the whole page a
+                          sideways scroll. Anchor it to whichever side of the
+                          tick still has room. */}
+                      <span
+                        class="absolute -top-7 whitespace-nowrap text-[11px] font-bold uppercase tracking-wide text-[#14233A] dark:text-white"
+                        style={
+                          heroPacing().calendarPct > 70
+                            ? "right:0"
+                            : heroPacing().calendarPct < 30
+                              ? "left:0"
+                              : "left:50%;transform:translateX(-50%)"
+                        }
+                      >
                         Today · Day {heroPacing().dayOfMonth} of{" "}
                         {heroPacing().daysInMonth}
                       </span>
                     </div>
                   </Show>
                 </div>
-                <div class="flex justify-between mt-2 text-xs font-medium text-[#8593A8] dark:text-gray-500">
+                <div class="flex justify-between gap-2 mt-2 text-xs font-medium text-[#8593A8] dark:text-gray-500">
                   <span>₹0</span>
                   <span>
                     {"₹"}
@@ -2760,7 +2777,9 @@ export default function MainDashboard() {
           </div>
 
           {/* Hero side stats */}
-          <div class="flex flex-col border-t lg:border-t-0 lg:border-l border-[#E2E8F1] dark:border-gray-700 pt-4 lg:pt-0 lg:pl-9">
+          {/* Stacked under the spend block on a phone, two-up on a tablet, and
+              back to a single rail beside the spend block on desktop. */}
+          <div class="grid grid-cols-1 sm:grid-cols-2 sm:gap-x-8 lg:grid-cols-1 border-t lg:border-t-0 lg:border-l border-[#E2E8F1] dark:border-gray-700 pt-4 lg:pt-0 lg:pl-9">
             <div class="py-3.5 border-b border-[#E2E8F1] dark:border-gray-700">
               <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
                 {isFedAwareViewer() ? "Meta leads" : "Leads generated"}
@@ -2855,7 +2874,9 @@ export default function MainDashboard() {
                 </p>
               </div>
             </Show> */}
-            <div class="py-3.5">
+            {/* Bordered only in the two-up tablet layout, where it shares a
+                row with the tile above it. */}
+            <div class="py-3.5 border-b max-sm:border-b-0 lg:border-b-0 border-[#E2E8F1] dark:border-gray-700">
               <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
                 Campaigns
               </p>

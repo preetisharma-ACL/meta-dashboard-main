@@ -428,8 +428,11 @@ export default function Clients() {
   };
 
   // ─── render ───────────────────────────────────────────────────────────────
+  // p-2 left the heading and the chips 8px off the screen edge, reading as
+  // flush against it. p-4 matches the other screens' mobile gutter; the sm:/lg:
+  // steps are unchanged.
   return (
-    <div class="min-h-screen bg-gray-50 dark:bg-gray-900 p-2 sm:p-6 lg:p-8">
+    <div class="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 sm:p-6 lg:p-8">
       {/* ── Page header ── */}
       <div class="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div>
@@ -857,7 +860,10 @@ export default function Clients() {
 
       {/* ── Pagination ── */}
       <div class="flex items-center justify-between mt-5 flex-wrap gap-3">
-        <div class="flex items-center gap-3">
+        {/* On a phone the "Showing …" line wraps to two or three lines and was
+            squeezing the rows-per-page pill next to it. Give the group the full
+            width and push the pill to the right edge instead. */}
+        <div class="flex items-center gap-3 max-sm:w-full max-sm:justify-between">
           <span class="text-sm text-gray-500 dark:text-gray-400">
             {filtered().length === 0
               ? "No results"
@@ -874,7 +880,9 @@ export default function Clients() {
           <RowsPerPageSelect value={pageSize()} onChange={changeRowsPerPage} />
         </div>
 
-        <div class="flex items-center gap-2">
+        {/* Spread Prev / page / Next across the row on a phone — bigger thumb
+            targets than the left-huddled default the wrap produces. */}
+        <div class="flex items-center gap-2 max-sm:w-full max-sm:justify-between">
           <button
             onClick={() => {
               if (hasPrev()) {

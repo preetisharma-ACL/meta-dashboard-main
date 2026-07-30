@@ -980,7 +980,7 @@ export default function AllowedBudget() {
           <div class="bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-2xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] px-5 sm:px-7 py-5 mb-4">
             <div class="flex flex-wrap items-center gap-x-6 gap-y-4">
               {/* focal */}
-              <div class="flex items-center gap-4 sm:pr-6 sm:border-r border-[#E2E8F1] dark:border-gray-700">
+              <div class="flex items-center gap-4 sm:pr-6 sm:border-r border-[#E2E8F1] dark:border-gray-700 max-sm:w-full max-sm:pb-4 max-sm:border-b">
                 <div class="relative w-14 h-14 grid place-items-center flex-none">
                   <svg viewBox="0 0 56 56" class="absolute inset-0 -rotate-90">
                     <circle cx="28" cy="28" r="25" fill="none" stroke="#F4D7DC" stroke-width="5" />
@@ -996,27 +996,33 @@ export default function AllowedBudget() {
                 </div>
               </div>
 
-              {/* minis */}
-              <div class="flex flex-wrap gap-x-7 gap-y-3">
-                <div>
-                  <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">Budgets set</p>
-                  <p class="text-xl font-bold text-[#14233A] dark:text-white mt-1 ">{statusCounts().capped}</p>
-                  <p class="text-xs text-[#54657E] dark:text-gray-400">{pct(statusCounts().capped)}% of {statusCounts().all} clients</p>
+              {/* minis.
+                  On a phone these wrapped into a cramped 2x2 where the labels
+                  and the money figures each had about half the card to sit in.
+                  Under sm each becomes a ruled row instead — label left, figure
+                  right-aligned on the same baseline, caption on its own line
+                  beneath. Every mobile rule is behind max-sm:, so the desktop
+                  strip is untouched. */}
+              <div class="flex flex-wrap gap-x-7 gap-y-3 max-sm:block max-sm:w-full max-sm:divide-y divide-[#E2E8F1] dark:divide-gray-700">
+                <div class="max-sm:flex max-sm:flex-wrap max-sm:items-baseline max-sm:justify-between max-sm:gap-x-3 max-sm:py-2.5">
+                  <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400 max-sm:order-1">Budgets set</p>
+                  <p class="text-xl font-bold text-[#14233A] dark:text-white mt-1 max-sm:mt-0 max-sm:order-2">{statusCounts().capped}</p>
+                  <p class="text-xs text-[#54657E] dark:text-gray-400 max-sm:order-3 max-sm:w-full">{pct(statusCounts().capped)}% of {statusCounts().all} clients</p>
                 </div>
-                <div>
-                  <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">Uncapped</p>
-                  <p class="text-xl font-bold text-[#14233A] dark:text-white mt-1 ">{statusCounts().uncapped}</p>
-                  <p class="text-xs text-[#54657E] dark:text-gray-400">{pct(statusCounts().uncapped)}% spending open</p>
+                <div class="max-sm:flex max-sm:flex-wrap max-sm:items-baseline max-sm:justify-between max-sm:gap-x-3 max-sm:py-2.5">
+                  <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400 max-sm:order-1">Uncapped</p>
+                  <p class="text-xl font-bold text-[#14233A] dark:text-white mt-1 max-sm:mt-0 max-sm:order-2">{statusCounts().uncapped}</p>
+                  <p class="text-xs text-[#54657E] dark:text-gray-400 max-sm:order-3 max-sm:w-full">{pct(statusCounts().uncapped)}% spending open</p>
                 </div>
-                <div class="sm:pl-7 sm:border-l border-[#E2E8F1] dark:border-gray-700">
-                  <p class="text-[11px] font-bold uppercase  text-[#8593A8] dark:text-gray-400">Total Allowed</p>
-                  <p class="text-xl font-bold text-[#14233A] dark:text-white mt-1 ">{moneyWhole(budgetTotals().allowed)}</p>
-                  <p class="text-xs text-[#54657E] dark:text-gray-400">daily budgets set</p>
+                <div class="sm:pl-7 sm:border-l border-[#E2E8F1] dark:border-gray-700 max-sm:flex max-sm:flex-wrap max-sm:items-baseline max-sm:justify-between max-sm:gap-x-3 max-sm:py-2.5 max-sm:border-l-0">
+                  <p class="text-[11px] font-bold uppercase  text-[#8593A8] dark:text-gray-400 max-sm:order-1">Total Allowed</p>
+                  <p class="text-xl font-bold text-[#14233A] dark:text-white mt-1 max-sm:mt-0 max-sm:order-2">{moneyWhole(budgetTotals().allowed)}</p>
+                  <p class="text-xs text-[#54657E] dark:text-gray-400 max-sm:order-3 max-sm:w-full">daily budgets set</p>
                 </div>
-                <div>
-                  <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">Total Allocated</p>
-                  <p class="text-xl font-bold text-[#14233A] dark:text-white mt-1 ">{moneyWhole(budgetTotals().allocated)}</p>
-                  <p class="text-xs text-[#54657E] dark:text-gray-400">Σ daily allocated</p>
+                <div class="max-sm:flex max-sm:flex-wrap max-sm:items-baseline max-sm:justify-between max-sm:gap-x-3 max-sm:py-2.5">
+                  <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400 max-sm:order-1">Total Allocated</p>
+                  <p class="text-xl font-bold text-[#14233A] dark:text-white mt-1 max-sm:mt-0 max-sm:order-2">{moneyWhole(budgetTotals().allocated)}</p>
+                  <p class="text-xs text-[#54657E] dark:text-gray-400 max-sm:order-3 max-sm:w-full">Σ daily allocated</p>
                 </div>
               </div>
 
@@ -1024,9 +1030,9 @@ export default function AllowedBudget() {
               <Show when={admin() && totalPendingRequests() > 0}>
                 <button
                   onClick={() => setTab("queue")}
-                  class="ml-auto inline-flex items-center gap-3 px-4 py-2.5 rounded-xl bg-[#F8FAFC] dark:bg-gray-900 border border-[#E2E8F1] dark:border-gray-700 hover:border-[#AC2334] hover:bg-[#FBEEF0] transition-colors"
+                  class="ml-auto inline-flex items-center gap-3 px-4 py-2.5 rounded-xl bg-[#F8FAFC] dark:bg-gray-900 border border-[#E2E8F1] dark:border-gray-700 hover:border-[#AC2334] hover:bg-[#FBEEF0] transition-colors max-sm:w-full max-sm:ml-0 max-sm:mt-1"
                 >
-                  <span class="w-8 h-8 rounded-lg bg-[#AC2334] text-white grid place-items-center font-extrabold text-sm">{totalPendingRequests()}</span>
+                  <span class="w-8 h-8 flex-none rounded-lg bg-[#AC2334] text-white grid place-items-center font-extrabold text-sm">{totalPendingRequests()}</span>
                   <span class="text-left">
                     <span class="block text-[13px] font-bold text-[#14233A] dark:text-white">Pending requests</span>
                     <span class="block text-[11.5px] text-[#54657E] dark:text-gray-400">awaiting your approval</span>
@@ -1038,11 +1044,14 @@ export default function AllowedBudget() {
 
             {/* distribution bar */}
             <div class="mt-5 pt-4 border-t border-[#E2E8F1] dark:border-gray-700">
-              <div class="flex items-center justify-between mb-2.5">
+              {/* Side by side on a phone these two both wrap and interleave —
+                  "…by budget status" ends up level with "tap a segment to
+                  filter". Stack them under sm. */}
+              <div class="flex items-center justify-between mb-2.5 max-sm:block">
                 <span class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
                   All {statusCounts().all} clients by budget status
                 </span>
-                <span class="text-xs font-semibold text-[#54657E] dark:text-gray-400">tap a segment to filter</span>
+                <span class="text-xs font-semibold text-[#54657E] dark:text-gray-400 max-sm:block max-sm:mt-1">tap a segment to filter</span>
               </div>
               <div class="flex h-1.5 rounded-full overflow-hidden bg-[#E2E8F1] dark:bg-gray-700 gap-0.5">
                 <For each={distSegments()}>

@@ -30,11 +30,15 @@ export default function RowsPerPageSelect(props) {
   };
 
   return (
-    <div class="relative" ref={wrapper}>
+    // flex-none + whitespace-nowrap: this pill usually sits in a flex row beside
+    // a long "Showing 1–25 of 146 clients (filtered from 155)" line. On a narrow
+    // screen that line squeezed the pill until "25 per page" wrapped to two
+    // lines and spilled out of the fixed h-9 box.
+    <div class="relative flex-none" ref={wrapper}>
       <button
         type="button"
         onClick={() => setOpen(!open())}
-        class="flex items-center gap-2 px-3 h-9 text-sm rounded-lg border border-[#E2E8F1] dark:border-gray-700 bg-white dark:bg-gray-900 text-[#54657E] dark:text-gray-200 hover:bg-[#F6F9FC] dark:hover:bg-gray-800 transition-colors"
+        class="flex items-center gap-2 px-3 h-9 text-sm whitespace-nowrap rounded-lg border border-[#E2E8F1] dark:border-gray-700 bg-white dark:bg-gray-900 text-[#54657E] dark:text-gray-200 hover:bg-[#F6F9FC] dark:hover:bg-gray-800 transition-colors"
       >
         {props.value} per page
         <svg

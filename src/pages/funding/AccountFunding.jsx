@@ -41,6 +41,22 @@ const REFRESH_COPY = {
   timeoutBody: "The sync is taking longer than usual — check back in a moment.",
 };
 
+// ─── Summary-banner KPI classes ───────────────────────────────────────────────
+// Shared by the five tiles in the KPI strip so the mobile treatment can't drift
+// between them. Everything here is max-sm:-only — the desktop strip (a wrapping
+// flex row separated by border-l rules) renders from the per-tile classes and is
+// unaffected. Written as whole literal class names so Tailwind's scanner picks
+// them up; it does not evaluate template strings.
+const KPI_ROW =
+  "max-sm:flex max-sm:flex-wrap max-sm:items-baseline max-sm:justify-between max-sm:gap-x-3 max-sm:py-3 max-sm:px-0 max-sm:min-w-0 max-sm:border-l-0";
+const KPI_LABEL =
+  "text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400 max-sm:order-1";
+const KPI_VALUE = "max-sm:order-2 max-sm:mt-0";
+// w-full forces the caption onto its own wrapped line, so it reads as belonging
+// to the figure above it rather than to the next tile down.
+const KPI_CAPTION =
+  "text-xs text-[#54657E] dark:text-gray-400 mt-2 max-sm:order-3 max-sm:w-full max-sm:mt-0.5";
+
 // Poll cadence + safety cap for the background refresh job.
 const REFRESH_POLL_MS = 3000;
 const REFRESH_POLL_TIMEOUT_MS = 90000;
@@ -936,60 +952,67 @@ export default function AccountFunding() {
         }
       >
         <div class="bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-2xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] px-5 sm:px-7 py-6 mb-5">
-          {/* KPI strip */}
-          <div class="flex flex-wrap items-stretch gap-y-5">
-            <div class="px-0 sm:pr-7 flex-1 min-w-[160px]">
-              <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
-                Total to load · next 24h
-              </p>
-              <p class="text-xl sm:text-2xl font-bold text-[#AC2334] dark:text-red-400   mt-2 ">
+          {/* KPI strip.
+              The vertical rules here are UNPREFIXED border-l, so once the strip
+              wraps on a phone they hang off the left edge of whichever tile
+              starts a new row with nothing beside it. Under sm the strip
+              becomes ruled rows instead — label left, figure right-aligned on
+              the same baseline, caption on its own line beneath — using the
+              shared KPI_* class strings below. Desktop is untouched: every
+              mobile-only rule is behind max-sm:. */}
+          <div class="flex flex-wrap items-stretch gap-y-5 max-sm:block max-sm:divide-y divide-[#E2E8F1] dark:divide-gray-700">
+            <div class={`px-0 sm:pr-7 flex-1 min-w-[160px] ${KPI_ROW}`}>
+              <p class={KPI_LABEL}>Total to load · next 24h</p>
+              <p
+                class={`text-xl sm:text-2xl font-bold text-[#AC2334] dark:text-red-400 mt-2 ${KPI_VALUE}`}
+              >
                 {moneyWhole(summary().total_additional_required_24h)}
               </p>
-              <p class="text-xs text-[#54657E] dark:text-gray-400 mt-2">
-                prepaid shortfalls only
-              </p>
+              <p class={KPI_CAPTION}>prepaid shortfalls only</p>
             </div>
-            <div class="px-5 sm:px-7 flex-1 min-w-[140px] border-l border-[#E2E8F1] dark:border-gray-700">
-              <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
-                Total 24h required
-              </p>
-              <p class="text-xl font-bold text-gray-700 dark:text-white mt-2 ">
+            <div
+              class={`px-5 sm:px-7 flex-1 min-w-[140px] border-l border-[#E2E8F1] dark:border-gray-700 ${KPI_ROW}`}
+            >
+              <p class={KPI_LABEL}>Total 24h required</p>
+              <p
+                class={`text-xl font-bold text-gray-700 dark:text-white mt-2 ${KPI_VALUE}`}
+              >
                 {moneyWhole(summary().total_daily_required)}
               </p>
-              <p class="text-xs text-[#54657E] dark:text-gray-400 mt-2">
-                base + GST
-              </p>
+              <p class={KPI_CAPTION}>base + GST</p>
             </div>
-            <div class="px-5 sm:px-7 flex-1 min-w-[140px] border-l border-[#E2E8F1] dark:border-gray-700">
-              <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
-                Total base daily
-              </p>
-              <p class="text-xl font-bold text-gray-700 dark:text-white mt-2 ">
+            <div
+              class={`px-5 sm:px-7 flex-1 min-w-[140px] border-l border-[#E2E8F1] dark:border-gray-700 ${KPI_ROW}`}
+            >
+              <p class={KPI_LABEL}>Total base daily</p>
+              <p
+                class={`text-xl font-bold text-gray-700 dark:text-white mt-2 ${KPI_VALUE}`}
+              >
                 {moneyWhole(summary().total_base_daily_budget)}
               </p>
-              <p class="text-xs text-[#54657E] dark:text-gray-400 mt-2">
-                before GST
-              </p>
+              <p class={KPI_CAPTION}>before GST</p>
             </div>
-            <div class="px-5 sm:px-7 flex-1 min-w-[140px] border-l border-[#E2E8F1] dark:border-gray-700">
-              <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
-                Total GST (18%)
-              </p>
-              <p class="text-xl font-bold text-gray-700 dark:text-white  mt-2 ">
+            <div
+              class={`px-5 sm:px-7 flex-1 min-w-[140px] border-l border-[#E2E8F1] dark:border-gray-700 ${KPI_ROW}`}
+            >
+              <p class={KPI_LABEL}>Total GST (18%)</p>
+              <p
+                class={`text-xl font-bold text-gray-700 dark:text-white mt-2 ${KPI_VALUE}`}
+              >
                 {moneyWhole(summary().total_gst)}
               </p>
-              <p class="text-xs text-[#54657E] dark:text-gray-400 mt-2">
-                on base daily budget
-              </p>
+              <p class={KPI_CAPTION}>on base daily budget</p>
             </div>
-            <div class="px-5 sm:pl-7 flex-1 min-w-[150px] border-l border-[#E2E8F1] dark:border-gray-700">
-              <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
-                Accounts
-              </p>
-              <p class="text-xl font-bold text-[#14233A] dark:text-white  mt-2 ">
+            <div
+              class={`px-5 sm:pl-7 flex-1 min-w-[150px] border-l border-[#E2E8F1] dark:border-gray-700 ${KPI_ROW}`}
+            >
+              <p class={KPI_LABEL}>Accounts</p>
+              <p
+                class={`text-xl font-bold text-[#14233A] dark:text-white mt-2 ${KPI_VALUE}`}
+              >
                 {num(summary().accounts)}
               </p>
-              <p class="text-xs text-[#54657E] dark:text-gray-400 mt-2">
+              <p class={KPI_CAPTION}>
                 <b class="text-[#1A2B45] dark:text-gray-200 font-bold">
                   {num(summary().prepaid_accounts)}
                 </b>{" "}
@@ -1004,11 +1027,13 @@ export default function AccountFunding() {
 
           {/* Funding-health bar */}
           <div class="mt-6 pt-5 border-t border-[#E2E8F1] dark:border-gray-700">
-            <div class="flex items-center justify-between mb-2.5">
+            {/* Side by side on a phone these two both wrap to two lines and
+                interleave, so neither reads cleanly; stack them under sm. */}
+            <div class="flex items-center justify-between mb-2.5 max-sm:block">
               <span class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
                 Funding health across {num(accounts().length)} accounts
               </span>
-              <span class="text-xs font-semibold text-[#54657E] dark:text-gray-400">
+              <span class="text-xs font-semibold text-[#54657E] dark:text-gray-400 max-sm:block max-sm:mt-1">
                 {needsPct()}% need funding
               </span>
             </div>

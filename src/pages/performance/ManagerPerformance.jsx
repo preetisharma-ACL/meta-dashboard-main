@@ -201,6 +201,32 @@ export default function ManagerPerformance() {
     return { priced, total, unpriced: Math.max(0, total - priced) };
   });
 
+  // Borders for the four summary cells, derived from grid position — three
+  // different layouts, so three sets of rules.
+  //
+  // These used to come from divide-x/divide-y on the grid, but those add a left
+  // AND a top border to every child except the first, with no idea where the
+  // rows break. That reads correctly only in the single-row lg layout; in the
+  // 2-column layout it left a stray top border on the top-right cell and a stray
+  // left border on the bottom-left one.
+  //
+  //   phone   → one ruled row per metric, so horizontal rules only
+  //   sm..lg  → 2x2, left border on the right column, top border on row 2
+  //   lg      → 4 across, left border on everything but the first
+  //
+  // Whole class names so Tailwind's scanner sees them. max-sm: rules are emitted
+  // after the unprefixed ones, so max-sm:border-l-0 wins on a phone.
+  const summaryCellBorder = (i) =>
+    [
+      "border-[#E2E8F1] dark:border-gray-700",
+      i > 0 ? "max-sm:border-t" : "",
+      "max-sm:border-l-0",
+      i % 2 === 1 ? "border-l" : "",
+      i >= 2 ? "border-t" : "",
+      "lg:border-t-0",
+      i > 0 ? "lg:border-l" : "lg:border-l-0",
+    ].join(" ");
+
   return (
     <div class="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 md:p-6 lg:p-8">
       <div class="flex items-start justify-between flex-wrap gap-3 mb-6">
@@ -243,12 +269,16 @@ export default function ManagerPerformance() {
           when={!data.loading && summary()}
           fallback={
             <div class="bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] overflow-hidden mb-6">
-              <div class="grid grid-cols-2 lg:grid-cols-4 divide-x divide-y lg:divide-y-0 divide-[#E2E8F1] dark:divide-gray-700">
+              {/* Mirrors the loaded layout above, so the panel doesn't reflow
+                  from boxes to rows once the data lands. */}
+              <div class="grid grid-cols-2 lg:grid-cols-4 max-sm:block">
                 <For each={Array(4).fill(0)}>
-                  {() => (
-                    <div class="p-5">
+                  {(_, i) => (
+                    <div
+                      class={`p-4 sm:p-5 max-sm:flex max-sm:items-center max-sm:justify-between max-sm:gap-x-3 max-sm:px-5 max-sm:py-3.5 ${summaryCellBorder(i())}`}
+                    >
                       <div class="h-3.5 w-24 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
-                      <div class="h-7 w-28 mt-3 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+                      <div class="h-7 w-28 mt-3 max-sm:mt-0 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
                     </div>
                   )}
                 </For>
@@ -257,12 +287,19 @@ export default function ManagerPerformance() {
           }
         >
           <div class="bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] overflow-hidden mb-6">
-            <div class="grid grid-cols-2 lg:grid-cols-4 divide-x divide-y lg:divide-y-0 divide-[#E2E8F1] dark:divide-gray-700">
+            {/* A 2x2 of stacked label-over-figure cells reads as four boxes on a
+                phone. Under sm each metric becomes a single ruled row instead —
+                label left, figure right-aligned on the same baseline — matching
+                the summary panels on Payments, Account Funding and Allowed
+                Budget. sm and up keep the 2x2 / 4-across card. */}
+            <div class="grid grid-cols-2 lg:grid-cols-4 max-sm:block">
               <For each={cards()}>
-                {(c) => (
-                  <div class="p-5">
+                {(c, i) => (
+                  <div
+                    class={`p-4 sm:p-5 max-sm:flex max-sm:items-baseline max-sm:justify-between max-sm:gap-x-3 max-sm:px-5 max-sm:py-3.5 ${summaryCellBorder(i())}`}
+                  >
                     <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">{c.label}</p>
-                    <h3 class={`text-2xl font-bold mt-2 ${c.accent}`}>{c.value}</h3>
+                    <h3 class={`text-xl sm:text-2xl font-bold mt-2 max-sm:mt-0 break-words ${c.accent}`}>{c.value}</h3>
                   </div>
                 )}
               </For>

@@ -439,7 +439,7 @@ export default function PaymentsList(props) {
         <div class="flex flex-wrap items-center gap-x-6 gap-y-4">
           {/* focal — share of the filtered ledger whose paperwork is in */}
           <Show when={!queueMode()}>
-            <div class="flex items-center gap-4 sm:pr-6 sm:border-r border-[#E2E8F1] dark:border-gray-700">
+            <div class="flex items-center gap-4 sm:pr-6 sm:border-r border-[#E2E8F1] dark:border-gray-700 max-sm:w-full max-sm:pb-4 max-sm:border-b">
               <div class="relative w-14 h-14 grid place-items-center flex-none">
                 <svg viewBox="0 0 56 56" class="absolute inset-0 -rotate-90">
                   <circle cx="28" cy="28" r="25" fill="none" stroke="#D8EFE6" stroke-width="5" />
@@ -483,21 +483,29 @@ export default function PaymentsList(props) {
             </div>
           </Show>
 
-          {/* stats — same tiles(), laid out as minis */}
-          <div class="flex flex-wrap gap-x-7 gap-y-3">
+          {/* stats — same tiles(), laid out as minis.
+              On a phone the sm: vertical rules below are gone, which left three
+              label/number/caption triplets stacked 12px apart with nothing
+              tying a caption to its own number. Under sm each tile instead
+              becomes a ruled row: label on the left, figure right-aligned on
+              the same baseline, caption on its own line beneath. Desktop is
+              untouched — every mobile-only rule is behind max-sm:. */}
+          <div class="flex flex-wrap gap-x-7 gap-y-3 max-sm:block max-sm:w-full max-sm:divide-y divide-[#E2E8F1] dark:divide-gray-700">
             <For each={tiles()}>
               {(t) => (
                 <div
-                  class={
+                  class={`max-sm:flex max-sm:flex-wrap max-sm:items-baseline max-sm:justify-between max-sm:gap-x-3 max-sm:py-2.5 ${
                     t.divider
                       ? "sm:pl-7 sm:border-l border-[#E2E8F1] dark:border-gray-700"
                       : ""
-                  }
+                  }`}
                 >
-                  <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
+                  <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400 max-sm:order-1">
                     {t.label}
                   </p>
-                  <p class={`text-xl font-bold mt-1 tabular-nums ${t.tone}`}>
+                  <p
+                    class={`text-xl font-bold mt-1 tabular-nums max-sm:mt-0 max-sm:order-2 ${t.tone}`}
+                  >
                     <Show
                       when={!loading()}
                       fallback={
@@ -507,7 +515,9 @@ export default function PaymentsList(props) {
                       {t.value}
                     </Show>
                   </p>
-                  <p class="text-xs text-[#54657E] dark:text-gray-400">
+                  {/* w-full forces the caption onto its own wrapped line, so it
+                      reads as belonging to the row above it, not the next one. */}
+                  <p class="text-xs text-[#54657E] dark:text-gray-400 max-sm:order-3 max-sm:w-full">
                     {t.caption}
                   </p>
                 </div>
@@ -520,7 +530,7 @@ export default function PaymentsList(props) {
           <Show when={!queueMode() && !loading() && (awaitingDocs() ?? 0) > 0}>
             <A
               href="/payments/needs-docs"
-              class="ml-auto inline-flex items-center gap-3 px-4 py-2.5 rounded-xl bg-[#FBF3E2] dark:bg-yellow-900/15 border border-[#B07A14]/30 dark:border-yellow-800 hover:bg-[#F7E9C9] dark:hover:bg-yellow-900/25 transition-colors"
+              class="ml-auto inline-flex items-center gap-3 px-4 py-2.5 rounded-xl bg-[#FBF3E2] dark:bg-yellow-900/15 border border-[#B07A14]/30 dark:border-yellow-800 hover:bg-[#F7E9C9] dark:hover:bg-yellow-900/25 transition-colors max-sm:w-full max-sm:ml-0 max-sm:mt-1"
             >
               <span class="w-8 h-8 flex-none rounded-lg bg-[#B07A14] text-white grid place-items-center font-extrabold text-sm tabular-nums">
                 {awaitingDocs()}
@@ -540,11 +550,13 @@ export default function PaymentsList(props) {
         {/* paperwork band — the focal ratio, drawn wide */}
         <Show when={!queueMode() && !loading() && docsCompletePct() !== null}>
           <div class="mt-5 pt-4 border-t border-[#E2E8F1] dark:border-gray-700">
-            <div class="flex items-center justify-between mb-2.5">
+            {/* Side by side these two both wrap to two lines on a phone and
+                interleave; stack them under sm instead. */}
+            <div class="flex items-center justify-between mb-2.5 max-sm:block">
               <span class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
                 Paperwork progress
               </span>
-              <span class="text-xs font-semibold text-[#54657E] dark:text-gray-400 tabular-nums">
+              <span class="text-xs font-semibold text-[#54657E] dark:text-gray-400 tabular-nums max-sm:block max-sm:mt-1">
                 {fmtCount(docsComplete())} documented of {fmtCount(total())}{" "}
                 payments
               </span>
