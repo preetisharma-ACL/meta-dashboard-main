@@ -70,6 +70,15 @@ export default function DailyReports() {
   // only (there's no raw data for a client's own login).
   const [includeRaw, setIncludeRaw] = createSignal(true);
 
+  // Per-column show/hide for the three money columns (Client Billed, + S.C,
+  // + S.C + GST). Purely presentational: they only ever REMOVE a column that
+  // the client-type / role gating already allows, and they apply everywhere the
+  // table is rendered — on-screen, Preview, PDF, CSV and Excel — so what you
+  // tick is exactly what you hand over.
+  const [showBilledCol, setShowBilledCol] = createSignal(true);
+  const [showScCol, setShowScCol] = createSignal(true);
+  const [showGstCol, setShowGstCol] = createSignal(true);
+
   // ── Admin client picker ────────────────────────────────────────────────────
   // Admin `/daily-reports` is otherwise an all-clients aggregate that can't show
   // a correct service charge (S.C is per-client, and some projects span clients)
@@ -355,12 +364,35 @@ export default function DailyReports() {
   const showRaw = () => hasRawSpend() && includeRaw();
 
   // The Amount Spent / Client Billed column (the spend the client is charged)
-  // shows for admin/CM (raw data present → any client type, incl. CPL) OR when
-  // the client has a service charge (hybrid/retainer — covers a hybrid client's
-  // own login). Only the S.C + GST columns stay gated on service_charge (i.e.
-  // !iscplReport). This is what lets CPL clients show Raw/Client-Billed while
-  // still hiding S.C/GST.
-  const showBilled = () => hasRawSpend() || !iscplReport();
+  // is AVAILABLE for admin/CM (raw data present → any client type, incl. CPL)
+  // OR when the client has a service charge (hybrid/retainer — covers a hybrid
+  // client's own login). Only the S.C + GST columns stay gated on
+  // service_charge (i.e. !iscplReport). This is what lets CPL clients show
+  // Raw/Client-Billed while still hiding S.C/GST.
+  const canShowBilled = () => hasRawSpend() || !iscplReport();
+  const canShowScGst = () => !iscplReport();
+
+  // …and these are what the table actually renders: availability AND the user's
+  // per-column checkbox. Checking a box can never reveal a column the gating
+  // above forbids.
+  const showBilled = () => canShowBilled() && showBilledCol();
+  const showSc = () => canShowScGst() && showScCol();
+  const showGst = () => canShowScGst() && showGstCol();
+  // The per-project S.C/GST footnote only makes sense while one of them shows.
+  const showScGstNote = () => showSc() || showGst();
+
+  // Column-toggle checkbox (filters bar) — same look as the raw-spend toggle.
+  const ColToggle = (props) => (
+    <label class="flex items-center gap-2 cursor-pointer select-none text-sm text-gray-700 dark:text-gray-300">
+      <input
+        type="checkbox"
+        checked={props.checked()}
+        onChange={(e) => props.onChange(e.currentTarget.checked)}
+        class="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-purple-600 focus:ring-purple-500"
+      />
+      <span>{props.label()}</span>
+    </label>
+  );
 
   // True when from/to span exactly one whole calendar month (1st → last day).
   // Billing is strictly monthly, so a partial range gets an extra "indicative"
@@ -583,6 +615,23 @@ export default function DailyReports() {
     return `${fmtDate(fromDate())} – ${fmtDate(toDate())}`;
   });
 
+  // ── Hidden PDF template width ──────────────────────────────────────────────
+  // html2canvas captures the element's box and the template clips its overflow,
+  // so a fixed 900px box silently CROPS the right-hand columns once enough of
+  // them are on (raw + billed + S.C + GST = 9 columns). Size the template to
+  // the columns actually being rendered instead; downloadPDF then flips to
+  // landscape when that's wide, so the extra columns stay legible after the
+  // capture is scaled down to the page width.
+  const pdfWidth = () => {
+    let w = 155 + 180 + 80 + 110; // Date, Project, Leads, CPL — always present
+    if (showRaw()) w += 110 + 130; // Raw CPL + Raw Spend
+    if (showBilled()) w += 140;
+    if (showSc()) w += 175;
+    if (showGst()) w += 215;
+    return Math.max(900, w + 72); // + the template's 36px side padding
+  };
+  const pdfLandscape = () => pdfWidth() > 1000;
+
   const downloadPDF = async () => {
     const el = document.getElementById("pdf-daily-report");
     if (!el) return;
@@ -591,20 +640,25 @@ export default function DailyReports() {
       scale: 2, // keep 2 so text stays sharp; size is controlled by JPEG below
       backgroundColor: "#ffffff",
       useCORS: true, // lets the /logo.webp render into the canvas
+      width: el.scrollWidth, // belt-and-braces: never clip the table
+      windowWidth: el.scrollWidth,
     });
 
     // JPEG ~0.85 + jsPDF compression: this is where the size saving comes from
     const imgData = canvas.toDataURL("image/jpeg", 0.85);
 
+    // Landscape once the table is wide — a 1300px-wide capture squeezed into a
+    // 210mm portrait page renders the money columns too small to read.
+    const landscape = pdfLandscape();
     const pdf = new jsPDF({
-      orientation: "p",
+      orientation: landscape ? "l" : "p",
       unit: "mm",
       format: "a4",
       compress: true,
     });
 
-    const pageW = 210;
-    const pageH = 297;
+    const pageW = landscape ? 297 : 210;
+    const pageH = landscape ? 210 : 297;
     const imgW = pageW;
     const imgH = (canvas.height * imgW) / canvas.width;
 
@@ -637,15 +691,16 @@ export default function DailyReports() {
     const cols = ["Date", "Project", "Leads", "CPL"];
     if (showRaw()) cols.push("Raw CPL", "Raw Spend");
     if (showBilled()) cols.push(showRaw() ? "Client Billed" : "Amount Spent");
-    if (!iscplReport()) cols.push(scColLabel(), finalColLabel());
+    if (showSc()) cols.push(scColLabel());
+    if (showGst()) cols.push(finalColLabel());
     return cols;
   };
   const exportRow = (r) => {
     const base = [exportDateLabel(), r.projectName, r.leads, r.cpl];
     if (showRaw()) base.push(r.rawCpl ?? "", r.rawSpent ?? "");
     if (showBilled()) base.push(r.spent);
-    if (!iscplReport())
-      base.push(r.spentwithServiceCharge, r.spentwithservice_gst);
+    if (showSc()) base.push(r.spentwithServiceCharge);
+    if (showGst()) base.push(r.spentwithservice_gst);
     return base;
   };
   const exportTotalsRow = () => {
@@ -653,8 +708,8 @@ export default function DailyReports() {
     const base = ["TOTAL", "", t.totalLeads, t.avgCPL];
     if (showRaw()) base.push(t.avgRawCPL ?? "", t.totalRawSpent ?? "");
     if (showBilled()) base.push(t.totalSpent);
-    if (!iscplReport())
-      base.push(t.totalspentwithServiceCharge, t.totalspentwithservice_gst);
+    if (showSc()) base.push(t.totalspentwithServiceCharge);
+    if (showGst()) base.push(t.totalspentwithservice_gst);
     return base;
   };
   const exportFileDate = () => new Date().toISOString().split("T")[0];
@@ -780,7 +835,7 @@ export default function DailyReports() {
       </div>
 
       {/* ── Filters ── */}
-      <div class="flex flex-wrap items-center gap-3 mb-5">
+      <div class="flex flex-wrap items-center gap-3 mb-3">
         {/* Admin-only client selector — scopes the report + its service charge
             to one client (see selectedAdminClientId). */}
         <Show when={isAdmin()}>
@@ -962,27 +1017,63 @@ export default function DailyReports() {
           </span>
         </Show>
 
-        {/* Client-vs-internal toggle — only when raw data exists (admin/CM).
-            OFF → client-facing report (no raw); ON → internal (Raw Spend +
-            Raw CPL shown AND included in every download). */}
-        <Show when={hasRawSpend()}>
-          <label class="flex items-center gap-2 cursor-pointer select-none sm:ml-auto text-sm text-gray-700 dark:text-gray-300">
-            <input
-              type="checkbox"
-              checked={includeRaw()}
-              onChange={(e) => setIncludeRaw(e.currentTarget.checked)}
-              class="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-purple-600 focus:ring-purple-500"
-            />
-            <span>
-              Include raw spend / CPL
-              <span class="text-gray-400 dark:text-gray-500">
-                {" "}
-                — internal (off = client-facing)
-              </span>
-            </span>
-          </label>
-        </Show>
       </div>
+
+      {/* ── Column toggles (own rows, under the filters) ───────────────────
+          Row 1: raw spend/CPL (client-vs-internal). Row 2: one checkbox per
+          money column, so a report can be trimmed to just the figures you want
+          to share. Like the raw toggle, these only exist once a client + date
+          range are picked and the report has loaded — until then there's no
+          client type / S.C rate to label them with. Each checkbox also only
+          appears when that column is available at all for this client / role.
+          Applies to the table, Preview, PDF, CSV and Excel alike. */}
+      <Show when={ready() && !loading()}>
+        <div class="space-y-2 mb-5">
+          <Show when={hasRawSpend()}>
+            <div class="flex flex-wrap items-center justify-start sm:justify-end gap-x-5 gap-y-2">
+              <label class="flex items-center gap-2 cursor-pointer select-none text-sm text-gray-700 dark:text-gray-300">
+                <input
+                  type="checkbox"
+                  checked={includeRaw()}
+                  onChange={(e) => setIncludeRaw(e.currentTarget.checked)}
+                  class="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-purple-600 focus:ring-purple-500"
+                />
+                <span>
+                  Include raw spend / CPL
+                  <span class="text-gray-400 dark:text-gray-500">
+                    {" "}
+                    — internal (off = client-facing)
+                  </span>
+                </span>
+              </label>
+            </div>
+          </Show>
+
+          <Show when={canShowBilled() || canShowScGst()}>
+            <div class="flex flex-wrap items-center justify-start sm:justify-end gap-x-5 gap-y-2">
+              <Show when={canShowBilled()}>
+                <ColToggle
+                  checked={showBilledCol}
+                  onChange={setShowBilledCol}
+                  label={() => (showRaw() ? "Client Billed" : "Amount Spent")}
+                />
+              </Show>
+              <Show when={canShowScGst()}>
+                <ColToggle
+                  checked={showScCol}
+                  onChange={setShowScCol}
+                  label={scColLabel}
+                />
+                <ColToggle
+                  checked={showGstCol}
+                  onChange={setShowGstCol}
+                  label={finalColLabel}
+                />
+              </Show>
+            </div>
+          </Show>
+        </div>
+      </Show>
 
       {/* ── Empty state: prompt until the selection is complete ──
              Admins need a client first, then everyone needs a date range.
@@ -1050,8 +1141,10 @@ export default function DailyReports() {
                   </th>
                 </Show>
                 {/* S.C + GST only when the client has a service charge */}
-                <Show when={!iscplReport()}>
+                <Show when={showSc()}>
                   <th class="p-3">{scColLabel()}</th>
+                </Show>
+                <Show when={showGst()}>
                   <th class="p-3">{finalColLabel()}</th>
                 </Show>
               </tr>
@@ -1155,11 +1248,13 @@ export default function DailyReports() {
                             {fmt(row.spent)}
                           </td>
                         </Show>
-                        <Show when={!iscplReport()}>
+                        <Show when={showSc()}>
                           <td class="p-3 text-green-700 dark:text-green-400">
                             {fmt(row.spentwithServiceCharge)}
                           </td>
-                          {/* spent + service charge + GST  */}
+                        </Show>
+                        {/* spent + service charge + GST  */}
+                        <Show when={showGst()}>
                           <td class="p-3 text-green-900 dark:text-green-400">
                             {fmt(row.spentwithservice_gst)}
                           </td>
@@ -1197,10 +1292,12 @@ export default function DailyReports() {
                         {fmt(totals().totalSpent)}
                       </td>
                     </Show>
-                    <Show when={!iscplReport()}>
+                    <Show when={showSc()}>
                       <td class="p-3 text-green-700 dark:text-green-300 font-bold">
                         {fmt(totals().totalspentwithServiceCharge)}
                       </td>
+                    </Show>
+                    <Show when={showGst()}>
                       <td class="p-3 text-green-900 dark:text-green-400 font-bold">
                         {fmt(totals().totalspentwithservice_gst)}
                       </td>
@@ -1218,7 +1315,7 @@ export default function DailyReports() {
             project (rounded per row) while Billing rounds once on the whole
             month, so the two can differ by a few paise; Billing is the source
             of truth. Purely explanatory — the numbers above are unchanged. */}
-        <Show when={!iscplReport() && reportRows().length > 0}>
+        <Show when={showScGstNote() && reportRows().length > 0}>
           <p class="mt-3 text-xs text-gray-400 dark:text-gray-500 leading-relaxed">
             <svg
               class="inline-block w-3.5 h-3.5 -mt-0.5 mr-1 text-gray-400 dark:text-gray-500"
@@ -1457,10 +1554,12 @@ export default function DailyReports() {
                       {showRaw() ? "Client Billed" : "Amount Spent"}
                     </th>
                   </Show>
-                  <Show when={!iscplReport()}>
+                  <Show when={showSc()}>
                     <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
                       {scColLabel()}
                     </th>
+                  </Show>
+                  <Show when={showGst()}>
                     <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
                       {finalColLabel()}
                     </th>
@@ -1509,11 +1608,13 @@ export default function DailyReports() {
                           {fmt(row.spent)}
                         </td>
                       </Show>
-                      <Show when={!iscplReport()}>
-                        {/* GST — warm gold tint */}
+                      <Show when={showSc()}>
                         <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
                           {fmt(row.spentwithServiceCharge)}
                         </td>
+                      </Show>
+                      {/* GST — warm gold tint */}
+                      <Show when={showGst()}>
                         <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
                           {fmt(row.spentwithservice_gst)}
                         </td>
@@ -1548,10 +1649,12 @@ export default function DailyReports() {
                       {fmt(totals().totalSpent)}
                     </td>
                   </Show>
-                  <Show when={!iscplReport()}>
+                  <Show when={showSc()}>
                     <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
                       {fmt(totals().totalspentwithServiceCharge)}
                     </td>
+                  </Show>
+                  <Show when={showGst()}>
                     <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
                       {fmt(totals().totalspentwithservice_gst)}
                     </td>
@@ -1578,9 +1681,11 @@ export default function DailyReports() {
     ════════════════════════════════════════════════════════ */}
       <div
         id="pdf-daily-report"
-        style="position:absolute;left:-9999px;top:0;width:900px;"
+        style={`position:absolute;left:-9999px;top:0;width:${pdfWidth()}px;`}
       >
-        <div style="width:900px;background:#ffffff;font-family:Arial,sans-serif;position:relative;box-sizing:border-box;border:1px solid rgba(123,28,28,0.15);border-radius:12px;overflow:hidden;">
+        <div
+          style={`width:${pdfWidth()}px;background:#ffffff;font-family:Arial,sans-serif;position:relative;box-sizing:border-box;border:1px solid rgba(123,28,28,0.15);border-radius:12px;overflow:hidden;`}
+        >
           {/* ── PDF HEADER: white so maroon logo is visible ── */}
           <div style="background:#ffffff;border-bottom:3px solid #7B1C1C;padding:28px 40px 24px;position:relative;display:flex;align-items:center;gap:20px;">
             {/* top maroon bar */}
@@ -1671,10 +1776,12 @@ export default function DailyReports() {
                         {showRaw() ? "Client Billed" : "Amt Spent"}
                       </th>
                     </Show>
-                    <Show when={!iscplReport()}>
+                    <Show when={showSc()}>
                       <th style="padding:11px 14px;text-align:center;color:#f5d9a0;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;">
                         {scColLabel()}
                       </th>
+                    </Show>
+                    <Show when={showGst()}>
                       <th style="padding:11px 14px;text-align:center;color:#f5d9a0;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;">
                         {finalColLabel()}
                       </th>
@@ -1689,7 +1796,7 @@ export default function DailyReports() {
                         borderBottom: "1px solid rgba(123,28,28,0.08)",
                       }}
                     >
-                      <td style="padding:10px 14px;font-size:14px;font-weight:600;color:#1a1a1a;border-right:1px solid rgba(123,28,28,0.1);border-left:3px solid #7B1C1C;">
+                      <td style="padding:10px 14px;font-size:14px;font-weight:600;color:#1a1a1a;white-space:nowrap;border-right:1px solid rgba(123,28,28,0.1);border-left:3px solid #7B1C1C;">
                         {fromDate() && toDate()
                           ? `${new Date(fromDate()).toLocaleDateString("en-IN", { day: "numeric", month: "short" })} - ${new Date(toDate()).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}`
                           : "All Dates"}
@@ -1716,10 +1823,12 @@ export default function DailyReports() {
                           {fmt(row.spent)}
                         </td>
                       </Show>
-                      <Show when={!iscplReport()}>
+                      <Show when={showSc()}>
                         <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:600;color:#6b4c10;background:rgba(201,168,76,0.10);">
                           {fmt(row.spentwithServiceCharge)}
                         </td>
+                      </Show>
+                      <Show when={showGst()}>
                         <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:600;color:#6b4c10;background:rgba(201,168,76,0.10);">
                           {fmt(row.spentwithservice_gst)}
                         </td>
@@ -1751,10 +1860,12 @@ export default function DailyReports() {
                         {fmt(totals().totalSpent)}
                       </td>
                     </Show>
-                    <Show when={!iscplReport()}>
+                    <Show when={showSc()}>
                       <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;">
                         {fmt(totals().totalspentwithServiceCharge)}
                       </td>
+                    </Show>
+                    <Show when={showGst()}>
                       <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
                         {fmt(totals().totalspentwithservice_gst)}
                       </td>
