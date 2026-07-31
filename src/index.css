@@ -2,6 +2,14 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Pin the UA colour scheme to the ACTIVE theme, not the OS one. Without this,
+   iOS/Safari paints native form controls — <select> dropdowns in the filter
+   bars, input inner backgrounds — from the device preference, so a light page
+   on a dark-mode phone rendered dark controls. .dark is the class
+   ThemeContext toggles on <html>. */
+:root { color-scheme: light; }
+:root.dark { color-scheme: dark; }
+
 @layer base {
   :root {
     --color-bg-primary: 249 250 251;
