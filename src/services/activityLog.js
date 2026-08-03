@@ -6,6 +6,7 @@ import { api } from "../api/api";
 //   POST /api/activity/          — append one entry (server stamps id/timestamp/actor)
 //   GET  /api/activity/          — newest-first, paginated, server-side filtered
 //   GET  /api/activity/summary/  — counts over a date window (glance header)
+//   GET  /api/activity/logins/   — login history + per-user last login (ADMIN ONLY)
 //
 // There is intentionally no update/delete — entries are immutable. Reads are
 // role-scoped server-side (admins/coordination/accounts see all; CMs see only
@@ -114,20 +115,27 @@ const toChips = (rows, keyField) =>
     }))
     .filter((r) => r.key != null);
 
-export const getActivitySummary = async ({ startDate, endDate } = {}) => {
+// The date window is the only thing the summary and logins reads are scoped by,
+// and both take it as the same plain YYYY-MM-DD pair, so build it in one place.
+// Returns "" (not "?") when neither side is set, letting the server default.
+const dateQuery = ({ startDate, endDate } = {}) => {
   const params = new URLSearchParams();
   const add = (key, val) => {
     const v = typeof val === "string" ? val.trim() : val;
-    if (v != null && v !== "" && v !== "all") params.append(key, v);
+    if (v != null && v !== "") params.append(key, v);
   };
   add("start_date", startDate);
   add("end_date", endDate);
-
   const qs = params.toString();
-  const res = await api(`/activity/summary/${qs ? `?${qs}` : ""}`, { method: "GET" });
+  return qs ? `?${qs}` : "";
+};
 
-  // Tolerate both the { data: {...} } envelope and a bare body.
-  const d = (res && typeof res === "object" && res.data ? res.data : res) ?? {};
+// Tolerate both the { data: {...} } envelope and a bare body.
+const unwrap = (res) => (res && typeof res === "object" && res.data ? res.data : res) ?? {};
+
+export const getActivitySummary = async (range = {}) => {
+  const res = await api(`/activity/summary/${dateQuery(range)}`, { method: "GET" });
+  const d = unwrap(res);
 
   return {
     totalEvents: Number(d.total_events) || 0,
@@ -147,5 +155,59 @@ export const getActivitySummary = async ({ startDate, endDate } = {}) => {
       start: d.window?.start ?? null,
       end: d.window?.end ?? null,
     },
+  };
+};
+
+// ── Logins (ADMIN ONLY) ───────────────────────────────────────────────────────
+// GET /api/activity/logins/ — 403s for every other role, so callers must gate the
+// UI on role before firing this. Honours the same start_date/end_date pair as the
+// feed and the summary.
+//
+// Everything except perUser/neverLoggedIn is scoped to the window; the per-user
+// last-login roster and the never_logged_in count are ALL-TIME by design (a user
+// who last signed in before the window still needs a real date, not a "Never").
+//   opts = { startDate, endDate }
+export const getLogins = async (range = {}) => {
+  const res = await api(`/activity/logins/${dateQuery(range)}`, { method: "GET" });
+  const d = unwrap(res);
+  const s = d.stats ?? {};
+
+  return {
+    window: {
+      start: d.window?.start ?? null,
+      end: d.window?.end ?? null,
+    },
+    stats: {
+      totalLogins: Number(s.total_logins) || 0,
+      failedAttempts: Number(s.failed_attempts) || 0,
+      uniqueUsers: Number(s.unique_users) || 0,
+      neverLoggedIn: Number(s.never_logged_in) || 0,
+    },
+    // SPARSE, like the summary's by_day — only days that saw a login attempt are
+    // emitted, so the chart fills the gaps itself.
+    byDay: (Array.isArray(d.by_day) ? d.by_day : [])
+      .map((r) => ({
+        day: r?.day ?? null,
+        success: Number(r?.success) || 0,
+        failure: Number(r?.failure) || 0,
+      }))
+      .filter((r) => r.day),
+    // Newest first, capped server-side (~100).
+    recent: (Array.isArray(d.recent) ? d.recent : []).map((r) => ({
+      actor: r?.actor ?? null,
+      actorRole: r?.actor_role ?? null,
+      timestamp: r?.timestamp ?? null,
+      ip: r?.ip ?? null,
+      result: r?.result ?? "info",
+    })),
+    // Server order is meaningful (never-logged-in first, then oldest first), so
+    // this is deliberately NOT re-sorted here.
+    perUser: (Array.isArray(d.per_user) ? d.per_user : []).map((r) => ({
+      email: r?.email ?? null,
+      role: r?.role ?? null,
+      lastLogin: r?.last_login ?? null,
+      // null means "never" — keep it distinct from a genuine 0 (logged in today).
+      daysSince: r?.days_since == null ? null : Number(r.days_since),
+    })),
   };
 };

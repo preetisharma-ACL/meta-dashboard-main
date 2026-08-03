@@ -8,8 +8,9 @@ import {
   Show,
 } from "solid-js";
 import { A } from "@solidjs/router";
-import { getActivities, getActivitySummary } from "../services/activityLog";
+import { getActivities, getActivitySummary, getLogins } from "../services/activityLog";
 import { fetchHierarchyClients } from "../services/cm";
+import { currentUser } from "../stores/currentUser";
 import RowsPerPageSelect from "../components/common/RowsPerPageSelect";
 
 // ─── Activity Log ─────────────────────────────────────────────────────────────
@@ -99,21 +100,6 @@ const CATEGORY_STYLES = {
   lead: "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
 };
 
-// Bar fills for the "By category" chart — the same hue per category as the row
-// badges above, one step darker so a thin bar still reads on the card surface.
-// Colour follows the category, never its rank, so filtering never repaints it.
-const CATEGORY_BAR_COLORS = {
-  campaign: "bg-purple-500 dark:bg-purple-400",
-  auth: "bg-slate-400 dark:bg-slate-400",
-  payment: "bg-emerald-500 dark:bg-emerald-400",
-  lead: "bg-amber-500 dark:bg-amber-400",
-};
-const DEFAULT_BAR_COLOR = "bg-gray-400 dark:bg-gray-500";
-
-// Roles carry no palette elsewhere on the page and it's one series, so every bar
-// takes the same hue — bar length is already the encoding.
-const ROLE_BAR_COLOR = "bg-indigo-500 dark:bg-indigo-400";
-
 const fmtAmount = (n, currency) => {
   const num = Number(n);
   if (!Number.isFinite(num)) return String(n);
@@ -200,12 +186,16 @@ const parseDay = (s) => {
   return Number.isNaN(dt.getTime()) ? null : dt;
 };
 
-// by_day skips days with no events, so a raw plot would silently compress a
-// quiet stretch into a straight jump. Fill every missing day in the window with
-// 0 so the x-axis is real time and a gap reads as "nothing happened".
-const fillDailySeries = (rows, window) => {
+// by_day skips days with no logins at all, so a raw plot would silently compress
+// a quiet stretch into a straight jump. Fill every missing day in the window with
+// 0/0 so the x-axis is real time and a gap reads as "nobody signed in".
+const fillLoginSeries = (rows, window) => {
   const points = (rows ?? [])
-    .map((r) => ({ date: parseDay(r.day), count: Number(r.count) || 0 }))
+    .map((r) => ({
+      date: parseDay(r.day),
+      success: Number(r.success) || 0,
+      failure: Number(r.failure) || 0,
+    }))
     .filter((p) => p.date)
     .sort((a, b) => a.date - b.date);
   if (!points.length) return [];
@@ -222,10 +212,15 @@ const fillDailySeries = (rows, window) => {
   const span = Math.round((to - from) / 86400000);
   if (!(span >= 0) || span > 400) return points; // absurd window — plot as-is
 
-  const counts = new Map(points.map((p) => [isoDay(p.date), p.count]));
+  const byDay = new Map(points.map((p) => [isoDay(p.date), p]));
   const out = [];
   for (const d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
-    out.push({ date: new Date(d), count: counts.get(isoDay(d)) ?? 0 });
+    const hit = byDay.get(isoDay(d));
+    out.push({
+      date: new Date(d),
+      success: hit?.success ?? 0,
+      failure: hit?.failure ?? 0,
+    });
   }
   return out;
 };
@@ -237,9 +232,9 @@ const PLOT_W = VB.w - VB.left - VB.right;
 const PLOT_H = VB.h - VB.top - VB.bottom;
 const BASE_Y = VB.top + PLOT_H;
 
-// Round the axis ceiling up to a clean number. One batch of campaign events can
-// make a single day ~100+, so the axis always scales to the window's own max —
-// there is deliberately no fixed ceiling to clip against.
+// Round the axis ceiling up to a clean number. A busy Monday can put a single
+// day well past a hundred sign-ins, so the axis always scales to the window's own
+// max — there is deliberately no fixed ceiling to clip against.
 const niceMax = (n) => {
   if (!(n > 0)) return 5;
   const mag = 10 ** Math.floor(Math.log10(n));
@@ -258,36 +253,45 @@ const fmtPointDay = (d) =>
     year: "numeric",
   });
 
-// Daily event counts. One series, so no legend — the card title names it; the
-// peak is direct-labelled and the axis carries the rest, with the tooltip as a
-// supplement rather than the only way to read a value.
-function TimeSeriesChart(props) {
+// Daily sign-ins, two series: successes as a filled area in the page accent and
+// failures as a bare red line on top. Failures are almost always the smaller
+// series, so they get the line (never buried under a fill) and the direct label.
+function LoginTrendChart(props) {
   const [hover, setHover] = createSignal(null);
   let svgEl;
 
   const pts = () => props.points ?? [];
-  const maxY = () => niceMax(Math.max(0, ...pts().map((p) => p.count)));
+  // One shared y-axis: two axes would make a 3-failure day look like a 300-login
+  // day. Both series are the same unit, so they belong on the same scale.
+  const maxY = () =>
+    niceMax(Math.max(0, ...pts().flatMap((p) => [p.success, p.failure])));
   const xAt = (i) =>
     pts().length < 2 ? VB.left + PLOT_W / 2 : VB.left + (i / (pts().length - 1)) * PLOT_W;
   const yAt = (v) => VB.top + PLOT_H * (1 - v / maxY());
 
-  const linePoints = () => pts().map((p, i) => `${xAt(i)},${yAt(p.count)}`).join(" ");
+  const linePoints = (key) =>
+    pts().map((p, i) => `${xAt(i)},${yAt(p[key])}`).join(" ");
 
   const areaPath = () => {
     const p = pts();
     if (p.length < 2) return "";
     return `M ${xAt(0)},${BASE_Y} L ${p
-      .map((d, i) => `${xAt(i)},${yAt(d.count)}`)
+      .map((d, i) => `${xAt(i)},${yAt(d.success)}`)
       .join(" L ")} L ${xAt(p.length - 1)},${BASE_Y} Z`;
   };
 
-  const peak = () => {
+  const peak = (key) => {
     let best = -1;
     pts().forEach((p, i) => {
-      if (best < 0 || p.count > pts()[best].count) best = i;
+      if (best < 0 || p[key] > pts()[best][key]) best = i;
     });
-    return best >= 0 && pts()[best].count > 0 ? best : null;
+    return best >= 0 && pts()[best][key] > 0 ? best : null;
   };
+
+  // Both peaks are direct-labelled, except when they land on the same day — the
+  // two labels would then sit on the same anchor, so the tooltip covers it.
+  const labelFailurePeak = () =>
+    peak("failure") != null && peak("failure") !== peak("success");
 
   // Up to 6 evenly spaced day labels — enough to place the eye, few enough not
   // to collide at 90 days.
@@ -322,17 +326,29 @@ function TimeSeriesChart(props) {
       when={pts().length}
       fallback={
         <div class="h-[180px] flex items-center justify-center text-sm text-gray-400 dark:text-gray-500">
-          No events in this window
+          No sign-ins in this window
         </div>
       }
     >
       <div class="relative">
+        {/* Two series need a legend — the colours alone don't name themselves. */}
+        <div class="flex items-center gap-4 mb-1">
+          <span class="inline-flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+            <span class="w-3 h-0.5 rounded bg-purple-600 dark:bg-purple-400" />
+            Successful
+          </span>
+          <span class="inline-flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+            <span class="w-3 h-0.5 rounded bg-red-500 dark:bg-red-400" />
+            Failed
+          </span>
+        </div>
+
         <svg
           ref={svgEl}
           viewBox={`0 0 ${VB.w} ${VB.h}`}
           class="w-full overflow-visible"
           role="img"
-          aria-label="Daily activity event counts over the selected window"
+          aria-label="Successful and failed sign-ins per day over the selected window"
           onPointerMove={onMove}
           onPointerLeave={() => setHover(null)}
         >
@@ -364,7 +380,7 @@ function TimeSeriesChart(props) {
           <Show when={pts().length > 1}>
             <path d={areaPath()} class="fill-purple-500/10 dark:fill-purple-400/10" />
             <polyline
-              points={linePoints()}
+              points={linePoints("success")}
               fill="none"
               stroke-width="2"
               stroke-linejoin="round"
@@ -372,13 +388,39 @@ function TimeSeriesChart(props) {
               vector-effect="non-scaling-stroke"
               class="stroke-purple-600 dark:stroke-purple-400"
             />
+            {/* Failures ride on top, unfilled, so a flat red floor stays readable
+                against the success area rather than tinting it. */}
+            <polyline
+              points={linePoints("failure")}
+              fill="none"
+              stroke-width="2"
+              stroke-linejoin="round"
+              stroke-linecap="round"
+              vector-effect="non-scaling-stroke"
+              class="stroke-red-500 dark:stroke-red-400"
+            />
           </Show>
 
-          {/* A one-day window has no line to draw — show the point itself. */}
+          {/* A single failure on an otherwise-clean window is one pixel of line —
+              dot every day that had one so it can't be missed. */}
+          <For each={pts()}>
+            {(p, i) => (
+              <Show when={p.failure > 0}>
+                <circle
+                  cx={xAt(i())}
+                  cy={yAt(p.failure)}
+                  r="2.5"
+                  class="fill-red-500 dark:fill-red-400"
+                />
+              </Show>
+            )}
+          </For>
+
+          {/* A one-day window has no line to draw — show the points themselves. */}
           <Show when={pts().length === 1}>
             <circle
               cx={xAt(0)}
-              cy={yAt(pts()[0].count)}
+              cy={yAt(pts()[0].success)}
               r="4"
               class="fill-purple-600 dark:fill-purple-400 stroke-white dark:stroke-gray-900"
               stroke-width="2"
@@ -386,23 +428,34 @@ function TimeSeriesChart(props) {
             />
           </Show>
 
-          {/* Direct label on the peak — the one value the axis reads worst. */}
-          <Show when={peak() != null}>
+          {/* Direct labels on the peaks — the values the axis reads worst. */}
+          <Show when={peak("success") != null}>
             <circle
-              cx={xAt(peak())}
-              cy={yAt(pts()[peak()].count)}
+              cx={xAt(peak("success"))}
+              cy={yAt(pts()[peak("success")].success)}
               r="4"
               class="fill-purple-600 dark:fill-purple-400 stroke-white dark:stroke-gray-900"
               stroke-width="2"
               vector-effect="non-scaling-stroke"
             />
             <text
-              x={xAt(peak())}
-              y={yAt(pts()[peak()].count) - 10}
-              text-anchor={anchorFor(peak())}
+              x={xAt(peak("success"))}
+              y={yAt(pts()[peak("success")].success) - 10}
+              text-anchor={anchorFor(peak("success"))}
               class="fill-gray-500 dark:fill-gray-400 text-[11px] font-semibold"
             >
-              {fmtCount(pts()[peak()].count)}
+              {fmtCount(pts()[peak("success")].success)}
+            </text>
+          </Show>
+
+          <Show when={labelFailurePeak()}>
+            <text
+              x={xAt(peak("failure"))}
+              y={yAt(pts()[peak("failure")].failure) - 8}
+              text-anchor={anchorFor(peak("failure"))}
+              class="fill-red-500 dark:fill-red-400 text-[11px] font-semibold"
+            >
+              {fmtCount(pts()[peak("failure")].failure)}
             </text>
           </Show>
 
@@ -434,12 +487,22 @@ function TimeSeriesChart(props) {
             />
             <circle
               cx={xAt(hover())}
-              cy={yAt(hovered().count)}
+              cy={yAt(hovered().success)}
               r="4"
               class="fill-purple-600 dark:fill-purple-400 stroke-white dark:stroke-gray-900"
               stroke-width="2"
               vector-effect="non-scaling-stroke"
             />
+            <Show when={hovered().failure > 0}>
+              <circle
+                cx={xAt(hover())}
+                cy={yAt(hovered().failure)}
+                r="4"
+                class="fill-red-500 dark:fill-red-400 stroke-white dark:stroke-gray-900"
+                stroke-width="2"
+                vector-effect="non-scaling-stroke"
+              />
+            </Show>
           </Show>
         </svg>
 
@@ -450,70 +513,26 @@ function TimeSeriesChart(props) {
                    px-2 py-1 shadow-sm whitespace-nowrap"
             style={{
               left: `${Math.min(92, Math.max(8, (xAt(hover()) / VB.w) * 100))}%`,
-              top: `${(yAt(hovered().count) / VB.h) * 100 - 2}%`,
+              top: `${(yAt(Math.max(hovered().success, hovered().failure)) / VB.h) * 100 - 2}%`,
             }}
           >
             <div class="text-[11px] text-gray-500 dark:text-gray-400">
               {fmtPointDay(hovered().date)}
             </div>
             <div class="text-xs font-semibold text-gray-900 dark:text-white">
-              {fmtCount(hovered().count)} event{hovered().count === 1 ? "" : "s"}
+              {fmtCount(hovered().success)} successful
+            </div>
+            {/* Always shown, even at zero — "0 failed" is the reassuring read. */}
+            <div
+              class={`text-xs font-semibold ${
+                hovered().failure > 0
+                  ? "text-red-600 dark:text-red-400"
+                  : "text-gray-400 dark:text-gray-500"
+              }`}
+            >
+              {fmtCount(hovered().failure)} failed
             </div>
           </div>
-        </Show>
-      </div>
-    </Show>
-  );
-}
-
-// Past this many bars the small cards get cramped; the remainder is counted in a
-// footnote rather than dropped (see below).
-const MAX_BARS = 8;
-
-// Horizontal bars — the labels are words ("campaign_manager"), which a column
-// chart can only fit by rotating them. Every bar is direct-labelled, so the
-// values don't depend on a hover.
-function BarList(props) {
-  const sorted = () => [...(props.items ?? [])].sort((a, b) => b.count - a.count);
-  const rows = () => sorted().slice(0, MAX_BARS);
-  const hidden = () => sorted().length - rows().length;
-  const max = () => Math.max(1, ...rows().map((r) => r.count));
-
-  return (
-    <Show
-      when={rows().length}
-      fallback={<p class="text-sm text-gray-400 dark:text-gray-500">No events in this window</p>}
-    >
-      <div class="flex flex-col gap-2">
-        <For each={rows()}>
-          {(it) => {
-            const name = () => (props.nameOf ? props.nameOf(it.key) : it.key);
-            return (
-              <div class="flex items-center gap-2">
-                <span
-                  class="w-24 shrink-0 truncate text-xs text-gray-500 dark:text-gray-400"
-                  title={name()}
-                >
-                  {name()}
-                </span>
-                <div class="flex-1 h-2.5 rounded bg-gray-100 dark:bg-gray-800">
-                  <div
-                    class={`h-2.5 rounded-r ${props.colorOf?.(it.key) ?? DEFAULT_BAR_COLOR}`}
-                    style={{ width: `${Math.max(2, (it.count / max()) * 100)}%` }}
-                  />
-                </div>
-                <span class="w-10 shrink-0 text-right text-xs text-gray-600 dark:text-gray-300 [font-variant-numeric:tabular-nums]">
-                  {fmtCount(it.count)}
-                </span>
-              </div>
-            );
-          }}
-        </For>
-        {/* Never truncate silently — a hidden tail would read as "that's all". */}
-        <Show when={hidden() > 0}>
-          <p class="text-xs text-gray-400 dark:text-gray-500">
-            +{hidden()} more (see the breakdown below)
-          </p>
         </Show>
       </div>
     </Show>
@@ -547,57 +566,244 @@ function StatCard(props) {
   );
 }
 
-// One "<name> <count>" chip in the breakdown strip.
-function CountChip(props) {
-  return (
-    <span
-      class={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs ${
-        props.class ??
-        "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"
-      }`}
-    >
-      {props.label}
-      <b class="font-semibold">{fmtCount(props.count)}</b>
-    </span>
-  );
-}
-
-function BreakdownRow(props) {
-  return (
-    <div class="flex flex-wrap items-center gap-x-2 gap-y-1.5">
-      <span class="text-xs uppercase tracking-wider text-gray-400 dark:text-gray-500 w-20 shrink-0">
-        {props.label}
-      </span>
-      <Show
-        when={props.items.length}
-        fallback={<span class="text-xs text-gray-400 dark:text-gray-500">—</span>}
-      >
-        <For each={props.items}>
-          {(it) => (
-            <CountChip
-              label={props.nameOf ? props.nameOf(it.key) : it.key}
-              count={it.count}
-              class={props.classOf?.(it.key)}
-            />
-          )}
-        </For>
-      </Show>
-    </div>
-  );
-}
-
 const RESULT_STYLES = {
   success: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300",
   failure: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
   info: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
 };
 
+// ─── Logins tab ───────────────────────────────────────────────────────────────
+// Admin-only view of GET /activity/logins/: window stats, the daily success /
+// failure trend, the recent attempts, and an all-time last-login roster.
+//
+// props = { data, refreshing } — `data` is the resolved payload, or null when the
+// call failed (the caller renders the unavailable notice instead).
+
+const TABLE_SHELL =
+  "bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700";
+const TH =
+  "p-3 text-left whitespace-nowrap sticky top-0 z-10 bg-gray-50 dark:bg-gray-800";
+const THEAD =
+  "border-b border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 uppercase text-xs tracking-wider";
+
+function LoginsPanel(props) {
+  const [userSearch, setUserSearch] = createSignal("");
+
+  const points = createMemo(() =>
+    fillLoginSeries(props.data?.byDay, props.data?.window),
+  );
+
+  const stats = () => props.data?.stats ?? {};
+  const recent = () => props.data?.recent ?? [];
+
+  // ~200 rows, so the roster is filtered client-side rather than round-tripping.
+  // The server's order (never-logged-in first, then oldest first) is the whole
+  // point of the table, so filter only — never re-sort.
+  const perUser = createMemo(() => {
+    const q = userSearch().trim().toLowerCase();
+    const rows = props.data?.perUser ?? [];
+    if (!q) return rows;
+    return rows.filter(
+      (u) =>
+        String(u.email ?? "").toLowerCase().includes(q) ||
+        roleLabel(u.role).toLowerCase().includes(q),
+    );
+  });
+
+  return (
+    <div class={props.refreshing ? "opacity-50 transition-opacity" : "transition-opacity"}>
+      {/* 1 — Stat cards */}
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+        <StatCard label="Total logins" value={fmtCount(stats().totalLogins)} />
+        <StatCard label="Unique users" value={fmtCount(stats().uniqueUsers)} />
+        <StatCard
+          label="Failed attempts"
+          value={fmtCount(stats().failedAttempts)}
+          tone={stats().failedAttempts > 0 ? "alert" : "neutral"}
+        />
+        {/* Not window-scoped like the other three — say so on the label rather
+            than letting it read as "nobody signed in during these 30 days". */}
+        <StatCard
+          label="Never logged in (all time)"
+          value={fmtCount(stats().neverLoggedIn)}
+        />
+      </div>
+
+      {/* 2 — Trend */}
+      <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200
+                  dark:border-gray-700 p-4 mb-3">
+        <h3 class="text-sm font-semibold text-gray-900 dark:text-white mb-1">
+          Sign-ins over time
+        </h3>
+        <LoginTrendChart points={points()} />
+      </div>
+
+      {/* 3 — Recent attempts */}
+      <div class={`${TABLE_SHELL} mb-3`}>
+        <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+          <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+            Recent sign-ins
+          </h3>
+          <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+            Newest first · up to the last 100 attempts in this window
+          </p>
+        </div>
+        <div class="max-h-[420px] overflow-auto">
+          <table class="min-w-full text-sm">
+            <thead class={THEAD}>
+              <tr>
+                <th class={TH}>User</th>
+                <th class={TH}>Role</th>
+                <th class={TH}>When</th>
+                <th class={TH}>IP</th>
+                <th class={TH}>Result</th>
+              </tr>
+            </thead>
+            <tbody>
+              <For each={recent()}>
+                {(r, i) => (
+                  <tr
+                    class={`border-b border-gray-100 dark:border-gray-800
+                            ${i() % 2 === 0 ? "bg-white dark:bg-gray-900" : "bg-gray-50/60 dark:bg-gray-800/30"}`}
+                  >
+                    <td class="p-3 text-gray-700 dark:text-gray-300 font-medium whitespace-nowrap">
+                      {r.actor ?? "—"}
+                    </td>
+                    <td class="p-3 text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                      {r.actorRole ? roleLabel(r.actorRole) : "—"}
+                    </td>
+                    <td class="p-3 text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                      {fmtTime(r.timestamp)}
+                    </td>
+                    <td class="p-3 text-gray-500 dark:text-gray-400 whitespace-nowrap [font-variant-numeric:tabular-nums]">
+                      {r.ip || "—"}
+                    </td>
+                    <td class="p-3 whitespace-nowrap">
+                      <span class={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${RESULT_STYLES[r.result] ?? RESULT_STYLES.info}`}>
+                        {r.result}
+                      </span>
+                    </td>
+                  </tr>
+                )}
+              </For>
+              <Show when={!recent().length}>
+                <tr>
+                  <td colspan="5" class="py-12 text-center text-gray-400 dark:text-gray-500">
+                    No sign-ins recorded in this window
+                  </td>
+                </tr>
+              </Show>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* 4 — Per-user last login (all time, never-first) */}
+      <div class={TABLE_SHELL}>
+        <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700
+                    flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+              Last login by user
+            </h3>
+            {/* The caveat that keeps this table from being read as an inactivity
+                report — tracking has a start date, "Never" only means "not since". */}
+            <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+              Login history only goes back to when tracking was switched on — a
+              user shown as “Never” may simply not have signed in since then, which
+              isn’t proof the account is unused.
+            </p>
+          </div>
+          <input
+            type="text"
+            placeholder="Search users…"
+            value={userSearch()}
+            onInput={(e) => setUserSearch(e.target.value)}
+            class="w-[220px] max-w-full px-3 py-2 text-sm rounded-lg border border-gray-200
+                   dark:border-gray-700 dark:bg-gray-800 dark:text-white
+                   focus:outline-none focus:ring-1 focus:ring-purple-400 dark:focus:ring-gray-600"
+          />
+        </div>
+        <div class="max-h-[460px] overflow-auto">
+          <table class="min-w-full text-sm">
+            <thead class={THEAD}>
+              <tr>
+                <th class={TH}>User</th>
+                <th class={TH}>Role</th>
+                <th class={TH}>Last login</th>
+                <th class={TH}>Days ago</th>
+              </tr>
+            </thead>
+            <tbody>
+              <For each={perUser()}>
+                {(u, i) => (
+                  <tr
+                    class={`border-b border-gray-100 dark:border-gray-800
+                            ${i() % 2 === 0 ? "bg-white dark:bg-gray-900" : "bg-gray-50/60 dark:bg-gray-800/30"}`}
+                  >
+                    <td class="p-3 text-gray-700 dark:text-gray-300 font-medium">
+                      {u.email ?? "—"}
+                    </td>
+                    <td class="p-3 text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                      {u.role ? roleLabel(u.role) : "—"}
+                    </td>
+                    <td class="p-3 whitespace-nowrap">
+                      <Show
+                        when={u.lastLogin}
+                        fallback={
+                          <span class="text-amber-700 dark:text-amber-400 font-medium">
+                            Never
+                          </span>
+                        }
+                      >
+                        <span class="text-gray-500 dark:text-gray-400">
+                          {fmtTime(u.lastLogin)}
+                        </span>
+                      </Show>
+                    </td>
+                    <td class="p-3 text-gray-500 dark:text-gray-400 whitespace-nowrap [font-variant-numeric:tabular-nums]">
+                      {u.daysSince == null ? "—" : fmtCount(u.daysSince)}
+                    </td>
+                  </tr>
+                )}
+              </For>
+              <Show when={!perUser().length}>
+                <tr>
+                  <td colspan="4" class="py-12 text-center text-gray-400 dark:text-gray-500">
+                    {userSearch() ? "No users match your search" : "No users to show"}
+                  </td>
+                </tr>
+              </Show>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Rows-per-page: 50 stays the default (this log is skimmed in bulk), but the
 // size is user-selectable and remembered across visits.
 const DEFAULT_PAGE_SIZE = 50;
 const ROWS_PER_PAGE_OPTIONS = [25, 50, 100, 200];
 
+// ─── Tabs ─────────────────────────────────────────────────────────────────────
+// The Logins tab is backed by an admin-only endpoint, so it's only offered to
+// admins — for anyone else the tab would lead straight to a 403. Same two-source
+// pattern as the other gates in stores/currentUser: prefer the loaded /auth/me
+// store, fall back to the role mirrored into localStorage so the tab doesn't
+// flicker in a beat after first paint.
+const isAdminUser = () => {
+  if (currentUser.loaded) return currentUser.role === "admin";
+  try {
+    return JSON.parse(localStorage.getItem("auth") || "null")?.role === "admin";
+  } catch {
+    return false;
+  }
+};
+
 export default function Activity() {
+  const [tab, setTab] = createSignal("activity");
   const [search, setSearch] = createSignal("");
   const [debouncedSearch, setDebouncedSearch] = createSignal("");
   const [resultFilter, setResultFilter] = createSignal("all");
@@ -683,9 +889,35 @@ export default function Activity() {
   const summaryFirstLoad = () => summary.loading && lastSummary() === undefined;
   const summaryRefreshing = () => summary.loading && lastSummary() !== undefined;
 
-  const dayPoints = createMemo(() =>
-    fillDailySeries(summaryView()?.byDay, summaryView()?.window),
+  // ── Logins tab ──────────────────────────────────────────────────────────────
+  // Admin-only endpoint, and only worth fetching once the tab is actually on
+  // screen — a falsy source keeps createResource from firing at all, so every
+  // other role's page load never touches an endpoint that would 403.
+  const showLoginsTab = () => isAdminUser();
+  const onLoginsTab = () => tab() === "logins" && showLoginsTab();
+
+  const [logins] = createResource(
+    () => (onLoginsTab() ? dateFilters() : false),
+    async (range) => {
+      try {
+        return await getLogins(range);
+      } catch (err) {
+        console.error("[Activity] logins load failed:", err);
+        return null; // a broken logins call must not take the page down
+      }
+    },
   );
+
+  // Same hold-last-value treatment as the summary: changing the date range dims
+  // the current render instead of dropping back to a skeleton.
+  const [lastLogins, setLastLogins] = createSignal();
+  createEffect(() => {
+    const l = logins();
+    if (l !== undefined) setLastLogins(l);
+  });
+  const loginsView = () => lastLogins();
+  const loginsFirstLoad = () => logins.loading && lastLogins() === undefined;
+  const loginsRefreshing = () => logins.loading && lastLogins() !== undefined;
 
   const summaryWindow = () => {
     const w = summaryView()?.window;
@@ -846,8 +1078,8 @@ export default function Activity() {
           </p>
         </div>
 
-        {/* Date range — scopes the whole page (summary, charts and feed) from one
-            place, so everything below always describes the same window. */}
+        {/* Date range — scopes the whole page (summary, feed and the logins tab)
+            from one place, so everything below always describes the same window. */}
         <div class="flex flex-wrap items-center gap-2">
           <select
             value={rangePreset()}
@@ -886,6 +1118,66 @@ export default function Activity() {
           </Show>
         </div>
       </div>
+
+      {/* Tabs. Only drawn when there's actually a choice — for a non-admin the
+          Logins tab doesn't exist, and a lone "Activity" chip says nothing. */}
+      <Show when={showLoginsTab()}>
+        <div class="mb-4 inline-flex rounded-lg border border-gray-200 dark:border-gray-700
+                    bg-white dark:bg-gray-900 p-1" role="tablist">
+          <For each={[["activity", "Activity"], ["logins", "Logins"]]}>
+            {([value, label]) => (
+              <button
+                role="tab"
+                aria-selected={tab() === value}
+                onClick={() => setTab(value)}
+                class={`px-4 py-1.5 text-sm rounded-md transition-colors ${
+                  tab() === value
+                    ? "bg-purple-600 text-white dark:bg-purple-500"
+                    : "text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                }`}
+              >
+                {label}
+              </button>
+            )}
+          </For>
+        </div>
+      </Show>
+
+      <Show when={onLoginsTab()}>
+        <Show
+          when={!loginsFirstLoad()}
+          fallback={
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <For each={Array(4).fill(0)}>
+                {() => (
+                  <div class="rounded-xl border border-gray-200 dark:border-gray-700
+                              bg-white dark:bg-gray-900 p-4 animate-pulse">
+                    <div class="h-3 w-24 bg-gray-200 dark:bg-gray-700 rounded" />
+                    <div class="h-6 w-16 bg-gray-200 dark:bg-gray-700 rounded mt-2" />
+                  </div>
+                )}
+              </For>
+            </div>
+          }
+        >
+          <Show
+            when={loginsView()}
+            fallback={
+              <div class="px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700
+                          bg-white dark:bg-gray-900 text-sm text-gray-400 dark:text-gray-500">
+                Login data unavailable right now.
+              </div>
+            }
+          >
+            <LoginsPanel data={loginsView()} refreshing={loginsRefreshing()} />
+          </Show>
+        </Show>
+      </Show>
+
+      {/* ── Activity tab ─────────────────────────────────────────────────────
+          Left at its original indentation so the switch to tabs stays a wrapper
+          rather than a 150-line reflow of the feed below. */}
+      <Show when={tab() === "activity"}>
 
       {/* Append-only notice */}
       <div class="flex items-start gap-2 mb-4 px-4 py-3 rounded-xl border border-amber-200 bg-amber-50
@@ -929,8 +1221,8 @@ export default function Activity() {
         >
           {/* Dimmed rather than replaced while a new window loads — no skeleton
               flash and no layout jump on every date change. */}
-          <div class={summaryRefreshing() ? "opacity-50 transition-opacity" : "transition-opacity"}>
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+          <div class={`mb-4 ${summaryRefreshing() ? "opacity-50 transition-opacity" : "transition-opacity"}`}>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <StatCard label="Total events" value={fmtCount(summaryView().totalEvents)} />
               <StatCard label="Active users" value={fmtCount(summaryView().activeUsers)} />
               <StatCard
@@ -940,61 +1232,11 @@ export default function Activity() {
               />
             </div>
 
-            {/* Charts — same resource as the cards above, so they follow the date
-                range for free. */}
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-3">
-              <div class="lg:col-span-2 bg-white dark:bg-gray-900 rounded-xl border
-                          border-gray-200 dark:border-gray-700 p-4">
-                <h3 class="text-sm font-semibold text-gray-900 dark:text-white mb-3">
-                  Activity over time
-                </h3>
-                <TimeSeriesChart points={dayPoints()} />
-              </div>
-
-              <div class="flex flex-col gap-3">
-                <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200
-                            dark:border-gray-700 p-4">
-                  <h3 class="text-sm font-semibold text-gray-900 dark:text-white mb-3">
-                    By category
-                  </h3>
-                  <BarList
-                    items={summaryView().byCategory}
-                    colorOf={(k) => CATEGORY_BAR_COLORS[k]}
-                  />
-                </div>
-
-                <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200
-                            dark:border-gray-700 p-4">
-                  <h3 class="text-sm font-semibold text-gray-900 dark:text-white mb-3">
-                    By role
-                  </h3>
-                  <BarList
-                    items={summaryView().byActorRole}
-                    nameOf={roleLabel}
-                    colorOf={() => ROLE_BAR_COLOR}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200
-                        dark:border-gray-700 px-4 py-3 mb-4 flex flex-col gap-2">
-              <BreakdownRow
-                label="By category"
-                items={summaryView().byCategory}
-                classOf={(k) => CATEGORY_STYLES[k]}
-              />
-              <BreakdownRow
-                label="By role"
-                items={summaryView().byActorRole}
-                nameOf={roleLabel}
-              />
-              <Show when={summaryWindow()}>
-                <p class="text-xs text-gray-400 dark:text-gray-500">
-                  Window: {summaryWindow()}
-                </p>
-              </Show>
-            </div>
+            <Show when={summaryWindow()}>
+              <p class="mt-2 text-xs text-gray-400 dark:text-gray-500">
+                Window: {summaryWindow()}
+              </p>
+            </Show>
           </div>
         </Show>
       </Show>
@@ -1281,6 +1523,8 @@ export default function Activity() {
           </button>
         </div>
       </div>
+
+      </Show>
     </div>
   );
 }
