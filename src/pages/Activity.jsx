@@ -8,7 +8,7 @@ import {
   Show,
 } from "solid-js";
 import { A } from "@solidjs/router";
-import { getActivities } from "../services/activityLog";
+import { getActivities, getActivitySummary } from "../services/activityLog";
 import { fetchHierarchyClients } from "../services/cm";
 import RowsPerPageSelect from "../components/common/RowsPerPageSelect";
 
@@ -132,6 +132,88 @@ const fmtTime = (iso) => {
   }
 };
 
+const fmtDay = (iso) => {
+  if (!iso) return null;
+  try {
+    return new Date(iso).toLocaleDateString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  } catch {
+    return iso;
+  }
+};
+
+const fmtCount = (n) => (Number(n) || 0).toLocaleString("en-IN");
+
+// ─── Summary header bits ──────────────────────────────────────────────────────
+
+function StatCard(props) {
+  const alert = () => props.tone === "alert";
+  return (
+    <div
+      class={`rounded-xl border p-4 ${
+        alert()
+          ? "border-amber-300 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-900/20"
+          : "border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
+      }`}
+    >
+      <div class="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">
+        {props.label}
+      </div>
+      <div
+        class={`mt-1 text-2xl font-semibold ${
+          alert()
+            ? "text-amber-700 dark:text-amber-300"
+            : "text-gray-900 dark:text-white"
+        }`}
+      >
+        {props.value}
+      </div>
+    </div>
+  );
+}
+
+// One "<name> <count>" chip in the breakdown strip.
+function CountChip(props) {
+  return (
+    <span
+      class={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs ${
+        props.class ??
+        "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"
+      }`}
+    >
+      {props.label}
+      <b class="font-semibold">{fmtCount(props.count)}</b>
+    </span>
+  );
+}
+
+function BreakdownRow(props) {
+  return (
+    <div class="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+      <span class="text-xs uppercase tracking-wider text-gray-400 dark:text-gray-500 w-20 shrink-0">
+        {props.label}
+      </span>
+      <Show
+        when={props.items.length}
+        fallback={<span class="text-xs text-gray-400 dark:text-gray-500">—</span>}
+      >
+        <For each={props.items}>
+          {(it) => (
+            <CountChip
+              label={props.nameOf ? props.nameOf(it.key) : it.key}
+              count={it.count}
+              class={props.classOf?.(it.key)}
+            />
+          )}
+        </For>
+      </Show>
+    </div>
+  );
+}
+
 const RESULT_STYLES = {
   success: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300",
   failure: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
@@ -167,6 +249,37 @@ export default function Activity() {
   const [pagination, setPagination] = createSignal(null);
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal(null);
+
+  // The one place the page's date window lives. There's no date-range control on
+  // this screen yet (the backend defaults the summary to the last 30 days), so
+  // this reads empty — but both the feed and the summary already source their
+  // dates from here, so adding the control later is a one-signal change and the
+  // two stay in lockstep.
+  const dateFilters = () => ({ startDate: "", endDate: "" });
+
+  // Glance summary. Keyed on the date window so it refetches when that changes;
+  // the feed's category/role/action/client filters deliberately don't re-scope it
+  // — this is a window-level overview, not a reflection of the filtered rows.
+  // Resolves to null on failure so a broken summary can never take the feed down.
+  const [summary] = createResource(
+    () => dateFilters(),
+    async (range) => {
+      try {
+        return await getActivitySummary(range);
+      } catch (err) {
+        console.error("[Activity] summary load failed:", err);
+        return null;
+      }
+    },
+  );
+
+  const summaryWindow = () => {
+    const w = summary()?.window;
+    const start = fmtDay(w?.start);
+    const end = fmtDay(w?.end);
+    if (start && end) return `${start} – ${end}`;
+    return start || end || null;
+  };
 
   // Client list for the target filter. Same source the Clients screens use, so
   // it's already visibility-scoped per role; if it's empty/unavailable the
@@ -220,6 +333,7 @@ export default function Activity() {
         result: resultFilter(),
         actorRole: actorRoleFilter(),
         targetId: debouncedTargetId(),
+        ...dateFilters(),
       },
     };
 
@@ -328,6 +442,65 @@ export default function Activity() {
           new actions are recorded.
         </span>
       </div>
+
+      {/* Summary header — window-level counts from /activity/summary/. Rendered
+          from its own resource so a failure here degrades to a one-line notice
+          and leaves the feed below untouched. */}
+      <Show
+        when={!summary.loading}
+        fallback={
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+            <For each={Array(3).fill(0)}>
+              {() => (
+                <div class="rounded-xl border border-gray-200 dark:border-gray-700
+                            bg-white dark:bg-gray-900 p-4 animate-pulse">
+                  <div class="h-3 w-24 bg-gray-200 dark:bg-gray-700 rounded" />
+                  <div class="h-6 w-16 bg-gray-200 dark:bg-gray-700 rounded mt-2" />
+                </div>
+              )}
+            </For>
+          </div>
+        }
+      >
+        <Show
+          when={summary()}
+          fallback={
+            <div class="mb-4 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700
+                        bg-white dark:bg-gray-900 text-sm text-gray-400 dark:text-gray-500">
+              Summary unavailable right now — the log below is unaffected.
+            </div>
+          }
+        >
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+            <StatCard label="Total events" value={fmtCount(summary().totalEvents)} />
+            <StatCard label="Active users" value={fmtCount(summary().activeUsers)} />
+            <StatCard
+              label="Failed logins"
+              value={fmtCount(summary().failedLogins)}
+              tone={summary().failedLogins > 0 ? "alert" : "neutral"}
+            />
+          </div>
+
+          <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200
+                      dark:border-gray-700 px-4 py-3 mb-4 flex flex-col gap-2">
+            <BreakdownRow
+              label="By category"
+              items={summary().byCategory}
+              classOf={(k) => CATEGORY_STYLES[k]}
+            />
+            <BreakdownRow
+              label="By role"
+              items={summary().byActorRole}
+              nameOf={roleLabel}
+            />
+            <Show when={summaryWindow()}>
+              <p class="text-xs text-gray-400 dark:text-gray-500">
+                Window: {summaryWindow()}
+              </p>
+            </Show>
+          </div>
+        </Show>
+      </Show>
 
       {/* Filters */}
       <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200

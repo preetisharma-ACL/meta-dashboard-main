@@ -3,8 +3,9 @@ import { api } from "../api/api";
 // ─── Activity log API ─────────────────────────────────────────────────────────
 // Append-only audit trail, backed by the live backend endpoints:
 //
-//   POST /api/activity/   — append one entry (server stamps id/timestamp/actor)
-//   GET  /api/activity/   — newest-first, paginated, server-side filtered
+//   POST /api/activity/          — append one entry (server stamps id/timestamp/actor)
+//   GET  /api/activity/          — newest-first, paginated, server-side filtered
+//   GET  /api/activity/summary/  — counts over a date window (glance header)
 //
 // There is intentionally no update/delete — entries are immutable. Reads are
 // role-scoped server-side (admins/coordination/accounts see all; CMs see only
@@ -95,5 +96,50 @@ export const getActivities = async ({ page = 1, pageSize = 50, filters = {} } = 
   return {
     entries: rows.map(normalize),
     pagination: res?.meta?.pagination ?? null,
+  };
+};
+
+// ── Summary (counts over a date window) ───────────────────────────────────────
+// GET /api/activity/summary/ — honours the same start_date/end_date params as
+// the feed and defaults to the last 30 days server-side when they're omitted.
+// Returns a camelCase shape; every list is normalised to [{ key, count }] so the
+// header can render them all through one chip component.
+//   opts = { startDate, endDate }
+
+const toChips = (rows, keyField) =>
+  (Array.isArray(rows) ? rows : [])
+    .map((r) => ({
+      key: r?.[keyField] ?? null,
+      count: Number(r?.count) || 0,
+    }))
+    .filter((r) => r.key != null);
+
+export const getActivitySummary = async ({ startDate, endDate } = {}) => {
+  const params = new URLSearchParams();
+  const add = (key, val) => {
+    const v = typeof val === "string" ? val.trim() : val;
+    if (v != null && v !== "" && v !== "all") params.append(key, v);
+  };
+  add("start_date", startDate);
+  add("end_date", endDate);
+
+  const qs = params.toString();
+  const res = await api(`/activity/summary/${qs ? `?${qs}` : ""}`, { method: "GET" });
+
+  // Tolerate both the { data: {...} } envelope and a bare body.
+  const d = (res && typeof res === "object" && res.data ? res.data : res) ?? {};
+
+  return {
+    totalEvents: Number(d.total_events) || 0,
+    activeUsers: Number(d.active_users) || 0,
+    failedLogins: Number(d.failed_logins) || 0,
+    byCategory: toChips(d.by_category, "category"),
+    byActorRole: toChips(d.by_actor_role, "actor_role"),
+    byResult: toChips(d.by_result, "result"),
+    topActors: toChips(d.top_actors, "actor"),
+    window: {
+      start: d.window?.start ?? null,
+      end: d.window?.end ?? null,
+    },
   };
 };
