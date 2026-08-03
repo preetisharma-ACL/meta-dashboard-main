@@ -435,32 +435,121 @@
   caret-color: #1a2340;
 }
 
+/* ── Login button — pale gradient glass ──
+   Same material as .lp-back (the back pill): a light three-hue brand wash over
+   a high white floor, frosted with backdrop-filter, lit by a white inset rim
+   and swept by a diagonal glare on hover. It was a solid navy slab; the panel
+   it sits on is pale, and the dark block was the one heavy element on it.
+
+   The gradient is sized 220% and its POSITION animated for the slow colour
+   drift, so the sheen can't be a second background layer — it lives on ::after,
+   which the button clips (nothing overhangs it, unlike the back pill). */
 .submit-btn {
+  position: relative;
   width: 100%;
   padding: 13px;
   border-radius: 12px;
-  background: linear-gradient(135deg, #1a2340 0%, #2d3f6b 100%);
-  color: #fff;
+  background-image: linear-gradient(
+    110deg,
+    rgba(91, 127, 166, 0.34) 0%,
+    rgba(138, 111, 196, 0.3) 42%,
+    rgba(240, 168, 184, 0.36) 78%,
+    rgba(91, 127, 166, 0.34) 100%
+  );
+  background-size: 220% 100%;
+  background-position: 0% 50%;
+  background-color: rgba(255, 255, 255, 0.42);
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  /* Navy ink, not white: on frost this pale, white text has no contrast left. */
+  color: #1a2340;
   font-size: 0.95rem;
-  font-weight: 500;
+  font-weight: 600;
   font-family: 'DM Sans', sans-serif;
-  border: none;
+  border: 1px solid rgba(255, 255, 255, 0.6);
   cursor: pointer;
   margin-top: 8px;
-  transition: opacity 0.2s, transform 0.15s, box-shadow 0.2s;
-  box-shadow: 0 4px 20px rgba(26, 35, 64, 0.25);
+  overflow: hidden;
+  isolation: isolate;
+  -webkit-tap-highlight-color: transparent;
+  animation: lpBackDrift 9s ease-in-out infinite alternate;
+  transition:
+    background-color 0.28s ease,
+    box-shadow 0.28s ease,
+    border-color 0.28s ease,
+    transform 0.24s cubic-bezier(0.34, 1.4, 0.64, 1);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    inset 0 -2px 6px rgba(120, 130, 165, 0.1),
+    0 5px 16px rgba(91, 100, 150, 0.16);
   letter-spacing: 0.01em;
 }
 
+/* Specular sheen — a narrow diagonal glare parked off the left edge that
+   sweeps across on hover. The glass cue a flat tint can't give you. */
+.submit-btn::after {
+  content: "";
+  position: absolute;
+  top: -60%;
+  left: -70%;
+  width: 45%;
+  height: 220%;
+  background: linear-gradient(
+    100deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.45) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  transform: skewX(-18deg);
+  transition: left 0.62s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* Hover warms the tint rather than darkening it — the button stays pale, it
+   just gains a little more colour and lift. */
 .submit-btn:hover:not(:disabled) {
-  opacity: 0.92;
-  transform: translateY(-1px);
-  box-shadow: 0 6px 24px rgba(26, 35, 64, 0.3);
+  transform: translateY(-2px);
+  background-color: rgba(255, 255, 255, 0.52);
+  border-color: rgba(255, 255, 255, 0.8);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.85),
+    inset 0 -2px 6px rgba(120, 130, 165, 0.08),
+    0 9px 22px rgba(91, 100, 150, 0.2);
+}
+
+.submit-btn:hover:not(:disabled)::after {
+  left: 130%;
+}
+
+.submit-btn:active:not(:disabled) {
+  transform: translateY(0) scale(0.985);
+  box-shadow:
+    inset 0 2px 5px rgba(120, 130, 165, 0.16),
+    0 2px 8px rgba(91, 100, 150, 0.14);
+}
+
+/* White halo inside the accent ring — the ring alone would vanish against the
+   blue end of the button's own gradient. */
+.submit-btn:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 3px rgba(255, 255, 255, 0.9),
+    0 0 0 5px rgba(91, 127, 166, 0.45),
+    0 5px 16px rgba(91, 100, 150, 0.16);
 }
 
 .submit-btn:disabled {
-  opacity: 0.55;
+  opacity: 0.62;
   cursor: not-allowed;
+  animation-play-state: paused;
+}
+
+/* The shared .spinner is drawn in white for dark buttons; on the glass it has
+   to be navy or it disappears while logging in. */
+.submit-btn .spinner {
+  border-color: rgba(26, 35, 64, 0.25);
+  border-top-color: #1a2340;
 }
 
 .logout-btn {
@@ -731,9 +820,17 @@
 /* Reduced motion: keep the colour and the glass, drop everything that moves —
    including the ambient drift, which runs without the user asking for it. */
 @media (prefers-reduced-motion: reduce) {
-  .lp-back {
+  .lp-back,
+  .submit-btn {
     animation: none;
     background-position: 12% 50%;
+  }
+  .submit-btn:hover:not(:disabled),
+  .submit-btn:active:not(:disabled) {
+    transform: none;
+  }
+  .submit-btn:hover:not(:disabled)::after {
+    left: -70%;
   }
   .lp-back,
   .lp-back__sheen::after,
@@ -1073,20 +1170,28 @@
   .eye-btn:hover { opacity: 0.8; color: #16294b; }
   .eye-btn svg { width: 19px; height: 19px; }
 
+  /* Mobile keeps the same pale glass — only the metrics change. The tint is
+     nudged up a touch because the mobile card sits on the drawn backdrop
+     rather than the artwork, which gives the frost less to work with. */
   .submit-btn {
     height: 52px;
     padding: 0;
     margin-top: 16px;
     border-radius: 15px;
-    background: linear-gradient(180deg, #243c66 0%, #16294b 100%);
+    background-color: rgba(255, 255, 255, 0.5);
     font-size: 15px;
     font-weight: 600;
-    box-shadow: 0 12px 26px -10px rgba(22, 41, 75, 0.7);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.75),
+      0 12px 26px -12px rgba(91, 100, 150, 0.55);
   }
+  /* No hover on touch — keep the resting look and let :active carry the press. */
   .submit-btn:hover:not(:disabled) {
-    opacity: 1;
     transform: none;
-    box-shadow: 0 16px 30px -10px rgba(22, 41, 75, 0.8);
+    background-color: rgba(255, 255, 255, 0.5);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.75),
+      0 12px 26px -12px rgba(91, 100, 150, 0.55);
   }
   .submit-btn:active:not(:disabled) { transform: translateY(1px) scale(0.995); }
 
