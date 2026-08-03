@@ -15,6 +15,7 @@ import PaymentsTable from "../../components/payments/PaymentsTable";
 import MonthPicker from "../../components/sales/MonthPicker";
 import {
   fmtMoney,
+  moneyTone,
   fieldClass,
   labelClass,
 } from "../../components/payments/paymentsFormat";
@@ -133,7 +134,11 @@ export default function MyPaymentEntries() {
       // headline "total" covering one page of many would misread as the lot.
       label: "Recorded on this page",
       value: fmtMoney(sumMoney(rows(), "finalAmount"), 0),
-      tone: "text-[#15966A] dark:text-green-300",
+      // A page of reversals can sum negative — that is not a green receipt.
+      tone: moneyTone(
+        sumMoney(rows(), "finalAmount"),
+        "text-[#15966A] dark:text-green-300",
+      ),
       caption: `${rows().length} row${rows().length === 1 ? "" : "s"} shown`,
     },
   ]);

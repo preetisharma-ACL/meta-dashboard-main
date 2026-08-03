@@ -1,12 +1,22 @@
 import { Show } from "solid-js";
-import { fmtMoney, isMissing } from "../sales/salesFormat";
+import { fmtMoney, isMissing, isNegativeMoney } from "../sales/salesFormat";
 
 // ─── Payments formatting + badges ─────────────────────────────────────────────
 // Money formatting is NOT re-implemented here — it reuses the sales null
 // discipline (missing → "—", never ₹0) so every money surface in the app reads
 // the same way. Only the payment-specific bits live here.
 
-export { fmtMoney, isMissing };
+export { fmtMoney, isMissing, isNegativeMoney };
+
+// ── Money tone ────────────────────────────────────────────────────────────────
+// A negative amount in the ledger is a reversal/debit, not a receipt, and it
+// must never read in the same colour as money that came in. Same red the sales
+// closing-balance column uses, so "negative = red" means one thing app-wide.
+// Missing stays on the caller's default tone — "—" is not a debit.
+export const MONEY_RED = "text-[#AC2334] dark:text-red-300";
+
+export const moneyTone = (v, positiveTone) =>
+  isNegativeMoney(v) ? MONEY_RED : positiveTone;
 
 // Field styling shared by the record + edit forms (house navy/red palette).
 export const fieldClass =

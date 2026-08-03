@@ -5,6 +5,7 @@ import {
   fmtMoney,
   fmtDate,
   methodLabel,
+  moneyTone,
   DocsBadge,
 } from "./paymentsFormat";
 
@@ -37,6 +38,13 @@ import {
 const TH =
   "px-4 py-4 text-[12.5px] font-bold uppercase tracking-wide text-[#54657E] dark:text-gray-300 whitespace-nowrap";
 const TD = "px-4 py-3 text-sm text-[#14233A] dark:text-gray-200 align-middle";
+
+// Money cells carry NO colour in their base class — the tone is appended per
+// row by moneyTone(). Reusing TD here would leave two text-colour utilities on
+// the same element and let stylesheet order, not intent, pick the winner.
+const TD_MONEY = "px-4 py-3 text-sm align-middle text-right tabular-nums";
+const TONE_NAVY = "text-[#14233A] dark:text-gray-200";
+const TONE_GREEN = "text-[#15966A] dark:text-green-300";
 
 // ── Sortable columns ──────────────────────────────────────────────────────────
 // Header metadata + sort accessors only — the cells themselves stay hand-written
@@ -281,7 +289,7 @@ export default function PaymentsTable(props) {
                       </div>
                     </td>
 
-                    <td class={TD + " text-right tabular-nums"}>
+                    <td class={TD_MONEY + " " + moneyTone(p.baseAmount, TONE_NAVY)}>
                       {fmtMoney(p.baseAmount, 2)}
                       <Show when={p.tdsApplied}>
                         <span
@@ -293,7 +301,7 @@ export default function PaymentsTable(props) {
                       </Show>
                     </td>
 
-                    <td class={TD + " text-right tabular-nums"}>
+                    <td class={TD_MONEY + " " + moneyTone(p.gstAmount, TONE_NAVY)}>
                       {fmtMoney(p.gstAmount, 2)}
                       <Show when={p.gstPct != null}>
                         <span class="block text-[11px] text-[#8593A8] dark:text-gray-500">
@@ -302,10 +310,13 @@ export default function PaymentsTable(props) {
                       </Show>
                     </td>
 
+                    {/* Green only when money actually came IN. A negative final
+                        is a reversal and reads red. */}
                     <td
                       class={
-                        TD +
-                        " text-right tabular-nums font-bold text-[#15966A] dark:text-green-300"
+                        TD_MONEY +
+                        " font-bold " +
+                        moneyTone(p.finalAmount, TONE_GREEN)
                       }
                     >
                       {fmtMoney(p.finalAmount, 0)}

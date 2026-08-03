@@ -561,16 +561,17 @@
 }
 
 /* ── Back to landing — top left, over the gradient panel ──
-   Gradient pill + circular arrow badge, in the LEFT PANEL'S OWN palette: the
-   same #5b7fa6 blue → #8a6fc4 purple → #f0a8b8 pink that the brand dots and
-   the form-logo gradient already use. The reference for this shape was a solid
-   coral button; a solid fill would have sat on the artwork as a sticker, so the
-   gradient is laid over glass instead — tinted, blurred, and translucent enough
-   that the drifting background still reads through it.
+   Gradient glass button in the LEFT PANEL'S OWN palette: the same #5b7fa6 blue
+   → #8a6fc4 purple → #f0a8b8 pink that the brand dots and the form-logo
+   gradient already use. The reference for this shape was a solid coral button;
+   a solid fill would have sat on the artwork as a sticker, so the gradient is
+   laid over glass instead — tinted, blurred, and translucent enough that the
+   drifting background still reads through it.
 
-   Layout is padding + one absolutely-positioned badge rather than a flex gap,
-   so the circle can overhang the pill's right edge the way it does in the
-   reference without dragging the label off-centre.
+   It holds a bare arrow: the "BACK" label and the white circular badge that
+   used to carry the arrow are both gone. Sized as a soft rounded rectangle
+   rather than a circle — wider than it is tall, with a radius well short of the
+   999px that would round it back into a pill.
 
    The gradient is sized 220% and its POSITION animated — that's the slow colour
    drift. Because background-position is already spoken for, the sheen lives on
@@ -580,12 +581,14 @@
   top: 30px;
   left: 32px;
   z-index: 20;
-  display: inline-flex;
-  align-items: center;
+  display: grid;
+  place-items: center;
+  width: 54px;
   height: 38px;
-  /* right padding clears the 42px badge, which overhangs the edge by 5px */
-  padding: 0 46px 0 19px;
-  border-radius: 999px;
+  padding: 0;
+  /* 18 against a 38px height — just under the 19px that would round the ends
+     into a full stadium, so a short flat edge survives top and bottom. */
+  border-radius: 18px;
   /* LIGHT tint — the same three hues, at roughly a third of the opacity they
      had. Below ~0.3 the gradient stops reading as three colours at all, so
      this is about as pale as it can go and still look like the brand ramp
@@ -660,67 +663,21 @@
   transition: left 0.62s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.lp-back__label {
+/* The arrow, sitting straight on the glass now that the white badge disc is
+   gone. It takes the label's old navy rather than the badge's accent blue:
+   #5b7fa6 was picked to hold up against a near-white disc, and on the pale
+   tinted glass it washes out. */
+.lp-back svg {
   position: relative;
   z-index: 2;
-  font-family: 'DM Sans', sans-serif;
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.11em;
-  line-height: 1;
-  text-transform: uppercase;
-  /* NOT white any more — the pale tint can't carry white text. This is the
-     panel's own body-copy navy (#3a4a62, as .left-desc), which clears contrast
-     against the light glass at every point in the gradient drift. The shadow
-     is now a white lift rather than a dark one, for the same reason. */
+  width: 18px;
+  height: 18px;
   color: #3a4a62;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
   transition: transform 0.24s ease, color 0.24s ease;
 }
 
-/* Arrow badge — a white glass disc at full pill height, overhanging the right
-   edge. Its "ring" is the pill's own gradient showing past a translucent
-   fill, not a second colour introduced to the palette. */
-.lp-back__badge {
-  position: absolute;
-  top: 50%;
-  right: -5px;
-  transform: translateY(-50%);
-  z-index: 2;
-  display: grid;
-  place-items: center;
-  /* 42px against a 38px pill — the circle stands 2px proud top and bottom and
-     5px past the right edge, which is the protruding badge from the reference.
-     This is the reason the button can't clip its own overflow. */
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
-  background: linear-gradient(
-    150deg,
-    rgba(255, 255, 255, 0.96) 0%,
-    rgba(255, 255, 255, 0.86) 100%
-  );
-  border: 1px solid rgba(255, 255, 255, 0.95);
-  box-shadow:
-    inset 0 1px 2px rgba(255, 255, 255, 0.95),
-    0 2px 8px rgba(70, 80, 130, 0.14);
-  transition:
-    transform 0.3s cubic-bezier(0.34, 1.4, 0.64, 1),
-    box-shadow 0.28s ease;
-}
-
-.lp-back__badge svg {
-  width: 17px;
-  height: 17px;
-  /* The panel's accent blue — the same colour .left-tagline em uses. On a
-     near-white badge this is the one element that should stay reasonably
-     saturated, or the arrow disappears into the disc. */
-  color: #5b7fa6;
-  transition: transform 0.3s cubic-bezier(0.34, 1.4, 0.64, 1), color 0.28s ease;
-}
-
-/* ── Hover: lift, sweep the glare, nudge the label, tilt the badge ── */
-/* Hover warms the tint a little rather than darkening it — the pill stays in
+/* ── Hover: lift, sweep the glare, nudge the arrow ── */
+/* Hover warms the tint a little rather than darkening it — the button stays in
    the pale register, it just gains a touch more colour. */
 .lp-back:hover {
   transform: translateY(-2px);
@@ -732,30 +689,14 @@
     0 8px 20px rgba(91, 100, 150, 0.18);
 }
 
-.lp-back:hover .lp-back__label {
-  color: #1a2340;
-}
-
 .lp-back:hover .lp-back__sheen::after {
   left: 118%;
 }
 
-/* Label and arrow both move LEFT — the direction the button actually takes
-   you. Moving them apart would animate against the meaning. */
-.lp-back:hover .lp-back__label {
-  transform: translateX(-3px);
-}
-
-.lp-back:hover .lp-back__badge {
-  transform: translateY(-50%) scale(1.07);
-  box-shadow:
-    inset 0 1px 2px rgba(255, 255, 255, 0.95),
-    0 4px 12px rgba(70, 80, 130, 0.18);
-}
-
-.lp-back:hover .lp-back__badge svg {
-  color: #46688f;
-  transform: translateX(-2px) rotate(-12deg);
+/* The arrow moves LEFT — the direction the button actually takes you. */
+.lp-back:hover svg {
+  color: #1a2340;
+  transform: translateX(-2px);
 }
 
 .lp-back:active {
@@ -784,24 +725,16 @@
   }
   .lp-back,
   .lp-back__sheen::after,
-  .lp-back__label,
-  .lp-back__badge,
-  .lp-back__badge svg {
+  .lp-back svg {
     transition: box-shadow 0.28s ease, border-color 0.28s ease, color 0.28s ease;
   }
   .lp-back:hover,
   .lp-back:active,
-  .lp-back:hover .lp-back__label {
+  .lp-back:hover svg {
     transform: none;
   }
   .lp-back:hover .lp-back__sheen::after {
     left: -70%;
-  }
-  .lp-back:hover .lp-back__badge {
-    transform: translateY(-50%);
-  }
-  .lp-back:hover .lp-back__badge svg {
-    transform: none;
   }
 }
 

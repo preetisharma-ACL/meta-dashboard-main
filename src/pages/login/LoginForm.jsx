@@ -181,10 +181,10 @@ export default function Login() {
             than inside .login-left so it survives the <900px breakpoint that
             hides that panel (the CSS re-parks it on the form side there).
 
-            Gradient pill + circular arrow badge. The label is a real text node
-            (uppercased in CSS, not in the markup) so it still reads as "Back to
-            home" when copied or announced; aria-label names the whole control
-            and the badge svg is decorative. */}
+            Gradient glass button holding a bare left arrow. The "Back" label
+            and the white circular badge that used to carry the arrow are both
+            gone, so aria-label is now the control's ONLY accessible name — it
+            has to stay, and the svg stays decorative beneath it. */}
         <button
           type="button"
           class="lp-back"
@@ -192,24 +192,22 @@ export default function Login() {
           aria-label="Back to home"
           title="Back to home"
         >
-          {/* The travelling glare needs clipping to the pill; the badge must
-              NOT be clipped (it overhangs the right edge). So the clip lives on
-              this layer rather than on the button, which would cut the badge
-              off at the pill's rounded edge. */}
+          {/* Clip layer for the travelling glare — exactly the button's shape.
+              Putting the clip on the button itself would work now that nothing
+              overhangs, but this keeps the glare independent of any future
+              padding change. */}
           <span class="lp-back__sheen" aria-hidden="true" />
-          <span class="lp-back__label">Back</span>
-          <span class="lp-back__badge" aria-hidden="true">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2.2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
-            </svg>
-          </span>
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M19 12H5m0 0l7 7m-7-7l7-7" />
+          </svg>
         </button>
 
         {/* ── LEFT DECORATIVE PANEL ── */}
