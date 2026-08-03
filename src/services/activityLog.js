@@ -137,6 +137,12 @@ export const getActivitySummary = async ({ startDate, endDate } = {}) => {
     byActorRole: toChips(d.by_actor_role, "actor_role"),
     byResult: toChips(d.by_result, "result"),
     topActors: toChips(d.top_actors, "actor"),
+    // Daily counts for the time-series chart. SPARSE by design — the server only
+    // emits days that had events, so consumers must not assume the days are
+    // consecutive (the chart fills the gaps with zeroes itself).
+    byDay: (Array.isArray(d.by_day) ? d.by_day : [])
+      .map((r) => ({ day: r?.day ?? null, count: Number(r?.count) || 0 }))
+      .filter((r) => r.day),
     window: {
       start: d.window?.start ?? null,
       end: d.window?.end ?? null,

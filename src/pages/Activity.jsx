@@ -99,6 +99,21 @@ const CATEGORY_STYLES = {
   lead: "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
 };
 
+// Bar fills for the "By category" chart — the same hue per category as the row
+// badges above, one step darker so a thin bar still reads on the card surface.
+// Colour follows the category, never its rank, so filtering never repaints it.
+const CATEGORY_BAR_COLORS = {
+  campaign: "bg-purple-500 dark:bg-purple-400",
+  auth: "bg-slate-400 dark:bg-slate-400",
+  payment: "bg-emerald-500 dark:bg-emerald-400",
+  lead: "bg-amber-500 dark:bg-amber-400",
+};
+const DEFAULT_BAR_COLOR = "bg-gray-400 dark:bg-gray-500";
+
+// Roles carry no palette elsewhere on the page and it's one series, so every bar
+// takes the same hue — bar length is already the encoding.
+const ROLE_BAR_COLOR = "bg-indigo-500 dark:bg-indigo-400";
+
 const fmtAmount = (n, currency) => {
   const num = Number(n);
   if (!Number.isFinite(num)) return String(n);
@@ -147,8 +162,365 @@ const fmtDay = (iso) => {
 
 const fmtCount = (n) => (Number(n) || 0).toLocaleString("en-IN");
 
-// ─── Summary header bits ──────────────────────────────────────────────────────
+// ─── Date range ───────────────────────────────────────────────────────────────
+// Both the feed and the summary take the same ?start_date=/?end_date= pair as
+// plain YYYY-MM-DD, so the presets are computed in local time and stringified
+// here rather than sent as full ISO timestamps (a UTC round-trip would shift the
+// window by a day for anyone east of Greenwich).
 
+const pad2 = (n) => String(n).padStart(2, "0");
+
+const isoDay = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+
+const DATE_PRESETS = [
+  { value: "7", label: "Last 7 days" },
+  { value: "30", label: "Last 30 days" },
+  { value: "90", label: "Last 90 days" },
+];
+
+// 30 days is the default because that's what the backend defaults to when the
+// params are omitted — the control starts out agreeing with the server.
+const DEFAULT_PRESET = "30";
+
+const presetRange = (days) => {
+  const end = new Date();
+  const start = new Date();
+  start.setDate(start.getDate() - Number(days));
+  return { startDate: isoDay(start), endDate: isoDay(end) };
+};
+
+// ─── Chart helpers ────────────────────────────────────────────────────────────
+
+// "YYYY-MM-DD" (or a full ISO timestamp) → a local-midnight Date. Built from the
+// parts rather than Date.parse so a bare date string isn't read as UTC.
+const parseDay = (s) => {
+  const [y, m, d] = String(s ?? "").slice(0, 10).split("-").map(Number);
+  if (!y || !m || !d) return null;
+  const dt = new Date(y, m - 1, d);
+  return Number.isNaN(dt.getTime()) ? null : dt;
+};
+
+// by_day skips days with no events, so a raw plot would silently compress a
+// quiet stretch into a straight jump. Fill every missing day in the window with
+// 0 so the x-axis is real time and a gap reads as "nothing happened".
+const fillDailySeries = (rows, window) => {
+  const points = (rows ?? [])
+    .map((r) => ({ date: parseDay(r.day), count: Number(r.count) || 0 }))
+    .filter((p) => p.date)
+    .sort((a, b) => a.date - b.date);
+  if (!points.length) return [];
+
+  // Prefer the window the server reports (so an empty tail still shows as flat),
+  // and widen it if a point somehow falls outside it.
+  const from = new Date(
+    Math.min(parseDay(window?.start) ?? points[0].date, points[0].date),
+  );
+  const to = new Date(
+    Math.max(parseDay(window?.end) ?? points.at(-1).date, points.at(-1).date),
+  );
+
+  const span = Math.round((to - from) / 86400000);
+  if (!(span >= 0) || span > 400) return points; // absurd window — plot as-is
+
+  const counts = new Map(points.map((p) => [isoDay(p.date), p.count]));
+  const out = [];
+  for (const d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
+    out.push({ date: new Date(d), count: counts.get(isoDay(d)) ?? 0 });
+  }
+  return out;
+};
+
+// The time series draws into a fixed viewBox and is scaled by CSS; strokes carry
+// vector-effect="non-scaling-stroke" so they stay a true 1–2px at any width.
+const VB = { w: 760, h: 220, top: 14, right: 16, bottom: 30, left: 46 };
+const PLOT_W = VB.w - VB.left - VB.right;
+const PLOT_H = VB.h - VB.top - VB.bottom;
+const BASE_Y = VB.top + PLOT_H;
+
+// Round the axis ceiling up to a clean number. One batch of campaign events can
+// make a single day ~100+, so the axis always scales to the window's own max —
+// there is deliberately no fixed ceiling to clip against.
+const niceMax = (n) => {
+  if (!(n > 0)) return 5;
+  const mag = 10 ** Math.floor(Math.log10(n));
+  for (const s of [1, 2, 2.5, 5, 10]) if (s * mag >= n) return s * mag;
+  return 10 * mag;
+};
+
+const fmtAxisDay = (d) =>
+  d.toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
+
+const fmtPointDay = (d) =>
+  d.toLocaleDateString("en-IN", {
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+
+// Daily event counts. One series, so no legend — the card title names it; the
+// peak is direct-labelled and the axis carries the rest, with the tooltip as a
+// supplement rather than the only way to read a value.
+function TimeSeriesChart(props) {
+  const [hover, setHover] = createSignal(null);
+  let svgEl;
+
+  const pts = () => props.points ?? [];
+  const maxY = () => niceMax(Math.max(0, ...pts().map((p) => p.count)));
+  const xAt = (i) =>
+    pts().length < 2 ? VB.left + PLOT_W / 2 : VB.left + (i / (pts().length - 1)) * PLOT_W;
+  const yAt = (v) => VB.top + PLOT_H * (1 - v / maxY());
+
+  const linePoints = () => pts().map((p, i) => `${xAt(i)},${yAt(p.count)}`).join(" ");
+
+  const areaPath = () => {
+    const p = pts();
+    if (p.length < 2) return "";
+    return `M ${xAt(0)},${BASE_Y} L ${p
+      .map((d, i) => `${xAt(i)},${yAt(d.count)}`)
+      .join(" L ")} L ${xAt(p.length - 1)},${BASE_Y} Z`;
+  };
+
+  const peak = () => {
+    let best = -1;
+    pts().forEach((p, i) => {
+      if (best < 0 || p.count > pts()[best].count) best = i;
+    });
+    return best >= 0 && pts()[best].count > 0 ? best : null;
+  };
+
+  // Up to 6 evenly spaced day labels — enough to place the eye, few enough not
+  // to collide at 90 days.
+  const xTicks = () => {
+    const n = pts().length;
+    if (!n) return [];
+    const want = Math.min(n, 6);
+    if (want === 1) return [0];
+    const step = (n - 1) / (want - 1);
+    return Array.from({ length: want }, (_, k) => Math.round(k * step));
+  };
+
+  const anchorFor = (i) =>
+    i === 0 ? "start" : i === pts().length - 1 ? "end" : "middle";
+
+  const onMove = (e) => {
+    const n = pts().length;
+    if (!n || !svgEl) return;
+    const rect = svgEl.getBoundingClientRect();
+    if (!rect.width) return;
+    // clientX → viewBox units → nearest index (the whole svg is the hit area, so
+    // there's no pinpoint target to land on).
+    const vbX = ((e.clientX - rect.left) / rect.width) * VB.w;
+    const i = n < 2 ? 0 : Math.round(((vbX - VB.left) / PLOT_W) * (n - 1));
+    setHover(Math.min(n - 1, Math.max(0, i)));
+  };
+
+  const hovered = () => (hover() == null ? null : pts()[hover()]);
+
+  return (
+    <Show
+      when={pts().length}
+      fallback={
+        <div class="h-[180px] flex items-center justify-center text-sm text-gray-400 dark:text-gray-500">
+          No events in this window
+        </div>
+      }
+    >
+      <div class="relative">
+        <svg
+          ref={svgEl}
+          viewBox={`0 0 ${VB.w} ${VB.h}`}
+          class="w-full overflow-visible"
+          role="img"
+          aria-label="Daily activity event counts over the selected window"
+          onPointerMove={onMove}
+          onPointerLeave={() => setHover(null)}
+        >
+          {/* Gridlines + y ticks — solid hairlines, one step off the surface */}
+          <For each={[0, 0.5, 1]}>
+            {(f) => (
+              <>
+                <line
+                  x1={VB.left}
+                  x2={VB.w - VB.right}
+                  y1={yAt(maxY() * f)}
+                  y2={yAt(maxY() * f)}
+                  class="stroke-gray-200 dark:stroke-gray-700"
+                  stroke-width="1"
+                  vector-effect="non-scaling-stroke"
+                />
+                <text
+                  x={VB.left - 8}
+                  y={yAt(maxY() * f) + 4}
+                  text-anchor="end"
+                  class="fill-gray-400 dark:fill-gray-500 text-[11px] [font-variant-numeric:tabular-nums]"
+                >
+                  {fmtCount(Math.round(maxY() * f))}
+                </text>
+              </>
+            )}
+          </For>
+
+          <Show when={pts().length > 1}>
+            <path d={areaPath()} class="fill-purple-500/10 dark:fill-purple-400/10" />
+            <polyline
+              points={linePoints()}
+              fill="none"
+              stroke-width="2"
+              stroke-linejoin="round"
+              stroke-linecap="round"
+              vector-effect="non-scaling-stroke"
+              class="stroke-purple-600 dark:stroke-purple-400"
+            />
+          </Show>
+
+          {/* A one-day window has no line to draw — show the point itself. */}
+          <Show when={pts().length === 1}>
+            <circle
+              cx={xAt(0)}
+              cy={yAt(pts()[0].count)}
+              r="4"
+              class="fill-purple-600 dark:fill-purple-400 stroke-white dark:stroke-gray-900"
+              stroke-width="2"
+              vector-effect="non-scaling-stroke"
+            />
+          </Show>
+
+          {/* Direct label on the peak — the one value the axis reads worst. */}
+          <Show when={peak() != null}>
+            <circle
+              cx={xAt(peak())}
+              cy={yAt(pts()[peak()].count)}
+              r="4"
+              class="fill-purple-600 dark:fill-purple-400 stroke-white dark:stroke-gray-900"
+              stroke-width="2"
+              vector-effect="non-scaling-stroke"
+            />
+            <text
+              x={xAt(peak())}
+              y={yAt(pts()[peak()].count) - 10}
+              text-anchor={anchorFor(peak())}
+              class="fill-gray-500 dark:fill-gray-400 text-[11px] font-semibold"
+            >
+              {fmtCount(pts()[peak()].count)}
+            </text>
+          </Show>
+
+          {/* x labels */}
+          <For each={xTicks()}>
+            {(i) => (
+              <text
+                x={xAt(i)}
+                y={BASE_Y + 18}
+                text-anchor={anchorFor(i)}
+                class="fill-gray-400 dark:fill-gray-500 text-[11px]"
+              >
+                {fmtAxisDay(pts()[i].date)}
+              </text>
+            )}
+          </For>
+
+          {/* Crosshair. Gated on the point, not the index — swapping the date
+              range can leave a hover index past the end of the new series. */}
+          <Show when={hovered()}>
+            <line
+              x1={xAt(hover())}
+              x2={xAt(hover())}
+              y1={VB.top}
+              y2={BASE_Y}
+              class="stroke-gray-300 dark:stroke-gray-600"
+              stroke-width="1"
+              vector-effect="non-scaling-stroke"
+            />
+            <circle
+              cx={xAt(hover())}
+              cy={yAt(hovered().count)}
+              r="4"
+              class="fill-purple-600 dark:fill-purple-400 stroke-white dark:stroke-gray-900"
+              stroke-width="2"
+              vector-effect="non-scaling-stroke"
+            />
+          </Show>
+        </svg>
+
+        <Show when={hovered()}>
+          <div
+            class="pointer-events-none absolute -translate-x-1/2 -translate-y-full z-10
+                   rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800
+                   px-2 py-1 shadow-sm whitespace-nowrap"
+            style={{
+              left: `${Math.min(92, Math.max(8, (xAt(hover()) / VB.w) * 100))}%`,
+              top: `${(yAt(hovered().count) / VB.h) * 100 - 2}%`,
+            }}
+          >
+            <div class="text-[11px] text-gray-500 dark:text-gray-400">
+              {fmtPointDay(hovered().date)}
+            </div>
+            <div class="text-xs font-semibold text-gray-900 dark:text-white">
+              {fmtCount(hovered().count)} event{hovered().count === 1 ? "" : "s"}
+            </div>
+          </div>
+        </Show>
+      </div>
+    </Show>
+  );
+}
+
+// Past this many bars the small cards get cramped; the remainder is counted in a
+// footnote rather than dropped (see below).
+const MAX_BARS = 8;
+
+// Horizontal bars — the labels are words ("campaign_manager"), which a column
+// chart can only fit by rotating them. Every bar is direct-labelled, so the
+// values don't depend on a hover.
+function BarList(props) {
+  const sorted = () => [...(props.items ?? [])].sort((a, b) => b.count - a.count);
+  const rows = () => sorted().slice(0, MAX_BARS);
+  const hidden = () => sorted().length - rows().length;
+  const max = () => Math.max(1, ...rows().map((r) => r.count));
+
+  return (
+    <Show
+      when={rows().length}
+      fallback={<p class="text-sm text-gray-400 dark:text-gray-500">No events in this window</p>}
+    >
+      <div class="flex flex-col gap-2">
+        <For each={rows()}>
+          {(it) => {
+            const name = () => (props.nameOf ? props.nameOf(it.key) : it.key);
+            return (
+              <div class="flex items-center gap-2">
+                <span
+                  class="w-24 shrink-0 truncate text-xs text-gray-500 dark:text-gray-400"
+                  title={name()}
+                >
+                  {name()}
+                </span>
+                <div class="flex-1 h-2.5 rounded bg-gray-100 dark:bg-gray-800">
+                  <div
+                    class={`h-2.5 rounded-r ${props.colorOf?.(it.key) ?? DEFAULT_BAR_COLOR}`}
+                    style={{ width: `${Math.max(2, (it.count / max()) * 100)}%` }}
+                  />
+                </div>
+                <span class="w-10 shrink-0 text-right text-xs text-gray-600 dark:text-gray-300 [font-variant-numeric:tabular-nums]">
+                  {fmtCount(it.count)}
+                </span>
+              </div>
+            );
+          }}
+        </For>
+        {/* Never truncate silently — a hidden tail would read as "that's all". */}
+        <Show when={hidden() > 0}>
+          <p class="text-xs text-gray-400 dark:text-gray-500">
+            +{hidden()} more (see the breakdown below)
+          </p>
+        </Show>
+      </div>
+    </Show>
+  );
+}
+
+// ─── Summary header bits ──────────────────────────────────────────────────────
 function StatCard(props) {
   const alert = () => props.tone === "alert";
   return (
@@ -250,31 +622,73 @@ export default function Activity() {
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal(null);
 
-  // The one place the page's date window lives. There's no date-range control on
-  // this screen yet (the backend defaults the summary to the last 30 days), so
-  // this reads empty — but both the feed and the summary already source their
-  // dates from here, so adding the control later is a one-signal change and the
-  // two stay in lockstep.
-  const dateFilters = () => ({ startDate: "", endDate: "" });
+  // The one place the page's date window lives — the header control writes here
+  // and both the feed and the summary read from it, so they can never disagree
+  // about which window is on screen.
+  const [rangePreset, setRangePreset] = createSignal(DEFAULT_PRESET);
+  const [customStart, setCustomStart] = createSignal("");
+  const [customEnd, setCustomEnd] = createSignal("");
+
+  const dateFilters = createMemo(() => {
+    if (rangePreset() === "custom") {
+      // A half-filled custom range is sent as-is; the backend defaults whichever
+      // side is missing rather than the UI inventing one.
+      return { startDate: customStart(), endDate: customEnd() };
+    }
+    return presetRange(rangePreset());
+  });
+
+  const today = isoDay(new Date());
+
+  const pickPreset = (value) => {
+    // Seed the custom inputs from the window that's already on screen, so
+    // switching to Custom starts from what you were looking at.
+    if (value === "custom" && !customStart() && !customEnd()) {
+      const r = dateFilters();
+      setCustomStart(r.startDate);
+      setCustomEnd(r.endDate);
+    }
+    setPage(1); // a narrower window can leave you past the end
+    setRangePreset(value);
+  };
+
+  const setCustomDate = (setter) => (value) => {
+    setPage(1);
+    setter(value);
+  };
 
   // Glance summary. Keyed on the date window so it refetches when that changes;
   // the feed's category/role/action/client filters deliberately don't re-scope it
   // — this is a window-level overview, not a reflection of the filtered rows.
   // Resolves to null on failure so a broken summary can never take the feed down.
-  const [summary] = createResource(
-    () => dateFilters(),
-    async (range) => {
-      try {
-        return await getActivitySummary(range);
-      } catch (err) {
-        console.error("[Activity] summary load failed:", err);
-        return null;
-      }
-    },
+  const [summary] = createResource(dateFilters, async (range) => {
+    try {
+      return await getActivitySummary(range);
+    } catch (err) {
+      console.error("[Activity] summary load failed:", err);
+      return null;
+    }
+  });
+
+  // Hold the last resolved summary so changing the date range doesn't flash the
+  // skeleton and jump the layout — the previous render stays, dimmed, until the
+  // new window lands. `undefined` means "nothing loaded yet"; `null` is a real
+  // resolved state (the fetch failed).
+  const [lastSummary, setLastSummary] = createSignal();
+  createEffect(() => {
+    const s = summary();
+    if (s !== undefined) setLastSummary(s);
+  });
+  const summaryView = () => lastSummary();
+  const summaryFirstLoad = () => summary.loading && lastSummary() === undefined;
+  const summaryRefreshing = () => summary.loading && lastSummary() !== undefined;
+
+  const dayPoints = createMemo(() =>
+    fillDailySeries(summaryView()?.byDay, summaryView()?.window),
   );
 
   const summaryWindow = () => {
-    const w = summary()?.window;
+    const w = summaryView()?.window;
     const start = fmtDay(w?.start);
     const end = fmtDay(w?.end);
     if (start && end) return `${start} – ${end}`;
@@ -422,13 +836,55 @@ export default function Activity() {
     <div class="min-h-screen bg-gray-50 dark:bg-gray-900 p-3 lg:p-8">
 
       {/* Header */}
-      <div class="mb-4">
-        <h1 class="text-2xl font-semibold text-gray-900 dark:text-white tracking-tight">
-          Activity Log
-        </h1>
-        <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-          A permanent, append-only record of actions taken in the dashboard.
-        </p>
+      <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 class="text-2xl font-semibold text-gray-900 dark:text-white tracking-tight">
+            Activity Log
+          </h1>
+          <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+            A permanent, append-only record of actions taken in the dashboard.
+          </p>
+        </div>
+
+        {/* Date range — scopes the whole page (summary, charts and feed) from one
+            place, so everything below always describes the same window. */}
+        <div class="flex flex-wrap items-center gap-2">
+          <select
+            value={rangePreset()}
+            onChange={(e) => pickPreset(e.target.value)}
+            aria-label="Date range"
+            class="px-3 py-2 text-sm rounded-lg border border-gray-200
+                   dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+          >
+            <For each={DATE_PRESETS}>
+              {(p) => <option value={p.value}>{p.label}</option>}
+            </For>
+            <option value="custom">Custom…</option>
+          </select>
+
+          <Show when={rangePreset() === "custom"}>
+            <input
+              type="date"
+              value={customStart()}
+              max={customEnd() || today}
+              onChange={(e) => setCustomDate(setCustomStart)(e.target.value)}
+              aria-label="Start date"
+              class="px-3 py-2 text-sm rounded-lg border border-gray-200
+                     dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+            />
+            <span class="text-sm text-gray-400 dark:text-gray-500">to</span>
+            <input
+              type="date"
+              value={customEnd()}
+              min={customStart()}
+              max={today}
+              onChange={(e) => setCustomDate(setCustomEnd)(e.target.value)}
+              aria-label="End date"
+              class="px-3 py-2 text-sm rounded-lg border border-gray-200
+                     dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+            />
+          </Show>
+        </div>
       </div>
 
       {/* Append-only notice */}
@@ -447,7 +903,7 @@ export default function Activity() {
           from its own resource so a failure here degrades to a one-line notice
           and leaves the feed below untouched. */}
       <Show
-        when={!summary.loading}
+        when={!summaryFirstLoad()}
         fallback={
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
             <For each={Array(3).fill(0)}>
@@ -463,7 +919,7 @@ export default function Activity() {
         }
       >
         <Show
-          when={summary()}
+          when={summaryView()}
           fallback={
             <div class="mb-4 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700
                         bg-white dark:bg-gray-900 text-sm text-gray-400 dark:text-gray-500">
@@ -471,33 +927,74 @@ export default function Activity() {
             </div>
           }
         >
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
-            <StatCard label="Total events" value={fmtCount(summary().totalEvents)} />
-            <StatCard label="Active users" value={fmtCount(summary().activeUsers)} />
-            <StatCard
-              label="Failed logins"
-              value={fmtCount(summary().failedLogins)}
-              tone={summary().failedLogins > 0 ? "alert" : "neutral"}
-            />
-          </div>
+          {/* Dimmed rather than replaced while a new window loads — no skeleton
+              flash and no layout jump on every date change. */}
+          <div class={summaryRefreshing() ? "opacity-50 transition-opacity" : "transition-opacity"}>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+              <StatCard label="Total events" value={fmtCount(summaryView().totalEvents)} />
+              <StatCard label="Active users" value={fmtCount(summaryView().activeUsers)} />
+              <StatCard
+                label="Failed logins"
+                value={fmtCount(summaryView().failedLogins)}
+                tone={summaryView().failedLogins > 0 ? "alert" : "neutral"}
+              />
+            </div>
 
-          <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200
-                      dark:border-gray-700 px-4 py-3 mb-4 flex flex-col gap-2">
-            <BreakdownRow
-              label="By category"
-              items={summary().byCategory}
-              classOf={(k) => CATEGORY_STYLES[k]}
-            />
-            <BreakdownRow
-              label="By role"
-              items={summary().byActorRole}
-              nameOf={roleLabel}
-            />
-            <Show when={summaryWindow()}>
-              <p class="text-xs text-gray-400 dark:text-gray-500">
-                Window: {summaryWindow()}
-              </p>
-            </Show>
+            {/* Charts — same resource as the cards above, so they follow the date
+                range for free. */}
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-3">
+              <div class="lg:col-span-2 bg-white dark:bg-gray-900 rounded-xl border
+                          border-gray-200 dark:border-gray-700 p-4">
+                <h3 class="text-sm font-semibold text-gray-900 dark:text-white mb-3">
+                  Activity over time
+                </h3>
+                <TimeSeriesChart points={dayPoints()} />
+              </div>
+
+              <div class="flex flex-col gap-3">
+                <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200
+                            dark:border-gray-700 p-4">
+                  <h3 class="text-sm font-semibold text-gray-900 dark:text-white mb-3">
+                    By category
+                  </h3>
+                  <BarList
+                    items={summaryView().byCategory}
+                    colorOf={(k) => CATEGORY_BAR_COLORS[k]}
+                  />
+                </div>
+
+                <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200
+                            dark:border-gray-700 p-4">
+                  <h3 class="text-sm font-semibold text-gray-900 dark:text-white mb-3">
+                    By role
+                  </h3>
+                  <BarList
+                    items={summaryView().byActorRole}
+                    nameOf={roleLabel}
+                    colorOf={() => ROLE_BAR_COLOR}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200
+                        dark:border-gray-700 px-4 py-3 mb-4 flex flex-col gap-2">
+              <BreakdownRow
+                label="By category"
+                items={summaryView().byCategory}
+                classOf={(k) => CATEGORY_STYLES[k]}
+              />
+              <BreakdownRow
+                label="By role"
+                items={summaryView().byActorRole}
+                nameOf={roleLabel}
+              />
+              <Show when={summaryWindow()}>
+                <p class="text-xs text-gray-400 dark:text-gray-500">
+                  Window: {summaryWindow()}
+                </p>
+              </Show>
+            </div>
           </div>
         </Show>
       </Show>
