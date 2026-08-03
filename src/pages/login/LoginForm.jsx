@@ -197,16 +197,21 @@ export default function Login() {
               overhangs, but this keeps the glare independent of any future
               padding change. */}
           <span class="lp-back__sheen" aria-hidden="true" />
+          {/* Drawn on a wide 42x18 box rather than the stock square 24x24: the
+              SHAFT is what got longer, while the head stays about the size it
+              was (5.5 units ≈ 11px tall, against the old 10.5px). A square
+              viewBox can only lengthen the shaft by scaling the head with it.
+              1:1 with the CSS px size, so stroke-width reads as px. */}
           <svg
-            viewBox="0 0 24 24"
+            viewBox="0 0 42 18"
             fill="none"
             stroke="currentColor"
-            stroke-width="2.2"
+            stroke-width="2.4"
             stroke-linecap="round"
             stroke-linejoin="round"
             aria-hidden="true"
           >
-            <path d="M19 12H5m0 0l7 7m-7-7l7-7" />
+            <path d="M41 9H1m0 0l5.5 5.5m-5.5-5.5l5.5-5.5" />
           </svg>
         </button>
 

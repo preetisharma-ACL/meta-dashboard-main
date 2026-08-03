@@ -583,7 +583,10 @@
   z-index: 20;
   display: grid;
   place-items: center;
-  width: 54px;
+  /* Wider than the original 54px so the long arrow has room to sit inside it
+     without crowding the ends. Height is untouched, which pushes the shape
+     further into the rounded-rectangle proportion the reference has. */
+  width: 70px;
   height: 38px;
   padding: 0;
   /* 18 against a 38px height — just under the 19px that would round the ends
@@ -664,15 +667,24 @@
 }
 
 /* The arrow, sitting straight on the glass now that the white badge disc is
-   gone. It takes the label's old navy rather than the badge's accent blue:
-   #5b7fa6 was picked to hold up against a near-white disc, and on the pale
-   tinted glass it washes out. */
+   gone. It's drawn in the left panel's own brand blue (#5b7fa6 — the first
+   brand dot, and the first stop of this pill's gradient) rather than a navy
+   that belongs to no part of the artwork. That blue was passed over when the
+   arrow was a thin 10px mark, which did wash out against the pale glass; at
+   40px and a 2.4 stroke there's enough ink to carry the lighter colour, and it
+   still clears 3:1 against the frost. Hover walks one stop along the same ramp
+   to the purple, so the cue is a colour move within the theme. */
 .lp-back svg {
   position: relative;
   z-index: 2;
-  width: 18px;
+  /* Wide, not big. The old 18px square left a stubby 10px arrow adrift in the
+     pill, but scaling that square up enlarges the head as much as the shaft.
+     So the box is 42x18 instead: the shaft stretches to ~40px across while the
+     head keeps roughly its old height, which is the proportion the reference
+     arrow has. Height is unchanged from the original 18px. */
+  width: 42px;
   height: 18px;
-  color: #3a4a62;
+  color: #5b7fa6;
   transition: transform 0.24s ease, color 0.24s ease;
 }
 
@@ -695,7 +707,7 @@
 
 /* The arrow moves LEFT — the direction the button actually takes you. */
 .lp-back:hover svg {
-  color: #1a2340;
+  color: #8a6fc4;
   transform: translateX(-2px);
 }
 

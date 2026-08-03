@@ -256,6 +256,18 @@
 .wl .field select,
 .wl .field textarea { width: 100%; }
 .wl .field textarea { resize: vertical; min-height: 62px; line-height: 1.5; }
+/* client combobox — one box that both searches and selects */
+.wl .cpick { position: relative; }
+.wl .cpick-box { position: relative; }
+.wl .cpick-box input { width: 100%; padding-right: 28px; }
+.wl .cpick-clear { position: absolute; top: 50%; right: 6px; transform: translateY(-50%); border: none; background: transparent; color: var(--muted); font-size: 16px; line-height: 1; width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center; }
+.wl .cpick-clear:hover { background: var(--paper); color: var(--ink); }
+.wl .cpick-menu { position: absolute; z-index: 60; top: calc(100% + 4px); left: 0; right: 0; max-height: 244px; overflow-y: auto; margin: 0; padding: 4px; list-style: none; background: var(--card); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow-lg); }
+.wl .cpick-opt { font-size: 13px; color: var(--ink); padding: 7px 9px; border-radius: 6px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wl .cpick-opt.is-active { background: var(--paper); }
+.wl .cpick-opt.is-picked { font-weight: 600; }
+.wl .cpick-empty { font-size: 12.5px; color: var(--muted); padding: 9px; }
+
 .wl .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .wl .modal-foot { display: flex; gap: 9px; justify-content: flex-end; padding: 14px 22px 20px; }
 .wl .form-error { font-size: 12.5px; color: var(--red); margin: 2px 0 10px; }
