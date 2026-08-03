@@ -60,20 +60,26 @@ export const recordActivity = async (entry = {}) => {
 // ── List (read-only, paginated, server-filtered) ──────────────────────────────
 // Returns { entries: [...camelCase], pagination }.
 //   opts = { page, pageSize, filters: { search, action, category, result, actor,
-//                                        startDate, endDate } }
+//                                        actorRole, targetId, startDate, endDate } }
+// actorRole filters by WHO acted (admin / campaign_manager / accounts / sales /
+// coordination / client); targetId filters by WHICH client the event was about
+// (the client_nomen id carried on the entry's target_id).
 export const getActivities = async ({ page = 1, pageSize = 50, filters = {} } = {}) => {
   const params = new URLSearchParams();
   params.append("page", page);
   params.append("page_size", pageSize);
 
   const add = (key, val) => {
-    if (val != null && val !== "" && val !== "all") params.append(key, val);
+    const v = typeof val === "string" ? val.trim() : val;
+    if (v != null && v !== "" && v !== "all") params.append(key, v);
   };
   add("search", filters.search);
   add("action", filters.action);
   add("category", filters.category);
   add("result", filters.result);
   add("actor", filters.actor);
+  add("actor_role", filters.actorRole);
+  add("target_id", filters.targetId);
   add("start_date", filters.startDate);
   add("end_date", filters.endDate);
 

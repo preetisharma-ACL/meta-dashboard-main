@@ -1,27 +1,82 @@
-import { createSignal, createEffect, onCleanup, For, Show } from "solid-js";
+import {
+  createSignal,
+  createEffect,
+  createMemo,
+  createResource,
+  onCleanup,
+  For,
+  Show,
+} from "solid-js";
 import { A } from "@solidjs/router";
 import { getActivities } from "../services/activityLog";
+import { fetchHierarchyClients } from "../services/cm";
 import RowsPerPageSelect from "../components/common/RowsPerPageSelect";
 
 // ─── Activity Log ─────────────────────────────────────────────────────────────
 // Read-only view of the append-only activity trail (GET /api/activity/). There is
 // deliberately no edit or delete control — entries are immutable and reads are
 // role-scoped server-side.
+//
+// The feed carries more than campaign events now (auth logins, payment_*,
+// leads_*). Rows render generically off actor/action/category/result/target/
+// timestamp, so new categories need no per-type branch — only the Change column
+// picks a sensible detail per shape (from→to, amount, ip, count).
 
 const ACTION_LABELS = {
   campaign_paused: "Paused campaign",
   campaign_resumed: "Resumed campaign",
 };
 
-// Known actions for the dropdown. `action` is an open string server-side, so new
-// values still render fine via actionLabel(); this just seeds the filter.
+// Seed actions for the dropdown. `action` is an open string server-side, so the
+// list is topped up with whatever actions actually come back in the feed (see
+// actionOptions) and unknown values still render fine via actionLabel().
 const KNOWN_ACTIONS = ["campaign_paused", "campaign_resumed"];
 
-const actionLabel = (a) =>
-  ACTION_LABELS[a] ??
-  String(a || "")
+// actor_role filter — value sent verbatim as ?actor_role=<value>.
+const ACTOR_ROLES = [
+  { value: "admin", label: "Admin" },
+  { value: "campaign_manager", label: "Campaign Manager" },
+  { value: "accounts", label: "Accounts" },
+  { value: "sales", label: "Sales" },
+  { value: "coordination", label: "Coordination" },
+  { value: "client", label: "Client" },
+];
+
+const titleCase = (s) =>
+  String(s || "")
     .replace(/_/g, " ")
     .replace(/^\w/, (c) => c.toUpperCase());
+
+const actionLabel = (a) => ACTION_LABELS[a] ?? titleCase(a);
+
+const roleLabel = (r) =>
+  ACTOR_ROLES.find((x) => x.value === r)?.label ?? titleCase(r);
+
+const CATEGORY_STYLES = {
+  campaign: "bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
+  auth: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
+  payment: "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
+  lead: "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
+};
+
+const fmtAmount = (n, currency) => {
+  const num = Number(n);
+  if (!Number.isFinite(num)) return String(n);
+  const amount = num.toLocaleString("en-IN", { maximumFractionDigits: 2 });
+  return currency && currency !== "INR" ? `${amount} ${currency}` : `₹${amount}`;
+};
+
+// One readable "what changed" line per entry, whatever the category:
+// campaign status flips carry from/to, payments carry an amount, logins carry an
+// ip, lead pushes carry a count. Falls back to nothing rather than raw JSON.
+const changeSummary = (a) => {
+  const d = a.details || {};
+  if (d.from != null || d.to != null) return `${d.from ?? "?"} → ${d.to ?? "?"}`;
+  if (d.amount != null) return fmtAmount(d.amount, d.currency);
+  if (d.count != null) return `${d.count} lead${Number(d.count) === 1 ? "" : "s"}`;
+  if (d.ip) return `IP ${d.ip}`;
+  return null;
+};
 
 const fmtTime = (iso) => {
   try {
@@ -53,6 +108,9 @@ export default function Activity() {
   const [debouncedSearch, setDebouncedSearch] = createSignal("");
   const [resultFilter, setResultFilter] = createSignal("all");
   const [actionFilter, setActionFilter] = createSignal("all");
+  const [actorRoleFilter, setActorRoleFilter] = createSignal("all");
+  const [targetId, setTargetId] = createSignal("");
+  const [debouncedTargetId, setDebouncedTargetId] = createSignal("");
   const [page, setPage] = createSignal(1);
   const [pageSize, setPageSize] = createSignal(
     Number(localStorage.getItem("activityRowsPerPage")) || DEFAULT_PAGE_SIZE,
@@ -65,9 +123,30 @@ export default function Activity() {
   };
 
   const [entries, setEntries] = createSignal([]);
+  const [seenActions, setSeenActions] = createSignal([]);
   const [pagination, setPagination] = createSignal(null);
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal(null);
+
+  // Client list for the target filter. Same source the Clients screens use, so
+  // it's already visibility-scoped per role; if it's empty/unavailable the
+  // control degrades to a plain client-id box (see the filter bar below).
+  const [clients] = createResource(async () => {
+    try {
+      const res = await fetchHierarchyClients();
+      const list = Array.isArray(res?.data) ? res.data : [];
+      return list
+        .map((c) => ({
+          id: c.client_nomen_id,
+          name: c.client_name || c.client_nomen_name || `Client #${c.client_nomen_id}`,
+        }))
+        .filter((c) => c.id != null)
+        .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+    } catch {
+      return [];
+    }
+  });
+  const hasClientList = () => (clients() ?? []).length > 0;
 
   // Debounce the search box so we don't fire a request per keystroke.
   createEffect(() => {
@@ -75,6 +154,17 @@ export default function Activity() {
     const t = setTimeout(() => {
       setPage(1);
       setDebouncedSearch(q);
+    }, 350);
+    onCleanup(() => clearTimeout(t));
+  });
+
+  // Same treatment for the typed client-id box (the <select> path sets both
+  // signals at once, so picking from the list still costs only one request).
+  createEffect(() => {
+    const id = targetId();
+    const t = setTimeout(() => {
+      setPage(1);
+      setDebouncedTargetId(id);
     }, 350);
     onCleanup(() => clearTimeout(t));
   });
@@ -88,6 +178,8 @@ export default function Activity() {
         search: debouncedSearch(),
         action: actionFilter(),
         result: resultFilter(),
+        actorRole: actorRoleFilter(),
+        targetId: debouncedTargetId(),
       },
     };
 
@@ -99,6 +191,13 @@ export default function Activity() {
         if (cancelled) return;
         setEntries(entries);
         setPagination(pagination);
+        // Top the action dropdown up with whatever the feed actually contains,
+        // so new server-side actions become filterable without a code change.
+        setSeenActions((prev) => {
+          const next = new Set(prev);
+          entries.forEach((e) => e.action && next.add(e.action));
+          return next.size === prev.length ? prev : [...next];
+        });
       })
       .catch((err) => {
         if (cancelled) return;
@@ -115,6 +214,37 @@ export default function Activity() {
   const onFilterChange = (setter) => (value) => {
     setPage(1);
     setter(value);
+  };
+
+  // Picking from the client dropdown shouldn't wait on the typing debounce.
+  const pickClient = (id) => {
+    setPage(1);
+    setTargetId(id);
+    setDebouncedTargetId(id);
+  };
+
+  const actionOptions = createMemo(() => {
+    const set = new Set([...KNOWN_ACTIONS, ...seenActions()]);
+    if (actionFilter() !== "all") set.add(actionFilter()); // keep the active one selectable
+    return [...set].sort((a, b) => actionLabel(a).localeCompare(actionLabel(b)));
+  });
+
+  const filtersActive = () =>
+    search() !== "" ||
+    actionFilter() !== "all" ||
+    resultFilter() !== "all" ||
+    actorRoleFilter() !== "all" ||
+    targetId() !== "";
+
+  const clearFilters = () => {
+    setPage(1);
+    setSearch("");
+    setDebouncedSearch("");
+    setActionFilter("all");
+    setResultFilter("all");
+    setActorRoleFilter("all");
+    setTargetId("");
+    setDebouncedTargetId("");
   };
 
   const total = () => pagination()?.total ?? entries().length;
@@ -149,7 +279,7 @@ export default function Activity() {
       {/* Filters */}
       <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200
                   dark:border-gray-700 p-4 mb-4 flex flex-wrap items-center gap-3">
-        <div class="relative flex w-[360px] max-w-full">
+        <div class="relative flex w-[300px] max-w-full">
           <svg
             class="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2"
             fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
@@ -175,7 +305,7 @@ export default function Activity() {
                  dark:border-gray-700 dark:bg-gray-800 dark:text-white"
         >
           <option value="all">All actions</option>
-          <For each={KNOWN_ACTIONS}>
+          <For each={actionOptions()}>
             {(a) => <option value={a}>{actionLabel(a)}</option>}
           </For>
         </select>
@@ -191,6 +321,60 @@ export default function Activity() {
           <option value="failure">Failure</option>
           <option value="info">Info</option>
         </select>
+
+        {/* Who did it → ?actor_role= */}
+        <select
+          value={actorRoleFilter()}
+          onChange={(e) => onFilterChange(setActorRoleFilter)(e.target.value)}
+          class="px-3 py-2 text-sm rounded-lg border border-gray-200
+                 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+        >
+          <option value="all">All roles</option>
+          <For each={ACTOR_ROLES}>
+            {(r) => <option value={r.value}>{r.label}</option>}
+          </For>
+        </select>
+
+        {/* Which client it was about → ?target_id=<client_nomen id>. Falls back
+            to a typed id when the client list isn't available for this role. */}
+        <Show
+          when={hasClientList()}
+          fallback={
+            <input
+              type="text"
+              inputmode="numeric"
+              placeholder={clients.loading ? "Loading clients…" : "Filter by client ID"}
+              value={targetId()}
+              onInput={(e) => setTargetId(e.target.value)}
+              class="w-[180px] px-3 py-2 text-sm rounded-lg border border-gray-200
+                     dark:border-gray-700 dark:bg-gray-800 dark:text-white
+                     focus:outline-none focus:ring-1 focus:ring-purple-400 dark:focus:ring-gray-600"
+            />
+          }
+        >
+          <select
+            value={targetId()}
+            onChange={(e) => pickClient(e.target.value)}
+            class="max-w-[220px] px-3 py-2 text-sm rounded-lg border border-gray-200
+                   dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+          >
+            <option value="">All clients</option>
+            <For each={clients()}>
+              {(c) => <option value={String(c.id)}>{c.name}</option>}
+            </For>
+          </select>
+        </Show>
+
+        <Show when={filtersActive()}>
+          <button
+            onClick={clearFilters}
+            class="px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700
+                   text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700
+                   whitespace-nowrap"
+          >
+            Clear filters
+          </button>
+        </Show>
 
         <span class="ml-auto text-sm text-gray-400 dark:text-gray-500 whitespace-nowrap">
           {total()} entr{total() !== 1 ? "ies" : "y"}
@@ -254,30 +438,54 @@ export default function Activity() {
                       <div class="flex flex-col">
                         <span class="font-medium">{a.actor ?? "—"}</span>
                         <Show when={a.actorRole}>
-                          <span class="text-xs text-gray-400 dark:text-gray-500">{a.actorRole}</span>
+                          <span class="text-xs text-gray-400 dark:text-gray-500">
+                            {roleLabel(a.actorRole)}
+                          </span>
                         </Show>
                       </div>
                     </td>
                     <td class="p-3 text-gray-700 dark:text-gray-300 whitespace-nowrap font-medium">
-                      {actionLabel(a.action)}
+                      <div class="flex flex-col items-start gap-1">
+                        <span>{actionLabel(a.action)}</span>
+                        <Show when={a.category && a.category !== "general"}>
+                          <span class={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide
+                                        ${CATEGORY_STYLES[a.category] ?? "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"}`}>
+                            {a.category}
+                          </span>
+                        </Show>
+                      </div>
                     </td>
                     <td class="p-3 max-w-[320px]">
-                      <Show
-                        when={a.category === "campaign" && a.targetId != null}
-                        fallback={<span class="text-gray-700 dark:text-gray-300 line-clamp-1">{a.target ?? "—"}</span>}
-                      >
-                        <A
-                          href={`/campaign/${a.targetId}`}
-                          class="text-purple-700 dark:text-purple-300 hover:underline line-clamp-1"
-                          title={a.target}
+                      <div class="flex flex-col">
+                        <Show
+                          when={a.category === "campaign" && a.targetId != null}
+                          fallback={<span class="text-gray-700 dark:text-gray-300 line-clamp-1">{a.target ?? "—"}</span>}
                         >
-                          {a.target ?? `#${a.targetId}`}
-                        </A>
-                      </Show>
+                          <A
+                            href={`/campaign/${a.targetId}`}
+                            class="text-purple-700 dark:text-purple-300 hover:underline line-clamp-1"
+                            title={a.target}
+                          >
+                            {a.target ?? `#${a.targetId}`}
+                          </A>
+                        </Show>
+                        {/* Non-campaign targets are clients, so the id doubles as
+                            a one-click "show everything about this client". */}
+                        <Show when={a.category !== "campaign" && a.targetId != null}>
+                          <button
+                            onClick={() => pickClient(String(a.targetId))}
+                            class="self-start text-xs text-gray-400 dark:text-gray-500 hover:text-purple-600
+                                   dark:hover:text-purple-300 hover:underline"
+                            title="Filter the log to this client"
+                          >
+                            #{a.targetId}
+                          </button>
+                        </Show>
+                      </div>
                     </td>
                     <td class="p-3 text-gray-500 dark:text-gray-400 whitespace-nowrap">
-                      <Show when={a.details?.from || a.details?.to} fallback={"—"}>
-                        {a.details?.from ?? "?"} → {a.details?.to ?? "?"}
+                      <Show when={changeSummary(a)} fallback={"—"}>
+                        {changeSummary(a)}
                       </Show>
                     </td>
                     <td class="p-3 whitespace-nowrap">
