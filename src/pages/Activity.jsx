@@ -22,15 +22,55 @@ import RowsPerPageSelect from "../components/common/RowsPerPageSelect";
 // timestamp, so new categories need no per-type branch — only the Change column
 // picks a sensible detail per shape (from→to, amount, ip, count).
 
-const ACTION_LABELS = {
-  campaign_paused: "Paused campaign",
-  campaign_resumed: "Resumed campaign",
-};
+// The canonical actions the backend emits, grouped for the filter's <optgroup>s.
+// The dropdown is seeded from this so you can filter for an action that isn't on
+// the page you're looking at. `action` is still an open string server-side, so
+// actionOptions() also merges in anything the feed returns that isn't listed
+// here — a new action type is never invisible.
+//
+// `result` is a SEPARATE axis: a failed login is action=login + result=failure,
+// so failure variants never belong in this list — the result filter covers them.
+const ACTION_GROUPS = [
+  {
+    category: "auth",
+    label: "Auth",
+    actions: [["login", "Login"]],
+  },
+  {
+    category: "payment",
+    label: "Payment",
+    actions: [
+      ["payment_created", "Payment recorded"],
+      ["payment_updated", "Payment edited"],
+      ["payment_docs_completed", "Docs completed"],
+      ["payment_deleted", "Payment deleted"],
+    ],
+  },
+  {
+    category: "lead",
+    label: "Lead",
+    actions: [
+      ["leads_fed", "Leads fed"],
+      ["leads_updated", "Leads updated"],
+      ["leads_revoked", "Leads revoked"],
+    ],
+  },
+  {
+    category: "campaign",
+    label: "Campaign",
+    actions: [
+      ["campaign_paused", "Campaign paused"],
+      ["campaign_resumed", "Campaign resumed"],
+      ["campaign_budget_changed", "Budget changed"],
+    ],
+  },
+];
 
-// Seed actions for the dropdown. `action` is an open string server-side, so the
-// list is topped up with whatever actions actually come back in the feed (see
-// actionOptions) and unknown values still render fine via actionLabel().
-const KNOWN_ACTIONS = ["campaign_paused", "campaign_resumed"];
+const ACTION_LABELS = Object.fromEntries(
+  ACTION_GROUPS.flatMap((g) => g.actions),
+);
+
+const KNOWN_ACTIONS = ACTION_GROUPS.flatMap((g) => g.actions.map(([v]) => v));
 
 // actor_role filter — value sent verbatim as ?actor_role=<value>.
 const ACTOR_ROLES = [
@@ -223,10 +263,23 @@ export default function Activity() {
     setDebouncedTargetId(id);
   };
 
+  // Canonical groups first, then an "Other" group for anything the feed turned up
+  // (or a filter value restored from elsewhere) that isn't in ACTION_GROUPS.
   const actionOptions = createMemo(() => {
-    const set = new Set([...KNOWN_ACTIONS, ...seenActions()]);
-    if (actionFilter() !== "all") set.add(actionFilter()); // keep the active one selectable
-    return [...set].sort((a, b) => actionLabel(a).localeCompare(actionLabel(b)));
+    const extra = new Set(seenActions());
+    if (actionFilter() !== "all") extra.add(actionFilter()); // keep the active one selectable
+    KNOWN_ACTIONS.forEach((a) => extra.delete(a));
+
+    const groups = ACTION_GROUPS.map((g) => ({ label: g.label, actions: g.actions }));
+    if (extra.size) {
+      groups.push({
+        label: "Other",
+        actions: [...extra]
+          .sort((a, b) => actionLabel(a).localeCompare(actionLabel(b)))
+          .map((a) => [a, actionLabel(a)]),
+      });
+    }
+    return groups;
   });
 
   const filtersActive = () =>
@@ -306,7 +359,13 @@ export default function Activity() {
         >
           <option value="all">All actions</option>
           <For each={actionOptions()}>
-            {(a) => <option value={a}>{actionLabel(a)}</option>}
+            {(g) => (
+              <optgroup label={g.label}>
+                <For each={g.actions}>
+                  {([value, label]) => <option value={value}>{label}</option>}
+                </For>
+              </optgroup>
+            )}
           </For>
         </select>
 
