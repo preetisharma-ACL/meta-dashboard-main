@@ -232,7 +232,7 @@ export default function ProjectDetails() {
   const setToDate = (v) => setDashboardFilter("toDate", v);
   const [search, setSearch] = createSignal("");
   const [statusFilter, setStatusFilter] = createSignal("All");
-  // Admin-only: filter the campaigns table by ad account (client-side, additive).
+  // Internal-only: filter the campaigns table by ad account (client-side, additive).
   const [adAccountFilter, setAdAccountFilter] = createSignal("all");
   // const [page, setPage] = createSignal(1);
   // const [campaigns, setCampaigns] = createSignal([]);
@@ -246,6 +246,11 @@ export default function ProjectDetails() {
   const [userRole, setUserRole] = createSignal(
     JSON.parse(localStorage.getItem("auth") || "null")?.role ?? "client",
   );
+  // Admin and campaign managers share the internal view of the ledger: the full
+  // untrimmed campaign name plus the campaign ID column. Clients and sales keep
+  // the short label (project segment only) — they don't own the naming scheme.
+  const isInternalView = () =>
+    userRole() === "admin" || userRole() === "campaign_manager";
   const { handleSort, getSortIcon, sortData } = useColumnSort();
   // Rows-per-page selector. Kept as its own signal (the server echoes the
   // applied size back in meta.page_size, which the display reads) and persisted
@@ -442,7 +447,7 @@ export default function ProjectDetails() {
           number: index + 1,
           id: item.id,
           campaign_name:
-            userRole() === "admin"
+            isInternalView()
               ? item.name || "No Name"
               : item.name
                   ?.split("|")
@@ -539,11 +544,11 @@ export default function ProjectDetails() {
         const formatted = apiData.map((item) => {
           return {
             id: item.id,
-            // Admin sees the full name (matches the paginated table); clients keep
-            // the trimmed label. ad_account added so the all-pages set can power
-            // the ad-account filter + dropdown.
+            // Admin/CM see the full name (matches the paginated table); clients
+            // keep the trimmed label. ad_account added so the all-pages set can
+            // power the ad-account filter + dropdown.
             campaign_name:
-              userRole() === "admin"
+              isInternalView()
                 ? item.name || "No Name"
                 : item.name
                   ? `${item.name
@@ -697,7 +702,7 @@ export default function ProjectDetails() {
     return sortData(data);
   });
 
-  // ── Admin-only ad-account filter ───────────────────────────────────────────
+  // ── Ad-account filter (admin + campaign manager) ───────────────────────────
   // Dropdown lists EVERY ad account across all pages (from the all-pages set
   // loaded for totals); falls back to the current page until that finishes.
   const adAccountOptions = createMemo(() => {
@@ -1186,8 +1191,8 @@ export default function ProjectDetails() {
             </div>
           </div>
 
-          {/* Admin-only: Ad Account filter */}
-          {userRole() === "admin" && (
+          {/* Internal-only: Ad Account filter (admin + campaign manager) */}
+          {isInternalView() && (
             <div class="relative inline-block">
               <select
                 value={adAccountFilter()}
@@ -1322,7 +1327,7 @@ export default function ProjectDetails() {
         <table class="min-w-full text-sm">
           <thead class="bg-gray-100 dark:bg-gray-800">
             <tr class="[&_th]:text-center [&_th]:cursor-pointer [&_th]:whitespace-nowrap [&_th:first-child]:text-left">
-              {userRole() === "admin" && (
+              {isInternalView() && (
                 <th class="p-3" onClick={() => handleSort("id")}>
                   ID {getSortIcon("id")}
                 </th>
@@ -1336,7 +1341,7 @@ export default function ProjectDetails() {
               <th class="p-3" onClick={() => handleSort("paused_date")}>
                 Paused Date {getSortIcon("paused_date")}
               </th>
-              {userRole() === "admin" && (
+              {isInternalView() && (
                 <th class="p-3" onClick={() => handleSort("ad_account")}>
                   Ad Account {getSortIcon("ad_account")}
                 </th>
@@ -1382,7 +1387,7 @@ export default function ProjectDetails() {
                       : "bg-purple-50 dark:bg-gray-900"
                   }`}
                 >
-                  {userRole() === "admin" && <td class="p-3">{row.id}</td>}
+                  {isInternalView() && <td class="p-3">{row.id}</td>}
 
                   <td class="p-3 font-medium w-[300px]">
                     <div class="flex items-center gap-2">
@@ -1410,7 +1415,7 @@ export default function ProjectDetails() {
                   </td>
                   <td class="p-3 ">{row.start_date || "No Date"}</td>
                   <td class="p-3 ">{row.paused_date || "No Date"}</td>
-                  {userRole() === "admin" && (
+                  {isInternalView() && (
                     <td class="p-3 whitespace-nowrap ">{row.ad_account}</td>
                   )}
                   <td class="px-4 py-3">
@@ -1473,9 +1478,10 @@ export default function ProjectDetails() {
               </td>
 
               {/* ✅ Add this — matches the Ad Account column in thead */}
-              {userRole() === "admin" && <td></td>}
+              {isInternalView() && <td></td>}
 
-              {userRole() === "admin" && <td></td>}
+              {/* matches the ID column in thead (admin + campaign manager) */}
+              {isInternalView() && <td></td>}
               <td></td>
               <td></td>
               <td></td>
