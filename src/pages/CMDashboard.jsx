@@ -702,7 +702,7 @@ export default function CMDashboard() {
   );
 
   return (
-    <section class="w-full px-1  py-6 bg-gray-50 dark:bg-gray-900 min-h-screen">
+    <section class="w-full px-1 sm:px-6  py-6 bg-gray-50 dark:bg-gray-900 min-h-screen">
       {/* ════════ HEADER ════════ */}
       <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-6">
         <div>
