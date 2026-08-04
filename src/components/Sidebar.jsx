@@ -13,6 +13,9 @@ import { handleLogout } from "../pages/login/LoginForm";
 import { clearClientDashboardContext } from "../cacheStore/appStore";
 import { isTier1CM } from "../stores/currentUser";
 
+// Expanded submenu group, remembered across reloads (see openMenu below).
+const OPEN_MENU_KEY = "sidebarOpenMenu";
+
 const getAuthToken = () => {
   try {
     return !!JSON.parse(localStorage.getItem("auth"))?.token;
@@ -172,7 +175,22 @@ export default function Sidebar() {
   };
   const [isLoggedIn, setIsLoggedIn] = createSignal(getAuthToken());
   const [userRole, setUserRole] = createSignal(getUserRole());
-  const [openMenu, setOpenMenu] = createSignal(null);
+  // Which submenu group is expanded. Persisted so a browser refresh keeps the
+  // section open: the route→group match below only recognises paths that appear
+  // in subMenus, and the pages you drill into (/project/:id, /campaign/:id,
+  // /ad-accounts/:id, /client-workspace/:nomenId) are not among them — so on a
+  // reload there is nothing for it to match and the group would collapse while
+  // the page itself stays put. Remembering the last-opened group covers every
+  // drill-down without having to enumerate their routes.
+  const [openMenu, setOpenMenu] = createSignal(
+    localStorage.getItem(OPEN_MENU_KEY),
+  );
+
+  createEffect(() => {
+    const name = openMenu();
+    if (name) localStorage.setItem(OPEN_MENU_KEY, name);
+    else localStorage.removeItem(OPEN_MENU_KEY);
+  });
 
   onMount(() => {
     const handleStorage = () => {

@@ -22,6 +22,8 @@ export const handleLogout = () => {
   localStorage.removeItem("selectedClientId");
 
   localStorage.removeItem("selectedClientName");
+  // Sidebar groups differ by role — don't carry the last one into the next login.
+  localStorage.removeItem("sidebarOpenMenu");
   window.location.href = "/login";
 };
 
