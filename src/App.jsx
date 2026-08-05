@@ -24,6 +24,7 @@ import LeadsPage from "./pages/LeadPerformance";
 import Leads from "./pages/Leads";
 import FollowUp from "./pages/FollowUp";
 import DailyReports from "./pages/DailyReports";
+import MyTeam from "./pages/MyTeam";
 import Clients from "./pages/admin/client/Clients";
 import ImpersonationBanner from "./pages/admin/component/ImpersonationBanner";
 import ProjectDisplayConfig from "./pages/admin/client/ProjectDisplayConfig";
@@ -302,6 +303,9 @@ function App() {
             <Route path="/add-project" component={AddProject} />
             <Route path="/billing" component={Billing} />
             <Route path="/daily-reports" component={DailyReports} />
+            {/* Client-only; the endpoint 404s for every other role. Static
+                segment, so it outranks the "/:client-nomen-name" catch-all. */}
+            <Route path="/my-team" component={MyTeam} />
             <Route path="/client-delivery" component={ClientDelivery} />
             <Route path="/performing-projects" component={PerformingProjects} />
             <Route path="/settings" component={Settings} />

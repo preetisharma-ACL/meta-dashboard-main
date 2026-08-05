@@ -586,6 +586,16 @@ export default function Sidebar() {
         ),
         path: "/daily-reports",
       },
+      {
+        // Client-only: /clients/me/team/ is scoped to a client token and 404s
+        // for every other role, so there is nothing here for admin/CM to see.
+        name: "Meet Your Team",
+        roles: ["client"],
+        icon: () => (
+          <Icon d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+        ),
+        path: "/my-team",
+      },
       // {
       //   name: "Client Delivery",
       //   roles: ["admin"],
