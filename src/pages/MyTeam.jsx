@@ -1,7 +1,7 @@
 import { createResource, createSignal, createMemo, For, Show } from "solid-js";
 import { Phone, Mail, Users } from "lucide-solid";
 import { createAvatar } from "@dicebear/core";
-import { avataaars } from "@dicebear/collection";
+import { notionistsNeutral } from "@dicebear/collection";
 import { getMyTeam } from "../services/clientType-service";
 
 // ── Brand tokens ────────────────────────────────────────────────────────────
@@ -64,8 +64,13 @@ const waLink = (raw) => {
 // api.dicebear.com, so the page carries no external-request or CSP dependency
 // in production. Seeded from the name (email as backup) so a person keeps the
 // same face on every visit and in every group.
+//
+// notionists-neutral, deliberately: the style is gender-neutral line art. The
+// avataaars set this replaced drew read-as-gendered faces, and since the seed
+// is just a name hash it had no way to get them right — real people were being
+// mis-gendered by a fallback avatar. A neutral style cannot make that mistake.
 const avatarSvgFor = (contact) =>
-  createAvatar(avataaars, {
+  createAvatar(notionistsNeutral, {
     seed: clean(contact.name) || clean(contact.email) || "aajneeti-team",
   }).toString();
 
