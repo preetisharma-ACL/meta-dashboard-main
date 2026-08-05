@@ -9,6 +9,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@dicebear/collection": "^9.4.2",
+    "@dicebear/core": "^9.4.3",
     "@solidjs/router": "^0.10.5",
     "@tanstack/solid-query": "^5.101.0",
     "apexcharts": "^5.10.4",
