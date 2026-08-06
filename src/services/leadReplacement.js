@@ -62,7 +62,9 @@ export const readLeadBreakdown = (block) => {
     billable: b,
     // The credited amount actually billed to the client. Distinct from
     // total_spent (true ad spend) — utilization % and CPL stay on total_spent.
-    billedAmount: money(block.billed_amount),
+    // Named billed_amount on the monthly billing block and billed_spend on the
+    // range-scoped report's lead_breakdown; both mean the same figure.
+    billedAmount: money(block.billed_amount) ?? money(block.billed_spend),
     adSpend: money(block.total_spent),
   };
 };
@@ -202,18 +204,46 @@ export const fetchReplacementAuditLog = async (id) => {
       : [];
 };
 
+// ── Range-scoped per-project breakdown ───────────────────────────────────────
+// GET /reports/project/{id}/?start_date&end_date — the project/daily report.
+// Its top-level `lead_breakdown` block is scoped to the SELECTED DATE RANGE, so
+// the daily report's Replaced / Billable / Billed columns line up with the
+// Leads / CPL / spend columns beside them (and roll up to the monthly invoice).
+// The monthly billing block is the invoice's source and stays where it belongs,
+// on the Billing page.
+//
+// Returns null when the report carries no breakdown (retainer client, or no
+// activity in the range) so callers hide the columns rather than print zeros.
+export const fetchProjectLeadBreakdown = async (
+  projectId,
+  { startDate, endDate } = {},
+) => {
+  let url = `/reports/project/${projectId}/?1=1`;
+  if (startDate) url += `&start_date=${encodeURIComponent(startDate)}`;
+  if (endDate) url += `&end_date=${encodeURIComponent(endDate)}`;
+  url += scopeQuery();
+
+  const res = await api(url, { method: "GET" });
+  applyMeta(res?.meta);
+  // "Top-level" on the report payload — which is data.lead_breakdown inside the
+  // standard envelope. Also accept it on the envelope root so a flat response
+  // doesn't silently read as "no replacements".
+  return (
+    readLeadBreakdown(res?.data?.lead_breakdown) ??
+    readLeadBreakdown(res?.lead_breakdown)
+  );
+};
+
 // ── Client picker source (CPL / hybrid only) ─────────────────────────────────
 // The form's target_client_id is the CLIENT PK — the same id the fed-leads
 // ("Leed Feeding") form sends, and NOT the client nomen id; the two differ for
 // all but one client, and sending a nomen there resolves to the wrong client or
-// 404s. /clients/admin/clients/ is the only roster that carries the PK, so it's
-// the primary source.
+// 404s.
 //
-// It 403s for campaign managers, so a tier-1 CM falls back to the CM-scoped
-// hierarchy. That payload is keyed by client_nomen_id, so we take an explicit
-// PK field if the backend exposes one and otherwise mark the option `pkUnknown`
-// — the form surfaces that rather than silently posting an id that may resolve
-// to a different client.
+// /clients/admin/clients/ carries the PK as `id` and is the primary source. It
+// 403s campaign managers, so a tier-1 CM falls back to the CM-scoped hierarchy,
+// which serves the PK as `client_id` alongside the `client_nomen_id` it keys
+// its own rows by. Both paths therefore yield a real PK.
 const REPLACEABLE_TYPES = new Set(["cpl", "hybrid"]);
 
 const normaliseAdminClient = (c) => ({
@@ -222,22 +252,15 @@ const normaliseAdminClient = (c) => ({
   name: c.client_nomen_name || c.organization_name || `Client #${c.id}`,
   email: c.email ?? null,
   clientType: (c.client_type || "").toLowerCase() || null,
-  pkUnknown: false,
 });
 
-const normaliseHierarchyClient = (c) => {
-  // Prefer any real PK the hierarchy happens to carry; fall back to the nomen
-  // id and flag it so the form can warn instead of posting a guess.
-  const pk = c.client_id ?? c.client_pk ?? c.target_client_id ?? null;
-  return {
-    id: pk ?? c.client_nomen_id,
-    nomenId: c.client_nomen_id ?? null,
-    name: c.client_name || c.client_nomen_name || `Client #${c.client_nomen_id}`,
-    email: c.email ?? null,
-    clientType: (c.client_type || "").toLowerCase() || null,
-    pkUnknown: pk == null,
-  };
-};
+const normaliseHierarchyClient = (c) => ({
+  id: c.client_id, // Client PK — NOT client_nomen_id, which keys the row
+  nomenId: c.client_nomen_id ?? null,
+  name: c.client_name || c.client_nomen_name || `Client #${c.client_nomen_id}`,
+  email: c.email ?? null,
+  clientType: (c.client_type || "").toLowerCase() || null,
+});
 
 // Clients a replacement may be booked against, A→Z. Only CPL and hybrid — the
 // backend 400s a retainer client, so offering one is offering a guaranteed

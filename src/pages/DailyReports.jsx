@@ -10,12 +10,9 @@ import html2canvas from "html2canvas";
 import * as XLSX from "xlsx";
 import useRole, { clientRole } from "./../hooks/useRole";
 import { createResource } from "solid-js"; // add to existing solid-js import
-import {
-  fetchBillingOverview,
-  fetchBillingProject,
-} from "../services/billing-service";
+import { fetchBillingOverview } from "../services/billing-service";
 import { fetchAllAdminClients } from "./admin/services/fetchClients";
-import { readLeadBreakdown } from "../services/leadReplacement";
+import { fetchProjectLeadBreakdown } from "../services/leadReplacement";
 const logoUrl = "/logo.webp";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -69,12 +66,13 @@ export default function DailyReports() {
   const [reportSummary, setReportSummary] = createSignal(null);
 
   // ── Lead replacement, per project ─────────────────────────────────────────
-  // { [projectId]: { generated, replaced, billable, billedAmount, adSpend } }
-  // Sourced from each project's billing block (GET /billing/project/{id}/) —
-  // the backend owns the replacement batches, so this is the only place the
-  // credited counts and the billed (post-credit) amount can come from.
-  // Projects with no block simply aren't in the map and render "—".
-  const [billingMap, setBillingMap] = createSignal({});
+  // { [projectId]: { generated, replaced, billable, billedAmount } }
+  // Sourced from each project's report (GET /reports/project/{id}/), whose
+  // `lead_breakdown` block is scoped to the SELECTED DATE RANGE — the same
+  // window the Leads / CPL / spend columns beside it use, so the whole row is
+  // one consistent period and the daily figures roll up to the monthly invoice.
+  // Projects with no breakdown in the range aren't in the map and render "—".
+  const [leadBreakdownMap, setLeadBreakdownMap] = createSignal({});
 
   // Include raw (agency-cost) columns — Raw Spend + Raw CPL — in the on-screen
   // table AND all downloads. ON by default = internal report (shows the agency's
@@ -153,10 +151,11 @@ export default function DailyReports() {
       setProjects([]);
       setInsightsMap({});
       setReportSummary(null);
-      setBillingMap({});
+      setLeadBreakdownMap({});
       setShowPreview(false);
     });
     loadedKey = null; // allow a fresh load when a client is re-picked
+    breakdownKey = null;
   };
   // Admin must pick a client before the report is meaningful.
   const adminNeedsClient = () => isAdmin() && !selectedAdminClientId();
@@ -217,12 +216,9 @@ export default function DailyReports() {
       }
       setProjects(allProjects);
 
-      // ①b per-project billing → the lead-replacement breakdown + billed
-      //    amount. Fire-and-forget and batched: the report renders on the
-      //    insights sweep below, and these columns fill in behind it. A project
-      //    whose billing call fails is left out of the map rather than shown as
-      //    "0 replaced", which would read as a fact rather than a gap.
-      loadProjectBilling(allProjects);
+      // NOTE: the lead-replacement breakdown is NOT loaded here — it is
+      // range-scoped, so it hangs off the effect below and reloads when the
+      // date range changes without refetching projects/insights.
 
       // ② fetch insights (fire-and-forget — table shows skeleton until done).
       //    Pass clientId so the bulk-insights call sends as_client_id and the
@@ -238,10 +234,11 @@ export default function DailyReports() {
     }
   };
 
-  // Sweep the per-project billing blocks in small batches (same batch size the
-  // billing service already uses) so a long project list doesn't fire dozens of
-  // parallel requests.
-  const loadProjectBilling = async (projectList) => {
+  // Sweep the per-project reports in small batches so a long project list
+  // doesn't fire dozens of parallel requests. A project whose report fails is
+  // left out of the map rather than shown as "0 replaced", which would read as
+  // a fact rather than a gap.
+  const loadLeadBreakdowns = async (projectList, from, to) => {
     const out = {};
     const batchSize = 5;
     for (let i = 0; i < projectList.length; i += batchSize) {
@@ -249,22 +246,34 @@ export default function DailyReports() {
       await Promise.all(
         batch.map(async (p) => {
           try {
-            const res = await fetchBillingProject(p.id);
-            // The trio lives on the billing block; some payloads nest it under
-            // data.billing, others put it flat on data. Try both rather than
-            // guess — a wrong path reads as "no replacements".
-            const breakdown =
-              readLeadBreakdown(res?.data?.billing) ??
-              readLeadBreakdown(res?.data);
+            const breakdown = await fetchProjectLeadBreakdown(p.id, {
+              startDate: from,
+              endDate: to,
+            });
             if (breakdown) out[String(p.id)] = breakdown;
           } catch {
-            // No billing block for this project — leave it out of the map.
+            // No report / no breakdown for this project in the range.
           }
         }),
       );
     }
-    setBillingMap(out);
+    setLeadBreakdownMap(out);
   };
+
+  // Reload the breakdown whenever the project set OR the range changes. The
+  // range is part of the request now, so narrowing the dates re-reads these
+  // columns without refetching projects or insights (which reuse loadedKey).
+  let breakdownKey = null;
+  createEffect(() => {
+    const list = projects();
+    const from = fromDate();
+    const to = toDate();
+    if (!list.length || !from || !to) return;
+    const key = `${from}|${to}|${list.map((p) => p.id).join(",")}`;
+    if (breakdownKey === key) return;
+    breakdownKey = key;
+    loadLeadBreakdowns(list, from, to);
+  });
 
   const loadAllInsights = async (projectList, clientId = null) => {
     const result = {};
@@ -435,17 +444,17 @@ export default function DailyReports() {
     return "";
   };
   const anyReplaced = () =>
-    Object.values(billingMap()).some((b) => (b.replaced ?? 0) > 0);
+    Object.values(leadBreakdownMap()).some((b) => (b.replaced ?? 0) > 0);
   const showReplacement = () =>
-    Object.keys(billingMap()).length > 0 &&
+    Object.keys(leadBreakdownMap()).length > 0 &&
     (reportClientType() === "cpl" ||
       reportClientType() === "hybrid" ||
       anyReplaced());
   // The credited amount actually billed. Separate gate: a client can have the
-  // lead trio without the backend exposing billed_amount on every project.
+  // lead trio without the backend exposing billed_spend on every project.
   const showBilledAmount = () =>
     showReplacement() &&
-    Object.values(billingMap()).some((b) => b.billedAmount != null);
+    Object.values(leadBreakdownMap()).some((b) => b.billedAmount != null);
 
   // …and these are what the table actually renders: availability AND the user's
   // per-column checkbox. Checking a box can never reveal a column the gating
@@ -579,11 +588,11 @@ export default function DailyReports() {
       const rawCpl =
         anyRaw && leads > 0 ? parseFloat((rawSpent / leads).toFixed(2)) : null;
 
-      // Lead replacement — from the project's billing block, NOT from the
-      // per-day insight rows (the backend owns the replacement batches). These
-      // are billing-period figures and are deliberately NOT re-filtered by the
-      // range above; the footnote under the table says so.
-      const bill = billingMap()[String(project.id)] ?? null;
+      // Lead replacement — from the project report's `lead_breakdown`, NOT from
+      // the per-day insight rows (the backend owns the replacement batches).
+      // Already scoped to the same [from, to] window as everything above, so no
+      // client-side re-filtering here.
+      const bill = leadBreakdownMap()[String(project.id)] ?? null;
 
       // Always push — even when leads === 0 and spent === 0
       rows.push({
@@ -1480,21 +1489,15 @@ export default function DailyReports() {
         </div>
         </Show>
 
-        {/* Lead-replacement footnote. The Leads/CPL/spend columns are filtered
-            by the range picker; Replaced / Billable / Billed come from the
-            client's billing record for the billing period and are NOT
-            re-filtered — say so, rather than let the two read as one scope.
-            On a full-calendar-month range the two line up exactly. */}
+        {/* Lead-replacement footnote — what the three columns mean. Every
+            column on the row is scoped to the selected range, so there is no
+            scope caveat to give; these daily figures roll up to the monthly
+            invoice on the Billing page. */}
         <Show when={showReplacement() && reportRows().length > 0}>
           <p class="mt-3 text-xs text-gray-400 dark:text-gray-500 leading-relaxed">
             Billable leads = generated − replaced. CPL and utilisation stay on
             true ad spend; <b class="font-semibold">Billed</b> is the amount
             charged after the replacement credit.
-            <Show when={!isFullMonthRange()}>
-              {" "}
-              Replaced / Billable / Billed are billing-period figures and are not
-              filtered by the selected date range.
-            </Show>
           </p>
         </Show>
 

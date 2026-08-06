@@ -160,8 +160,7 @@ export default function RecordReplacementModal(props) {
     !!form().target_client_id &&
     !!form().project_id &&
     countIsValid() &&
-    costIsValid() &&
-    !selectedClient()?.pkUnknown;
+    costIsValid();
 
   const handleSubmit = async () => {
     setFormError(null);
@@ -333,19 +332,6 @@ export default function RecordReplacementModal(props) {
                   class="mt-1.5 text-sm font-medium text-[#AC2334] dark:text-red-400"
                 >
                   {clientError()}
-                </p>
-              </Show>
-              {/* The hierarchy fallback (tier-1 CM) has no client PK on the
-                  row. Posting the nomen id in its place would book the
-                  replacement against a different client, so block the submit
-                  and say so rather than send a guess. */}
-              <Show when={selectedClient()?.pkUnknown}>
-                <p
-                  role="alert"
-                  class="mt-1.5 text-sm font-medium text-[#B07A14] dark:text-amber-400"
-                >
-                  This client's account id isn't available on your roster — ask
-                  an admin to record this replacement.
                 </p>
               </Show>
             </div>
