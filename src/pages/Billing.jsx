@@ -2,6 +2,8 @@ import { createSignal, createMemo, createResource, For, Show } from "solid-js";
 import { fetchBillingOverview } from "../services/billing-service";
 import { fetchPaymentsDetails } from "../services/payments-service";
 import useRole, { clientRole } from "../hooks/useRole";
+import LeadBreakdown from "../components/leads/LeadBreakdown";
+import { readLeadBreakdown, showsReplacement } from "../services/leadReplacement";
 
 // --- Helpers ------------------------------------------------------------------
 // API returns decimals as strings; we only format for display (no further math),
@@ -159,6 +161,16 @@ function LeadsCard(props) {
           <p class="mt-1.5 text-2xl font-bold tracking-tight tabular-nums text-gray-900 dark:text-gray-100">
             {props.leads}
           </p>
+          {/* Reconciles this card with the Generated → Replaced → Billable
+              strip below: the headline stays the leads generated, the caption
+              says what is actually billed. */}
+          <Show when={props.breakdown?.replaced > 0}>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {Number(props.breakdown.billable ?? 0).toLocaleString("en-IN")}{" "}
+              billable · {Number(props.breakdown.replaced).toLocaleString("en-IN")}{" "}
+              replaced
+            </p>
+          </Show>
         </div>
         <Show when={props.showCpl}>
           <div>
@@ -820,6 +832,19 @@ export default function Billing() {
   const avgCpl = () => (totalLeads() > 0 ? adSpendExGst() / totalLeads() : 0);
   const utilizationPct = () => Number(budgetInfo().utilization_pct || 0);
 
+  // ── Lead replacement breakdown ────────────────────────────────────────────
+  // month_spend carries generated_leads / replaced_leads / billable_leads for
+  // CPL and hybrid clients. The billed figures above ALREADY reflect the credit
+  // (the API reduces total_spend_ex_gst), so nothing here is subtracted a second
+  // time — this block only explains where the reduction came from. Retainer
+  // clients have no replacement concept and the fields are absent, so
+  // showsReplacement() keeps the whole section off their page.
+  const leadBreakdown = createMemo(() => readLeadBreakdown(monthSpend()));
+  const clientTypeKey = () =>
+    iscpl() ? "cpl" : ishybrid() ? "hybrid" : isRetainer() ? "retainer" : "";
+  const showBreakdown = () =>
+    showsReplacement(leadBreakdown(), clientTypeKey());
+
   // CPL clients are billed on the plain ex-SC, ex-GST figure; everyone else on
   // the fully loaded amount. Used by both the spend card and the statement so
   // the two always agree.
@@ -1084,6 +1109,7 @@ export default function Billing() {
                   leads={totalLeads()}
                   showCpl
                   cpl={avgCpl()}
+                  breakdown={showBreakdown() ? leadBreakdown() : null}
                 />
               </div>
             </Show>
@@ -1119,8 +1145,24 @@ export default function Billing() {
                     sub="Details in statement below"
                   />
                 </Show>
-                <LeadsCard leads={totalLeads()} showCpl={false} />
+                <LeadsCard
+                  leads={totalLeads()}
+                  showCpl={false}
+                  breakdown={showBreakdown() ? leadBreakdown() : null}
+                />
               </div>
+            </Show>
+
+            {/* ── Lead replacement · Generated → Replaced → Billable ──
+                CPL/hybrid only (retainer has no replacement concept). The
+                statement below is already net of the credit. */}
+            <Show when={showBreakdown()}>
+              <LeadBreakdown
+                class="mt-4"
+                title={`Leads · ${monthLabel()}`}
+                breakdown={leadBreakdown()}
+                note="Replaced leads are credited back — the amounts in the statement below are already net of that credit."
+              />
             </Show>
 
             {/* ── Account statement ledger (rows vary by client type) ── */}

@@ -65,6 +65,16 @@ import {
   setDashboardFilter,
 } from "../cacheStore/appStore";
 import useRole, { clientRole } from "./../hooks/useRole";
+import LeadBreakdown from "../components/leads/LeadBreakdown";
+import RecordReplacementModal from "../components/leads/RecordReplacementModal";
+import {
+  fetchDashboardSummary,
+  summaryLeadBreakdown,
+  showsReplacement,
+} from "../services/leadReplacement";
+import { canRecordReplacement } from "../stores/currentUser";
+import { scopeKey } from "../stores/cmScope";
+import SuccessToast, { showToast } from "../components/common/SuccessToast";
 
 // Guards against stale in-flight loads overwriting the cache after the
 // dashboard context switches (e.g. admin leaves a client dashboard and returns
@@ -588,6 +598,13 @@ export default function MainDashboard() {
   // rate.
   const [clientServiceCharge, setClientServiceCharge] = createSignal(null);
 
+  // The VIEWED client's type, from the same meta.report_summary block as the
+  // service charge above. Gates the lead-replacement breakdown: an admin/CM
+  // looking at a CPL client must see it even though their own clientRole() says
+  // "retainer". Null until the projects response lands → fall back to the
+  // viewer's own type flags.
+  const [clientTypeFromReport, setClientTypeFromReport] = createSignal(null);
+
   const serviceChargePercent = () =>
     Number(clientServiceCharge() ?? auth?.serviceCharge ?? 13);
 
@@ -631,6 +648,8 @@ export default function MainDashboard() {
       // rate. null when unscoped → serviceChargePercent() falls back to auth/13%.
       const sc = res?.meta?.report_summary?.service_charge;
       if (sc != null) setClientServiceCharge(Number(sc));
+      const ct = res?.meta?.report_summary?.client_type;
+      if (ct != null) setClientTypeFromReport(String(ct).toLowerCase());
 
       const mappedProjects = (apiData || []).map((item) => ({
         id: item.id,
@@ -1868,6 +1887,48 @@ export default function MainDashboard() {
   // ₹ formatter for the new sections (display only)
   const inr = (n) => `₹${Math.round(Number(n) || 0).toLocaleString("en-IN")}`;
 
+  // ── Lead replacement breakdown (GET /dashboard/summary/) ──────────────────
+  // The ledger's leads/spend are still derived from the campaign sweep — this is
+  // a separate, small read purely for the Generated → Replaced → Billable
+  // progression, which only the backend can compute (it owns the replacement
+  // batches). Keyed on the client context AND the date range so switching either
+  // refetches; a failure resolves to null and the section simply doesn't render,
+  // because a dashboard that can't reach this endpoint must not imply "zero
+  // replacements".
+  const [summaryRes, { refetch: refetchSummary }] = createResource(
+    () => ({
+      client: selectedClientNomen() ?? "self",
+      scope: scopeKey(),
+      from: fromDate(),
+      to: toDate(),
+    }),
+    async (key) => {
+      try {
+        return await fetchDashboardSummary({
+          startDate: key.from || undefined,
+          endDate: key.to || undefined,
+        });
+      } catch (err) {
+        console.error("ClientDashboard: dashboard summary failed", err);
+        return null;
+      }
+    },
+  );
+
+  const leadBreakdown = createMemo(() => summaryLeadBreakdown(summaryRes()));
+
+  // Prefer the REPORTED client's type over the viewer's own — an admin looking
+  // at a CPL client must see the progression.
+  const viewedClientType = () =>
+    clientTypeFromReport() ??
+    (iscpl() ? "cpl" : ishybrid() ? "hybrid" : isRetainer() ? "retainer" : "");
+
+  const showLeadBreakdown = () =>
+    showsReplacement(leadBreakdown(), viewedClientType());
+
+  // "Record Replacement" — admin + tier-1 CM only (canRecordReplacement()).
+  const [showReplacementForm, setShowReplacementForm] = createSignal(false);
+
   // Project rows joined with their card-range stats (the same stats the old
   // KPI cards used), reused by hero / signals / charts below.
   const projectCardRows = createMemo(() => {
@@ -2542,6 +2603,24 @@ export default function MainDashboard() {
         />
       </Show>
 
+      {/* Record Replacement — admin + TIER-1 CM only. Tier-2 CMs, clients,
+          sales and accounts never see it (the endpoint 403s them anyway).
+          Recording refetches the summary so the new Replaced/Billable figures
+          appear without a reload. */}
+      <Show when={canRecordReplacement()}>
+        <div class="flex justify-end mb-4">
+          <button
+            onClick={() => setShowReplacementForm(true)}
+            class="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-[#AC2334]/30 bg-[#FBEEF0] text-[#AC2334] text-sm font-bold hover:bg-[#AC2334] hover:text-white transition dark:bg-red-900/30 dark:text-red-300 dark:border-red-700 dark:hover:bg-red-900/50"
+          >
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            Record Replacement
+          </button>
+        </div>
+      </Show>
+
       {/* ════════ HERO LEDGER ════════
           Replaces the two KPI card rows; every old metric is mapped here:
             Spend → hero figure · Budget → "of ₹X allocated" + rail
@@ -2900,6 +2979,22 @@ export default function MainDashboard() {
           </div>
         </div>
       </Show>
+
+      {/* ════════ LEAD REPLACEMENT ════════
+          Generated → Replaced → Billable, straight off the dashboard summary.
+          CPL/hybrid always (it's how they're billed); everyone else only once a
+          replacement has actually been recorded. Retainer clients never see it.
+          The ledger above stays on the leads GENERATED — this section is the one
+          place the deduction is explained. */}
+      <Show when={showLeadBreakdown()}>
+        <LeadBreakdown
+          class="mb-8"
+          title={`Lead replacement · ${rangeLabel()}`}
+          breakdown={leadBreakdown()}
+          note="Replaced leads are credited back on the client's bill. Utilisation and CPL above stay on true ad spend."
+        />
+      </Show>
+
       {/* ════════ PROJECT LEDGER ════════ */}
       <Eyebrow label="Project ledger" soft="full reference" />
 
@@ -3747,6 +3842,24 @@ export default function MainDashboard() {
             ))}
           </div>
         </div>
+      </Show>
+
+      {/* Record Replacement — mounted only for admin + tier-1 CM. On success we
+          refetch the summary so the Replaced/Billable figures update in place. */}
+      <Show when={canRecordReplacement()}>
+        <RecordReplacementModal
+          open={showReplacementForm()}
+          onClose={() => setShowReplacementForm(false)}
+          clientId={selectedClientId() || undefined}
+          onRecorded={(r) => {
+            refetchSummary();
+            showToast(
+              `${r.count} lead${r.count === 1 ? "" : "s"} credited back on "${r.projectName}".`,
+              "Replacement recorded",
+            );
+          }}
+        />
+        <SuccessToast />
       </Show>
     </section>
     </Show>

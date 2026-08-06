@@ -120,6 +120,23 @@ export const canRecordPayments = () => isAccountsDesk() || isTier1CM();
 // Who may PATCH / DELETE a payment — accounts and admin only, never a CM.
 export const canManagePayments = () => isAccountsDesk();
 
+// ─── Lead-replacement gates ───────────────────────────────────────────────────
+// Who may POST /leads/replacement-batches/ — admins and TIER-1 campaign managers
+// only. Tier-2 CMs, clients, sales, coordination and accounts must not see the
+// "Record Replacement" action at all. Same two-source pattern as above; the
+// backend 403s regardless, this just avoids handing anyone a button that fails.
+export const canRecordReplacement = () => {
+  const role = currentUser.loaded ? currentUser.role : readAuth()?.role;
+  if (role === "admin") return true;
+  return isTier1CM();
+};
+
+// Revoking a batch and reading its audit log are admin-only.
+export const canRevokeReplacement = () => {
+  const role = currentUser.loaded ? currentUser.role : readAuth()?.role;
+  return role === "admin";
+};
+
 // True once the tier is actually known. A campaign_manager's tier arrives with
 // /auth/me, so a route guard must WAIT on this rather than treat "tier not
 // loaded yet" as "not tier-1" and bounce a legitimate tier-1 lead.

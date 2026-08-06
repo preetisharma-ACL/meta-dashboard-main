@@ -10,8 +10,12 @@ import html2canvas from "html2canvas";
 import * as XLSX from "xlsx";
 import useRole, { clientRole } from "./../hooks/useRole";
 import { createResource } from "solid-js"; // add to existing solid-js import
-import { fetchBillingOverview } from "../services/billing-service";
+import {
+  fetchBillingOverview,
+  fetchBillingProject,
+} from "../services/billing-service";
 import { fetchAllAdminClients } from "./admin/services/fetchClients";
+import { readLeadBreakdown } from "../services/leadReplacement";
 const logoUrl = "/logo.webp";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -63,6 +67,14 @@ export default function DailyReports() {
   // truth for the S.C column (see scPct/iscplReport below) — NOT the viewer's
   // overview, which is wrong when an admin/CM is looking at a client.
   const [reportSummary, setReportSummary] = createSignal(null);
+
+  // ── Lead replacement, per project ─────────────────────────────────────────
+  // { [projectId]: { generated, replaced, billable, billedAmount, adSpend } }
+  // Sourced from each project's billing block (GET /billing/project/{id}/) —
+  // the backend owns the replacement batches, so this is the only place the
+  // credited counts and the billed (post-credit) amount can come from.
+  // Projects with no block simply aren't in the map and render "—".
+  const [billingMap, setBillingMap] = createSignal({});
 
   // Include raw (agency-cost) columns — Raw Spend + Raw CPL — in the on-screen
   // table AND all downloads. ON by default = internal report (shows the agency's
@@ -141,6 +153,7 @@ export default function DailyReports() {
       setProjects([]);
       setInsightsMap({});
       setReportSummary(null);
+      setBillingMap({});
       setShowPreview(false);
     });
     loadedKey = null; // allow a fresh load when a client is re-picked
@@ -204,6 +217,13 @@ export default function DailyReports() {
       }
       setProjects(allProjects);
 
+      // ①b per-project billing → the lead-replacement breakdown + billed
+      //    amount. Fire-and-forget and batched: the report renders on the
+      //    insights sweep below, and these columns fill in behind it. A project
+      //    whose billing call fails is left out of the map rather than shown as
+      //    "0 replaced", which would read as a fact rather than a gap.
+      loadProjectBilling(allProjects);
+
       // ② fetch insights (fire-and-forget — table shows skeleton until done).
       //    Pass clientId so the bulk-insights call sends as_client_id and the
       //    backend returns marked-up `spend` (Client Billed) vs raw `spend_raw`.
@@ -216,6 +236,34 @@ export default function DailyReports() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Sweep the per-project billing blocks in small batches (same batch size the
+  // billing service already uses) so a long project list doesn't fire dozens of
+  // parallel requests.
+  const loadProjectBilling = async (projectList) => {
+    const out = {};
+    const batchSize = 5;
+    for (let i = 0; i < projectList.length; i += batchSize) {
+      const batch = projectList.slice(i, i + batchSize);
+      await Promise.all(
+        batch.map(async (p) => {
+          try {
+            const res = await fetchBillingProject(p.id);
+            // The trio lives on the billing block; some payloads nest it under
+            // data.billing, others put it flat on data. Try both rather than
+            // guess — a wrong path reads as "no replacements".
+            const breakdown =
+              readLeadBreakdown(res?.data?.billing) ??
+              readLeadBreakdown(res?.data);
+            if (breakdown) out[String(p.id)] = breakdown;
+          } catch {
+            // No billing block for this project — leave it out of the map.
+          }
+        }),
+      );
+    }
+    setBillingMap(out);
   };
 
   const loadAllInsights = async (projectList, clientId = null) => {
@@ -372,6 +420,33 @@ export default function DailyReports() {
   const canShowBilled = () => hasRawSpend() || !iscplReport();
   const canShowScGst = () => !iscplReport();
 
+  // ── Lead replacement columns ──────────────────────────────────────────────
+  // Shown when the client is CPL/hybrid (it's how they're billed, even at zero
+  // replacements) OR when a replacement has actually been recorded. Retainer
+  // clients have no replacement concept — the fields come back absent/zero and
+  // these columns stay off. Keyed to the REPORTED client's type, not the
+  // viewer's role, so an admin looking at a CPL client sees them.
+  const reportClientType = () => {
+    const s = reportSummary();
+    if (s?.client_type) return String(s.client_type).toLowerCase();
+    if (iscplReport()) return "cpl";
+    if (ishybrid()) return "hybrid";
+    if (isRetainer()) return "retainer";
+    return "";
+  };
+  const anyReplaced = () =>
+    Object.values(billingMap()).some((b) => (b.replaced ?? 0) > 0);
+  const showReplacement = () =>
+    Object.keys(billingMap()).length > 0 &&
+    (reportClientType() === "cpl" ||
+      reportClientType() === "hybrid" ||
+      anyReplaced());
+  // The credited amount actually billed. Separate gate: a client can have the
+  // lead trio without the backend exposing billed_amount on every project.
+  const showBilledAmount = () =>
+    showReplacement() &&
+    Object.values(billingMap()).some((b) => b.billedAmount != null);
+
   // …and these are what the table actually renders: availability AND the user's
   // per-column checkbox. Checking a box can never reveal a column the gating
   // above forbids.
@@ -504,6 +579,12 @@ export default function DailyReports() {
       const rawCpl =
         anyRaw && leads > 0 ? parseFloat((rawSpent / leads).toFixed(2)) : null;
 
+      // Lead replacement — from the project's billing block, NOT from the
+      // per-day insight rows (the backend owns the replacement batches). These
+      // are billing-period figures and are deliberately NOT re-filtered by the
+      // range above; the footnote under the table says so.
+      const bill = billingMap()[String(project.id)] ?? null;
+
       // Always push — even when leads === 0 and spent === 0
       rows.push({
         projectId: project.id,
@@ -516,6 +597,12 @@ export default function DailyReports() {
         spentwithservice_gst,
         rawSpent,
         rawCpl,
+        generatedLeads: bill?.generated ?? null,
+        replacedLeads: bill?.replaced ?? null,
+        billableLeads: bill?.billable ?? null,
+        // The amount actually billed after the credit. `spent` above stays the
+        // true ad spend and keeps driving CPL / utilisation.
+        billedAmount: bill?.billedAmount ?? null,
       });
     }
 
@@ -547,6 +634,22 @@ export default function DailyReports() {
       hasRawSpend() && totalLeads > 0
         ? parseFloat((totalRawSpent / totalLeads).toFixed(2))
         : null;
+    // Lead-replacement totals — summed only over the rows that actually carry a
+    // billing block, so a partial sweep doesn't understate as a confident 0.
+    const billed = rows.filter((r) => r.replacedLeads != null);
+    const totalReplaced = billed.length
+      ? billed.reduce((s, r) => s + (r.replacedLeads || 0), 0)
+      : null;
+    const totalBillable = billed.length
+      ? billed.reduce((s, r) => s + (r.billableLeads || 0), 0)
+      : null;
+    const withAmount = rows.filter((r) => r.billedAmount != null);
+    const totalBilledAmount = withAmount.length
+      ? parseFloat(
+          withAmount.reduce((s, r) => s + r.billedAmount, 0).toFixed(2),
+        )
+      : null;
+
     return {
       totalLeads,
       totalSpent,
@@ -555,6 +658,9 @@ export default function DailyReports() {
       totalspentwithservice_gst,
       totalRawSpent,
       avgRawCPL,
+      totalReplaced,
+      totalBillable,
+      totalBilledAmount,
     };
   });
 
@@ -624,8 +730,10 @@ export default function DailyReports() {
   // capture is scaled down to the page width.
   const pdfWidth = () => {
     let w = 155 + 180 + 80 + 110; // Date, Project, Leads, CPL — always present
+    if (showReplacement()) w += 100 + 100; // Replaced + Billable
     if (showRaw()) w += 110 + 130; // Raw CPL + Raw Spend
     if (showBilled()) w += 140;
+    if (showBilledAmount()) w += 140;
     if (showSc()) w += 175;
     if (showGst()) w += 215;
     return Math.max(900, w + 72); // + the template's 36px side padding
@@ -688,26 +796,41 @@ export default function DailyReports() {
       ? `${new Date(fromDate()).toLocaleDateString("en-IN", { day: "numeric", month: "short" })} - ${new Date(toDate()).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}`
       : "All Dates";
   const exportColumns = () => {
-    const cols = ["Date", "Project", "Leads", "CPL"];
+    const cols = [
+      "Date",
+      "Project",
+      showReplacement() ? "Leads Generated" : "Leads",
+    ];
+    if (showReplacement()) cols.push("Replaced", "Billable");
+    cols.push("CPL");
     if (showRaw()) cols.push("Raw CPL", "Raw Spend");
     if (showBilled()) cols.push(showRaw() ? "Client Billed" : "Amount Spent");
+    if (showBilledAmount()) cols.push("Billed");
     if (showSc()) cols.push(scColLabel());
     if (showGst()) cols.push(finalColLabel());
     return cols;
   };
   const exportRow = (r) => {
-    const base = [exportDateLabel(), r.projectName, r.leads, r.cpl];
+    const base = [exportDateLabel(), r.projectName, r.leads];
+    if (showReplacement())
+      base.push(r.replacedLeads ?? "", r.billableLeads ?? "");
+    base.push(r.cpl);
     if (showRaw()) base.push(r.rawCpl ?? "", r.rawSpent ?? "");
     if (showBilled()) base.push(r.spent);
+    if (showBilledAmount()) base.push(r.billedAmount ?? "");
     if (showSc()) base.push(r.spentwithServiceCharge);
     if (showGst()) base.push(r.spentwithservice_gst);
     return base;
   };
   const exportTotalsRow = () => {
     const t = totals();
-    const base = ["TOTAL", "", t.totalLeads, t.avgCPL];
+    const base = ["TOTAL", "", t.totalLeads];
+    if (showReplacement())
+      base.push(t.totalReplaced ?? "", t.totalBillable ?? "");
+    base.push(t.avgCPL);
     if (showRaw()) base.push(t.avgRawCPL ?? "", t.totalRawSpent ?? "");
     if (showBilled()) base.push(t.totalSpent);
+    if (showBilledAmount()) base.push(t.totalBilledAmount ?? "");
     if (showSc()) base.push(t.totalspentwithServiceCharge);
     if (showGst()) base.push(t.totalspentwithservice_gst);
     return base;
@@ -1128,7 +1251,12 @@ export default function DailyReports() {
               <tr class="[&_th]:text-center [&_th:first-child]:text-left text-gray-700 dark:text-gray-200 [&_th]:whitespace-nowrap [&_th]:font-semibold">
                 <th class="p-3 pl-4">Date</th>
                 <th class="p-3">Project</th>
-                <th class="p-3">Leads</th>
+                <th class="p-3">{showReplacement() ? "Leads Generated" : "Leads"}</th>
+                {/* Generated → Replaced → Billable reads left to right */}
+                <Show when={showReplacement()}>
+                  <th class="p-3 text-[#AC2334] dark:text-red-400">Replaced</th>
+                  <th class="p-3">Billable</th>
+                </Show>
                 <th class="p-3">CPL</th>
                 {/* Raw (agency cost) — admin/CM, toggle on; all client types */}
                 <Show when={showRaw()}>
@@ -1139,6 +1267,10 @@ export default function DailyReports() {
                   <th class="p-3">
                     {showRaw() ? "Client Billed" : "Amount Spent"}
                   </th>
+                </Show>
+                {/* Ad spend (above) vs Billed (after the replacement credit) */}
+                <Show when={showBilledAmount()}>
+                  <th class="p-3">Billed</th>
                 </Show>
                 {/* S.C + GST only when the client has a service charge */}
                 <Show when={showSc()}>
@@ -1223,10 +1355,24 @@ export default function DailyReports() {
                           </span>
                         </td>
 
-                        {/* Leads */}
+                        {/* Leads generated */}
                         <td class="p-3 font-bold text-gray-800 dark:text-gray-100">
                           {row.leads}
                         </td>
+
+                        {/* Replaced → Billable */}
+                        <Show when={showReplacement()}>
+                          <td class="p-3 font-semibold text-[#AC2334] dark:text-red-400">
+                            {row.replacedLeads == null
+                              ? "—"
+                              : row.replacedLeads > 0
+                                ? `−${row.replacedLeads}`
+                                : "0"}
+                          </td>
+                          <td class="p-3 font-bold text-gray-800 dark:text-gray-100">
+                            {row.billableLeads ?? "—"}
+                          </td>
+                        </Show>
 
                         {/* CPL */}
                         <td class="p-3 text-purple-700 dark:text-purple-300">
@@ -1246,6 +1392,11 @@ export default function DailyReports() {
                         <Show when={showBilled()}>
                           <td class="p-3 text-green-700 dark:text-green-400">
                             {fmt(row.spent)}
+                          </td>
+                        </Show>
+                        <Show when={showBilledAmount()}>
+                          <td class="p-3 font-semibold text-green-800 dark:text-green-300">
+                            {row.billedAmount == null ? "—" : fmt(row.billedAmount)}
                           </td>
                         </Show>
                         <Show when={showSc()}>
@@ -1276,6 +1427,18 @@ export default function DailyReports() {
                     <td class="p-3 text-green-700 dark:text-green-300 font-bold text-base">
                       {totals().totalLeads}
                     </td>
+                    <Show when={showReplacement()}>
+                      <td class="p-3 text-[#AC2334] dark:text-red-400 font-bold">
+                        {totals().totalReplaced == null
+                          ? "—"
+                          : totals().totalReplaced > 0
+                            ? `−${totals().totalReplaced}`
+                            : "0"}
+                      </td>
+                      <td class="p-3 text-green-700 dark:text-green-300 font-bold text-base">
+                        {totals().totalBillable ?? "—"}
+                      </td>
+                    </Show>
                     <td class="p-3 text-purple-700 dark:text-purple-300 font-bold">
                       {fmt(totals().avgCPL)}
                     </td>
@@ -1290,6 +1453,13 @@ export default function DailyReports() {
                     <Show when={showBilled()}>
                       <td class="p-3 text-green-700 dark:text-green-300 font-bold">
                         {fmt(totals().totalSpent)}
+                      </td>
+                    </Show>
+                    <Show when={showBilledAmount()}>
+                      <td class="p-3 text-green-800 dark:text-green-300 font-bold">
+                        {totals().totalBilledAmount == null
+                          ? "—"
+                          : fmt(totals().totalBilledAmount)}
                       </td>
                     </Show>
                     <Show when={showSc()}>
@@ -1308,6 +1478,24 @@ export default function DailyReports() {
             </Show>
           </table>
         </div>
+        </Show>
+
+        {/* Lead-replacement footnote. The Leads/CPL/spend columns are filtered
+            by the range picker; Replaced / Billable / Billed come from the
+            client's billing record for the billing period and are NOT
+            re-filtered — say so, rather than let the two read as one scope.
+            On a full-calendar-month range the two line up exactly. */}
+        <Show when={showReplacement() && reportRows().length > 0}>
+          <p class="mt-3 text-xs text-gray-400 dark:text-gray-500 leading-relaxed">
+            Billable leads = generated − replaced. CPL and utilisation stay on
+            true ad spend; <b class="font-semibold">Billed</b> is the amount
+            charged after the replacement credit.
+            <Show when={!isFullMonthRange()}>
+              {" "}
+              Replaced / Billable / Billed are billing-period figures and are not
+              filtered by the selected date range.
+            </Show>
+          </p>
         </Show>
 
         {/* Indicative-figures footnote — only when the S.C/GST columns show
@@ -1536,8 +1724,16 @@ export default function DailyReports() {
                     Project
                   </th>
                   <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
-                    Leads
+                    {showReplacement() ? "Leads Generated" : "Leads"}
                   </th>
+                  <Show when={showReplacement()}>
+                    <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
+                      Replaced
+                    </th>
+                    <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
+                      Billable
+                    </th>
+                  </Show>
                   <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
                     CPL
                   </th>
@@ -1552,6 +1748,11 @@ export default function DailyReports() {
                   <Show when={showBilled()}>
                     <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
                       {showRaw() ? "Client Billed" : "Amount Spent"}
+                    </th>
+                  </Show>
+                  <Show when={showBilledAmount()}>
+                    <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
+                      Billed
                     </th>
                   </Show>
                   <Show when={showSc()}>
@@ -1592,6 +1793,18 @@ export default function DailyReports() {
                       <td class="px-4 py-3 text-center font-bold text-[#7B1C1C] text-md border-r border-[rgba(123,28,28,0.1)]">
                         {row.leads}
                       </td>
+                      <Show when={showReplacement()}>
+                        <td class="px-4 py-3 text-center font-semibold text-[#AC2334] text-md border-r border-[rgba(123,28,28,0.1)]">
+                          {row.replacedLeads == null
+                            ? "—"
+                            : row.replacedLeads > 0
+                              ? `−${row.replacedLeads}`
+                              : "0"}
+                        </td>
+                        <td class="px-4 py-3 text-center font-bold text-[#1a1a1a] text-md border-r border-[rgba(123,28,28,0.1)]">
+                          {row.billableLeads ?? "—"}
+                        </td>
+                      </Show>
                       <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
                         {fmt(row.cpl)}
                       </td>
@@ -1606,6 +1819,11 @@ export default function DailyReports() {
                       <Show when={showBilled()}>
                         <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
                           {fmt(row.spent)}
+                        </td>
+                      </Show>
+                      <Show when={showBilledAmount()}>
+                        <td class="px-4 py-3 text-center text-[#1a1a1a] font-semibold text-md border-r border-[rgba(123,28,28,0.1)]">
+                          {row.billedAmount == null ? "—" : fmt(row.billedAmount)}
                         </td>
                       </Show>
                       <Show when={showSc()}>
@@ -1633,6 +1851,18 @@ export default function DailyReports() {
                   <td class="px-4 py-3 text-center text-white font-bold text-sm border-r border-white/10">
                     {totals().totalLeads}
                   </td>
+                  <Show when={showReplacement()}>
+                    <td class="px-4 py-3 text-center text-white font-bold text-sm border-r border-white/10">
+                      {totals().totalReplaced == null
+                        ? "—"
+                        : totals().totalReplaced > 0
+                          ? `−${totals().totalReplaced}`
+                          : "0"}
+                    </td>
+                    <td class="px-4 py-3 text-center text-white font-bold text-sm border-r border-white/10">
+                      {totals().totalBillable ?? "—"}
+                    </td>
+                  </Show>
                   <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
                     {fmt(totals().avgCPL)}
                   </td>
@@ -1647,6 +1877,13 @@ export default function DailyReports() {
                   <Show when={showBilled()}>
                     <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
                       {fmt(totals().totalSpent)}
+                    </td>
+                  </Show>
+                  <Show when={showBilledAmount()}>
+                    <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
+                      {totals().totalBilledAmount == null
+                        ? "—"
+                        : fmt(totals().totalBilledAmount)}
                     </td>
                   </Show>
                   <Show when={showSc()}>
@@ -1758,8 +1995,16 @@ export default function DailyReports() {
                       Project
                     </th>
                     <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
-                      Leads
+                      {showReplacement() ? "Leads Gen." : "Leads"}
                     </th>
+                    <Show when={showReplacement()}>
+                      <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
+                        Replaced
+                      </th>
+                      <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
+                        Billable
+                      </th>
+                    </Show>
                     <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
                       CPL
                     </th>
@@ -1774,6 +2019,11 @@ export default function DailyReports() {
                     <Show when={showBilled()}>
                       <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
                         {showRaw() ? "Client Billed" : "Amt Spent"}
+                      </th>
+                    </Show>
+                    <Show when={showBilledAmount()}>
+                      <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
+                        Billed
                       </th>
                     </Show>
                     <Show when={showSc()}>
@@ -1807,6 +2057,18 @@ export default function DailyReports() {
                       <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:700;color:#7B1C1C;border-right:1px solid rgba(123,28,28,0.1);">
                         {row.leads}
                       </td>
+                      <Show when={showReplacement()}>
+                        <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:600;color:#AC2334;border-right:1px solid rgba(123,28,28,0.1);">
+                          {row.replacedLeads == null
+                            ? "—"
+                            : row.replacedLeads > 0
+                              ? `−${row.replacedLeads}`
+                              : "0"}
+                        </td>
+                        <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:700;color:#1a1a1a;border-right:1px solid rgba(123,28,28,0.1);">
+                          {row.billableLeads ?? "—"}
+                        </td>
+                      </Show>
                       <td style="padding:10px 14px;text-align:center;font-size:14px;color:#333;border-right:1px solid rgba(123,28,28,0.1);">
                         {fmt(row.cpl)}
                       </td>
@@ -1821,6 +2083,11 @@ export default function DailyReports() {
                       <Show when={showBilled()}>
                         <td style="padding:10px 14px;text-align:center;font-size:14px;color:#333;border-right:1px solid rgba(123,28,28,0.1);">
                           {fmt(row.spent)}
+                        </td>
+                      </Show>
+                      <Show when={showBilledAmount()}>
+                        <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:600;color:#1a1a1a;border-right:1px solid rgba(123,28,28,0.1);">
+                          {row.billedAmount == null ? "—" : fmt(row.billedAmount)}
                         </td>
                       </Show>
                       <Show when={showSc()}>
@@ -1844,6 +2111,18 @@ export default function DailyReports() {
                     <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
                       {totals().totalLeads}
                     </td>
+                    <Show when={showReplacement()}>
+                      <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
+                        {totals().totalReplaced == null
+                          ? "—"
+                          : totals().totalReplaced > 0
+                            ? `−${totals().totalReplaced}`
+                            : "0"}
+                      </td>
+                      <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
+                        {totals().totalBillable ?? "—"}
+                      </td>
+                    </Show>
                     <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
                       {fmt(totals().avgCPL)}
                     </td>
@@ -1858,6 +2137,13 @@ export default function DailyReports() {
                     <Show when={showBilled()}>
                       <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
                         {fmt(totals().totalSpent)}
+                      </td>
+                    </Show>
+                    <Show when={showBilledAmount()}>
+                      <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
+                        {totals().totalBilledAmount == null
+                          ? "—"
+                          : fmt(totals().totalBilledAmount)}
                       </td>
                     </Show>
                     <Show when={showSc()}>

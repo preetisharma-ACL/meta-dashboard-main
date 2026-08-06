@@ -57,6 +57,7 @@ import AccountMonitor from "./pages/monitor/AccountMonitor";
 import MyWork from "./pages/worklog/MyWork";
 import ClientWorkspace from "./pages/worklog/ClientWorkspace";
 import CplRules from "./pages/cpl/CplRules";
+import LeadReplacements from "./pages/leads/LeadReplacements";
 import ClientBilling from "./pages/billing/ClientBilling";
 import PaymentsList from "./pages/payments/PaymentsList";
 import RecordPayment from "./pages/payments/RecordPayment";
@@ -298,6 +299,19 @@ function App() {
             <Route path="/my-work" component={MyWork} />
             <Route path="/client-workspace/:nomenId" component={ClientWorkspace} />
             <Route path="/cpl-rules" component={CplRules} />
+            {/* Lead replacements — the record + audit surface. Route-gated to
+                admin + CM; the RECORD action inside is further gated to admin
+                and tier-1 CMs (canRecordReplacement), and revoke/audit-log to
+                admin only. A tier-2 CM still gets the read-only list, which the
+                backend scopes to their own + their team's batches. */}
+            <Route
+              path="/lead-replacements"
+              component={() => (
+                <AdminRoute roles={["admin", "campaign_manager"]}>
+                  <LeadReplacements />
+                </AdminRoute>
+              )}
+            />
             <Route path="/activity" component={Activity} />
             <Route path="/:client-nomen-name" component={MainDashboard} />
             <Route path="/add-project" component={AddProject} />

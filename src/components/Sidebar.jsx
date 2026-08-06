@@ -262,6 +262,18 @@ export default function Sidebar() {
               <SmallIcon d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             ),
           },
+          {
+            // Recording is admin + tier-1 only, but the LIST is server-scoped
+            // and useful to every CM (it's the audit trail for the credits
+            // showing on their clients' bills), so the entry stays role-wide
+            // and the page gates the Record action itself.
+            name: "Lead Replacements",
+            path: "/lead-replacements",
+            roles: ["admin", "campaign_manager"],
+            icon: () => (
+              <SmallIcon d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            ),
+          },
         ],
       },
       {
