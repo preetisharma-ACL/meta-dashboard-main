@@ -55,6 +55,11 @@ export default function DailyReports() {
   const [previewGenerating, setPreviewGenerating] = createSignal(false);
   const [exportOpen, setExportOpen] = createSignal(false); // download-report format menu
   const { isRetainer, iscpl: iscplRole, ishybrid, isAdmin } = clientRole();
+  // A client logging in sees a finished report, not a report builder — the
+  // column toggles are an internal trimming tool for admin/CM before sharing.
+  // Hidden for clients; the underlying signals stay ON so every column their
+  // type allows still renders.
+  const { isClient } = useRole();
 
   // inside DailyReports(), near the other state:
   const [billingOverview] = createResource(() => fetchBillingOverview());
@@ -1159,7 +1164,7 @@ export default function DailyReports() {
           client type / S.C rate to label them with. Each checkbox also only
           appears when that column is available at all for this client / role.
           Applies to the table, Preview, PDF, CSV and Excel alike. */}
-      <Show when={ready() && !loading()}>
+      <Show when={ready() && !loading() && !isClient()}>
         <div class="space-y-2 mb-5">
           <Show when={hasRawSpend()}>
             <div class="flex flex-wrap items-center justify-start sm:justify-end gap-x-5 gap-y-2">
