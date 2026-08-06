@@ -72,6 +72,7 @@ import {
   summaryLeadBreakdown,
   showsReplacement,
   fetchAllReplacementBatches,
+  fetchMyReplacements,
   replacedLeadsByProject,
 } from "../services/leadReplacement";
 import { canRecordReplacement } from "../stores/currentUser";
@@ -901,14 +902,24 @@ export default function MainDashboard() {
   // its Meta / Fed / Total columns use), so a replacement can't land in a
   // different period than the leads printed beside it.
   //
-  // The list endpoint is admin/CM-scoped, so a client's own login gets nothing
-  // here and the columns stay off — their replacement figures come from the
-  // dashboard summary strip above instead, which the backend computes for them.
+  // TWO SOURCES, ONE AGGREGATOR. /leads/replacement-batches/ is admin/CM-only,
+  // so a client login read it and got nothing — their Replaced/Billable columns
+  // rendered empty. Clients now read /leads/my-replacements/, which returns
+  // their own non-revoked batches with no cost/notes/internal fields. Both
+  // payloads carry project + replaced_count + received_date, which is all
+  // replacedLeadsByProject() consumes, so the roll-up below is identical either
+  // way. Keyed off the auth role rather than isFedAwareViewer(): sales also
+  // lands on this page and is neither, and must not be handed the client
+  // endpoint.
+  const isClientViewer = () => auth?.role === "client";
+
   const [replacementBatches] = createResource(
     () => selectedClientNomen() ?? "self",
     async () => {
       try {
-        return await fetchAllReplacementBatches();
+        return isClientViewer()
+          ? await fetchMyReplacements()
+          : await fetchAllReplacementBatches();
       } catch (err) {
         console.error("[ClientDashboard] replacement batches failed:", err);
         return [];
@@ -923,7 +934,9 @@ export default function MainDashboard() {
   // Only grow the two columns once this client actually has replacement
   // activity in the range — replacements are a CPL/hybrid concept, and a
   // retainer client would otherwise get two columns of zeros. Within the table
-  // every project still shows its own 0.
+  // every project still shows its own 0. This now behaves the same for a
+  // client's own login as it does for admin/CM, since both have a readable
+  // source.
   const showReplacedCols = () =>
     Object.keys(replacedByProjectLedger()).length > 0;
 

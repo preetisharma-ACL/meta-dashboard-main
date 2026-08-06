@@ -184,6 +184,38 @@ export const fetchAllReplacementBatches = async ({ clientNomen } = {}) => {
   return all;
 };
 
+// GET /leads/my-replacements/ — the CLIENT-safe list.
+//
+// /leads/replacement-batches/ above is admin/CM-only, so a client login reading
+// it got nothing and their ledger's Replaced/Billable columns stayed empty.
+// This endpoint returns the logged-in client's OWN batches and nothing else:
+// id, project, project_name, replaced_count, received_date, recorded_at — no
+// cost, no notes, no internal fields. It is also pre-filtered to non-revoked
+// batches, so rows carry no is_revoked flag; isLiveReplacement() reads a
+// missing flag as live, which is exactly right here.
+//
+// The row shape (project id + replaced_count + received_date) is what
+// replacedLeadsByProject() already consumes, so the two sources are
+// interchangeable at the aggregator.
+export const fetchMyReplacements = async () => {
+  const all = [];
+  for (let page = 1; page <= MAX_PAGES; page += 1) {
+    const res = await api(`/leads/my-replacements/?page=${page}&page_size=200`, {
+      method: "GET",
+    });
+    const rows = Array.isArray(res?.data?.results)
+      ? res.data.results
+      : Array.isArray(res?.data)
+        ? res.data
+        : [];
+    all.push(...rows);
+    // Stop on the last page, on an empty page, or when the envelope carries no
+    // pagination block at all (unpaginated response → the first page is all).
+    if (rows.length === 0 || !res?.meta?.pagination?.has_next) break;
+  }
+  return all;
+};
+
 // ── Per-project roll-up (mirrors fedLeadsByProject) ──────────────────────────
 // Replacements are recorded against a PROJECT, exactly like fed batches, so the
 // project ledger is the level they can be shown at truthfully. These two
@@ -192,10 +224,15 @@ export const fetchAllReplacementBatches = async ({ clientNomen } = {}) => {
 // different day here than it does in the fed column beside it.
 
 // The day a batch belongs to. received_date is what the operator recorded the
-// replacement against; created_at is merely when they typed it in, so it is the
-// fallback, never the primary.
+// replacement against; created_at / recorded_at are merely when they typed it
+// in, so they are the fallback, never the primary. (The admin/CM list names that
+// timestamp created_at, the client-safe list names it recorded_at — same field,
+// so both are read here and a batch lands on the same day for either viewer.)
 export const replacementDay = (b) =>
-  b?.received_date || b?.created_at?.split("T")[0] || null;
+  b?.received_date ||
+  b?.created_at?.split("T")[0] ||
+  b?.recorded_at?.split("T")[0] ||
+  null;
 
 // A revoked batch was reversed: its leads go back to being billable and must
 // not be counted anywhere. Compared against `true` rather than truthiness — a
