@@ -71,6 +71,8 @@ import {
   fetchDashboardSummary,
   summaryLeadBreakdown,
   showsReplacement,
+  fetchAllReplacementBatches,
+  replacedLeadsByProject,
 } from "../services/leadReplacement";
 import { canRecordReplacement } from "../stores/currentUser";
 import { scopeKey } from "../stores/cmScope";
@@ -95,6 +97,12 @@ const bumpLoadToken = () => ++activeLoadToken;
 // even after we start sending as_client_id (which flips `spend` to marked-up).
 const rawSpendOf = (row) =>
   parseFloat((row?.spend_raw != null ? row.spend_raw : row?.spend) || 0);
+
+// Replaced leads read as a deduction, so a real count shows as "−N"; none shows
+// a plain 0 — the batch list genuinely says "nothing replaced" for that project,
+// which is a fact, not a gap. (Mirrors fmtFed's "+N" for the column beside it.)
+const fmtReplacedLeads = (n) =>
+  Number(n) > 0 ? `−${Number(n).toLocaleString("en-IN")}` : "0";
 
 // ── Dev-time ledger invariants ───────────────────────────────────────────────
 // The privileged ledger derives Meta by SUBTRACTING fed from an inclusive sum,
@@ -885,6 +893,61 @@ export default function MainDashboard() {
   // Fed leads for one project, 0 for every non-CM viewer. Keys are strings.
   const cmFedOf = (map, projectId) =>
     isCMViewer() ? map[String(projectId)] || 0 : 0;
+
+  // ── Lead-replacement batches, per project ─────────────────────────────────
+  // Fetched and rolled up exactly like the fed batches above: one sweep per
+  // viewed client, server-scoped, then joined by project id against THIS
+  // client's own projects. The ledger reads the CALENDAR range (the same range
+  // its Meta / Fed / Total columns use), so a replacement can't land in a
+  // different period than the leads printed beside it.
+  //
+  // The list endpoint is admin/CM-scoped, so a client's own login gets nothing
+  // here and the columns stay off — their replacement figures come from the
+  // dashboard summary strip above instead, which the backend computes for them.
+  const [replacementBatches] = createResource(
+    () => selectedClientNomen() ?? "self",
+    async () => {
+      try {
+        return await fetchAllReplacementBatches();
+      } catch (err) {
+        console.error("[ClientDashboard] replacement batches failed:", err);
+        return [];
+      }
+    },
+  );
+
+  const replacedByProjectLedger = createMemo(() =>
+    replacedLeadsByProject(replacementBatches() ?? [], fromDate(), toDate()),
+  );
+
+  // Only grow the two columns once this client actually has replacement
+  // activity in the range — replacements are a CPL/hybrid concept, and a
+  // retainer client would otherwise get two columns of zeros. Within the table
+  // every project still shows its own 0.
+  const showReplacedCols = () =>
+    Object.keys(replacedByProjectLedger()).length > 0;
+
+  const replacedOf = (projectId) =>
+    replacedByProjectLedger()[String(projectId)] || 0;
+
+  // Ledger footer totals. Summed over the SAME per-row figures the column
+  // prints (including the floor at 0), so the footer equals the sum of the
+  // column rather than a separately-derived number.
+  // A plain function, not a memo: createMemo runs its body eagerly at creation,
+  // and allProjectStats is declared further down.
+  const ledgerReplacedTotals = () => {
+    const statsMap = allProjectStats();
+    let replaced = 0;
+    let billable = 0;
+    for (const p of allProjects()) {
+      const s = statsMap[p.id] || {};
+      const total = s.totalLeadsWithFed ?? s.totalLeads ?? 0;
+      const r = replacedOf(p.id);
+      replaced += r;
+      billable += Math.max(0, total - r);
+    }
+    return { replaced, billable };
+  };
 
   // ── The ONE fed figure, for whichever viewer is looking ────────────────────
   // Admin and CM now read the same helper over the same kind of batch list
@@ -3133,6 +3196,11 @@ export default function MainDashboard() {
                 <th class="p-3">{rangeLabel()} Fed Leads</th>
                 <th class="p-3">{rangeLabel()} Total (incl. fed)</th>
               </Show>
+              {/* Total → Replaced → Billable reads as one progression */}
+              <Show when={showReplacedCols()}>
+                <th class="p-3 text-[#AC2334] dark:text-red-400">Replaced</th>
+                <th class="p-3">Billable</th>
+              </Show>
               <Show when={!iscpl()}>
                 <th class="p-3" onClick={() => handleSort("totalSpent")}>
                   {rangeLabel()} Total Spent {getSortIcon("totalSpent")}
@@ -3339,6 +3407,22 @@ export default function MainDashboard() {
                         </td>
                       </Show>
 
+                      {/* Replaced → Billable — credited back, then charged.
+                          Billable comes off the inclusive total (Meta + fed),
+                          which is the figure the client is billed against. */}
+                      <Show when={showReplacedCols()}>
+                        <td class="p-2 font-semibold text-[#AC2334] dark:text-red-400">
+                          {fmtReplacedLeads(replacedOf(project.id))}
+                        </td>
+                        <td class="p-2 font-bold text-[#14233A] dark:text-white">
+                          {Math.max(
+                            0,
+                            (stats().totalLeadsWithFed ?? stats().totalLeads) -
+                              replacedOf(project.id),
+                          ).toLocaleString("en-IN")}
+                        </td>
+                      </Show>
+
                       {/* Date-range Spent */}
                       <Show when={!iscpl()}>
                         <td class="p-2 font-medium text-gray-700 dark:text-gray-100">
@@ -3414,6 +3498,18 @@ export default function MainDashboard() {
                   </td>
                   <td>
                     {overviewStats().totalLeadsWithFed.toLocaleString("en-IN")}
+                  </td>
+                </Show>
+
+                {/* Replaced / Billable totals — Σ of the per-row figures the
+                    columns print, floor included, so the footer equals the sum
+                    of the column above it. */}
+                <Show when={showReplacedCols()}>
+                  <td class="text-[#AC2334] dark:text-red-400">
+                    {fmtReplacedLeads(ledgerReplacedTotals().replaced)}
+                  </td>
+                  <td>
+                    {ledgerReplacedTotals().billable.toLocaleString("en-IN")}
                   </td>
                 </Show>
 

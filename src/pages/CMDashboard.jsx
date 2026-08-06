@@ -9,6 +9,10 @@ import {
   fedLeadsByProject,
   fmtFed,
 } from "../services/fedLeads";
+import {
+  fetchAllReplacementBatches,
+  replacedLeadsByProject,
+} from "../services/leadReplacement";
 import { asTeamMemberId, ownScope, clearScope, scopeKey } from "../stores/cmScope";
 import { currentUser, cmTier, canWriteCampaigns } from "../stores/currentUser";
 import CMHierarchy from "../components/CMHierarchy";
@@ -27,6 +31,10 @@ const fmtCPL = (val) => {
   return `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 const fmtNum = (val) => (Number(val) || 0).toLocaleString("en-IN");
+// Replaced leads read as a deduction, so a real count shows as "−N"; none shows
+// a plain 0 (the backend genuinely says "nothing replaced" — not "no data").
+const fmtReplaced = (val) =>
+  Number(val) > 0 ? `−${Number(val).toLocaleString("en-IN")}` : "0";
 const fmtDate = (iso) =>
   !iso
     ? "—"
@@ -223,6 +231,38 @@ export default function CMDashboard() {
     fedLeadsByProject(fedBatches() ?? [], fromDate(), toDate()),
   );
 
+  // ─── Lead-replacement batches ─────────────────────────────────────────────
+  // Same shape as the fed batches above and fetched the same way: ONCE per
+  // switch scope, server-scoped to what the caller may see (a CM gets their own
+  // + their team's), then joined by project id against campaigns already in
+  // view. A failure degrades to "no replacements" rather than sinking the
+  // dashboard — the ledger just doesn't grow the columns.
+  const [replacementBatches] = createResource(scopeKey, async () => {
+    try {
+      return await fetchAllReplacementBatches();
+    } catch (err) {
+      console.error("[CMDashboard] replacement batches failed:", err);
+      return [];
+    }
+  });
+
+  // { [projectId]: replacedLeads } for the selected range. Range-filtered
+  // exactly like fedByProject — the Meta figures beside it are range-scoped, so
+  // an unfiltered replacement count would be a different period in the same row.
+  const replacedByProject = createMemo(() =>
+    replacedLeadsByProject(replacementBatches() ?? [], fromDate(), toDate()),
+  );
+
+  // The Replaced/Billable pair only appears once this CM's book actually has
+  // replacement activity in the range — replacements are a CPL/hybrid concept,
+  // and a book with none would otherwise grow two columns of zeros. Within the
+  // table every project still shows its own 0.
+  const showReplaced = () => Object.keys(replacedByProject()).length > 0;
+
+  // Project-ledger column count, for the loading skeleton and the empty row.
+  // Base: Project, Client, Campaigns, Meta, Fed, Total, Spend, CPL.
+  const ledgerColCount = () => (showReplaced() ? 10 : 8);
+
   // Client-side filters: "Just me" narrowing + search. Both are display filters
   // (the lead is authorized to see all); they never widen visibility.
   const campaigns = createMemo(() => {
@@ -305,6 +345,7 @@ export default function CMDashboard() {
   // same day; merging them silently would have hidden the difference instead.
   const projectLedger = createMemo(() => {
     const fed = fedByProject();
+    const replaced = replacedByProject();
     const byKey = new Map();
 
     for (const c of campaigns()) {
@@ -339,10 +380,18 @@ export default function CMDashboard() {
       // row gets 0 rather than a guessed match.
       const fedLeads = r.projectId ? fed[r.projectId] || 0 : 0;
       const total = r.metaLeads + fedLeads;
+      // Replacements are keyed to a project id the same way fed batches are, so
+      // a name-keyed fallback row gets 0 rather than a guessed match.
+      const replacedLeads = r.projectId ? replaced[r.projectId] || 0 : 0;
       return {
         ...r,
         fedLeads,
         totalLeads: total,
+        replacedLeads,
+        // What the client is billed for. Floored at 0: a batch dated inside the
+        // range against a project whose delivery fell outside it could
+        // otherwise print a negative count.
+        billableLeads: Math.max(0, total - replacedLeads),
         // CPL is cost per META lead — spend buys Meta leads, fed leads are
         // uploaded separately — so it must NOT be divided by the total.
         cpl: r.metaLeads > 0 ? r.spend / r.metaLeads : null,
@@ -357,11 +406,17 @@ export default function CMDashboard() {
     const rows = projectLedger();
     let metaLeads = 0;
     let fedLeads = 0;
+    let replacedLeads = 0;
+    let billableLeads = 0;
     let spend = 0;
     let budget = 0;
     for (const r of rows) {
       metaLeads += r.metaLeads;
       fedLeads += r.fedLeads;
+      replacedLeads += r.replacedLeads;
+      // Σ of the per-row floored figures, so the footer equals the sum of the
+      // Billable column rather than a separately-derived number.
+      billableLeads += r.billableLeads;
       spend += r.spend;
       budget += r.budget;
     }
@@ -369,6 +424,8 @@ export default function CMDashboard() {
       metaLeads,
       fedLeads,
       totalLeads: metaLeads + fedLeads,
+      replacedLeads,
+      billableLeads,
       spend,
       budget,
       cpl: metaLeads > 0 ? spend / metaLeads : null,
@@ -934,6 +991,13 @@ export default function CMDashboard() {
                 <th class="p-3 text-right">Meta Leads</th>
                 <th class="p-3 text-right">Fed Leads</th>
                 <th class="p-3 text-right">Total (incl. fed)</th>
+                {/* Total → Replaced → Billable reads as one progression */}
+                <Show when={showReplaced()}>
+                  <th class="p-3 text-right text-[#AC2334] dark:text-red-400">
+                    Replaced
+                  </th>
+                  <th class="p-3 text-right">Billable</th>
+                </Show>
                 <th class="p-3 text-right">Spend</th>
                 <th class="p-3 text-right">CPL</th>
               </tr>
@@ -946,7 +1010,7 @@ export default function CMDashboard() {
                   <For each={Array(5).fill(0)}>
                     {() => (
                       <tr class="border-t border-[#E2E8F1] dark:border-gray-700 animate-pulse">
-                        <For each={Array(8).fill(0)}>
+                        <For each={Array(ledgerColCount()).fill(0)}>
                           {() => (
                             <td class="p-3">
                               <div class="h-4 w-20 bg-gray-200 dark:bg-gray-700 rounded"></div>
@@ -991,6 +1055,15 @@ export default function CMDashboard() {
                       <td class="px-3 py-2.5 text-right font-bold text-[#14233A] dark:text-white whitespace-nowrap">
                         {fmtNum(p.totalLeads)}
                       </td>
+                      {/* Replaced → Billable — credited back, then charged */}
+                      <Show when={showReplaced()}>
+                        <td class="px-3 py-2.5 text-right font-semibold text-[#AC2334] dark:text-red-400 whitespace-nowrap">
+                          {fmtReplaced(p.replacedLeads)}
+                        </td>
+                        <td class="px-3 py-2.5 text-right font-bold text-[#14233A] dark:text-white whitespace-nowrap">
+                          {fmtNum(p.billableLeads)}
+                        </td>
+                      </Show>
                       <td class="px-3 py-2.5 text-right text-[#54657E] dark:text-gray-300 whitespace-nowrap">
                         {fmtMoney(p.spend)}
                       </td>
@@ -1004,7 +1077,7 @@ export default function CMDashboard() {
                 <Show when={projectLedger().length === 0}>
                   <tr>
                     <td
-                      colspan="8"
+                      colspan={ledgerColCount()}
                       class="py-12 text-center text-[#8593A8] dark:text-gray-500"
                     >
                       No projects to show.
@@ -1030,6 +1103,14 @@ export default function CMDashboard() {
                     <td class="px-3 py-3 text-right">
                       {fmtNum(projectTotals().totalLeads)}
                     </td>
+                    <Show when={showReplaced()}>
+                      <td class="px-3 py-3 text-right text-[#AC2334] dark:text-red-400">
+                        {fmtReplaced(projectTotals().replacedLeads)}
+                      </td>
+                      <td class="px-3 py-3 text-right">
+                        {fmtNum(projectTotals().billableLeads)}
+                      </td>
+                    </Show>
                     <td class="px-3 py-3 text-right">
                       {fmtMoney(projectTotals().spend)}
                     </td>

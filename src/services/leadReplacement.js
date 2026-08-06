@@ -184,6 +184,47 @@ export const fetchAllReplacementBatches = async ({ clientNomen } = {}) => {
   return all;
 };
 
+// ── Per-project roll-up (mirrors fedLeadsByProject) ──────────────────────────
+// Replacements are recorded against a PROJECT, exactly like fed batches, so the
+// project ledger is the level they can be shown at truthfully. These two
+// helpers deliberately mirror services/fedLeads.js one for one — same day rule,
+// same open-range convention, same revoked rule — so a batch can't land on a
+// different day here than it does in the fed column beside it.
+
+// The day a batch belongs to. received_date is what the operator recorded the
+// replacement against; created_at is merely when they typed it in, so it is the
+// fallback, never the primary.
+export const replacementDay = (b) =>
+  b?.received_date || b?.created_at?.split("T")[0] || null;
+
+// A revoked batch was reversed: its leads go back to being billable and must
+// not be counted anywhere. Compared against `true` rather than truthiness — a
+// MISSING flag must not read as revoked.
+export const isLiveReplacement = (b) => b?.is_revoked !== true;
+
+// True when a batch's effective day falls inside [from, to] (inclusive, both
+// "YYYY-MM-DD"). An open range (either bound missing) means "no date filter" —
+// the same convention the dashboards use for an un-set calendar picker.
+const replacementInRange = (b, from, to) => {
+  if (!from || !to) return true;
+  const day = replacementDay(b);
+  return !!day && day >= from && day <= to;
+};
+
+// { [projectId]: replacedLeads } for the range. Revoked batches excluded.
+// Keys are strings — read them with String(projectId).
+export const replacedLeadsByProject = (batches, from, to) => {
+  const out = {};
+  for (const b of batches ?? []) {
+    if (!isLiveReplacement(b) || !replacementInRange(b, from, to)) continue;
+    const pid = b?.project ?? b?.project_id;
+    if (pid == null) continue;
+    const key = String(pid);
+    out[key] = (out[key] || 0) + (Number(b.replaced_count) || 0);
+  }
+  return out;
+};
+
 // POST /leads/replacement-batches/{id}/revoke/ — admin only.
 export const revokeReplacementBatch = async (id, revokeReason) => {
   return await api(`/leads/replacement-batches/${id}/revoke/`, {
