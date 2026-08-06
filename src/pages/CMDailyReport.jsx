@@ -38,6 +38,23 @@ const num = (v) => (Number(v) || 0).toLocaleString("en-IN");
 // rather than "₹0.00" so it reads as "no premium attribution" not "free".
 const fmtPrem = (v) => (v == null ? "—" : fmt(v));
 
+// Whole-number read that keeps "absent" absent. A missing count must NOT
+// collapse to 0 — "the backend didn't send it" and "nothing was replaced" are
+// different facts, and only the second one is safe to print as a number.
+const intOrNull = (v) => {
+  if (v === undefined || v === null || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.round(n) : null;
+};
+
+// Replaced count for display: em dash when absent, "−N" when there is one (it's
+// a deduction), plain "0" when the backend explicitly says none.
+const fmtReplaced = (v) =>
+  v == null ? "—" : v > 0 ? `−${Number(v).toLocaleString("en-IN")}` : "0";
+
+// Billable count for display: em dash when absent.
+const fmtCount = (v) => (v == null ? "—" : Number(v).toLocaleString("en-IN"));
+
 const fmtDate = (dateStr) => {
   if (!dateStr) return "—";
   const d = new Date(dateStr.includes("T") ? dateStr : dateStr + "T00:00:00");
@@ -286,6 +303,19 @@ export default function CMDailyReport() {
   const clientType = () => (report()?.client?.client_type || "").toLowerCase();
   const iscpl = () => clientType() === "cpl";
 
+  // ── Lead replacement (Replaced / Billable) ────────────────────────────────
+  // The hierarchy projects endpoint now carries replaced_leads / billable_leads
+  // per project row. Replacements apply to CPL and hybrid clients only — a
+  // retainer row comes back 0/absent, so the columns stay off for them rather
+  // than printing a column of zeros that can never be anything else. We also
+  // require at least one row to actually carry the field, so a client whose
+  // rows predate the backend change doesn't get two empty columns.
+  const isReplaceableType = () =>
+    clientType() === "cpl" || clientType() === "hybrid";
+  const showReplaced = () =>
+    isReplaceableType() &&
+    reportRows().some((r) => r.replacedLeads != null || r.billableLeads != null);
+
   // Raw (agency-cost) columns render — on-screen AND in every download — only
   // when the "Include raw" toggle is on. Off → client-facing report (no raw).
   const showRaw = () => includeRaw();
@@ -473,6 +503,17 @@ export default function CMDailyReport() {
           prem.leads > 0
             ? parseFloat((prem.spend / prem.leads).toFixed(2))
             : null;
+        // Lead replacement — served per project row. Read from the row itself
+        // first, then the raw / client_facing number sets, so a field that
+        // lands in a different block than expected still renders. Absent stays
+        // null (→ "—"), never 0: "no data" and "nothing replaced" are different
+        // statements and a 0 here would read as the latter.
+        const replacedLeads = intOrNull(
+          p.replaced_leads ?? raw.replaced_leads ?? billed.replaced_leads,
+        );
+        const billableLeads = intOrNull(
+          p.billable_leads ?? raw.billable_leads ?? billed.billable_leads,
+        );
         return {
           projectId: p.project_id,
           projectName: p.project_name,
@@ -480,6 +521,8 @@ export default function CMDailyReport() {
           leads,
           fedLeads,
           totalLeads: leads + fedLeads,
+          replacedLeads,
+          billableLeads,
           cpl,
           premiumCpl,
           premiumSpend: prem.spend,
@@ -535,12 +578,25 @@ export default function CMDailyReport() {
       premiumLeads > 0
         ? parseFloat((premiumSpend / premiumLeads).toFixed(2))
         : null;
+    // Replacement totals — summed only over the rows that actually carry the
+    // field, and null when none do, so a partial payload can't understate as a
+    // confident 0.
+    const replacedRows = rows.filter((r) => r.replacedLeads != null);
+    const totalReplaced = replacedRows.length
+      ? replacedRows.reduce((s, r) => s + r.replacedLeads, 0)
+      : null;
+    const billableRows = rows.filter((r) => r.billableLeads != null);
+    const totalBillable = billableRows.length
+      ? billableRows.reduce((s, r) => s + r.billableLeads, 0)
+      : null;
     return {
       totalLeads,
       totalFedLeads,
       // Total = Meta + fed. This is the figure that has to match what the
       // client sees on their own dashboard for the same client and range.
       totalAllLeads: totalLeads + totalFedLeads,
+      totalReplaced,
+      totalBillable,
       totalSpent,
       totalBilled,
       totalBilledIncl,
@@ -583,6 +639,7 @@ export default function CMDailyReport() {
     const cols = ["Date", "Project"];
     if (showRaw()) cols.push("Meta Leads", "Fed Leads");
     cols.push("Total Leads");
+    if (showReplaced()) cols.push("Replaced", "Billable");
     if (showRaw()) cols.push("Raw CPL");
     cols.push("Premium CPL");
     if (!iscpl()) {
@@ -598,6 +655,10 @@ export default function CMDailyReport() {
     const base = [dateCellLabel(), r.projectName];
     if (showRaw()) base.push(r.leads, r.fedLeads);
     base.push(r.totalLeads);
+    // Positive integers here (not the "−N" display form) so the column stays
+    // sum-able in a spreadsheet; absent stays blank, never 0.
+    if (showReplaced())
+      base.push(r.replacedLeads ?? "", r.billableLeads ?? "");
     if (showRaw()) base.push(r.cpl);
     base.push(r.premiumCpl ?? "");
     if (!iscpl()) {
@@ -612,6 +673,8 @@ export default function CMDailyReport() {
     const base = ["TOTAL", ""];
     if (showRaw()) base.push(t.totalLeads, t.totalFedLeads);
     base.push(t.totalAllLeads);
+    if (showReplaced())
+      base.push(t.totalReplaced ?? "", t.totalBillable ?? "");
     if (showRaw()) base.push(t.avgCPL);
     base.push(t.avgPremiumCPL ?? "");
     if (!iscpl()) {
@@ -673,6 +736,12 @@ export default function CMDailyReport() {
     XLSX.writeFile(wb, `${exportFileBase()}.xlsx`);
   };
 
+  // Hidden PDF template width. The template is captured as an image and scaled
+  // to the page, so the box has to be wide enough for the columns actually
+  // rendered — at 900px the two extra replacement columns squeezed the money
+  // headers into three-line wraps. Widen only when they're on.
+  const pdfWidth = () => (showReplaced() ? 1060 : 900);
+
   const downloadPDF = async () => {
     const el = document.getElementById("cm-pdf-daily-report");
     if (!el) return;
@@ -680,6 +749,10 @@ export default function CMDailyReport() {
       scale: 2,
       backgroundColor: "#ffffff",
       useCORS: true,
+      // Belt-and-braces once the template can be wider than 900px: capture the
+      // element's real width instead of the viewport's, so nothing is clipped.
+      width: el.scrollWidth,
+      windowWidth: el.scrollWidth,
     });
     const imgData = canvas.toDataURL("image/jpeg", 0.85);
     const pdf = new jsPDF({
@@ -721,11 +794,12 @@ export default function CMDailyReport() {
 
   // Column span for empty/placeholder table rows.
   // Base: Date, Project, Total Leads, Premium CPL. Meta Leads / Fed Leads / Raw
-  // CPL (+ Raw Amount Spent when !cpl) ride showRaw(); Spent and Client Billed
-  // ride their own per-column toggles.
+  // CPL (+ Raw Amount Spent when !cpl) ride showRaw(); Replaced + Billable ride
+  // showReplaced(); Spent and Client Billed ride their own per-column toggles.
   const colCount = () => {
     let n = 4;
     if (showRaw()) n += 3;
+    if (showReplaced()) n += 2;
     if (!iscpl()) {
       if (showRaw()) n += 1;
       if (showSpent()) n += 1;
@@ -1140,6 +1214,11 @@ export default function CMDailyReport() {
                   <th class="p-3">Fed Leads</th>
                 </Show>
                 <th class="p-3">Total Leads</th>
+                {/* Total Leads → Replaced → Billable reads as one progression */}
+                <Show when={showReplaced()}>
+                  <th class="p-3 text-[#AC2334] dark:text-red-400">Replaced</th>
+                  <th class="p-3">Billable</th>
+                </Show>
                 <Show when={showRaw()}>
                   <th class="p-3">Raw CPL</th>
                 </Show>
@@ -1224,6 +1303,14 @@ export default function CMDailyReport() {
                       <td class="p-3 font-bold text-gray-900 dark:text-white">
                         {row.totalLeads}
                       </td>
+                      <Show when={showReplaced()}>
+                        <td class="p-3 font-semibold text-[#AC2334] dark:text-red-400">
+                          {fmtReplaced(row.replacedLeads)}
+                        </td>
+                        <td class="p-3 font-bold text-gray-900 dark:text-white">
+                          {fmtCount(row.billableLeads)}
+                        </td>
+                      </Show>
                       <Show when={showRaw()}>
                         <td class="p-3 text-purple-700 dark:text-purple-300">
                           {fmt(row.cpl)}
@@ -1273,6 +1360,14 @@ export default function CMDailyReport() {
                   <td class="p-3 text-gray-900 dark:text-white font-bold text-base">
                     {totals().totalAllLeads}
                   </td>
+                  <Show when={showReplaced()}>
+                    <td class="p-3 text-[#AC2334] dark:text-red-400 font-bold">
+                      {fmtReplaced(totals().totalReplaced)}
+                    </td>
+                    <td class="p-3 text-gray-900 dark:text-white font-bold text-base">
+                      {fmtCount(totals().totalBillable)}
+                    </td>
+                  </Show>
                   <Show when={showRaw()}>
                     <td class="p-3 text-purple-700 dark:text-purple-300 font-bold">
                       {fmt(totals().avgCPL)}
@@ -1507,6 +1602,14 @@ export default function CMDailyReport() {
                     <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
                       Total Leads
                     </th>
+                    <Show when={showReplaced()}>
+                      <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
+                        Replaced
+                      </th>
+                      <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
+                        Billable
+                      </th>
+                    </Show>
                     <Show when={showRaw()}>
                       <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
                         Raw CPL
@@ -1563,6 +1666,14 @@ export default function CMDailyReport() {
                         <td class="px-4 py-3 text-center font-bold text-[#1a1a1a] text-md border-r border-[rgba(123,28,28,0.1)]">
                           {row.totalLeads}
                         </td>
+                        <Show when={showReplaced()}>
+                          <td class="px-4 py-3 text-center font-semibold text-[#AC2334] text-md border-r border-[rgba(123,28,28,0.1)]">
+                            {fmtReplaced(row.replacedLeads)}
+                          </td>
+                          <td class="px-4 py-3 text-center font-bold text-[#1a1a1a] text-md border-r border-[rgba(123,28,28,0.1)]">
+                            {fmtCount(row.billableLeads)}
+                          </td>
+                        </Show>
                         <Show when={showRaw()}>
                           <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
                             {fmt(row.cpl)}
@@ -1609,6 +1720,14 @@ export default function CMDailyReport() {
                     <td class="px-4 py-3 text-center text-white font-bold text-sm border-r border-white/10">
                       {totals().totalAllLeads}
                     </td>
+                    <Show when={showReplaced()}>
+                      <td class="px-4 py-3 text-center text-white font-bold text-sm border-r border-white/10">
+                        {fmtReplaced(totals().totalReplaced)}
+                      </td>
+                      <td class="px-4 py-3 text-center text-white font-bold text-sm border-r border-white/10">
+                        {fmtCount(totals().totalBillable)}
+                      </td>
+                    </Show>
                     <Show when={showRaw()}>
                       <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
                         {fmt(totals().avgCPL)}
@@ -1658,9 +1777,9 @@ export default function CMDailyReport() {
       <Show when={report()}>
         <div
           id="cm-pdf-daily-report"
-          style="position:absolute;left:-9999px;top:0;width:900px;"
+          style={`position:absolute;left:-9999px;top:0;width:${pdfWidth()}px;`}
         >
-          <div style="width:900px;background:#ffffff;font-family:Arial,sans-serif;position:relative;box-sizing:border-box;border:1px solid rgba(123,28,28,0.15);border-radius:12px;overflow:hidden;">
+          <div style={`width:${pdfWidth()}px;background:#ffffff;font-family:Arial,sans-serif;position:relative;box-sizing:border-box;border:1px solid rgba(123,28,28,0.15);border-radius:12px;overflow:hidden;`}>
             {/* HEADER */}
             <div style="background:#ffffff;border-bottom:3px solid #7B1C1C;padding:28px 40px 24px;position:relative;display:flex;align-items:center;gap:20px;">
               <div style="position:absolute;top:0;left:0;right:0;height:4px;background:#7B1C1C;" />
@@ -1738,6 +1857,14 @@ export default function CMDailyReport() {
                       <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
                         Total Leads
                       </th>
+                      <Show when={showReplaced()}>
+                        <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
+                          Replaced
+                        </th>
+                        <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
+                          Billable
+                        </th>
+                      </Show>
                       <Show when={showRaw()}>
                         <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
                           Raw CPL
@@ -1790,6 +1917,14 @@ export default function CMDailyReport() {
                         <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:700;color:#1a1a1a;border-right:1px solid rgba(123,28,28,0.1);">
                           {row.totalLeads}
                         </td>
+                        <Show when={showReplaced()}>
+                          <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:600;color:#AC2334;border-right:1px solid rgba(123,28,28,0.1);">
+                            {fmtReplaced(row.replacedLeads)}
+                          </td>
+                          <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:700;color:#1a1a1a;border-right:1px solid rgba(123,28,28,0.1);">
+                            {fmtCount(row.billableLeads)}
+                          </td>
+                        </Show>
                         <Show when={showRaw()}>
                           <td style="padding:10px 14px;text-align:center;font-size:14px;color:#333;border-right:1px solid rgba(123,28,28,0.1);">
                             {fmt(row.cpl)}
@@ -1833,6 +1968,14 @@ export default function CMDailyReport() {
                       <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
                         {totals().totalAllLeads}
                       </td>
+                      <Show when={showReplaced()}>
+                        <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
+                          {fmtReplaced(totals().totalReplaced)}
+                        </td>
+                        <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
+                          {fmtCount(totals().totalBillable)}
+                        </td>
+                      </Show>
                       <Show when={showRaw()}>
                         <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
                           {fmt(totals().avgCPL)}
