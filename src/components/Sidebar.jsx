@@ -239,6 +239,16 @@ export default function Sidebar() {
             ),
           },
           {
+            // Engagement status (active / hold / completed) — the manual label
+            // the team sets, not the account's is_active flag.
+            name: "Client Status",
+            path: "/client-status",
+            roles: ["admin", "campaign_manager"],
+            icon: () => (
+              <SmallIcon d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            ),
+          },
+          {
             name: "Client Nomen",
             path: "/client-nomen",
             roles: ["admin", "campaign_manager"],

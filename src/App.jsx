@@ -29,6 +29,7 @@ import Clients from "./pages/admin/client/Clients";
 import ImpersonationBanner from "./pages/admin/component/ImpersonationBanner";
 import ProjectDisplayConfig from "./pages/admin/client/ProjectDisplayConfig";
 import ClientNomen from "./pages/admin/client/ClientNomen";
+import ClientStatusBoard from "./pages/clients/ClientStatusBoard";
 import Campaigns from "./pages/admin/campaigns/Campaigns";
 import AdAccounts from "./pages/admin/client/AdAccounts";
 import AdAccountClients from "./pages/admin/client/AdAccountClients";
@@ -351,6 +352,17 @@ function App() {
               component={() => (
                 <AdminRoute roles={["admin", "campaign_manager"]}>
                   <ClientNomen />
+                </AdminRoute>
+              )}
+            />
+            {/* Engagement-status board. Open to admin + CM; the endpoint scopes
+                the roster itself (admin: all, CM: their assigned clients) and
+                403s a CM who tries to set a status outside their book. */}
+            <Route
+              path="/client-status"
+              component={() => (
+                <AdminRoute roles={["admin", "campaign_manager"]}>
+                  <ClientStatusBoard />
                 </AdminRoute>
               )}
             />

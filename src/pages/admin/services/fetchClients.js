@@ -4,18 +4,22 @@ import { api } from "../../../api/api";
 // convention of every other endpoint here (`/path/?query`) and avoids an
 // APPEND_SLASH 301 round-trip. (The redirect preserves the query string either
 // way, so this is convention/efficiency, not correctness.)
-export const fetchClients = async (page = 1, pageSize = 20) => {
-  return await api(
-    `/clients/admin/clients/?page=${page}&page_size=${pageSize}`,
-    { method: "GET" },
-  );
+// `status` narrows to one engagement bucket (active | hold | completed | unset)
+// server-side; omit it — or pass "all" — for every client. It is the same param
+// the status board accepts, so the two surfaces filter identically.
+export const fetchClients = async (page = 1, pageSize = 20, status) => {
+  let url = `/clients/admin/clients/?page=${page}&page_size=${pageSize}`;
+  if (status && status !== "all") {
+    url += `&status=${encodeURIComponent(status)}`;
+  }
+  return await api(url, { method: "GET" });
 };
 
 // Sweep every page and return the flat client list. Used where we need the whole
 // roster in one shot (e.g. the authoritative is_active / client_type set that the
 // admin "Campaign Managers' Clients" section joins against the per-CM own-client
 // lists). Large page size keeps this to as few round-trips as possible.
-export const fetchAllAdminClients = async () => {
+export const fetchAllAdminClients = async ({ status } = {}) => {
   let page = 1;
   let all = [];
   let total = Infinity;
@@ -29,7 +33,7 @@ export const fetchAllAdminClients = async () => {
   // the size the backend ACTUALLY applied so offsets line up even when it caps
   // our request. Guards: stop on an empty page, and a hard page cap.
   while (all.length < total) {
-    const res = await fetchClients(page, pageSize);
+    const res = await fetchClients(page, pageSize, status);
     const batch = Array.isArray(res?.data) ? res.data : [];
     if (batch.length === 0) break;
     all = [...all, ...batch];

@@ -19,6 +19,14 @@ import {
 import { setProjectsCache } from "../../../cacheStore/appStore";
 import Avatar from "../../../components/common/Avatar";
 import RowsPerPageSelect from "../../../components/common/RowsPerPageSelect";
+import ClientStatusControl from "../../../components/clientStatus/ClientStatusControl";
+import ClientStatusHistoryDrawer from "../../../components/clientStatus/ClientStatusHistoryDrawer";
+import {
+  fetchStatusBoard,
+  STATUS_FILTERS,
+  STATUS_DOT,
+  normaliseStatus,
+} from "../../../services/clientStatus";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -99,6 +107,11 @@ const adaptHierarchyClient = (c) => ({
   client_type: c.client_type ?? null,
   is_active: c.is_active ?? c.has_client_login ?? true,
   created_at: c.created_at ?? null,
+  // Client PK, served by the hierarchy as `client_id`. DISTINCT from `id`
+  // above, which is the NOMEN id on this adapted row — the status PATCH is
+  // keyed by PK, and sending a nomen would patch a different client.
+  client_pk: c.client_id ?? null,
+  engagement_status: c.engagement_status ?? null,
 });
 
 export default function Clients() {
@@ -110,6 +123,70 @@ export default function Clients() {
   const [assignFilter, setAssignFilter] = createSignal("all"); // all | assigned | unassigned
   const [cmFilter, setCmFilter] = createSignal("all"); // "all" | manager_email
   const [activeFilter, setActiveFilter] = createSignal("All");
+  // Engagement status (manual label) — NOT the is_active flag above.
+  const [statusFilter, setStatusFilter] = createSignal("all");
+  const [historyFor, setHistoryFor] = createSignal(null);
+
+  // ── Engagement status ─────────────────────────────────────────────────────
+  // The admin client rows now carry `engagement_status`, but not the latest
+  // change (reason / who / when) — and the CM path here reads the hierarchy,
+  // which carries neither. The status board serves both, scoped server-side to
+  // whatever the caller may see, so ONE call fills the column for admin and CM
+  // alike and gives us the reason caption the badge needs.
+  const [statusBoard, { mutate: mutateBoard }] = createResource(async () => {
+    try {
+      return await fetchStatusBoard();
+    } catch (err) {
+      console.error("Clients: status board failed", err);
+      return { counts: {}, clients: [] };
+    }
+  });
+
+  // Client PK (as string) → { status, change }.
+  const statusByPk = createMemo(() => {
+    const map = {};
+    for (const c of statusBoard()?.clients ?? []) {
+      map[String(c.id)] = {
+        status: c.engagement_status ?? null,
+        change: c.latest_change ?? null,
+      };
+    }
+    return map;
+  });
+
+  // The PK for a row. Admin rows come from /clients/admin/clients/ where `id`
+  // IS the PK; CM rows are adapted hierarchy rows whose `id` is the nomen, so
+  // they carry the PK separately in `client_pk`.
+  const pkOf = (c) => (isCampaignManager() ? c.client_pk : c.id);
+
+  // Board first (freshest + carries the reason), then whatever the list row
+  // itself reported.
+  const statusOf = (c) => {
+    const pk = pkOf(c);
+    const fromBoard = pk != null ? statusByPk()[String(pk)] : null;
+    return fromBoard?.status ?? c.engagement_status ?? null;
+  };
+  const changeOf = (c) => {
+    const pk = pkOf(c);
+    return pk != null ? (statusByPk()[String(pk)]?.change ?? null) : null;
+  };
+
+  // Keep the board in sync after an inline change so the badge, the caption and
+  // the status filter all agree without a refetch.
+  const applyStatusChange = (pk, { status, change }) => {
+    mutateBoard((prev) => {
+      const clients = prev?.clients ?? [];
+      const hit = clients.some((c) => String(c.id) === String(pk));
+      const next = hit
+        ? clients.map((c) =>
+            String(c.id) === String(pk)
+              ? { ...c, engagement_status: status, latest_change: change }
+              : c,
+          )
+        : [...clients, { id: pk, engagement_status: status, latest_change: change }];
+      return { counts: prev?.counts ?? {}, clients: next };
+    });
+  };
 
   // Toggle a client-type chip; never allow an empty selection.
   const toggleClientType = (key) => {
@@ -309,6 +386,15 @@ export default function Clients() {
     if (activeFilter() === "Yes") data = data.filter((c) => c.is_active);
     else if (activeFilter() === "No") data = data.filter((c) => !c.is_active);
 
+    // Engagement-status filter. Applied client-side against the resolved
+    // status, like every other filter on this page — the full roster is already
+    // in memory, so a ?status= round-trip would only add latency and would not
+    // work for the CM path (hierarchy-sourced rows). fetchClients() does accept
+    // the param for callers that fetch per-status.
+    if (statusFilter() !== "all") {
+      data = data.filter((c) => normaliseStatus(statusOf(c)) === statusFilter());
+    }
+
     data.sort((a, b) => {
       let va = a[sortKey()],
         vb = b[sortKey()];
@@ -346,7 +432,7 @@ export default function Clients() {
   // Snap back to page 1 when the result set changes underneath us.
   createEffect(
     on(
-      [search, clientTypes, assignFilter, cmFilter, activeFilter],
+      [search, clientTypes, assignFilter, cmFilter, activeFilter, statusFilter],
       () => setPage(1),
       { defer: true },
     ),
@@ -480,6 +566,39 @@ export default function Clients() {
         </div>
       </div>
 
+      {/* ── Engagement-status chips ──
+          The manual active/hold/completed label, deliberately in its own row and
+          worded "Engagement" so it never reads as the is_active column. */}
+      <div class="flex flex-wrap items-center gap-1.5 mb-4">
+        <span class="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mr-1">
+          Engagement
+        </span>
+        <div class="flex flex-wrap items-center gap-1.5">
+          <For each={STATUS_FILTERS}>
+            {(f) => {
+              const on = () => statusFilter() === f.key;
+              return (
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter(f.key)}
+                  aria-pressed={on()}
+                  class={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[13px] font-semibold border transition-colors whitespace-nowrap ${
+                    on()
+                      ? "bg-[#14233A] text-white border-[#14233A]"
+                      : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-[#14233A]/40"
+                  }`}
+                >
+                  <Show when={f.key !== "all"}>
+                    <span class={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[f.key]}`} />
+                  </Show>
+                  {f.label}
+                </button>
+              );
+            }}
+          </For>
+        </div>
+      </div>
+
       {/* ── Filters ── */}
       <div
         class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200
@@ -574,6 +693,7 @@ export default function Clients() {
             setAssignFilter("all");
             setCmFilter("all");
             setActiveFilter("All");
+            setStatusFilter("all");
             setSortKey("created_at");
             setSortDir("desc");
           }}
@@ -637,6 +757,8 @@ export default function Clients() {
               >
                 Client Type {sortIcon("client_type")}
               </th>
+              {/* Engagement status — the manual label, distinct from Is Active */}
+              <th class="p-3 text-left whitespace-nowrap">Status</th>
               <th class="p-3 text-center whitespace-nowrap">Is Active</th>
               <th
                 class="p-3 text-left cursor-pointer hover:text-blue-900 whitespace-nowrap"
@@ -644,6 +766,7 @@ export default function Clients() {
               >
                 Created At {sortIcon("created_at")}
               </th>
+              <th class="p-3 text-right whitespace-nowrap">History</th>
             </tr>
           </thead>
 
@@ -672,6 +795,10 @@ export default function Clients() {
                       <td class="p-3 text-center">
                         <div class="h-5 w-16 bg-gray-200 dark:bg-gray-700 rounded-full mx-auto" />
                       </td>
+                      {/* Engagement status */}
+                      <td class="p-3">
+                        <div class="h-5 w-20 bg-gray-200 dark:bg-gray-700 rounded-full" />
+                      </td>
                       <td class="p-3 text-center">
                         <div class="h-5 w-5 bg-gray-200 dark:bg-gray-700 rounded-full mx-auto" />
                       </td>
@@ -680,6 +807,9 @@ export default function Clients() {
                       </td>
                       <td class="p-3 text-center">
                         <div class="h-8 w-20 bg-gray-200 dark:bg-gray-700 rounded-lg mx-auto" />
+                      </td>
+                      <td class="p-3 text-right">
+                        <div class="h-3 w-10 bg-gray-200 dark:bg-gray-700 rounded ml-auto" />
                       </td>
                     </tr>
                   )}
@@ -774,6 +904,21 @@ export default function Clients() {
                       </span>
                     </td>
 
+                    {/* Engagement status — clickable badge + latest reason.
+                        stopPropagation: the row itself navigates to the client
+                        dashboard, and opening the popover must not do that. */}
+                    <td class="p-3" onClick={(e) => e.stopPropagation()}>
+                      <ClientStatusControl
+                        clientId={pkOf(client)}
+                        status={statusOf(client)}
+                        latestChange={changeOf(client)}
+                        showCaption
+                        onChanged={(payload) =>
+                          applyStatusChange(pkOf(client), payload)
+                        }
+                      />
+                    </td>
+
                     {/* Is Active */}
                     <td class="p-3 text-center">
                       {client.is_active ? (
@@ -811,6 +956,32 @@ export default function Clients() {
                     <td class="p-3 text-gray-500 dark:text-gray-400 whitespace-nowrap">
                       {fmt(client.created_at)}
                     </td>
+
+                    {/* Status history */}
+                    <td
+                      class="p-3 text-right whitespace-nowrap"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Show
+                        when={pkOf(client) != null}
+                        fallback={
+                          <span class="text-gray-300 dark:text-gray-600">—</span>
+                        }
+                      >
+                        <button
+                          onClick={() =>
+                            setHistoryFor({
+                              id: pkOf(client),
+                              label:
+                                client.client_nomen_name || client.email,
+                            })
+                          }
+                          class="text-xs font-semibold text-[#3E6FB0] hover:underline"
+                        >
+                          View
+                        </button>
+                      </Show>
+                    </td>
                   </tr>
                 )}
               </For>
@@ -819,7 +990,7 @@ export default function Clients() {
               <Show when={filtered().length === 0}>
                 <tr>
                   <td
-                    colspan={isCampaignManager() ? 7 : 8}
+                    colspan={isCampaignManager() ? 9 : 10}
                     class="py-16 text-center text-gray-400 dark:text-gray-500"
                   >
                     <svg
@@ -937,6 +1108,13 @@ export default function Clients() {
           </button>
         </div>
       </div>
+
+      <ClientStatusHistoryDrawer
+        open={!!historyFor()}
+        clientId={historyFor()?.id}
+        clientLabel={historyFor()?.label}
+        onClose={() => setHistoryFor(null)}
+      />
     </div>
   );
 }

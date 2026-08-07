@@ -14,6 +14,14 @@ import {
 } from "../../../services/cmAdmin";
 import { fetchAllAdminClients } from "../services/fetchClients";
 import Avatar from "../../../components/common/Avatar";
+import ClientStatusControl from "../../../components/clientStatus/ClientStatusControl";
+import {
+  fetchStatusBoard,
+  STATUS_FILTERS,
+  STATUS_DOT,
+  STATUS_UNSET,
+  normaliseStatus,
+} from "../../../services/clientStatus";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ADMIN · Campaign Manager's Clients  (route: /campaign-manager-clients)
@@ -132,6 +140,9 @@ export default function CampaignManagerClients() {
   const [month, setMonth] = createSignal(currentMonthKey());
   const [clientTypes, setClientTypes] = createSignal(DEFAULT_CLIENT_TYPES);
   const [query, setQuery] = createSignal("");
+  // Engagement status (manual active/hold/completed label) — NOT is_active,
+  // which this page already uses to decide which clients appear at all.
+  const [statusFilter, setStatusFilter] = createSignal("all");
 
   // Toggle a client-type pill; never allow an empty selection.
   const toggleClientType = (key) => {
@@ -194,6 +205,84 @@ export default function CampaignManagerClients() {
     return set;
   });
 
+  // ── Engagement status ─────────────────────────────────────────────────────
+  // The admin client rows carry `engagement_status`, but not the latest change
+  // (reason / who / when) and not in a shape keyed for these cards. The status
+  // board serves both, keyed by client_nomen — the same key this page already
+  // joins its own three sources on — and carries the Client PK the status PATCH
+  // needs. One call, loaded alongside the roster.
+  const [statusBoard, { mutate: mutateBoard }] = createResource(
+    () => (allowed() ? "load" : null),
+    async () => {
+      try {
+        return await fetchStatusBoard();
+      } catch (err) {
+        console.error("[CMClients] status board failed:", err);
+        return { counts: {}, clients: [] };
+      }
+    },
+  );
+
+  // nomen (as string) → { pk, status, change }
+  const statusByNomen = createMemo(() => {
+    const map = {};
+    for (const c of statusBoard()?.clients ?? []) {
+      map[String(c.client_nomen)] = {
+        pk: c.id,
+        status: c.engagement_status ?? null,
+        change: c.latest_change ?? null,
+      };
+    }
+    return map;
+  });
+
+  // Falls back to the admin roster's own engagement_status when the board has
+  // no row for that nomen, so the badge still reads correctly even if the two
+  // lists disagree on membership.
+  const adminStatusByNomen = createMemo(() => {
+    const map = {};
+    for (const c of adminClients() ?? []) {
+      map[String(c.client_nomen)] = { pk: c.id, status: c.engagement_status ?? null };
+    }
+    return map;
+  });
+
+  const statusEntry = (nomenId) => {
+    const key = String(nomenId);
+    const board = statusByNomen()[key];
+    const admin = adminStatusByNomen()[key];
+    return {
+      pk: board?.pk ?? admin?.pk ?? null,
+      status: board?.status ?? admin?.status ?? null,
+      change: board?.change ?? null,
+    };
+  };
+
+  // Patch the board in place after an inline change, so the badge, the caption
+  // and the status filter agree without a refetch.
+  const applyStatusChange = (nomenId, pk, { status, change }) => {
+    mutateBoard((prev) => {
+      const clients = prev?.clients ?? [];
+      const hit = clients.some((c) => String(c.client_nomen) === String(nomenId));
+      const next = hit
+        ? clients.map((c) =>
+            String(c.client_nomen) === String(nomenId)
+              ? { ...c, engagement_status: status, latest_change: change }
+              : c,
+          )
+        : [
+            ...clients,
+            {
+              id: pk,
+              client_nomen: nomenId,
+              engagement_status: status,
+              latest_change: change,
+            },
+          ];
+      return { counts: prev?.counts ?? {}, clients: next };
+    });
+  };
+
   // One card model per manager: their active clients (name + type), de-duped by
   // nomen, sorted A→Z, filtered to the selected client types.
   const cards = createMemo(() => {
@@ -201,6 +290,7 @@ export default function CampaignManagerClients() {
     const active = activeNomen();
     const types = clientTypes();
     const filterAll = allTypesSelected();
+    const wantStatus = statusFilter();
     return managers().map((m) => {
       const seen = new Set();
       const clients = (own[m.manager_id] ?? [])
@@ -208,14 +298,27 @@ export default function CampaignManagerClients() {
           const key = String(c.client_nomen_id);
           if (!active.has(key) || seen.has(key)) return false;
           if (!filterAll && !types.includes(c.client_type)) return false;
+          if (
+            wantStatus !== "all" &&
+            normaliseStatus(statusEntry(key).status) !== wantStatus
+          )
+            return false;
           seen.add(key);
           return true;
         })
-        .map((c) => ({
-          id: c.client_nomen_id,
-          name: c.client_name,
-          type: c.client_type,
-        }))
+        .map((c) => {
+          const s = statusEntry(c.client_nomen_id);
+          return {
+            id: c.client_nomen_id,
+            name: c.client_name,
+            type: c.client_type,
+            // Client PK — what the status PATCH is keyed by. Null when the
+            // client isn't on either roster; the control disables itself.
+            pk: s.pk,
+            status: s.status,
+            statusChange: s.change,
+          };
+        })
         .sort((a, b) => String(a.name).localeCompare(String(b.name)));
       return { manager: m, clients };
     });
@@ -255,6 +358,27 @@ export default function CampaignManagerClients() {
   });
 
   const grandTotalFull = () => aggCounts().total;
+
+  // Engagement tallies across every manager's active clients, de-duped by nomen
+  // (a client can appear under more than one manager) and NOT narrowed by the
+  // status filter itself — the pills must read "everything available", the same
+  // rule the client-type pills follow.
+  const statusCounts = createMemo(() => {
+    const own = ownLists() ?? {};
+    const active = activeNomen();
+    const acc = { active: 0, hold: 0, completed: 0, [STATUS_UNSET]: 0, total: 0 };
+    const seen = new Set();
+    for (const m of managers()) {
+      for (const c of own[m.manager_id] ?? []) {
+        const key = String(c.client_nomen_id);
+        if (!active.has(key) || seen.has(key)) continue;
+        seen.add(key);
+        acc[normaliseStatus(statusEntry(key).status)] += 1;
+        acc.total += 1;
+      }
+    }
+    return acc;
+  });
 
   // ── Visible cards — apply the search, drop empties, order by client count ──
   // Search matches a client name OR the manager's name; a manager-name match
@@ -413,6 +537,30 @@ export default function CampaignManagerClients() {
               </div>
             </div>
 
+            {/* Engagement-status filter */}
+            <div class="flex items-center gap-2.5 w-full sm:w-auto min-w-0">
+              <span class="hidden sm:inline text-[10.5px] font-bold uppercase tracking-[0.12em] text-gray-400">
+                Engagement
+              </span>
+              <div class="flex flex-wrap bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-[11px] p-[3px] gap-0.5">
+                <For each={STATUS_FILTERS}>
+                  {(f) => (
+                    <FilterPill
+                      active={statusFilter() === f.key}
+                      onClick={() => setStatusFilter(f.key)}
+                      label={f.label}
+                      count={
+                        f.key === "all"
+                          ? statusCounts().total
+                          : statusCounts()[f.key]
+                      }
+                      dot={f.key === "all" ? null : STATUS_DOT[f.key]}
+                    />
+                  )}
+                </For>
+              </div>
+            </div>
+
             {/* Month */}
             <div class="relative w-full sm:w-auto sm:ml-auto">
               <svg
@@ -517,7 +665,13 @@ export default function CampaignManagerClients() {
           >
             <div class="grid grid-cols-1 xl:grid-cols-2 gap-5">
               <For each={visibleCards()}>
-                {(card) => <ManagerCard card={card} searching={!!query().trim()} />}
+                {(card) => (
+                  <ManagerCard
+                    card={card}
+                    searching={!!query().trim()}
+                    onStatusChanged={applyStatusChange}
+                  />
+                )}
               </For>
             </div>
             <p class="text-[12px] text-gray-400 dark:text-gray-500 mt-6 text-center">
@@ -604,9 +758,21 @@ function ManagerCard(props) {
               <span class="text-[13.5px] font-medium text-gray-800 dark:text-gray-100 truncate">
                 {c.name}
               </span>
-              <Show when={c.type}>
-                <TypeTag type={c.type} />
-              </Show>
+              <div class="flex items-center gap-2 flex-shrink-0">
+                {/* Engagement status — click to change, reason required */}
+                <ClientStatusControl
+                  compact
+                  clientId={c.pk}
+                  status={c.status}
+                  latestChange={c.statusChange}
+                  onChanged={(payload) =>
+                    props.onStatusChanged?.(c.id, c.pk, payload)
+                  }
+                />
+                <Show when={c.type}>
+                  <TypeTag type={c.type} />
+                </Show>
+              </div>
             </div>
           )}
         </For>
