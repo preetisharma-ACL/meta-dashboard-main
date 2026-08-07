@@ -148,6 +148,20 @@ const fmtDay = (iso) => {
 
 const fmtCount = (n) => (Number(n) || 0).toLocaleString("en-IN");
 
+// Time-only stamp for the "updated at" line — the date is always today.
+const fmtClock = (d) => {
+  if (!d) return null;
+  try {
+    return new Date(d).toLocaleTimeString("en-IN", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  } catch {
+    return null;
+  }
+};
+
 // ─── Date range ───────────────────────────────────────────────────────────────
 // Both the feed and the summary take the same ?start_date=/?end_date= pair as
 // plain YYYY-MM-DD, so the presets are computed in local time and stringified
@@ -827,6 +841,20 @@ export default function Activity() {
   const [pagination, setPagination] = createSignal(null);
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal(null);
+  const [lastFetchedAt, setLastFetchedAt] = createSignal(null);
+
+  // ── Freshness key ─────────────────────────────────────────────────────────
+  // Every read on this page is keyed on this alongside its own filters, so the
+  // Refresh button below re-runs the feed, the summary and the logins tab in one
+  // go — and so nothing on an audit page can ever sit on a value it resolved to
+  // earlier. Seeded from the clock rather than 0 so a fresh mount is a fresh key
+  // even if this route is ever kept alive between navigations (today Solid
+  // Router remounts it, which is why the reads already fire on nav — this makes
+  // that guarantee independent of that behaviour).
+  const [refreshTick, setRefreshTick] = createSignal(Date.now());
+  // Increment rather than re-stamp the clock: two clicks inside the same
+  // millisecond would set an identical value, and the signal would not fire.
+  const refreshAll = () => setRefreshTick((n) => n + 1);
 
   // The one place the page's date window lives — the header control writes here
   // and both the feed and the summary read from it, so they can never disagree
@@ -867,14 +895,17 @@ export default function Activity() {
   // the feed's category/role/action/client filters deliberately don't re-scope it
   // — this is a window-level overview, not a reflection of the filtered rows.
   // Resolves to null on failure so a broken summary can never take the feed down.
-  const [summary] = createResource(dateFilters, async (range) => {
-    try {
-      return await getActivitySummary(range);
-    } catch (err) {
-      console.error("[Activity] summary load failed:", err);
-      return null;
-    }
-  });
+  const [summary] = createResource(
+    () => ({ ...dateFilters(), tick: refreshTick() }),
+    async (range) => {
+      try {
+        return await getActivitySummary(range);
+      } catch (err) {
+        console.error("[Activity] summary load failed:", err);
+        return null;
+      }
+    },
+  );
 
   // Hold the last resolved summary so changing the date range doesn't flash the
   // skeleton and jump the layout — the previous render stays, dimmed, until the
@@ -897,7 +928,8 @@ export default function Activity() {
   const onLoginsTab = () => tab() === "logins" && showLoginsTab();
 
   const [logins] = createResource(
-    () => (onLoginsTab() ? dateFilters() : false),
+    () =>
+      onLoginsTab() ? { ...dateFilters(), tick: refreshTick() } : false,
     async (range) => {
       try {
         return await getLogins(range);
@@ -968,8 +1000,9 @@ export default function Activity() {
     onCleanup(() => clearTimeout(t));
   });
 
-  // Refetch whenever page or any (debounced) filter changes.
+  // Refetch whenever page, any (debounced) filter, or the freshness key changes.
   createEffect(() => {
+    refreshTick(); // tracked: Refresh re-runs this with identical filters
     const params = {
       page: page(),
       pageSize: pageSize(),
@@ -991,6 +1024,7 @@ export default function Activity() {
         if (cancelled) return;
         setEntries(entries);
         setPagination(pagination);
+        setLastFetchedAt(Date.now());
         // Top the action dropdown up with whatever the feed actually contains,
         // so new server-side actions become filterable without a code change.
         setSeenActions((prev) => {
@@ -1064,6 +1098,12 @@ export default function Activity() {
   const hasPrev = () => pagination()?.has_prev ?? page() > 1;
   const hasNext = () => pagination()?.has_next ?? false;
 
+  // The feed comes back newest-first, so row 0 is the most recent entry that
+  // matches the current filters. Printing its timestamp next to the fetch time
+  // makes "how current is this?" answerable at a glance — the question an audit
+  // log has to answer before anything it shows can be trusted.
+  const newestEntryAt = () => (page() === 1 ? (entries()[0]?.timestamp ?? null) : null);
+
   return (
     <div class="min-h-screen bg-gray-50 dark:bg-gray-900 p-3 lg:p-8">
 
@@ -1079,8 +1119,34 @@ export default function Activity() {
         </div>
 
         {/* Date range — scopes the whole page (summary, feed and the logins tab)
-            from one place, so everything below always describes the same window. */}
+            from one place, so everything below always describes the same window.
+            Refresh sits alongside it and re-runs all three reads. */}
         <div class="flex flex-wrap items-center gap-2">
+          <button
+            onClick={refreshAll}
+            disabled={loading()}
+            title="Re-read the log from the server"
+            class="inline-flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border
+                   border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800
+                   text-gray-600 dark:text-gray-300 hover:border-purple-400
+                   disabled:opacity-50 disabled:cursor-default transition-colors"
+          >
+            <svg
+              class={`w-3.5 h-3.5 ${loading() ? "animate-spin" : ""}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
+            {loading() ? "Refreshing…" : "Refresh"}
+          </button>
+
           <select
             value={rangePreset()}
             onChange={(e) => pickPreset(e.target.value)}
@@ -1347,9 +1413,22 @@ export default function Activity() {
           </button>
         </Show>
 
-        <span class="ml-auto text-sm text-gray-400 dark:text-gray-500 whitespace-nowrap">
-          {total()} entr{total() !== 1 ? "ies" : "y"}
-        </span>
+        {/* Count + freshness. The newest row's own timestamp is the honest
+            answer to "is this live?" — a fetch time alone would look current
+            even if the body came from a cache. */}
+        <div class="ml-auto text-right whitespace-nowrap">
+          <span class="text-sm text-gray-400 dark:text-gray-500">
+            {total()} entr{total() !== 1 ? "ies" : "y"}
+          </span>
+          <Show when={lastFetchedAt()}>
+            <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+              <Show when={newestEntryAt()}>
+                Newest: {fmtTime(newestEntryAt())} ·{" "}
+              </Show>
+              Updated {fmtClock(lastFetchedAt())}
+            </p>
+          </Show>
+        </div>
       </div>
 
       {/* Error */}

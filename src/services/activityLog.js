@@ -16,6 +16,26 @@ import { api } from "../api/api";
 // so the frontend does NOT call recordActivity for those. Call recordActivity
 // only for other actions you want logged that aren't auto-logged server-side.
 
+// ─── Freshness ────────────────────────────────────────────────────────────────
+// This is an audit trail: a stale read is worse than no read, because it looks
+// authoritative. Every GET below therefore defeats caching on BOTH axes:
+//
+//   cache: "no-store"  — tells the browser not to consult or populate its HTTP
+//                        cache for this request. api() spreads its options
+//                        straight into fetch(), so this rides through as-is.
+//   _ts=<epoch ms>     — a unique URL per call, so anything that keys on the URL
+//                        and ignores the fetch hint (a CDN/proxy in front of the
+//                        API, a stale service worker) can't return a prior body
+//                        either. The backend ignores unknown query params.
+//
+// Deliberately NOT sent as Cache-Control / Pragma request headers: neither is a
+// CORS-safelisted header and neither is in django-cors-headers' default
+// CORS_ALLOW_HEADERS, so adding them would fail the preflight and break every
+// activity read outright. The two measures above need no server change.
+const NO_STORE = { cache: "no-store" };
+
+const bust = () => `_ts=${Date.now()}`;
+
 // Map a server entry (snake_case) → the camelCase shape the UI uses.
 const normalize = (e = {}) => ({
   id: e.id,
@@ -85,7 +105,10 @@ export const getActivities = async ({ page = 1, pageSize = 50, filters = {} } = 
   add("start_date", filters.startDate);
   add("end_date", filters.endDate);
 
-  const res = await api(`/activity/?${params.toString()}`, { method: "GET" });
+  const res = await api(`/activity/?${params.toString()}&${bust()}`, {
+    method: "GET",
+    ...NO_STORE,
+  });
 
   // Backend returns data as the entries array; tolerate a { results } shape too.
   const rows = Array.isArray(res?.data)
@@ -117,7 +140,8 @@ const toChips = (rows, keyField) =>
 
 // The date window is the only thing the summary and logins reads are scoped by,
 // and both take it as the same plain YYYY-MM-DD pair, so build it in one place.
-// Returns "" (not "?") when neither side is set, letting the server default.
+// Always carries the cache-buster, so the query string is never empty (the
+// server still defaults the window when start/end are absent).
 const dateQuery = ({ startDate, endDate } = {}) => {
   const params = new URLSearchParams();
   const add = (key, val) => {
@@ -127,14 +151,17 @@ const dateQuery = ({ startDate, endDate } = {}) => {
   add("start_date", startDate);
   add("end_date", endDate);
   const qs = params.toString();
-  return qs ? `?${qs}` : "";
+  return qs ? `?${qs}&${bust()}` : `?${bust()}`;
 };
 
 // Tolerate both the { data: {...} } envelope and a bare body.
 const unwrap = (res) => (res && typeof res === "object" && res.data ? res.data : res) ?? {};
 
 export const getActivitySummary = async (range = {}) => {
-  const res = await api(`/activity/summary/${dateQuery(range)}`, { method: "GET" });
+  const res = await api(`/activity/summary/${dateQuery(range)}`, {
+    method: "GET",
+    ...NO_STORE,
+  });
   const d = unwrap(res);
 
   return {
@@ -168,7 +195,10 @@ export const getActivitySummary = async (range = {}) => {
 // who last signed in before the window still needs a real date, not a "Never").
 //   opts = { startDate, endDate }
 export const getLogins = async (range = {}) => {
-  const res = await api(`/activity/logins/${dateQuery(range)}`, { method: "GET" });
+  const res = await api(`/activity/logins/${dateQuery(range)}`, {
+    method: "GET",
+    ...NO_STORE,
+  });
   const d = unwrap(res);
   const s = d.stats ?? {};
 
