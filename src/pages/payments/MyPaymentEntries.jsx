@@ -143,6 +143,15 @@ export default function MyPaymentEntries() {
     },
   ]);
 
+  // Rounded once so the bar width and the caption can't disagree. Both figures
+  // are across-all-pages (total + the pending probe), never page-scoped.
+  const completeShare = () => {
+    const t = total();
+    const pending = awaitingDocs();
+    if (!t || pending == null) return 0;
+    return Math.round(((t - pending) / t) * 100);
+  };
+
   const hasFilters = () =>
     query().trim() !== "" || docsStatus() !== "" || month() !== "";
 
@@ -262,30 +271,78 @@ export default function MyPaymentEntries() {
         </div>
       </Show>
 
-      {/* ════════ SUMMARY TILES ════════ */}
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <For each={tiles()}>
-          {(t) => (
-            <div class="bg-white dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] p-5">
-              <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
-                {t.label}
+      {/* ════════ SUMMARY (one panel, divided columns) ════════
+          Three separate boxes read as three unrelated facts; they're one
+          roll-up of the same filtered set, so they share one panel and are
+          separated by rules instead. */}
+      <div class="bg-white dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-2xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] px-5 sm:px-7 py-6 mb-6">
+        <div class="flex flex-wrap items-stretch gap-y-5">
+          <For each={tiles()}>
+            {(t, i) => (
+              <div
+                class={
+                  "flex-1 min-w-[180px] " +
+                  (i() === 0
+                    ? "px-0 sm:pr-7"
+                    : "px-5 sm:px-7 border-l border-[#E2E8F1] dark:border-gray-700")
+                }
+              >
+                <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
+                  {t.label}
+                </p>
+                <p class={`text-xl sm:text-2xl font-bold mt-2 tracking-tight tabular-nums ${t.tone}`}>
+                  <Show
+                    when={!loading()}
+                    fallback={
+                      <span class="inline-block h-8 w-28 bg-gray-200 dark:bg-gray-700 rounded animate-pulse align-middle" />
+                    }
+                  >
+                    {t.value}
+                  </Show>
+                </p>
+                <p class="text-xs text-[#54657E] dark:text-gray-400 mt-2">
+                  {t.caption}
+                </p>
+              </div>
+            )}
+          </For>
+        </div>
+
+        {/* Docs split across the filtered set — the same two states the table's
+            Docs column shows. Only meaningful once the total is known, and only
+            when the docs filter isn't already pinned to one of them. */}
+        <Show when={!loading() && docsStatus() === "" && (total() ?? 0) > 0 && awaitingDocs() != null}>
+          <div class="mt-6 pt-5 border-t border-[#E2E8F1] dark:border-gray-700">
+            <div class="flex items-center justify-between gap-3">
+              <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
+                Paperwork across {total()} entries
               </p>
-              <p class={`text-2xl font-bold mt-1.5 tracking-tight tabular-nums ${t.tone}`}>
-                <Show
-                  when={!loading()}
-                  fallback={
-                    <span class="inline-block h-8 w-28 bg-gray-200 dark:bg-gray-700 rounded animate-pulse align-middle" />
-                  }
-                >
-                  {t.value}
-                </Show>
-              </p>
-              <p class="text-xs text-[#54657E] dark:text-gray-400 mt-0.5">
-                {t.caption}
+              <p class="text-xs font-semibold text-[#54657E] dark:text-gray-300">
+                {completeShare()}% complete
               </p>
             </div>
-          )}
-        </For>
+
+            <div class="mt-2.5 flex h-2 w-full overflow-hidden rounded-full bg-[#E2E8F1] dark:bg-gray-700">
+              <div class="bg-[#15966A]" style={{ width: `${completeShare()}%` }} />
+              <div class="bg-[#B07A14]" style={{ width: `${100 - completeShare()}%` }} />
+            </div>
+
+            <div class="mt-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-[#54657E] dark:text-gray-300">
+              <span class="inline-flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-[#15966A]" />
+                Complete
+                <b class="text-[#14233A] dark:text-white">
+                  {total() - awaitingDocs()}
+                </b>
+              </span>
+              <span class="inline-flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-[#B07A14]" />
+                Needs docs
+                <b class="text-[#14233A] dark:text-white">{awaitingDocs()}</b>
+              </span>
+            </div>
+          </div>
+        </Show>
       </div>
 
       {/* ════════ FILTERS ════════ */}
