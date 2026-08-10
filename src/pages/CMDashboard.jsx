@@ -114,6 +114,10 @@ export default function CMDashboard() {
   const [toDate, setToDate] = createSignal("");
   const [statusFilter, setStatusFilter] = createSignal("all");
   const [search, setSearch] = createSignal("");
+  // Separate from `search`: the campaign ledger's box filters campaign rows, and
+  // typing a project name there shouldn't silently reshape the project ledger's
+  // totals above it. Two ledgers, two filters.
+  const [projectSearch, setProjectSearch] = createSignal("");
   const [view, setView] = createSignal("list"); // "list" | "hierarchy"
   // UI-only highlight for the quick-pick pills. Does not drive any fetch; the
   // pills set fromDate/toDate (which the resource already reacts to) and this
@@ -260,8 +264,8 @@ export default function CMDashboard() {
   const showReplaced = () => Object.keys(replacedByProject()).length > 0;
 
   // Project-ledger column count, for the loading skeleton and the empty row.
-  // Base: Project, Client, Campaigns, Meta, Fed, Total, Spend, CPL.
-  const ledgerColCount = () => (showReplaced() ? 10 : 8);
+  // Base: #, Project, Client, Campaigns, Meta, Fed, Total, Spend, CPL.
+  const ledgerColCount = () => (showReplaced() ? 11 : 9);
 
   // Client-side filters: "Just me" narrowing + search. Both are display filters
   // (the lead is authorized to see all); they never widen visibility.
@@ -402,8 +406,20 @@ export default function CMDashboard() {
     return rows;
   });
 
+  // Display-only narrowing of the project ledger by project or client name.
+  // The totals row reads from THIS, not the unfiltered set, so the footer always
+  // sums exactly the rows on screen — a footer that outran its own rows would
+  // read as a reconciliation bug.
+  const visibleProjectLedger = createMemo(() => {
+    const q = projectSearch().trim().toLowerCase();
+    if (!q) return projectLedger();
+    return projectLedger().filter((r) =>
+      `${r.name ?? ""} ${r.client ?? ""}`.toLowerCase().includes(q),
+    );
+  });
+
   const projectTotals = createMemo(() => {
-    const rows = projectLedger();
+    const rows = visibleProjectLedger();
     let metaLeads = 0;
     let fedLeads = 0;
     let replacedLeads = 0;
@@ -981,11 +997,55 @@ export default function CMDashboard() {
             level fed leads are attributed at, so it's the level that
             reconciles. Both figures stay visible — never merged.            */}
         <Eyebrow label="Project ledger" soft="meta vs fed leads" />
+
+        {/* Project-ledger search — matches project OR client name. */}
+        <div class="flex flex-wrap items-center gap-3 mb-4">
+          <div class="relative flex-1 max-w-[400px] min-w-[220px]">
+            <svg
+              class="w-4 h-4 text-[#8593A8] absolute left-3 top-1/2 -translate-y-1/2"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="11" cy="11" r="8" />
+              <path d="M21 21l-4.35-4.35" />
+            </svg>
+            <input
+              type="text"
+              placeholder="Search by project or client…"
+              value={projectSearch()}
+              onInput={(e) => setProjectSearch(e.target.value)}
+              class="w-full pl-9 pr-9 py-2 text-sm rounded-lg border border-[#E2E8F1] dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-[#1A2B45] dark:text-gray-200 placeholder:text-[#8593A8] focus:outline-none focus:ring-2 focus:ring-[#AC2334]/25 focus:border-[#AC2334]"
+            />
+            <Show when={projectSearch()}>
+              <button
+                type="button"
+                onClick={() => setProjectSearch("")}
+                aria-label="Clear search"
+                class="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-[#8593A8] hover:text-[#14233A] dark:hover:text-gray-200"
+              >
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </Show>
+          </div>
+
+          {/* Says what the totals below are actually summing once filtered. */}
+          <Show when={projectSearch()}>
+            <span class="text-xs font-semibold text-[#54657E] dark:text-gray-400 whitespace-nowrap">
+              {visibleProjectLedger().length} of {projectLedger().length} projects
+            </span>
+          </Show>
+        </div>
+
         <div class="overflow-auto max-h-[60vh] bg-gray-50 dark:bg-gray-800 rounded-xl border border-[#E2E8F1] dark:border-gray-700 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] mb-8">
           <table class="w-full text-sm table-auto">
             <thead class="bg-[#F8FAFC] dark:bg-gray-800">
               <tr class="text-[#54657E] dark:text-gray-300 border-b border-[#D4DDE9] dark:border-gray-700 [&_th]:text-xs [&_th]:uppercase [&_th]:tracking-wider [&_th]:font-bold [&_th]:whitespace-nowrap [&_th]:sticky [&_th]:top-0 [&_th]:bg-[#F8FAFC] dark:[&_th]:bg-gray-800">
-                <th class="p-3 text-left min-w-[200px]">Project</th>
+                <th class="p-3 w-12 text-center">S.No</th>
+                <th class="p-3 text-left min-w-[220px]">Project</th>
                 <th class="p-3 text-left">Client</th>
                 <th class="p-3 text-center">Campaigns</th>
                 <th class="p-3 text-right">Meta Leads</th>
@@ -1024,7 +1084,7 @@ export default function CMDashboard() {
               }
             >
               <tbody>
-                <For each={projectLedger()}>
+                <For each={visibleProjectLedger()}>
                   {(p, i) => (
                     <tr
                       class={
@@ -1034,8 +1094,28 @@ export default function CMDashboard() {
                           : "bg-[#FAFBFD] dark:bg-gray-800")
                       }
                     >
-                      <td class="px-3 py-2.5 text-left font-semibold text-[#14233A] dark:text-gray-100">
-                        {p.name}
+                      {/* S.No — same badge as the campaign ledger. The ledger is
+                          sorted by spend, so this is a position in that ranking,
+                          not a stable id. */}
+                      <td class="px-1 py-2 w-12 text-center">
+                        <span class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-[#FBEEF0] dark:bg-red-900/30 text-[#AC2334] dark:text-red-300 text-xs font-bold">
+                          {i() + 1}
+                        </span>
+                      </td>
+                      <td class="px-3 py-2.5 text-left">
+                        <div class="flex items-center gap-2.5">
+                          <Avatar
+                            name={p.name}
+                            size="w-7 h-7"
+                            textSize="text-[10px]"
+                          />
+                          <span
+                            class="font-semibold text-[#14233A] dark:text-gray-100"
+                            title={p.name}
+                          >
+                            {p.name}
+                          </span>
+                        </div>
                       </td>
                       <td class="px-3 py-2.5 text-left text-[#54657E] dark:text-gray-400 whitespace-nowrap">
                         {p.client || "—"}
@@ -1074,22 +1154,32 @@ export default function CMDashboard() {
                   )}
                 </For>
 
-                <Show when={projectLedger().length === 0}>
+                <Show when={visibleProjectLedger().length === 0}>
                   <tr>
                     <td
                       colspan={ledgerColCount()}
                       class="py-12 text-center text-[#8593A8] dark:text-gray-500"
                     >
-                      No projects to show.
+                      <Show
+                        when={projectSearch()}
+                        fallback="No projects to show."
+                      >
+                        No project or client matches “{projectSearch()}”.
+                      </Show>
                     </td>
                   </tr>
                 </Show>
               </tbody>
 
-              <Show when={projectLedger().length > 0}>
+              <Show when={visibleProjectLedger().length > 0}>
                 <tfoot class="bg-[#F8FAFC] dark:bg-gray-800 font-semibold text-gray-700 dark:text-white border-t-2 border-[#D4DDE9] dark:border-gray-600">
                   <tr>
-                    <td class="px-3 py-3 text-left text-xs uppercase tracking-wider text-[#54657E] dark:text-gray-300">
+                    {/* Spans # + Project so the label still sits at the far
+                        left now that the serial column exists. */}
+                    <td
+                      colspan="2"
+                      class="px-3 py-3 text-left text-xs uppercase tracking-wider text-[#54657E] dark:text-gray-300"
+                    >
                       Total
                     </td>
                     <td></td>
@@ -1136,7 +1226,7 @@ export default function CMDashboard() {
 
         {/* Filters */}
         <div class="flex flex-wrap items-center gap-3 mb-4">
-          <div class="relative flex-1 min-w-[220px]">
+          <div class="relative flex-1 max-w-2xl min-w-[220px]">
             <svg
               class="w-4 h-4 text-[#8593A8] absolute left-3 top-1/2 -translate-y-1/2"
               fill="none"

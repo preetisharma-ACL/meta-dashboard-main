@@ -9,6 +9,7 @@ import {
   canRevokeReplacement,
 } from "../../stores/currentUser";
 import RecordReplacementModal from "../../components/leads/RecordReplacementModal";
+import Avatar from "../../components/common/Avatar";
 import RowsPerPageSelect from "../../components/common/RowsPerPageSelect";
 import SuccessToast, { showToast } from "../../components/common/SuccessToast";
 
@@ -162,6 +163,14 @@ export default function LeadReplacements() {
     };
   });
 
+  const revokedCount = () => filtered().filter((r) => r.isRevoked).length;
+
+  // Rounded for the bar and the caption alike, so the two never disagree.
+  const activeShare = () => {
+    const n = filtered().length;
+    return n === 0 ? 0 : Math.round((totals().batches / n) * 100);
+  };
+
   const doRevoke = async () => {
     const target = revokeTarget();
     if (!target) return;
@@ -225,26 +234,102 @@ export default function LeadReplacements() {
         </Show>
       </div>
 
-      {/* Roll-up */}
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <For
-          each={[
-            { label: "Active batches", value: totals().batches.toLocaleString("en-IN") },
-            { label: "Leads replaced", value: totals().leads.toLocaleString("en-IN") },
-            { label: "Amount credited", value: fmtMoney(totals().credited) },
-          ]}
-        >
-          {(card) => (
-            <div class="rounded-xl border border-[#E2E8F1] dark:border-gray-700 bg-white dark:bg-gray-800 p-5">
-              <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
-                {card.label}
+      {/* ════ ROLL-UP (one panel, divided columns — the funding summary shape) ════
+          Every figure counts LIVE batches only (see totals()), so each caption
+          says so rather than leaving a revoked batch looking like it still
+          counts. The share bar underneath splits the rows in view into active
+          vs revoked, which is the only breakdown this list has. */}
+      <div class="bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-2xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] px-5 sm:px-7 py-6 mb-6">
+        <div class="flex flex-wrap items-stretch gap-y-5">
+          <div class="px-0 sm:pr-7 flex-1 min-w-[170px]">
+            <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
+              Active batches
+            </p>
+            <p class="text-xl sm:text-2xl font-bold tabular-nums text-[#14233A] dark:text-white mt-2">
+              {totals().batches.toLocaleString("en-IN")}
+            </p>
+            <p class="text-xs text-[#54657E] dark:text-gray-400 mt-2">
+              revoked batches excluded
+            </p>
+          </div>
+
+          <div class="px-5 sm:px-7 flex-1 min-w-[170px] border-l border-[#E2E8F1] dark:border-gray-700">
+            <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
+              Leads replaced
+            </p>
+            <p class="text-xl sm:text-2xl font-bold tabular-nums text-[#AC2334] dark:text-red-400 mt-2">
+              {totals().leads.toLocaleString("en-IN")}
+            </p>
+            <p class="text-xs text-[#54657E] dark:text-gray-400 mt-2">
+              credited back, not billable
+            </p>
+          </div>
+
+          <div class="px-5 sm:px-7 flex-1 min-w-[170px] border-l border-[#E2E8F1] dark:border-gray-700">
+            <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
+              Amount credited
+            </p>
+            <p class="text-xl sm:text-2xl font-bold tabular-nums text-[#15966A] dark:text-green-400 mt-2">
+              {fmtMoney(totals().credited)}
+            </p>
+            <p class="text-xs text-[#54657E] dark:text-gray-400 mt-2">
+              value of the credit to clients
+            </p>
+          </div>
+
+          <div class="px-5 sm:pl-7 flex-1 min-w-[170px] border-l border-[#E2E8F1] dark:border-gray-700">
+            <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
+              Batches in view
+            </p>
+            <p class="text-xl sm:text-2xl font-bold tabular-nums text-[#14233A] dark:text-white mt-2">
+              {filtered().length.toLocaleString("en-IN")}
+            </p>
+            <p class="text-xs text-[#54657E] dark:text-gray-400 mt-2">
+              <span class="font-semibold">{revokedCount()}</span> revoked
+            </p>
+          </div>
+        </div>
+
+        {/* Active vs revoked across the rows in view. Hidden when there's
+            nothing to split — an empty bar reads as a broken one. */}
+        <Show when={filtered().length > 0}>
+          <div class="mt-6 pt-5 border-t border-[#E2E8F1] dark:border-gray-700">
+            <div class="flex items-center justify-between gap-3">
+              <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
+                Batch status across {filtered().length} in view
               </p>
-              <p class="mt-1.5 text-2xl font-bold tabular-nums text-[#14233A] dark:text-white">
-                {card.value}
+              <p class="text-xs font-semibold text-[#54657E] dark:text-gray-300">
+                {activeShare()}% active
               </p>
             </div>
-          )}
-        </For>
+
+            <div class="mt-2.5 flex h-2 w-full overflow-hidden rounded-full bg-[#E2E8F1] dark:bg-gray-700">
+              <div
+                class="bg-[#15966A]"
+                style={{ width: `${activeShare()}%` }}
+              />
+              <div
+                class="bg-[#AC2334]"
+                style={{ width: `${100 - activeShare()}%` }}
+              />
+            </div>
+
+            <div class="mt-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-[#54657E] dark:text-gray-300">
+              <span class="inline-flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-[#15966A]" />
+                Active
+                <b class="text-[#14233A] dark:text-white">
+                  {totals().batches}
+                </b>
+              </span>
+              <span class="inline-flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-[#AC2334]" />
+                Revoked
+                <b class="text-[#14233A] dark:text-white">{revokedCount()}</b>
+              </span>
+            </div>
+          </div>
+        </Show>
       </div>
 
       {/* Filters */}
@@ -286,7 +371,11 @@ export default function LeadReplacements() {
           <table class="w-full text-sm">
             <thead class="bg-[#F8FAFC] dark:bg-gray-900/60 border-b border-[#E2E8F1] dark:border-gray-700">
               <tr>
-                <th class={TH}>#</th>
+                <th class={`${TH} w-12 text-center`}>S.No</th>
+                {/* The batch id keeps its own column: it's the handle the revoke
+                    dialog and the audit log refer to ("Batch #9"), so it can't
+                    just be replaced by a row position. */}
+                <th class={TH}>Batch</th>
                 <th class={TH}>Client</th>
                 <th class={TH}>Project</th>
                 <th class={`${TH} text-right`}>Replaced</th>
@@ -305,7 +394,7 @@ export default function LeadReplacements() {
                 when={!loading()}
                 fallback={
                   <tr>
-                    <td colspan="10" class="p-8 text-center text-[#54657E] dark:text-gray-400">
+                    <td colspan="11" class="p-8 text-center text-[#54657E] dark:text-gray-400">
                       Loading replacement batches…
                     </td>
                   </tr>
@@ -313,7 +402,7 @@ export default function LeadReplacements() {
               >
                 <Show when={!error()} fallback={
                   <tr>
-                    <td colspan="10" class="p-8 text-center">
+                    <td colspan="11" class="p-8 text-center">
                       <p class="text-[#AC2334] dark:text-red-400 font-medium">{error()}</p>
                       <button onClick={() => load(1)} class="mt-2 text-sm underline text-[#54657E]">
                         Retry
@@ -325,7 +414,7 @@ export default function LeadReplacements() {
                     when={filtered().length}
                     fallback={
                       <tr>
-                        <td colspan="10" class="p-8 text-center text-[#54657E] dark:text-gray-400">
+                        <td colspan="11" class="p-8 text-center text-[#54657E] dark:text-gray-400">
                           No replacement batches recorded yet.
                         </td>
                       </tr>
@@ -338,14 +427,34 @@ export default function LeadReplacements() {
                             i() % 2 ? "bg-[#FAFBFD] dark:bg-gray-900/30" : ""
                           } ${r.isRevoked ? "opacity-60" : ""}`}
                         >
-                          <td class="p-3 tabular-nums text-[#8593A8]">{r.id ?? "—"}</td>
+                          {/* S.No — same badge as the dashboard ledgers. Position
+                              in the current page/filter, not an id. */}
+                          <td class="px-1 py-2 w-12 text-center">
+                            <span class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-[#FBEEF0] dark:bg-red-900/30 text-[#AC2334] dark:text-red-300 text-xs font-bold">
+                              {i() + 1}
+                            </span>
+                          </td>
+                          <td class="p-3 tabular-nums text-[#8593A8] whitespace-nowrap">
+                            {r.id != null ? `#${r.id}` : "—"}
+                          </td>
                           <td class="p-3">
-                            <div class="font-medium text-[#14233A] dark:text-gray-100">
-                              {r.clientName ?? "—"}
+                            <div class="flex items-center gap-2.5">
+                              <Avatar
+                                name={r.clientName}
+                                size="w-8 h-8"
+                                textSize="text-[10px]"
+                              />
+                              <div class="min-w-0">
+                                <div class="font-medium text-[#14233A] dark:text-gray-100">
+                                  {r.clientName ?? "—"}
+                                </div>
+                                <Show when={r.clientEmail}>
+                                  <div class="text-xs text-[#8593A8] truncate">
+                                    {r.clientEmail}
+                                  </div>
+                                </Show>
+                              </div>
                             </div>
-                            <Show when={r.clientEmail}>
-                              <div class="text-xs text-[#8593A8]">{r.clientEmail}</div>
-                            </Show>
                           </td>
                           <td class="p-3 text-[#54657E] dark:text-gray-300">
                             {r.projectName ?? "—"}
