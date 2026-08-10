@@ -12,6 +12,7 @@ import { getActivities, getActivitySummary, getLogins } from "../services/activi
 import { fetchHierarchyClients } from "../services/cm";
 import { currentUser } from "../stores/currentUser";
 import RowsPerPageSelect from "../components/common/RowsPerPageSelect";
+import Avatar from "../components/common/Avatar";
 
 // ─── Activity Log ─────────────────────────────────────────────────────────────
 // Read-only view of the append-only activity trail (GET /api/activity/). There is
@@ -348,7 +349,7 @@ function LoginTrendChart(props) {
         {/* Two series need a legend — the colours alone don't name themselves. */}
         <div class="flex items-center gap-4 mb-1">
           <span class="inline-flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
-            <span class="w-3 h-0.5 rounded bg-purple-600 dark:bg-purple-400" />
+            <span class="w-3 h-0.5 rounded bg-[#AC2334] dark:bg-red-400" />
             Successful
           </span>
           <span class="inline-flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
@@ -392,7 +393,7 @@ function LoginTrendChart(props) {
           </For>
 
           <Show when={pts().length > 1}>
-            <path d={areaPath()} class="fill-purple-500/10 dark:fill-purple-400/10" />
+            <path d={areaPath()} class="fill-[#AC2334]/10 dark:fill-red-400/10" />
             <polyline
               points={linePoints("success")}
               fill="none"
@@ -400,7 +401,7 @@ function LoginTrendChart(props) {
               stroke-linejoin="round"
               stroke-linecap="round"
               vector-effect="non-scaling-stroke"
-              class="stroke-purple-600 dark:stroke-purple-400"
+              class="stroke-[#AC2334] dark:stroke-red-400"
             />
             {/* Failures ride on top, unfilled, so a flat red floor stays readable
                 against the success area rather than tinting it. */}
@@ -436,7 +437,7 @@ function LoginTrendChart(props) {
               cx={xAt(0)}
               cy={yAt(pts()[0].success)}
               r="4"
-              class="fill-purple-600 dark:fill-purple-400 stroke-white dark:stroke-gray-900"
+              class="fill-[#AC2334] dark:fill-red-400 stroke-white dark:stroke-gray-900"
               stroke-width="2"
               vector-effect="non-scaling-stroke"
             />
@@ -448,7 +449,7 @@ function LoginTrendChart(props) {
               cx={xAt(peak("success"))}
               cy={yAt(pts()[peak("success")].success)}
               r="4"
-              class="fill-purple-600 dark:fill-purple-400 stroke-white dark:stroke-gray-900"
+              class="fill-[#AC2334] dark:fill-red-400 stroke-white dark:stroke-gray-900"
               stroke-width="2"
               vector-effect="non-scaling-stroke"
             />
@@ -503,7 +504,7 @@ function LoginTrendChart(props) {
               cx={xAt(hover())}
               cy={yAt(hovered().success)}
               r="4"
-              class="fill-purple-600 dark:fill-purple-400 stroke-white dark:stroke-gray-900"
+              class="fill-[#AC2334] dark:fill-red-400 stroke-white dark:stroke-gray-900"
               stroke-width="2"
               vector-effect="non-scaling-stroke"
             />
@@ -558,20 +559,20 @@ function StatCard(props) {
   const alert = () => props.tone === "alert";
   return (
     <div
-      class={`rounded-xl border p-4 ${
+      class={`rounded-2xl border shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] px-5 py-4 ${
         alert()
-          ? "border-amber-300 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-900/20"
-          : "border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
+          ? "border-[#B07A14]/35 bg-[#FBF3E2] dark:border-amber-900/60 dark:bg-amber-900/20"
+          : "border-[#E2E8F1] bg-white dark:border-gray-700 dark:bg-gray-800"
       }`}
     >
-      <div class="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">
+      <div class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
         {props.label}
       </div>
       <div
-        class={`mt-1 text-2xl font-semibold ${
+        class={`mt-2 text-2xl font-bold tabular-nums ${
           alert()
-            ? "text-amber-700 dark:text-amber-300"
-            : "text-gray-900 dark:text-white"
+            ? "text-[#8A6410] dark:text-amber-300"
+            : "text-[#14233A] dark:text-white"
         }`}
       >
         {props.value}
@@ -580,10 +581,12 @@ function StatCard(props) {
   );
 }
 
+// Brand tints — the same green / clay / blue the ledgers and payment surfaces
+// use, so "success" and "failure" mean the same colour everywhere.
 const RESULT_STYLES = {
-  success: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300",
-  failure: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
-  info: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
+  success: "bg-[#E9F7F1] text-[#15966A] dark:bg-green-900/30 dark:text-green-300",
+  failure: "bg-[#FBEEF0] text-[#AC2334] dark:bg-red-900/30 dark:text-red-300",
+  info: "bg-[#EAF1FA] text-[#3E6FB0] dark:bg-blue-900/30 dark:text-blue-300",
 };
 
 // ─── Logins tab ───────────────────────────────────────────────────────────────
@@ -594,11 +597,11 @@ const RESULT_STYLES = {
 // call failed (the caller renders the unavailable notice instead).
 
 const TABLE_SHELL =
-  "bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700";
+  "bg-white dark:bg-gray-800 rounded-2xl border border-[#E2E8F1] dark:border-gray-700 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)]";
 const TH =
-  "p-3 text-left whitespace-nowrap sticky top-0 z-10 bg-gray-50 dark:bg-gray-800";
+  "p-3 text-left whitespace-nowrap sticky top-0 z-10 bg-[#F8FAFC] dark:bg-gray-800";
 const THEAD =
-  "border-b border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 uppercase text-xs tracking-wider";
+  "border-b border-[#D4DDE9] dark:border-gray-700 text-[#54657E] dark:text-gray-300 uppercase text-xs font-bold tracking-wider";
 
 function LoginsPanel(props) {
   const [userSearch, setUserSearch] = createSignal("");
@@ -735,7 +738,7 @@ function LoginsPanel(props) {
             onInput={(e) => setUserSearch(e.target.value)}
             class="w-[220px] max-w-full px-3 py-2 text-sm rounded-lg border border-gray-200
                    dark:border-gray-700 dark:bg-gray-800 dark:text-white
-                   focus:outline-none focus:ring-1 focus:ring-purple-400 dark:focus:ring-gray-600"
+                   focus:outline-none focus:ring-2 focus:ring-[#AC2334]/25 focus:border-[#AC2334]"
           />
         </div>
         <div class="max-h-[460px] overflow-auto">
@@ -1109,13 +1112,24 @@ export default function Activity() {
 
       {/* Header */}
       <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 class="text-2xl font-semibold text-gray-900 dark:text-white tracking-tight">
-            Activity Log
-          </h1>
-          <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-            A permanent, append-only record of actions taken in the dashboard.
-          </p>
+        <div class="flex items-start gap-3.5">
+          <span class="hidden sm:grid w-11 h-11 flex-shrink-0 rounded-xl place-items-center bg-[#FBEEF0] dark:bg-red-900/30 text-[#AC2334] dark:text-red-300">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 8v4l3 2" />
+              <circle cx="12" cy="12" r="9" />
+            </svg>
+          </span>
+          <div>
+            <p class="text-xs font-bold uppercase tracking-[0.12em] text-[#AC2334] mb-1">
+              Audit trail
+            </p>
+            <h1 class="text-2xl font-bold text-[#14233A] dark:text-white tracking-tight">
+              Activity Log
+            </h1>
+            <p class="text-sm text-[#54657E] dark:text-gray-400 mt-0.5">
+              A permanent, append-only record of actions taken in the dashboard.
+            </p>
+          </div>
         </div>
 
         {/* Date range — scopes the whole page (summary, feed and the logins tab)
@@ -1128,7 +1142,7 @@ export default function Activity() {
             title="Re-read the log from the server"
             class="inline-flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border
                    border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800
-                   text-gray-600 dark:text-gray-300 hover:border-purple-400
+                   text-gray-600 dark:text-gray-300 hover:border-[#AC2334]/50
                    disabled:opacity-50 disabled:cursor-default transition-colors"
           >
             <svg
@@ -1196,10 +1210,10 @@ export default function Activity() {
                 role="tab"
                 aria-selected={tab() === value}
                 onClick={() => setTab(value)}
-                class={`px-4 py-1.5 text-sm rounded-md transition-colors ${
+                class={`px-4 py-1.5 text-sm font-semibold rounded-md transition-colors ${
                   tab() === value
-                    ? "bg-purple-600 text-white dark:bg-purple-500"
-                    : "text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                    ? "bg-[#14233A] text-white dark:bg-[#AC2334]"
+                    : "text-[#54657E] dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
                 }`}
               >
                 {label}
@@ -1246,12 +1260,14 @@ export default function Activity() {
       <Show when={tab() === "activity"}>
 
       {/* Append-only notice */}
-      <div class="flex items-start gap-2 mb-4 px-4 py-3 rounded-xl border border-amber-200 bg-amber-50
-                  dark:border-amber-900/50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-200 text-sm">
-        <svg class="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m0-10a2 2 0 012 2v1H10V9a2 2 0 012-2zM5 13h14v8H5z" />
-        </svg>
-        <span>
+      <div class="flex items-start gap-2.5 mb-4 px-4 py-3 rounded-xl border border-[#B07A14]/30 bg-[#FBF3E2]
+                  dark:border-amber-900/50 dark:bg-amber-900/20 text-[#8A6410] dark:text-amber-200 text-sm">
+        <span class="w-6 h-6 flex-shrink-0 rounded-lg grid place-items-center bg-[#B07A14]/15 text-[#8A6410] dark:bg-amber-900/40 dark:text-amber-200">
+          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m0-10a2 2 0 012 2v1H10V9a2 2 0 012-2zM5 13h14v8H5z" />
+          </svg>
+        </span>
+        <span class="leading-relaxed">
           Entries here are <b>never edited or deleted</b>. The log only ever grows as
           new actions are recorded.
         </span>
@@ -1288,28 +1304,112 @@ export default function Activity() {
           {/* Dimmed rather than replaced while a new window loads — no skeleton
               flash and no layout jump on every date change. */}
           <div class={`mb-4 ${summaryRefreshing() ? "opacity-50 transition-opacity" : "transition-opacity"}`}>
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <StatCard label="Total events" value={fmtCount(summaryView().totalEvents)} />
-              <StatCard label="Active users" value={fmtCount(summaryView().activeUsers)} />
-              <StatCard
-                label="Failed logins"
-                value={fmtCount(summaryView().failedLogins)}
-                tone={summaryView().failedLogins > 0 ? "alert" : "neutral"}
-              />
-            </div>
+            {/* One panel, divided columns — the same summary shape the funding
+                and payments pages use, so this reads as part of the app. */}
+            <div class="bg-white dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-2xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] px-5 sm:px-7 py-6">
+              <div class="flex flex-wrap items-stretch gap-y-5">
+                <div class="px-0 sm:pr-7 flex-1 min-w-[190px]">
+                  <div class="flex items-start justify-between gap-3">
+                    <div class="min-w-0">
+                      <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
+                        Total events
+                      </p>
+                      <p class="text-xl sm:text-2xl font-bold tabular-nums text-[#14233A] dark:text-white mt-2">
+                        {fmtCount(summaryView().totalEvents)}
+                      </p>
+                      <p class="text-xs text-[#54657E] dark:text-gray-400 mt-2">
+                        recorded in this window
+                      </p>
+                    </div>
+                    <span class="w-10 h-10 rounded-xl grid place-items-center flex-shrink-0 bg-[#14233A]/[0.07] dark:bg-white/10 text-[#14233A] dark:text-white" aria-hidden="true">
+                      <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 12h4l3 8 4-16 3 8h4" />
+                      </svg>
+                    </span>
+                  </div>
+                </div>
 
-            <Show when={summaryWindow()}>
-              <p class="mt-2 text-xs text-gray-400 dark:text-gray-500">
-                Window: {summaryWindow()}
-              </p>
-            </Show>
+                <div class="px-5 sm:px-7 flex-1 min-w-[190px] border-l border-[#E2E8F1] dark:border-gray-700">
+                  <div class="flex items-start justify-between gap-3">
+                    <div class="min-w-0">
+                      <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
+                        Active users
+                      </p>
+                      <p class="text-xl sm:text-2xl font-bold tabular-nums text-[#3E6FB0] dark:text-blue-300 mt-2">
+                        {fmtCount(summaryView().activeUsers)}
+                      </p>
+                      <p class="text-xs text-[#54657E] dark:text-gray-400 mt-2">
+                        people who did something
+                      </p>
+                    </div>
+                    <span class="w-10 h-10 rounded-xl grid place-items-center flex-shrink-0 bg-[#EAF1FA] dark:bg-blue-900/30 text-[#3E6FB0] dark:text-blue-300" aria-hidden="true">
+                      <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2" />
+                        <circle cx="9" cy="7" r="4" />
+                        <path d="M22 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
+                      </svg>
+                    </span>
+                  </div>
+                </div>
+
+                {/* Failed logins earns the alert tone only when there ARE any —
+                    a permanent red 0 trains the eye to ignore it. */}
+                <div class="px-5 sm:pl-7 flex-1 min-w-[190px] border-l border-[#E2E8F1] dark:border-gray-700">
+                  <div class="flex items-start justify-between gap-3">
+                    <div class="min-w-0">
+                      <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
+                        Failed logins
+                      </p>
+                      <p
+                        class={`text-xl sm:text-2xl font-bold tabular-nums mt-2 ${
+                          summaryView().failedLogins > 0
+                            ? "text-[#AC2334] dark:text-red-400"
+                            : "text-[#15966A] dark:text-green-400"
+                        }`}
+                      >
+                        {fmtCount(summaryView().failedLogins)}
+                      </p>
+                      <p class="text-xs text-[#54657E] dark:text-gray-400 mt-2">
+                        {summaryView().failedLogins > 0
+                          ? "rejected sign-in attempts"
+                          : "no rejected sign-ins"}
+                      </p>
+                    </div>
+                    <span
+                      class={`w-10 h-10 rounded-xl grid place-items-center flex-shrink-0 ${
+                        summaryView().failedLogins > 0
+                          ? "bg-[#FBEEF0] dark:bg-red-900/30 text-[#AC2334] dark:text-red-300"
+                          : "bg-[#E9F7F1] dark:bg-green-900/30 text-[#15966A] dark:text-green-300"
+                      }`}
+                      aria-hidden="true"
+                    >
+                      <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 3l8 4v5c0 4.4-3.2 7.9-8 9-4.8-1.1-8-4.6-8-9V7l8-4z" />
+                        <path d="M12 9v3m0 3h.01" />
+                      </svg>
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <Show when={summaryWindow()}>
+                <p class="mt-5 pt-4 border-t border-[#E2E8F1] dark:border-gray-700 flex items-center gap-2 text-xs text-[#8593A8] dark:text-gray-500">
+                  <svg class="w-3.5 h-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="5" width="18" height="16" rx="2" />
+                    <path d="M8 3v4M16 3v4M3 11h18" />
+                  </svg>
+                  Window: {summaryWindow()}
+                </p>
+              </Show>
+            </div>
           </div>
         </Show>
       </Show>
 
       {/* Filters */}
-      <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200
-                  dark:border-gray-700 p-4 mb-4 flex flex-wrap items-center gap-3">
+      <div class="bg-white dark:bg-gray-800 rounded-2xl border border-[#E2E8F1]
+                  dark:border-gray-700 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)]
+                  p-4 mb-4 flex flex-wrap items-center gap-3">
         <div class="relative flex w-[300px] max-w-full">
           <svg
             class="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2"
@@ -1325,7 +1425,7 @@ export default function Activity() {
             onInput={(e) => setSearch(e.target.value)}
             class="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-gray-200
                    dark:border-gray-700 dark:bg-gray-800 dark:text-white
-                   focus:outline-none focus:ring-1 focus:ring-purple-400 dark:focus:ring-gray-600"
+                   focus:outline-none focus:ring-2 focus:ring-[#AC2334]/25 focus:border-[#AC2334]"
           />
         </div>
 
@@ -1385,7 +1485,7 @@ export default function Activity() {
               onInput={(e) => setTargetId(e.target.value)}
               class="w-[180px] px-3 py-2 text-sm rounded-lg border border-gray-200
                      dark:border-gray-700 dark:bg-gray-800 dark:text-white
-                     focus:outline-none focus:ring-1 focus:ring-purple-400 dark:focus:ring-gray-600"
+                     focus:outline-none focus:ring-2 focus:ring-[#AC2334]/25 focus:border-[#AC2334]"
             />
           }
         >
@@ -1440,13 +1540,13 @@ export default function Activity() {
       </Show>
 
       {/* Table */}
-      <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200
-                  dark:border-gray-700 overflow-x-auto">
+      <div class="bg-white dark:bg-gray-800 rounded-2xl border border-[#E2E8F1]
+                  dark:border-gray-700 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] overflow-x-auto">
         <table class="min-w-full text-sm">
           <thead>
-            <tr class="border-b border-gray-200 dark:border-gray-700 bg-gray-50
-                       dark:bg-gray-800/60 text-gray-500 dark:text-gray-400
-                       uppercase text-xs tracking-wider">
+            <tr class="border-b border-[#D4DDE9] dark:border-gray-700 bg-[#F8FAFC]
+                       dark:bg-gray-800/60 text-[#54657E] dark:text-gray-300
+                       uppercase text-xs font-bold tracking-wider">
               <th class="p-3 text-left whitespace-nowrap">Time</th>
               <th class="p-3 text-left whitespace-nowrap">User</th>
               <th class="p-3 text-left whitespace-nowrap">Action</th>
@@ -1478,28 +1578,36 @@ export default function Activity() {
               <For each={entries()}>
                 {(a, i) => (
                   <tr
-                    class={`border-b border-gray-100 dark:border-gray-800
-                            ${i() % 2 === 0 ? "bg-white dark:bg-gray-900" : "bg-gray-50/60 dark:bg-gray-800/30"}`}
+                    class={`border-b border-[#E2E8F1] dark:border-gray-800 transition-colors hover:bg-[#F8FAFC] dark:hover:bg-gray-800/60
+                            ${i() % 2 === 0 ? "bg-white dark:bg-gray-800" : "bg-[#FAFBFD] dark:bg-gray-800/40"}`}
                   >
-                    <td class="p-3 text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                    <td class="p-3 text-[#54657E] dark:text-gray-400 whitespace-nowrap tabular-nums">
                       {fmtTime(a.timestamp)}
                     </td>
-                    <td class="p-3 text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                      <div class="flex flex-col">
-                        <span class="font-medium">{a.actor ?? "—"}</span>
-                        <Show when={a.actorRole}>
-                          <span class="text-xs text-gray-400 dark:text-gray-500">
-                            {roleLabel(a.actorRole)}
-                          </span>
-                        </Show>
+                    <td class="p-3 text-[#14233A] dark:text-gray-300 whitespace-nowrap">
+                      <div class="flex items-center gap-2.5">
+                        <Avatar
+                          name={a.actor ?? "?"}
+                          size="w-8 h-8"
+                          textSize="text-[10px]"
+                        />
+                        <div class="min-w-0">
+                          <span class="block font-semibold">{a.actor ?? "—"}</span>
+                          <Show when={a.actorRole}>
+                            <span class="block text-xs text-[#8593A8] dark:text-gray-500">
+                              {roleLabel(a.actorRole)}
+                            </span>
+                          </Show>
+                        </div>
                       </div>
                     </td>
-                    <td class="p-3 text-gray-700 dark:text-gray-300 whitespace-nowrap font-medium">
-                      <div class="flex flex-col items-start gap-1">
+                    <td class="p-3 text-[#14233A] dark:text-gray-300 whitespace-nowrap font-medium">
+                      <div class="flex flex-col items-start gap-1.5">
                         <span>{actionLabel(a.action)}</span>
                         <Show when={a.category && a.category !== "general"}>
-                          <span class={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide
+                          <span class={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide
                                         ${CATEGORY_STYLES[a.category] ?? "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"}`}>
+                            <span class="w-1.5 h-1.5 rounded-full bg-current opacity-70" />
                             {a.category}
                           </span>
                         </Show>
@@ -1509,11 +1617,11 @@ export default function Activity() {
                       <div class="flex flex-col">
                         <Show
                           when={a.category === "campaign" && a.targetId != null}
-                          fallback={<span class="text-gray-700 dark:text-gray-300 line-clamp-1">{a.target ?? "—"}</span>}
+                          fallback={<span class="text-[#14233A] dark:text-gray-300 font-medium line-clamp-1">{a.target ?? "—"}</span>}
                         >
                           <A
                             href={`/campaign/${a.targetId}`}
-                            class="text-purple-700 dark:text-purple-300 hover:underline line-clamp-1"
+                            class="font-medium text-[#3E6FB0] dark:text-blue-300 hover:underline line-clamp-1"
                             title={a.target}
                           >
                             {a.target ?? `#${a.targetId}`}
@@ -1524,8 +1632,8 @@ export default function Activity() {
                         <Show when={a.category !== "campaign" && a.targetId != null}>
                           <button
                             onClick={() => pickClient(String(a.targetId))}
-                            class="self-start text-xs text-gray-400 dark:text-gray-500 hover:text-purple-600
-                                   dark:hover:text-purple-300 hover:underline"
+                            class="self-start mt-0.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs text-[#8593A8] dark:text-gray-500
+                                   hover:text-[#AC2334] dark:hover:text-red-300 hover:bg-[#FBEEF0] dark:hover:bg-red-900/20 transition-colors"
                             title="Filter the log to this client"
                           >
                             #{a.targetId}
@@ -1533,13 +1641,14 @@ export default function Activity() {
                         </Show>
                       </div>
                     </td>
-                    <td class="p-3 text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                    <td class="p-3 text-[#54657E] dark:text-gray-400 whitespace-nowrap">
                       <Show when={changeSummary(a)} fallback={"—"}>
                         {changeSummary(a)}
                       </Show>
                     </td>
                     <td class="p-3 whitespace-nowrap">
-                      <span class={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${RESULT_STYLES[a.result] ?? RESULT_STYLES.info}`}>
+                      <span class={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wide ${RESULT_STYLES[a.result] ?? RESULT_STYLES.info}`}>
+                        <span class="w-1.5 h-1.5 rounded-full bg-current" />
                         {a.result}
                       </span>
                       <Show when={a.result === "failure" && a.details?.error}>
