@@ -4,6 +4,7 @@ import {
   fetchHierarchyClients,
   fetchHierarchyProjects,
   fetchHierarchyCampaigns,
+  fetchCampaignsScoped,
 } from "../services/cm";
 import { scopeKey, ownScope } from "../stores/cmScope";
 import { lookupManager, managerColor } from "../stores/cmManagerMap";
@@ -25,6 +26,11 @@ const cplFmt = (v) => {
 const num = (v) => (Number(v) || 0).toLocaleString("en-IN");
 // client/project nodes expose avg_cpl; campaign leaves expose cpl.
 const cplOf = (g) => (g?.cpl != null ? g.cpl : g?.avg_cpl);
+// The ad account's name off a campaign row, whichever shape it arrives in:
+// /campaigns/ flattens it to ad_account_name, and the hierarchy leaf may or may
+// not carry it at all (hence the fallback fetch in loadAdAccounts).
+const adAccountName = (c) =>
+  c?.ad_account_name ?? c?.ad_account?.name ?? c?.account_name ?? null;
 
 const TYPE_CHIP = {
   hybrid: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300",
@@ -164,6 +170,9 @@ export default function CMHierarchy(props) {
   // id → { loading, error, data }
   const [projectsByClient, setProjectsByClient] = createSignal({});
   const [campaignsByProject, setCampaignsByProject] = createSignal({});
+  // project_id → { campaign_id → ad account name }. Only populated when the
+  // hierarchy leaf itself doesn't carry the name (see loadCampaigns).
+  const [adAccountsByProject, setAdAccountsByProject] = createSignal({});
 
   const dateArgs = () => ({ startDate: props.startDate, endDate: props.endDate });
 
@@ -187,6 +196,7 @@ export default function CMHierarchy(props) {
         setOpenProjects({});
         setProjectsByClient({});
         setCampaignsByProject({});
+        setAdAccountsByProject({});
         loadClients();
       },
     ),
@@ -210,14 +220,41 @@ export default function CMHierarchy(props) {
     }
   };
 
+  // ── Ad account per campaign ────────────────────────────────────────────────
+  // The hierarchy leaf is a numbers payload and doesn't name the ad account, so
+  // it comes from the scoped campaign list — one request per expanded project,
+  // keyed by campaign id. Deliberately NOT date-windowed: /campaigns/ would then
+  // drop campaigns that had no delivery in the window, and the account a
+  // campaign belongs to is a fixed attribute, not a per-day value. Failure is
+  // silent — the row just loses its subtitle, it never blocks the numbers.
+  const loadAdAccounts = async (projectId) => {
+    try {
+      const res = await fetchCampaignsScoped({ project: projectId });
+      const rows = res?.data?.results ?? (Array.isArray(res?.data) ? res.data : []);
+      const map = {};
+      for (const r of rows) {
+        const name = adAccountName(r);
+        if (r?.id != null && name) map[String(r.id)] = name;
+      }
+      setAdAccountsByProject((p) => ({ ...p, [projectId]: map }));
+    } catch (err) {
+      console.error("[CMHierarchy] ad accounts failed:", err);
+      setAdAccountsByProject((p) => ({ ...p, [projectId]: {} }));
+    }
+  };
+
   const loadCampaigns = async (projectId, clientNomenId) => {
     setCampaignsByProject((p) => ({ ...p, [projectId]: { loading: true, error: false, data: [] } }));
     try {
       const res = await fetchHierarchyCampaigns(projectId, clientNomenId, dateArgs());
+      const data = Array.isArray(res?.data) ? res.data : [];
       setCampaignsByProject((p) => ({
         ...p,
-        [projectId]: { loading: false, error: false, data: Array.isArray(res?.data) ? res.data : [] },
+        [projectId]: { loading: false, error: false, data },
       }));
+      // Only pay for the extra call when the leaf didn't already answer it —
+      // if the backend starts sending the name, this quietly stops firing.
+      if (data.length > 0 && !data.some(adAccountName)) loadAdAccounts(projectId);
     } catch (err) {
       console.error("[CMHierarchy] campaigns failed:", err);
       const notFound = isNotFound(err);
@@ -402,17 +439,47 @@ export default function CMHierarchy(props) {
 
                                   <div class="divide-y divide-gray-100 dark:divide-gray-800">
                                     <For each={campState()?.data ?? []}>
-                                      {(c) => (
-                                        <div class="flex flex-col sm:flex-row sm:items-center gap-3 px-3 py-2.5">
-                                          <div class="flex items-center gap-2 flex-1 min-w-0">
-                                            <span class={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${c.status === "active" ? "bg-green-500" : "bg-amber-500"}`} />
-                                            <A
-                                              href={`/campaign/${c.campaign_id}`}
-                                              class="text-sm text-purple-700 dark:text-purple-300 hover:underline truncate"
-                                              title={c.campaign_name}
-                                            >
-                                              {c.campaign_name}
-                                            </A>
+                                      {(c) => {
+                                        // Leaf field first, list lookup second.
+                                        const adAccount = () =>
+                                          adAccountName(c) ??
+                                          adAccountsByProject()[pid]?.[String(c.campaign_id)] ??
+                                          null;
+                                        return (
+                                        <div class="flex flex-col sm:flex-row sm:items-center gap-3 px-3 py-2.5 hover:bg-gray-50/70 dark:hover:bg-gray-800/40 transition-colors">
+                                          <div class="flex items-start gap-2.5 flex-1 min-w-0">
+                                            <span
+                                              title={c.status === "active" ? "Active" : "Paused"}
+                                              class={`mt-[7px] w-2 h-2 rounded-full flex-shrink-0 ring-2 ${
+                                                c.status === "active"
+                                                  ? "bg-green-500 ring-green-500/20"
+                                                  : "bg-amber-500 ring-amber-500/20"
+                                              }`}
+                                            />
+                                            <div class="min-w-0">
+                                              <A
+                                                href={`/campaign/${c.campaign_id}`}
+                                                class="block text-sm font-medium text-gray-800 dark:text-gray-100 hover:text-purple-700 dark:hover:text-purple-300 hover:underline decoration-purple-400/60 underline-offset-2 truncate"
+                                                title={c.campaign_name}
+                                              >
+                                                {c.campaign_name}
+                                              </A>
+                                              {/* Ad account the spend came out of — a chip rather than
+                                                  grey micro-text, because on a 60-row project this is
+                                                  the field an operator scans for. */}
+                                              <Show when={adAccount()}>
+                                                <span
+                                                  class="inline-flex items-center gap-1.5 mt-1 max-w-full px-2 py-0.5 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/70 text-[11px] font-semibold text-gray-600 dark:text-gray-300"
+                                                  title={`Ad account: ${adAccount()}`}
+                                                >
+                                                  <svg class="w-3 h-3 flex-shrink-0 text-gray-400 dark:text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                    <rect x="2" y="5" width="20" height="14" rx="2" />
+                                                    <path d="M2 10h20" />
+                                                  </svg>
+                                                  <span class="truncate">{adAccount()}</span>
+                                                </span>
+                                              </Show>
+                                            </div>
                                           </div>
                                           <Show when={canWriteCampaigns()}>
                                             <CampaignStatusControl
@@ -425,7 +492,8 @@ export default function CMHierarchy(props) {
                                           </Show>
                                           <TwoNumbers raw={c.raw} billed={c.client_facing} />
                                         </div>
-                                      )}
+                                        );
+                                      }}
                                     </For>
                                   </div>
                                 </div>
