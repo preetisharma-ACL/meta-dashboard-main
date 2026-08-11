@@ -31,6 +31,26 @@ export const fetchSuspendedAccountAlerts = async () => {
   return res;
 };
 
+// GET /alerts/?category=account_suspended&acknowledged=all — every page.
+// The Notifications page's suspension tab needs the complete set: the mixed
+// /alerts/ feed only ever yields page 1 of *unacknowledged* alerts, so a
+// suspension sitting on a later page — or one already dismissed from the banner
+// — never reached that tab. Returns a flat array of alert rows.
+export const fetchAllSuspensionAlerts = async () => {
+  let page = 1;
+  let all = [];
+  while (true) {
+    const url = `/alerts/?category=account_suspended&acknowledged=all&page=${page}${scopeQuery()}`;
+    const res = await api(url, { method: "GET" });
+    if (!res) return all; // redirected to login
+    applyMeta(res?.meta);
+    all = [...all, ...(res.data || [])];
+    if (!res?.meta?.pagination?.has_next) break;
+    page++;
+  }
+  return all;
+};
+
 // PATCH /alerts/{id}/acknowledge/ → { id, is_acknowledged: true }
 // Acknowledging an alert outside your scope returns 404 (handle gracefully).
 export const acknowledgeAlert = async (id) => {

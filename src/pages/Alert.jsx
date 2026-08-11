@@ -1,6 +1,6 @@
 import { createSignal, createMemo, For, Show, onMount, createEffect, untrack } from "solid-js";
 import { useNavigate } from "@solidjs/router";
-import { fetchAlerts } from "../services/alert-service";
+import { fetchAlerts, fetchAllSuspensionAlerts } from "../services/alert-service";
 import { setHeaderCache, headerCache } from "../cacheStore/appStore";
 
 // Which alerts this panel surfaces: the existing info-only view, PLUS
@@ -117,6 +117,22 @@ function formatTime(dateStr) {
   if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? "s" : ""} ago`;
   return `${diffDays} day${diffDays > 1 ? "s" : ""} ago`;
 }
+// API alert → view model. Shared by the mixed feed and the suspension tab so
+// both render identically.
+const mapAlert = (item, readIds) => ({
+  id: item.id,
+  title: item.type_label,
+  category: item.category_label,
+  description: item.message,
+  project: item.project_name,
+  campaign: item.campaign_name,
+  time: formatTime(item.created_at),
+  rawTime: item.created_at,
+  read: readIds.includes(item.id) || item.is_acknowledged,
+  type: item.type,
+  categoryKey: item.category,
+});
+
 export default function Notifications() {
   const navigate = useNavigate();
   const [notifications, setNotifications] = createSignal([]);
@@ -130,6 +146,8 @@ export default function Notifications() {
   const [hasNext, setHasNext] = createSignal(false);
   const [hasPrev, setHasPrev] = createSignal(false);
   const [allNotifications, setAllNotifications] = createSignal([]);
+  // Source for the "Ad Account Suspension" tab — see loadSuspensions().
+  const [suspensions, setSuspensions] = createSignal([]);
 
   //  FIX 1: signal, not plain variable
   const [prevIds, setPrevIds] = createSignal([]);
@@ -188,9 +206,24 @@ export default function Notifications() {
     setPrevIds(current);
   });
 
+  // Suspension alerts come from the category-filtered endpoint (all pages,
+  // acknowledged included) instead of the paginated mixed feed, which only ever
+  // returns page 1 of unacknowledged alerts. Failure is non-fatal — the rest of
+  // the page still renders.
+  const loadSuspensions = async () => {
+    try {
+      const data = await fetchAllSuspensionAlerts();
+      const readIds = JSON.parse(localStorage.getItem("readAlerts") || "[]");
+      setSuspensions(data.map((item) => mapAlert(item, readIds)));
+    } catch (err) {
+      console.error("Failed to fetch suspension alerts:", err);
+    }
+  };
+
   const loadAlerts = async (pageNo = 1) => {
     setLoading(true);
     setError(null);
+    loadSuspensions(); // same trigger points: mount, Refresh, 30s poll, paging
     try {
       const res = await fetchAlerts(pageNo);
 
@@ -200,19 +233,7 @@ export default function Notifications() {
       const data = res?.data || [];
       const readIds = JSON.parse(localStorage.getItem("readAlerts") || "[]");
 
-      const mapped = data.map((item) => ({
-        id: item.id,
-        title: item.type_label,
-        category: item.category_label,
-        description: item.message,
-        project: item.project_name,
-        campaign: item.campaign_name,
-        time: formatTime(item.created_at),
-        rawTime: item.created_at,
-        read: readIds.includes(item.id) || item.is_acknowledged,
-        type: item.type,
-        categoryKey: item.category,
-      }));
+      const mapped = data.map((item) => mapAlert(item, readIds));
 
       setNotifications(mapped);
 
@@ -292,7 +313,7 @@ export default function Notifications() {
     // Dedicated suspension tab: only account-suspension alerts, regardless of
     // read/ack state so a critical suspension never hides.
     if (activeTab() === "suspension") {
-      return notifications().filter((n) => n.categoryKey === "account_suspended");
+      return suspensions();
     }
 
     // Info alerts + account-suspension alerts (see isPanelVisible)
@@ -318,7 +339,7 @@ export default function Notifications() {
 
   // Unacknowledged account-suspension alerts — drives the red count on the tab.
   const suspensionCount = createMemo(() =>
-    notifications().filter((n) => n.categoryKey === "account_suspended" && !n.read).length
+    suspensions().filter((n) => !n.read).length
   );
 
   const markAsRead = (id) => {
@@ -330,6 +351,11 @@ export default function Notifications() {
 
     // all pages
     setAllNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
+    );
+
+    // suspension tab (separate source)
+    setSuspensions((prev) =>
       prev.map((n) => (n.id === id ? { ...n, read: true } : n))
     );
 
@@ -360,6 +386,11 @@ export default function Notifications() {
 
     // all pages
     setAllNotifications((prev) =>
+      prev.map((n) => ({ ...n, read: true }))
+    );
+
+    // suspension tab (separate source)
+    setSuspensions((prev) =>
       prev.map((n) => ({ ...n, read: true }))
     );
 
@@ -704,7 +735,8 @@ export default function Notifications() {
             <div class="px-5 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between flex-wrap gap-3">
 
               <p class="text-xs text-gray-400 dark:text-gray-500">
-                Showing {filteredNotifications().length} of {infoTotal()} alerts
+                Showing {filteredNotifications().length} of{" "}
+                {activeTab() === "suspension" ? suspensions().length : infoTotal()} alerts
               </p>
 
               {/* Pagination */}
