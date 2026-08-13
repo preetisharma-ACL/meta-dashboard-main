@@ -262,7 +262,9 @@ const ensureClientContextFromRoute = async (routeSlug) => {
 };
 
 export default function MainDashboard() {
-  const [statusFilter, setStatusFilter] = createSignal("all");
+  // Ledger opens on live work only — "All" (and every other status) stays one
+  // pick away in the dropdown; the filter itself is unchanged.
+  const [statusFilter, setStatusFilter] = createSignal("active");
   // Set when an admin lands on a client route whose slug resolves to no client
   // (typo'd / renamed / removed) or the roster lookup fails. Gates the whole
   // dashboard behind a "client not found" state so a stale-cached client's
@@ -271,7 +273,6 @@ export default function MainDashboard() {
   const [clientRouteError, setClientRouteError] = createSignal(null);
   const [searchText, setSearchText] = createSignal("");
   const [selectedColumns, setSelectedColumns] = createSignal([]);
-  const [sortType, setSortType] = createSignal("");
   // Date filter is backed by a persisted store (survives page navigation) so the
   // picker and the range-scoped data stay in sync until the user explicitly
   // clears it. Same accessor/setter shape as a signal, so call sites are unchanged.
@@ -943,6 +944,17 @@ export default function MainDashboard() {
   const replacedOf = (projectId) =>
     replacedByProjectLedger()[String(projectId)] || 0;
 
+  // The project set every ledger-footer total sums over. It follows the status
+  // dropdown: "All" keeps the complete roll-up, any other pick narrows the
+  // footer to that status so the Total row describes the rows on screen rather
+  // than a set the reader can't see. Same predicate filteredProjects uses.
+  // A plain function, not a memo, for the same reason as ledgerReplacedTotals.
+  const ledgerScopedProjects = () => {
+    const status = statusFilter();
+    const all = allProjects();
+    return status === "all" ? all : all.filter((p) => p.status === status);
+  };
+
   // Ledger footer totals. Summed over the SAME per-row figures the column
   // prints (including the floor at 0), so the footer equals the sum of the
   // column rather than a separately-derived number.
@@ -952,7 +964,7 @@ export default function MainDashboard() {
     const statsMap = allProjectStats();
     let replaced = 0;
     let billable = 0;
-    for (const p of allProjects()) {
+    for (const p of ledgerScopedProjects()) {
       const s = statsMap[p.id] || {};
       const total = s.totalLeadsWithFed ?? s.totalLeads ?? 0;
       const r = replacedOf(p.id);
@@ -1813,8 +1825,10 @@ export default function MainDashboard() {
     return data.slice(startIndex, endIndex);
   });
 
+  // Ledger footer only. Scoped to the status the ledger is showing — with the
+  // filter on "All" this is every project, exactly as before.
   const overviewStats = createMemo(() => {
-    const all = allProjects();
+    const all = ledgerScopedProjects();
     const statsMap = allProjectStats();
 
     // const totalBudget = all.reduce((s, p) => s + (p.budget ?? 0), 0);
@@ -1833,10 +1847,11 @@ export default function MainDashboard() {
       (s, p) => s + (statsMap[p.id]?.totalLeads ?? 0),
       0,
     );
-    // Admin + CM (0 for a client). Summed over ALL projects, exactly like
+    // Admin + CM (0 for a client). Summed over the same project set as
     // totalLeads above, so the ledger footer's "Total (incl. fed)" reconciles
     // with the CM's own Daily Report total for the same client and range — and
-    // with what the client sees on their own dashboard.
+    // with what the client sees on their own dashboard — whenever the status
+    // filter is on "All". Narrow the filter and both figures narrow together.
     const totalFedLeads = all.reduce(
       (s, p) => s + (statsMap[p.id]?.fedLeads ?? 0),
       0,
@@ -2402,7 +2417,7 @@ export default function MainDashboard() {
   };
 
   const handleClearFilters = () => {
-    setStatusFilter("all");
+    setStatusFilter("active");
     setSearchText("");
     resetSort();
     setSelectedColumns([]);
@@ -3104,7 +3119,7 @@ export default function MainDashboard() {
             </svg>
           </div>
         </div>
-
+        
         <input
           type="text"
           placeholder="Search project..."
@@ -3113,40 +3128,11 @@ export default function MainDashboard() {
             const value = e.target.value;
             setSearchText(value);
           }}
-          class="border border-[#E2E8F1] dark:border-gray-600 px-3 py-2 rounded-lg w-60 bg-gray-50 dark:bg-gray-800 text-sm text-[#1A2B45] dark:text-gray-200 placeholder:text-[#8593A8] focus:outline-none focus:ring-2 focus:ring-[#AC2334]/25 focus:border-[#AC2334]"
+          class="border border-[#E2E8F1]  dark:border-gray-600 px-3 py-2 rounded-lg flex-1 min-w-[240px] max-w-[420px] bg-gray-50 dark:bg-gray-800 text-sm text-[#1A2B45] dark:text-gray-200 placeholder:text-[#8593A8] focus:outline-none focus:ring-2 focus:ring-[#AC2334]/25 focus:border-[#AC2334]"
         />
 
-        {/* No arrow characters — use plain text */}
-        <div class="relative inline-block">
-          <select
-            class="border border-[#E2E8F1] dark:border-gray-600 px-3 py-2 pr-10 rounded-lg bg-gray-50 dark:bg-gray-800 text-sm text-[#1A2B45] dark:text-gray-200 appearance-none focus:outline-none focus:ring-2 focus:ring-[#AC2334]/25 focus:border-[#AC2334]"
-            value={sortType()}
-            onChange={(e) => setSortType(e.target.value)}
-          >
-            <option value="">Sort by</option>
-            <option value="budget">Budget: High to Low</option>
-            <option value="leads">Leads: High to Low</option>
-            <option value="activeCampaigns">Active Campaigns</option>
-            <option value="cplHigh">CPL: High to Low</option>
-            <option value="cplLow">CPL: Low to High</option>
-          </select>
-
-          <div class="pointer-events-none absolute inset-y-0 right-3 flex items-center">
-            <svg
-              class="w-4 h-4 text-[#8593A8]"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M19 9l-7 7-7-7"
-              />
-            </svg>
-          </div>
-        </div>
+        {/* Sorting lives on the column headers (useColumnSort) — the old
+            "Sort by" dropdown fed a signal nothing read, so it was removed. */}
 
         <DateRangeFilter
           fromDate={fromDate}
@@ -3501,11 +3487,11 @@ export default function MainDashboard() {
                 <td>{overviewStats().totalLeads}</td>
 
                 <Show when={isFedAwareViewer()}>
-                  {/* Fed total, then Total (incl. fed). Both roll up over ALL
-                      projects — the same set totalLeads above sums — so this
-                      footer reconciles with the CM's own Daily Report total for
-                      the same client and range, and admin's footer matches the
-                      CM's line for line. */}
+                  {/* Fed total, then Total (incl. fed). Both roll up over the
+                      status-scoped project set — the same set totalLeads above
+                      sums — so on "All" this footer reconciles with the CM's own
+                      Daily Report total for the same client and range, and
+                      admin's footer matches the CM's line for line. */}
                   <td class="text-[#15966A] dark:text-green-300">
                     {fmtFed(overviewStats().totalFedLeads)}
                   </td>

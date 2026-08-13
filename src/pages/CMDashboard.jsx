@@ -112,7 +112,12 @@ const PERF_COLORS = {
 export default function CMDashboard() {
   const [fromDate, setFromDate] = createSignal("");
   const [toDate, setToDate] = createSignal("");
-  const [statusFilter, setStatusFilter] = createSignal("all");
+  // Campaign-ledger status scope. Opens on "active" so the ledger lists live
+  // work first; Paused/Completed/All are one pick away. This is a DISPLAY
+  // filter over the rows already fetched — it deliberately no longer narrows
+  // the request (see `source` below), so the KPI cards, the project ledger and
+  // the "needs attention" signals keep seeing every campaign whatever is picked.
+  const [statusFilter, setStatusFilter] = createSignal("active");
   const [search, setSearch] = createSignal("");
   // Separate from `search`: the campaign ledger's box filters campaign rows, and
   // typing a project name there shouldn't silently reshape the project ledger's
@@ -124,13 +129,16 @@ export default function CMDashboard() {
   // just remembers which pill is lit.
   const [activePreset, setActivePreset] = createSignal(null);
 
-  // Resource source — refetch whenever the switch scope, dates, or status
-  // change. Search is applied client-side (below) so typing doesn't refetch.
+  // Resource source — refetch whenever the switch scope or dates change.
+  // Search and the ledger's status pick are applied client-side (below) so
+  // neither refetches. Always fetching every status is what lets the page-wide
+  // aggregates stay whole while the ledger shows one status: narrowing this
+  // request would empty the paused-campaign signal and rescope every KPI.
   const source = createMemo(() => ({
     scope: asTeamMemberId(),
     startDate: fromDate() || undefined,
     endDate: toDate() || undefined,
-    status: statusFilter(),
+    status: "all",
   }));
 
   const [data] = createResource(source, async (s) => {
@@ -303,6 +311,15 @@ export default function CMDashboard() {
       );
     }
     return rows;
+  });
+
+  // The campaign ledger's own row set: the scoped rows narrowed to the status
+  // picked above. Only the ledger table, its count and its footer read this —
+  // everything else on the page keeps reading campaigns().
+  const ledgerCampaigns = createMemo(() => {
+    const status = statusFilter();
+    const rows = campaigns();
+    return status === "all" ? rows : rows.filter((c) => c.status === status);
   });
 
   // ─── Scoped summary (aggregated from the rows the server returned) ──────────
@@ -482,6 +499,26 @@ export default function CMDashboard() {
       completed,
       utilPct: budget > 0 ? Math.min((spend / budget) * 100, 100) : 0,
     };
+  });
+
+  // Campaign-ledger footer. Follows the status pick so the Total row describes
+  // the rows on screen. On "All" it returns the page-wide figures untouched —
+  // including the own-scope hierarchy override summary() applies, which a
+  // re-derived sum would silently drop.
+  const ledgerTotals = createMemo(() => {
+    if (statusFilter() === "all") {
+      const s = summary();
+      return { spend: s.spend, leads: s.leads, cpl: s.cpl, budget: ledgerStats().budget };
+    }
+    let spend = 0;
+    let leads = 0;
+    let budget = 0;
+    for (const c of ledgerCampaigns()) {
+      spend += parseFloat(c.spend) || 0;
+      leads += Number(c.leads_count) || 0;
+      budget += parseFloat(c.budget) || 0;
+    }
+    return { spend, leads, budget, cpl: leads > 0 ? spend / leads : 0 };
   });
 
   // Best / worst CPL among campaigns that actually generated leads.
@@ -1275,7 +1312,8 @@ export default function CMDashboard() {
           </div>
 
           <span class="ml-auto text-sm font-medium text-[#8593A8] dark:text-gray-500 whitespace-nowrap">
-            {campaigns().length} campaign{campaigns().length !== 1 ? "s" : ""}
+            {ledgerCampaigns().length} campaign
+            {ledgerCampaigns().length !== 1 ? "s" : ""}
           </span>
         </div>
 
@@ -1314,7 +1352,7 @@ export default function CMDashboard() {
 
             <Show when={!firstLoad()} fallback={<TableSkeleton />}>
               <tbody>
-                <For each={campaigns()}>
+                <For each={ledgerCampaigns()}>
                   {(c, i) => (
                     <tr
                       class={
@@ -1440,7 +1478,7 @@ export default function CMDashboard() {
                   )}
                 </For>
 
-                <Show when={campaigns().length === 0}>
+                <Show when={ledgerCampaigns().length === 0}>
                   <tr>
                     <td
                       colspan={canWriteCampaigns() ? 10 : 9}
@@ -1452,26 +1490,33 @@ export default function CMDashboard() {
                 </Show>
               </tbody>
 
-              <Show when={campaigns().length > 0}>
-                <tfoot class="bg-[#F8FAFC] dark:bg-gray-800 font-semibold text-gray-700 dark:text-white border-t-2 border-[#D4DDE9] dark:border-gray-600">
+              <Show when={ledgerCampaigns().length > 0}>
+                {/* Pinned to the bottom of the scroll box, the mirror of the
+                    sticky thead: the Total stays readable while you scroll
+                    2,790 rows. Background and top rule live on the cells, not
+                    on the tfoot — a non-sticky tfoot's own box scrolls away and
+                    would leave the pinned cells transparent. */}
+                <tfoot class="bg-[#F8FAFC] dark:bg-gray-800 font-semibold text-gray-700 dark:text-white [&_td]:sticky [&_td]:bottom-0 [&_td]:z-20 [&_td]:bg-[#F8FAFC] dark:[&_td]:bg-gray-800 [&_td]:border-t-2 [&_td]:border-[#D4DDE9] dark:[&_td]:border-gray-600">
                   <tr>
-                    <td class="px-1 py-3 w-12 md:sticky md:left-0 md:z-20 bg-[#F8FAFC] dark:bg-gray-800"></td>
-                    <td class="px-3 py-3 text-left text-xs uppercase tracking-wider text-[#54657E] dark:text-gray-300 md:sticky md:left-[57px] md:z-20 bg-[#F8FAFC] dark:bg-gray-800 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.08)]">
+                    <td class="px-1 py-3 w-12 md:left-0 md:z-30"></td>
+                    <td class="px-3 py-3 text-left text-xs uppercase tracking-wider text-[#54657E] dark:text-gray-300 md:left-[57px] md:z-30 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.08)]">
                       Total
                     </td>
                     <td></td>
                     <td></td>
                     <td class="px-4 py-3 text-right">
-                      {fmtMoney(summary().spend)}
+                      {fmtMoney(ledgerTotals().spend)}
                     </td>
                     <td class="px-4 py-3 text-right">
-                      {fmtMoney(ledgerStats().budget)}
+                      {fmtMoney(ledgerTotals().budget)}
                     </td>
                     <td class="px-4 py-3 text-right">
-                      {fmtNum(summary().leads)}
+                      {fmtNum(ledgerTotals().leads)}
                     </td>
                     <td class="px-4 py-3 text-right">
-                      {summary().leads > 0 ? fmtCPL(summary().cpl) : "—"}
+                      {ledgerTotals().leads > 0
+                        ? fmtCPL(ledgerTotals().cpl)
+                        : "—"}
                     </td>
                     <td></td>
                     <Show when={canWriteCampaigns()}>

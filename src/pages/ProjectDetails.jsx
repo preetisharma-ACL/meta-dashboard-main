@@ -231,7 +231,10 @@ export default function ProjectDetails() {
   const setFromDate = (v) => setDashboardFilter("fromDate", v);
   const setToDate = (v) => setDashboardFilter("toDate", v);
   const [search, setSearch] = createSignal("");
-  const [statusFilter, setStatusFilter] = createSignal("All");
+  // Campaigns table opens on running work only — "Live" is what normalizeStatus
+  // returns for anything not paused/completed. All/Paused/Completed stay one
+  // pick away; the filter itself is unchanged.
+  const [statusFilter, setStatusFilter] = createSignal("Live");
   // Internal-only: filter the campaigns table by ad account (client-side, additive).
   const [adAccountFilter, setAdAccountFilter] = createSignal("all");
   // const [page, setPage] = createSignal(1);
@@ -801,7 +804,7 @@ export default function ProjectDetails() {
 
   const clearFilters = () => {
     setSearch("");
-    setStatusFilter("All");
+    setStatusFilter("Live");
     setAdAccountFilter("all");
     setFromDate("");
     setToDate("");
