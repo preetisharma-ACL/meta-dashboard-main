@@ -58,22 +58,163 @@
   }
 }
 
-/* Custom scrollbar */
+/* ── Custom scrollbar (crimson → gold) ──────────────────────────────────────
+   Every wide ledger on this dashboard is read by dragging a horizontal bar,
+   so that bar is furniture people look at all day — it gets the brand accents
+   rather than the browser's grey. The thumb runs #AC2334 into #D89A2B, the
+   same crimson-to-gold the sidebar's active rail uses.
+
+   The track is a faint recessed channel, and the thumb is inset from it by a
+   2px transparent border (background-clip: padding-box) so it reads as a pill
+   floating in the groove instead of a bar filling it. */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
 }
 
 ::-webkit-scrollbar-track {
-  @apply bg-gray-100 dark:bg-gray-800;
+  background: rgba(16, 29, 49, 0.05);
+  border-radius: 9999px;
+}
+
+.dark ::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.06);
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-gray-400 dark:bg-gray-600 rounded-full;
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  /* Mid-ramp fallback for engines that drop the gradient — deliberately not
+     pure crimson, so a failure looks wrong instead of looking intentional. */
+  background-color: #c2662a;
+  /* A hairline of light along the top edge: the sheen that makes the pill
+     read as a rounded object rather than a flat stripe. */
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  /* Vertical bars read top-to-bottom … */
+  background-image: linear-gradient(
+    180deg,
+    #ac2334 0%,
+    #c14b2a 30%,
+    #d07d29 60%,
+    #d89a2b 82%,
+    #e7bc5e 100%
+  );
+}
+
+/* … horizontal ones must run left-to-right, or the gradient collapses into a
+   single flat colour along the length of the bar. */
+::-webkit-scrollbar-thumb:horizontal {
+  background-image: linear-gradient(
+    90deg,
+    #ac2334 0%,
+    #c14b2a 30%,
+    #d07d29 60%,
+    #d89a2b 82%,
+    #e7bc5e 100%
+  );
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-gray-500 dark:bg-gray-500;
+  background-image: linear-gradient(
+    180deg,
+    #931d2c 0%,
+    #b23c26 30%,
+    #c26c1f 60%,
+    #c98a1f 82%,
+    #dcaa47 100%
+  );
+}
+
+::-webkit-scrollbar-thumb:horizontal:hover {
+  background-image: linear-gradient(
+    90deg,
+    #931d2c 0%,
+    #b23c26 30%,
+    #c26c1f 60%,
+    #c98a1f 82%,
+    #dcaa47 100%
+  );
+}
+
+/* Kill the stepper arrows. They're painted by the UA, ignore the palette, and
+   put a hard square cap on each end of an otherwise rounded pill. */
+::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Firefox has no gradient thumbs — it gets a flat crimson, which still puts
+   the bar in the palette instead of the browser default.
+
+   This MUST stay behind the @supports gate. Chrome 121+ treats the standard
+   `scrollbar-color` / `scrollbar-width` properties as an opt-in to native
+   scrollbar rendering and then IGNORES every ::-webkit-scrollbar-* rule on
+   that element — so applying them to `*` silently threw away the whole
+   gradient above and painted a flat crimson bar instead. The gate limits them
+   to engines that don't understand ::-webkit-scrollbar at all, i.e. Firefox. */
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(172, 35, 52, 0.75) rgba(16, 29, 49, 0.06);
+  }
+
+  html.dark * {
+    scrollbar-color: rgba(216, 154, 43, 0.7) rgba(255, 255, 255, 0.08);
+  }
+}
+
+/* ── Sidebar scroller ───────────────────────────────────────────────────────
+   Same crimson→gold pill as the ledgers, always visible so the nav visibly has
+   more below the fold — an earlier hover-only version just read as a missing
+   scrollbar. Narrower (7px) and on a faint channel, because this one sits
+   inside the chrome rather than under a wide table. */
+.sidebar-scroll {
+  /* Don't hand the scroll on to the page when the nav hits its end. */
+  overscroll-behavior: contain;
+}
+
+/* Firefox only, for the same reason as the global block: setting these in
+   Chrome would disable the ::-webkit-scrollbar rules below. Doubled class so
+   the gated `html.dark *` rule can't outweigh it. */
+@supports not selector(::-webkit-scrollbar) {
+  .sidebar-scroll.sidebar-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(172, 35, 52, 0.7) rgba(16, 29, 49, 0.05);
+  }
+}
+
+.sidebar-scroll::-webkit-scrollbar {
+  width: 3px;
+}
+
+.sidebar-scroll::-webkit-scrollbar-track {
+  background: rgba(16, 29, 49, 0.04);
+  border-radius: 9999px;
+}
+
+.dark .sidebar-scroll::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Inherits the global gradient. The inset border is dropped entirely — at 5px
+   the global 2px border would leave a 1px sliver of colour — so the pill fills
+   the full width of the bar and the slimness comes from the track, not from
+   eating into the thumb. */
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  border: 0;
+  background-clip: border-box;
+  box-shadow: none;
+  opacity: 0.9;
+}
+
+.sidebar-scroll::-webkit-scrollbar-thumb:hover {
+  opacity: 1;
 }
 
 .date-btn {

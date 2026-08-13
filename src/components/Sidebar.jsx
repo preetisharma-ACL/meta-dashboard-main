@@ -78,20 +78,27 @@ const SmallIcon = ({ d }) => (
   </svg>
 );
 
+// A solid caret, not an outlined chevron: the nav's own icons are all 2px
+// strokes, so a filled mark reads as a control rather than as one more icon.
+// Stroked in its own colour with round joins, which softens the three corners
+// without needing a rounded-triangle path. No chip behind it — the colour
+// swap (slate → crimson) carries the open state on its own.
 const ChevronIcon = ({ open }) => (
   <svg
-    class="w-4 h-4 transition-transform duration-300"
+    class={
+      "w-4 h-4 flex-shrink-0 transition-all duration-300 ease-out group-hover:scale-110 " +
+      (open
+        ? "text-[#AC2334] dark:text-red-300 drop-shadow-[0_1px_1px_rgba(172,35,52,.25)]"
+        : "text-[#54657E] group-hover:text-[#AC2334] dark:text-gray-400 dark:group-hover:text-red-300")
+    }
     style={{ transform: open ? "rotate(180deg)" : "rotate(0deg)" }}
-    fill="none"
     viewBox="0 0 24 24"
+    fill="currentColor"
     stroke="currentColor"
+    stroke-width="2.5"
+    stroke-linejoin="round"
   >
-    <path
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      stroke-width="2"
-      d="M19 9l-7 7-7-7"
-    />
+    <path d="M12 15.75L6 9.5h12L12 15.75z" />
   </svg>
 );
 
@@ -118,14 +125,19 @@ function AnimatedCollapse(props) {
 }
 
 // ── Nav item class sets (project theme) ───────────────────────────────────────
+// Crimson #AC2334 / navy #14233A / gold #D89A2B — the same palette every ledger
+// and KPI card on this dashboard uses. The nav used to be blue-500/blue-50,
+// which belonged to no other screen in the product.
 const NAV_BASE =
-  "group flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 relative";
+  "group flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 relative outline-none focus-visible:ring-2 focus-visible:ring-[#AC2334]/30";
 
+// Tinted wash + a hairline inset ring, so the active row reads as a raised
+// surface rather than a flat colour block.
 const NAV_ACTIVE =
-  "bg-blue-50 dark:bg-blue-900/25 text-blue-600 dark:text-blue-400 shadow-sm";
+  "bg-gradient-to-r from-[#FBEEF0] to-[#FBEEF0]/30 dark:from-[#AC2334]/25 dark:to-transparent text-[#AC2334] dark:text-red-300 shadow-[0_1px_2px_rgba(172,35,52,.08),inset_0_0_0_1px_rgba(172,35,52,.12)]";
 
 const NAV_INACTIVE =
-  "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100";
+  "text-[#54657E] dark:text-gray-400 hover:bg-[#F6F9FC] dark:hover:bg-gray-800/70 hover:text-[#14233A] dark:hover:text-gray-100";
 
 // ── Payments desk links (accounts + admin) ──────────────────────────────────
 // Declared once and rendered twice, because the two roles want different
@@ -717,14 +729,20 @@ export default function Sidebar() {
       {/* Sidebar */}
       <aside
         class={`fixed overflow-hidden flex flex-col top-0 left-0 h-full z-50 transition-all duration-300
-          bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 ${
+          bg-gradient-to-b from-white via-white to-[#FAFBFD] dark:from-gray-900 dark:via-gray-900 dark:to-gray-950
+          border-r border-[#E2E8F1] dark:border-gray-800
+          shadow-[1px_0_2px_rgba(16,29,49,.04),8px_0_28px_-16px_rgba(16,29,49,.18)] ${
             isCollapsed() ? "w-20" : "w-64"
           } ${
             isMobileOpen() ? "translate-x-0" : "-translate-x-full"
           } lg:translate-x-0`}
       >
+        {/* Crimson hairline down the outer edge — the one flourish that marks
+            this as Aajneeti chrome rather than a default shell. */}
+        <span class="pointer-events-none absolute inset-y-0 right-0 w-px bg-gradient-to-b from-[#AC2334]/40 via-[#AC2334]/10 to-transparent" />
+
         {/* Logo — AAJneeti wordmark + gold "Reporting Dashboard" (all screens) */}
-        <div class="flex-shrink-0 px-4 py-5 border-b border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 flex items-center justify-center">
+        <div class="relative flex-shrink-0 px-4 py-5 flex items-center justify-center">
           <Show
             when={!isCollapsed()}
             fallback={
@@ -791,8 +809,12 @@ export default function Sidebar() {
           </Show>
         </div>
 
+        {/* Divider — a fading rule instead of a full-width border, so the
+            wordmark sits on the same sheet as the nav rather than in a box. */}
+        <div class="flex-shrink-0 h-px mx-4 bg-gradient-to-r from-transparent via-[#D4DDE9] to-transparent dark:via-gray-700" />
+
         {/* Navigation */}
-        <nav class="p-3 space-y-0.5 flex-1 min-h-0 overflow-y-auto">
+        <nav class="sidebar-scroll p-3 space-y-1 flex-1 min-h-0 overflow-y-auto">
           <For each={menuItems()}>
             {(item) => (
               <Show
@@ -801,25 +823,37 @@ export default function Sidebar() {
                   <A
                     href={item.path ?? "#"}
                     onClick={item.action ?? undefined}
-                    class={`${NAV_BASE} ${isActive(item.path) ? NAV_ACTIVE : NAV_INACTIVE}`}
+                    title={isCollapsed() ? item.name : undefined}
+                    class={`${NAV_BASE} ${isCollapsed() ? "justify-center" : ""} ${
+                      isActive(item.path) ? NAV_ACTIVE : NAV_INACTIVE
+                    }`}
                   >
-                    {/* Active indicator bar */}
+                    {/* Active indicator — crimson fading into the gold the
+                        wordmark uses, so the rail echoes the masthead. */}
                     <Show when={isActive(item.path)}>
-                      <span class="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-blue-500 rounded-r-full" />
+                      <span class="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-7 rounded-r-full bg-gradient-to-b from-[#AC2334] to-[#D89A2B]" />
                     </Show>
 
                     <span
-                      class={`flex-shrink-0 transition-transform duration-200 group-hover:scale-110 ${isActive(item.path) ? "text-blue-500" : ""}`}
+                      class={`flex-shrink-0 transition-all duration-200 group-hover:scale-110 ${
+                        isActive(item.path)
+                          ? "text-[#AC2334] dark:text-red-300"
+                          : "text-[#8593A8] group-hover:text-[#AC2334] dark:group-hover:text-red-300"
+                      }`}
                     >
                       {item.icon()}
                     </span>
 
                     <Show when={!isCollapsed()}>
-                      <span class="flex-1 font-medium text-sm">
+                      <span
+                        class={`flex-1 text-sm ${
+                          isActive(item.path) ? "font-semibold" : "font-medium"
+                        }`}
+                      >
                         {item.name}
                       </span>
                       <Show when={item.badge}>
-                        <span class="ml-auto inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-bold leading-none text-white bg-blue-500 rounded-full">
+                        <span class="ml-auto inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-bold leading-none text-white bg-[#AC2334] rounded-full shadow-[0_1px_2px_rgba(172,35,52,.35)]">
                           {item.badge}
                         </span>
                       </Show>
@@ -830,20 +864,39 @@ export default function Sidebar() {
                 {/* Parent with submenus */}
                 <div>
                   <button
-                    class={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-200
+                    title={isCollapsed() ? item.name : undefined}
+                    class={`group w-full flex items-center justify-between px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-200 outline-none focus-visible:ring-2 focus-visible:ring-[#AC2334]/30
                       ${
                         openMenu() === item.name
-                          ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400"
+                          ? "bg-[#F6F9FC] dark:bg-gray-800/70 text-[#14233A] dark:text-gray-100 shadow-[inset_0_0_0_1px_rgba(212,221,233,.9)] dark:shadow-[inset_0_0_0_1px_rgba(55,65,81,.6)]"
                           : NAV_INACTIVE
                       }`}
                     onClick={() =>
                       setOpenMenu(openMenu() === item.name ? null : item.name)
                     }
                   >
-                    <div class="flex items-center gap-3">
-                      <span class="flex-shrink-0">{item.icon()}</span>
+                    <div
+                      class={`flex items-center gap-3 ${isCollapsed() ? "mx-auto" : ""}`}
+                    >
+                      <span
+                        class={`flex-shrink-0 transition-all duration-200 group-hover:scale-110 ${
+                          openMenu() === item.name
+                            ? "text-[#AC2334] dark:text-red-300"
+                            : "text-[#8593A8] group-hover:text-[#AC2334] dark:group-hover:text-red-300"
+                        }`}
+                      >
+                        {item.icon()}
+                      </span>
                       <Show when={!isCollapsed()}>
-                        <span class="font-medium text-sm">{item.name}</span>
+                        <span
+                          class={`text-sm ${
+                            openMenu() === item.name
+                              ? "font-semibold"
+                              : "font-medium"
+                          }`}
+                        >
+                          {item.name}
+                        </span>
                       </Show>
                     </div>
                     <Show when={!isCollapsed()}>
@@ -853,7 +906,7 @@ export default function Sidebar() {
 
                   {/* Animated submenu */}
                   <AnimatedCollapse open={openMenu() === item.name}>
-                    <div class="mt-1 ml-3 pl-3 border-l-2 border-blue-100 dark:border-blue-900/50 space-y-0.5 pb-1">
+                    <div class="mt-1 ml-4 pl-3 border-l border-[#E2E8F1] dark:border-gray-700 space-y-0.5 pb-1">
                       <For
                         each={item.subMenus.filter(
                           (sub) => !sub.roles || sub.roles.includes(userRole()),
@@ -862,22 +915,27 @@ export default function Sidebar() {
                         {(sub) => (
                           <A
                             href={sub.path}
-                            class={`group flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-all duration-150
+                            class={`group relative flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-all duration-150 outline-none focus-visible:ring-2 focus-visible:ring-[#AC2334]/30
                               ${
                                 isActive(sub.path)
-                                  ? "bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 font-medium"
-                                  : "text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-800 dark:hover:text-gray-200"
+                                  ? "bg-[#FBEEF0] text-[#AC2334] dark:bg-[#AC2334]/20 dark:text-red-300 font-semibold"
+                                  : "text-[#54657E] dark:text-gray-400 hover:bg-[#F6F9FC] dark:hover:bg-gray-800/70 hover:text-[#14233A] dark:hover:text-gray-200 hover:translate-x-0.5"
                               }`}
                           >
+                            {/* Ties the row back to the group's rule on the left */}
+                            <Show when={isActive(sub.path)}>
+                              <span class="absolute -left-[13px] top-1/2 -translate-y-1/2 w-[2px] h-5 rounded-full bg-[#AC2334]" />
+                            </Show>
+
                             <span
-                              class={`flex-shrink-0 transition-colors duration-150 ${isActive(sub.path) ? "text-blue-500" : "text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-300"}`}
+                              class={`flex-shrink-0 transition-colors duration-150 ${isActive(sub.path) ? "text-[#AC2334] dark:text-red-300" : "text-[#8593A8] group-hover:text-[#AC2334] dark:group-hover:text-red-300"}`}
                             >
                               {sub.icon?.()}
                             </span>
                             <span>{sub.name}</span>
                             {/* Active dot */}
                             <Show when={isActive(sub.path)}>
-                              <span class="ml-auto w-1.5 h-1.5 rounded-full bg-blue-500" />
+                              <span class="ml-auto w-1.5 h-1.5 rounded-full bg-[#D89A2B]" />
                             </Show>
                           </A>
                         )}
@@ -892,15 +950,15 @@ export default function Sidebar() {
 
         {/* Footer */}
         <div
-          class={`flex-shrink-0 px-4 py-3 border-t border-gray-100 dark:border-gray-800 bg-gray-50/80 dark:bg-gray-900/80 backdrop-blur-sm ${
+          class={`flex-shrink-0 px-4 py-3 border-t border-[#E2E8F1] dark:border-gray-800 bg-[#F8FAFC]/90 dark:bg-gray-950/80 backdrop-blur-sm ${
             isCollapsed() ? "text-center" : ""
           }`}
         >
           <Show when={!isCollapsed()}>
-            <p class="text-xs text-gray-400 dark:text-gray-500 leading-relaxed">
+            <p class="text-[11px] font-medium tracking-wide text-[#8593A8] dark:text-gray-500 leading-relaxed">
               Developed by Aajneeti Connect Ltd.
             </p>
-            <p class="text-xs text-gray-300 dark:text-gray-600">
+            <p class="text-[11px] text-[#A9B6C7] dark:text-gray-600">
               © 2026 All rights reserved.
             </p>
           </Show>
