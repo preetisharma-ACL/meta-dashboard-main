@@ -2609,13 +2609,37 @@ export default function MainDashboard() {
       {/* Section Header */}
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-6">
         <div>
-          <p class="text-xs font-bold uppercase tracking-[0.12em] text-[#AC2334] mb-1.5">
-            Reporting · Live campaigns
-          </p>
-          <h1 class="text-2xl font-bold text-[#14233A] dark:text-white mb-1">
-            Active Projects
+          {/* pl-[46px] = the 36px tile + the 10px gap in the h1 below, so the
+              eyebrow and the description line up with the heading TEXT and the
+              tile hangs to the left of the whole block. */}
+         
+          {/* Icon tile + gradient wordmark. The tile carries the crimson→gold
+              solid so the heading reads at a glance even where the gradient
+              text is thin; `pb-0.5` keeps bg-clip-text from shaving the
+              descender off the "j"-height glyphs. */}
+          <h1 class="flex items-center gap-2.5 text-2xl font-bold mb-1">
+            <span class="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#7E1522] via-[#AC2334] via-70% to-[#C4802B] text-white shadow-[0_2px_8px_rgba(126,21,34,.32)]">
+              <svg
+                class="w-5 h-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+                />
+              </svg>
+            </span>
+            {/* Crimson holds the word; gold is a highlight on the tail, not an
+                equal partner. via-72% is what keeps the ramp off the middle. */}
+            <span class="inline-block pb-0.5 leading-tight bg-gradient-to-r from-[#7E1522] via-[#AC2334] via-72% to-[#C4802B] dark:from-[#D9455E] dark:via-[#E4566A] dark:to-[#E9AE5C] bg-clip-text text-transparent">
+              Active Projects
+            </span>
           </h1>
-          <p class="text-md text-[#54657E] dark:text-gray-400">
+          <p class="pl-[46px] text-md text-[#54657E] dark:text-gray-400">
             All projects with live marketing campaigns.
           </p>
         </div>

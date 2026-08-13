@@ -522,10 +522,31 @@ export default function Clients() {
       {/* ── Page header ── */}
       <div class="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div>
-          <h1 class="text-2xl font-semibold text-gray-900 dark:text-white tracking-tight">
-            Clients
+          {/* Matches the dashboard's heading treatment: crimson→gold tile,
+              same gradient across the word. */}
+          <h1 class="flex items-center gap-2.5 text-2xl font-semibold tracking-tight">
+            <span class="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#7E1522] via-[#AC2334] via-70% to-[#C4802B] text-white shadow-[0_2px_8px_rgba(126,21,34,.32)]">
+              <svg
+                class="w-5 h-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0h-6m6 0a3 3 0 01-5.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M9 7a4 4 0 11-8 0 4 4 0 018 0zm0 0a4 4 0 015.536 3.536M15.536 10.536A5.967 5.967 0 0121 16.941M16.536 10.536A5.973 5.973 0 0012 16c0 .132 0 .263.012.391M12 16a5.973 5.973 0 00-4.536-2.464"
+                />
+              </svg>
+            </span>
+            <span class="inline-block pb-0.5 leading-tight bg-gradient-to-r from-[#7E1522] via-[#AC2334] via-72% to-[#C4802B] dark:from-[#D9455E] dark:via-[#E4566A] dark:to-[#E9AE5C] bg-clip-text text-transparent">
+              Clients
+            </span>
           </h1>
-          <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+          {/* pl-[46px] = tile (36px) + gap (10px), so this starts under the
+              heading text rather than under the icon. */}
+          <p class="pl-[46px] text-sm text-gray-500 dark:text-gray-400 mt-0.5">
             {allClients().length} total · click a row to open that client's
             dashboard
           </p>
