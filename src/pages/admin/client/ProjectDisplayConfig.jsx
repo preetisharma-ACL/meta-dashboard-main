@@ -586,10 +586,30 @@ export default function ProjectDisplayConfig() {
       {/* Page Header */}
       <div class="mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div class="mb-6">
-          <h1 class="text-2xl font-semibold text-gray-900 dark:text-white tracking-tight">
-            Project Display Configs
+          {/* Same heading treatment as the dashboard: crimson→gold tile with
+              this section's sidebar glyph, gradient wordmark, description
+              indented by tile (36px) + gap (10px). */}
+          <h1 class="flex items-center gap-2.5 text-2xl font-semibold tracking-tight">
+            <span class="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#7E1522] via-[#AC2334] via-70% to-[#C4802B] text-white shadow-[0_2px_8px_rgba(126,21,34,.32)]">
+              <svg
+                class="w-5 h-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"
+                />
+              </svg>
+            </span>
+            <span class="inline-block pb-0.5 leading-tight bg-gradient-to-r from-[#7E1522] via-[#AC2334] via-72% to-[#C4802B] dark:from-[#D9455E] dark:via-[#E4566A] dark:to-[#E9AE5C] bg-clip-text text-transparent">
+              Project Display Configs
+            </span>
           </h1>
-          <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+          <p class="pl-[46px] text-sm text-gray-500 dark:text-gray-400 mt-0.5">
             {configs().length} total · billing rules per project
           </p>
         </div>

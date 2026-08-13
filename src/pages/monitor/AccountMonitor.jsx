@@ -212,13 +212,7 @@ export default function AccountMonitor() {
       <header class="relative bg-gray-50 dark:bg-gray-900 border-b border-[#E2E8F1] dark:border-gray-700 px-4 md:px-9">
         <span class="absolute inset-x-0 top-0 h-1 bg-[#AC2334]" />
         <div class="max-w-[1480px] mx-auto pt-6 pb-6">
-          <nav
-            class="flex items-center gap-2 text-[12px] font-bold tracking-[0.14em] uppercase text-[#8593A8] dark:text-gray-500 mb-3"
-            aria-label="Breadcrumb"
-          >
-            
-            <span class="text-[#AC2334]">Account &amp; Budget Monitor</span>
-          </nav>
+         
           <div class="flex items-end justify-between gap-6 flex-wrap">
             <div>
               <h1 class="font-sans font-bold text-2xl leading-[1.05] text-[#14233A] dark:text-white">

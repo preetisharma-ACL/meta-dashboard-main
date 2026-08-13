@@ -831,13 +831,31 @@ export default function AccountFunding() {
       {/* Header */}
       <div class="mb-5 flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <p class="text-xs font-bold uppercase tracking-[0.12em] text-[#AC2334] mb-1.5">
-            Coordination · Funding
-          </p>
-          <h1 class="text-2xl font-bold text-[#14233A] dark:text-white tracking-tight">
-            Account Funding
+          {/* Same heading treatment as the dashboard: crimson→gold tile with
+              this section's sidebar glyph, gradient wordmark, supporting lines
+              indented by tile (36px) + gap (10px). */}
+          
+          <h1 class="flex items-center gap-2.5 text-2xl font-bold tracking-tight">
+            <span class="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#7E1522] via-[#AC2334] via-70% to-[#C4802B] text-white shadow-[0_2px_8px_rgba(126,21,34,.32)]">
+              <svg
+                class="w-5 h-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
+                />
+              </svg>
+            </span>
+            <span class="inline-block pb-0.5 leading-tight bg-gradient-to-r from-[#7E1522] via-[#AC2334] via-72% to-[#C4802B] dark:from-[#D9455E] dark:via-[#E4566A] dark:to-[#E9AE5C] bg-clip-text text-transparent">
+              Account Funding
+            </span>
           </h1>
-          <p class="text-sm text-[#54657E] dark:text-gray-400 mt-1">
+          <p class="pl-[46px] text-sm text-[#54657E] dark:text-gray-400 mt-1">
             GST-inclusive 24-hour funding requirement per ad account, sorted by
             shortfall.
           </p>

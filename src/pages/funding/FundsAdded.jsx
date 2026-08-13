@@ -595,13 +595,31 @@ export default function FundsAdded() {
       {/* Header */}
       <div class="mb-5 flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <p class="text-xs font-bold uppercase tracking-[0.12em] text-[#AC2334] mb-1.5">
-            Coordination · Funding
-          </p>
-          <h1 class="text-2xl font-bold text-[#14233A] dark:text-white tracking-tight">
-            Funds Added by Date
+          {/* Same heading treatment as the dashboard: crimson→gold tile with
+              this section's sidebar glyph, gradient wordmark, supporting lines
+              indented by tile (36px) + gap (10px). */}
+         
+          <h1 class="flex items-center gap-2.5 text-2xl font-bold tracking-tight">
+            <span class="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#7E1522] via-[#AC2334] via-70% to-[#C4802B] text-white shadow-[0_2px_8px_rgba(126,21,34,.32)]">
+              <svg
+                class="w-5 h-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+            </span>
+            <span class="inline-block pb-0.5 leading-tight bg-gradient-to-r from-[#7E1522] via-[#AC2334] via-72% to-[#C4802B] dark:from-[#D9455E] dark:via-[#E4566A] dark:to-[#E9AE5C] bg-clip-text text-transparent">
+              Funds Added by Date
+            </span>
           </h1>
-          <p class="text-sm text-[#54657E] dark:text-gray-400 mt-1">
+          <p class="pl-[46px] text-sm text-[#54657E] dark:text-gray-400 mt-1">
             Money loaded into ad accounts on the selected day — reflects wallet
             balance changes since snapshots began.
           </p>

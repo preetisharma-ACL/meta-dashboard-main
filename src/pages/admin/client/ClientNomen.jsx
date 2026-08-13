@@ -120,10 +120,30 @@ export default function ClientNomen() {
     <div class="min-h-screen bg-gray-50 dark:bg-gray-900 p-3 lg:p-8">
       {/* Page Header */}
       <div class="mb-6">
-        <h1 class="text-2xl font-semibold text-gray-900 dark:text-white tracking-tight">
-          Client Nomenclatures
+        {/* Same heading treatment as the dashboard: crimson→gold tile, gradient
+            wordmark, and the description indented by tile (36px) + gap (10px)
+            so it starts under the heading text rather than under the icon. */}
+        <h1 class="flex items-center gap-2.5 text-2xl font-semibold tracking-tight">
+          <span class="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#7E1522] via-[#AC2334] via-70% to-[#C4802B] text-white shadow-[0_2px_8px_rgba(126,21,34,.32)]">
+            <svg
+              class="w-5 h-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"
+              />
+            </svg>
+          </span>
+          <span class="inline-block pb-0.5 leading-tight bg-gradient-to-r from-[#7E1522] via-[#AC2334] via-72% to-[#C4802B] dark:from-[#D9455E] dark:via-[#E4566A] dark:to-[#E9AE5C] bg-clip-text text-transparent">
+            Client Nomenclatures
+          </span>
         </h1>
-        <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+        <p class="pl-[46px] text-sm text-gray-500 dark:text-gray-400 mt-0.5">
           {total()} total · click column headers to sort
         </p>
       </div>

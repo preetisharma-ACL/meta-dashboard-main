@@ -336,10 +336,30 @@ export default function ManualBatches() {
       {/* Page Header */}
       <div class="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div>
-          <h1 class="text-2xl font-semibold text-gray-900 dark:text-white tracking-tight">
-            Manual Batches
+          {/* Same heading treatment as the dashboard: crimson→gold tile with
+              this section's sidebar glyph, gradient wordmark, description
+              indented by tile (36px) + gap (10px). */}
+          <h1 class="flex items-center gap-2.5 text-2xl font-semibold tracking-tight">
+            <span class="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#7E1522] via-[#AC2334] via-70% to-[#C4802B] text-white shadow-[0_2px_8px_rgba(126,21,34,.32)]">
+              <svg
+                class="w-5 h-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                />
+              </svg>
+            </span>
+            <span class="inline-block pb-0.5 leading-tight bg-gradient-to-r from-[#7E1522] via-[#AC2334] via-72% to-[#C4802B] dark:from-[#D9455E] dark:via-[#E4566A] dark:to-[#E9AE5C] bg-clip-text text-transparent">
+              Manual Batches
+            </span>
           </h1>
-          <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+          <p class="pl-[46px] text-sm text-gray-500 dark:text-gray-400 mt-0.5">
             {total()} total batches
           </p>
         </div>
