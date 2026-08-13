@@ -292,13 +292,23 @@ export const fetchReplacementAuditLog = async (id) => {
 //
 // Returns null when the report carries no breakdown (retainer client, or no
 // activity in the range) so callers hide the columns rather than print zeros.
+//
+// asClientId (the Client PK) is REQUIRED whenever the caller is showing one
+// client's numbers: a project shared by two clients answers the PROJECT-WIDE
+// breakdown without it, so Billable/Replaced would sum both clients while the
+// leads column beside them (bulk-insights, which does send as_client_id) shows
+// only the selected one — billable then reads higher than generated. Omit it
+// only for a genuinely all-clients view, where the project-wide numbers are the
+// right ones.
 export const fetchProjectLeadBreakdown = async (
   projectId,
-  { startDate, endDate } = {},
+  { startDate, endDate, asClientId } = {},
 ) => {
   let url = `/reports/project/${projectId}/?1=1`;
   if (startDate) url += `&start_date=${encodeURIComponent(startDate)}`;
   if (endDate) url += `&end_date=${encodeURIComponent(endDate)}`;
+  if (asClientId != null && asClientId !== "")
+    url += `&as_client_id=${encodeURIComponent(asClientId)}`;
   url += scopeQuery();
 
   const res = await api(url, { method: "GET" });

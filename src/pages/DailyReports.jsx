@@ -243,7 +243,13 @@ export default function DailyReports() {
   // doesn't fire dozens of parallel requests. A project whose report fails is
   // left out of the map rather than shown as "0 replaced", which would read as
   // a fact rather than a gap.
-  const loadLeadBreakdowns = async (projectList, from, to) => {
+  // clientId (the Client PK, admin picker) is threaded through as as_client_id —
+  // exactly as loadAllInsights does for the leads/spend columns. A project shared
+  // by two clients answers the project-wide breakdown without it, so Billable /
+  // Replaced would count BOTH clients' leads while Generated beside them counts
+  // only the selected one. Null (admin "all clients") leaves the project-level
+  // numbers, which are the right ones there.
+  const loadLeadBreakdowns = async (projectList, from, to, clientId = null) => {
     const out = {};
     const batchSize = 5;
     for (let i = 0; i < projectList.length; i += batchSize) {
@@ -254,6 +260,7 @@ export default function DailyReports() {
             const breakdown = await fetchProjectLeadBreakdown(p.id, {
               startDate: from,
               endDate: to,
+              asClientId: clientId,
             });
             if (breakdown) out[String(p.id)] = breakdown;
           } catch {
@@ -265,19 +272,24 @@ export default function DailyReports() {
     setLeadBreakdownMap(out);
   };
 
-  // Reload the breakdown whenever the project set OR the range changes. The
-  // range is part of the request now, so narrowing the dates re-reads these
-  // columns without refetching projects or insights (which reuse loadedKey).
+  // Reload the breakdown whenever the project set, the range, OR the selected
+  // client changes. The range is part of the request now, so narrowing the dates
+  // re-reads these columns without refetching projects or insights (which reuse
+  // loadedKey); the client is part of it too (as_client_id) so switching clients
+  // re-reads per-client breakdowns rather than reusing the previous client's.
   let breakdownKey = null;
   createEffect(() => {
     const list = projects();
     const from = fromDate();
     const to = toDate();
+    // Same source loadAllData scopes off: the admin picker's Client PK, or null
+    // for a client's own login / CM view (already server-scoped).
+    const cid = isAdmin() ? selectedAdminClientId() || null : null;
     if (!list.length || !from || !to) return;
-    const key = `${from}|${to}|${list.map((p) => p.id).join(",")}`;
+    const key = `${cid ?? ""}|${from}|${to}|${list.map((p) => p.id).join(",")}`;
     if (breakdownKey === key) return;
     breakdownKey = key;
-    loadLeadBreakdowns(list, from, to);
+    loadLeadBreakdowns(list, from, to, cid);
   });
 
   const loadAllInsights = async (projectList, clientId = null) => {
