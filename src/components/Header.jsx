@@ -397,7 +397,9 @@ export default function Header() {
                   <div class="w-8 h-8 bg-gray-200 dark:bg-gray-700 rounded-full animate-pulse" />
                 }
               >
-                <div class="w-8 h-8 bg-blue-900 rounded-full flex items-center justify-center text-white font-semibold text-sm">
+                {/* 36px, not the old 32: the chakra's spokes need the extra
+                    pixels to resolve at all. */}
+                <div class="tiranga-avatar w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm">
                   {getInitials(user()?.username)}
                 </div>
               </Show>
@@ -411,9 +413,7 @@ export default function Header() {
                     </div>
                   }
                 >
-                  <p class="text-sm font-medium text-gray-900 dark:text-white">
-                    {user()?.username}
-                  </p>
+                  <p class="tiranga-name text-sm">{user()?.username}</p>
                   <p class="text-xs text-gray-500 dark:text-gray-400">
                     {user()?.organization_name}
                   </p>
