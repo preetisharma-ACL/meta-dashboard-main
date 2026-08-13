@@ -935,15 +935,18 @@ export default function Billing() {
   // Payments-tab totals — all-time, summed from the payments list (independent
   // of the monthly overview above).
   // Total Received = genuine receipts only. Wallet rows are the auto-carried
-  // opening balance, so they're summed into neither total.
+  // opening balance, so they're summed into neither total. Non-succeeded rows
+  // (refunded, failed, pending) never count — the money isn't with us.
+  const countsAsReceived = (p) =>
+    !p.isWallet && !p.isOpeningBalance && (!p.status || p.status === "succeeded");
   const totalReceived = createMemo(() =>
     payments()
-      .filter((p) => !p.isWallet && !p.isOpeningBalance)
+      .filter(countsAsReceived)
       .reduce((s, p) => s + (p.amount || 0), 0),
   );
   const totalReceivedExGST = createMemo(() =>
     payments()
-      .filter((p) => !p.isWallet && !p.isOpeningBalance)
+      .filter(countsAsReceived)
       .reduce((s, p) => s + (p.baseAmount || 0), 0),
   );
 
