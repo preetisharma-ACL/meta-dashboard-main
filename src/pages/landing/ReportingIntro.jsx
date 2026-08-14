@@ -155,6 +155,12 @@ export default function ReportingIntro() {
   // Decided during render, not in onMount, so the pre-animation states are on
   // the very first paint and nothing flashes visible then jumps to hidden.
   const [noMotion, setNoMotion] = createSignal(prefersReducedMotion());
+  /* Two different things, and conflating them is what made this page look
+     broken on iPhones. `ri-no-motion` = the scripted animation isn't running
+     (reduced motion OR the CDN never answered) — the layout has to stand on
+     its own. `ri-still` = the visitor actually asked for less movement, so even
+     the CSS transitions stop. A phone on slow data gets the first, not both. */
+  const still = prefersReducedMotion();
 
   onMount(() => {
     const dispose = initLandingMotion(rootEl, {
@@ -167,7 +173,7 @@ export default function ReportingIntro() {
     <div
       ref={rootEl}
       class="ri is-js min-h-screen"
-      classList={{ "ri-no-motion": noMotion() }}
+      classList={{ "ri-no-motion": noMotion(), "ri-still": still }}
     >
       {/* ══ NAVBAR — floating pill, shrinks + blurs on scroll ══════════════ */}
       <header
@@ -312,6 +318,26 @@ export default function ReportingIntro() {
               </div>
 
               <span class="ri-book-contact" aria-hidden="true" />
+            </div>
+
+            {/* Which of the four views is showing, and a way to pick one. It
+                earns its place on touch, where there's no hover affordance and
+                the page-turn runs as a cross-fade — and it's the only way to
+                reach views 2-4 when motion is off entirely. landingMotion
+                owns the `is-on` class in every mode. */}
+            <div class="ri-book-dots" data-reveal>
+              <For each={HERO_VIEWS}>
+                {(_v, i) => (
+                  <button
+                    type="button"
+                    class="ri-book-dot"
+                    data-dot={i()}
+                    aria-label={`Show view ${i() + 1} of ${HERO_VIEWS.length}`}
+                  >
+                    <span aria-hidden="true" />
+                  </button>
+                )}
+              </For>
             </div>
           </Container>
         </section>

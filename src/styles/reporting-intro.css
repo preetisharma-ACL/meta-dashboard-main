@@ -56,13 +56,18 @@ html.lenis body { height: auto; }
 
   /* The page owns the whole viewport and is always light, whatever the app's
      theme class says. `clip` (not `hidden`) contains the decorative blobs
-     without creating a scroll container that would break the fixed navbar. */
+     without creating a scroll container that would break the fixed navbar.
+     The `hidden` line above it is the fallback for Safari before 16 — without
+     it the blobs (46vw wide, positioned past the right edge) hang off the side
+     and the whole page scrolls sideways on an older iPhone. Browsers that know
+     `clip` take the second declaration and ignore this one. */
   background: var(--white);
   color: var(--ink);
   font-family: var(--font-body);
   font-size: 17px;
   line-height: 1.65;
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
   overflow-x: clip;
 }
 
@@ -108,6 +113,10 @@ html.lenis body { height: auto; }
   border: 1px solid var(--line);
   border-radius: var(--r-pill);
   padding: 6px 14px;
+  /* Every backdrop-filter on this page carries the -webkit- prefix: iOS Safari
+     only took the unprefixed property in 18, so on any older iPhone the
+     prefixed line is the one doing the work. */
+  -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
 }
 
@@ -176,12 +185,14 @@ html.lenis body { height: auto; }
   background: rgba(255, 255, 255, .62);
   border: 1px solid rgba(232, 232, 238, .9);
   box-shadow: var(--shadow-sm);
+  -webkit-backdrop-filter: blur(2px);
   backdrop-filter: blur(2px);
   transition: background-color .35s var(--ease), box-shadow .35s var(--ease),
               backdrop-filter .35s var(--ease), transform .35s var(--ease);
 }
 .is-stuck .ri-nav {
   background: rgba(255, 255, 255, .82);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
   backdrop-filter: blur(18px) saturate(1.4);
   box-shadow: var(--shadow-md);
   transform: scale(.975);
@@ -221,6 +232,7 @@ html.lenis body { height: auto; }
     padding: 10px;
     border-radius: var(--r-lg);
     background: rgba(255, 255, 255, .92);
+    -webkit-backdrop-filter: blur(18px) saturate(1.4);
     backdrop-filter: blur(18px) saturate(1.4);
     border: 1px solid var(--line);
     box-shadow: var(--shadow-md);
@@ -263,9 +275,23 @@ html.lenis body { height: auto; }
   aspect-ratio: 1907 / 908;      /* SWAP: match your screenshots' ratio */
   perspective: 2600px;
 }
-@media (max-width: 900px) {
-  /* Shallower perspective so the turn doesn't skew hard on a narrow screen */
-  .ri-book-stack { perspective: 1500px; }
+/* Phones and tablets never run the hinged turn — landingMotion cross-fades the
+   layers instead, because iOS Safari drops perspective + backface-visibility +
+   an animated blur() on four full-size screenshots and paints mirrored or blank
+   layers. Take the 3D scaffolding out of the CSS as well, so nothing here
+   promotes the stack to a 3D rendering context that the JS is avoiding.
+   KEEP IN SYNC with COMPACT_MQ in landingMotion.js. */
+@media (max-width: 900px), (pointer: coarse) {
+  .ri-book,
+  .ri-book-stack { perspective: none; }
+  .ri-layer {
+    transform-origin: 50% 50%;
+    backface-visibility: visible;
+    -webkit-backface-visibility: visible;
+    /* Four promoted layers of full-width screenshot is real memory on a phone
+       and buys nothing once the turn is a plain opacity cross-fade. */
+    will-change: auto;
+  }
 }
 
 /* Every screenshot card. --i sets the stacking order: 0 is on top. */
@@ -491,15 +517,63 @@ html.lenis body { height: auto; }
 .ri.is-js:not(.ri-no-motion) [data-chip]   { opacity: 0; }
 .ri.is-js:not(.ri-no-motion) [data-intro]  { opacity: 0; }
 
-/* No-animation fallback: nothing can fly out, so lay the views out as a stack
-   of plates instead of leaving the lower ones permanently unreachable. */
-.ri-no-motion .ri-book { cursor: default; }
-.ri-no-motion .ri-book-stack { aspect-ratio: auto; perspective: none; display: grid; gap: 16px; }
-/* DOM order already matches the sequence, so the grid lays them out 1–4. */
-.ri-no-motion .ri-layer { position: relative; inset: auto; transform: none; opacity: 1; }
-.ri-no-motion .ri-layer img { height: auto; }
-.ri-no-motion .ri-book-contact { display: none; }
-.ri-no-motion * { animation: none !important; }
+/* No-animation fallback — reduced motion, or the CDN libraries never landed.
+   This used to unroll the stack into a grid of four full-width plates, which
+   read as a broken page (and fired on any iPhone with Reduce Motion on, or on
+   mobile data slow enough to trip the CDN timeout). The box keeps its shape and
+   shows ONE view at a time; landingMotion's fallback stepper moves `is-active`
+   along, cross-fading here and stepping on tap. */
+.ri-no-motion .ri-book { cursor: pointer; }
+.ri-no-motion .ri-layer {
+  opacity: 0;
+  /* Kept out of the a11y tree and off the tap target while it's the hidden one,
+     without leaving the box: `display: none` would collapse the stack. */
+  visibility: hidden;
+  transition: opacity .55s var(--ease), visibility 0s linear .55s;
+}
+.ri-no-motion .ri-layer.is-active {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity .55s var(--ease), visibility 0s;
+}
+/* Reduced motion is a request, not a capability gap: the view still changes on
+   tap, it just changes instantly. */
+.ri-still .ri-layer,
+.ri-still .ri-layer.is-active { transition: none; }
+.ri-still * { animation: none !important; }
+
+/* Step dots under the showcase. Always present — they're the position readout
+   for the page turn as much as the control for the fallback. */
+.ri-book-dots {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 2px;
+  /* On top of the hero container's own 22px grid gap. The contact shadow hangs
+     26px below the stack, so the dots need to clear that, not sit inside it. */
+  margin-top: 10px;
+}
+.ri-book-dot {
+  /* 30px of nothing around a 7px dot: the visual is tiny, the tap target isn't. */
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+.ri-book-dot > span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--line-2);
+  transition: background-color .3s var(--ease), transform .3s var(--ease);
+}
+.ri-book-dot:hover > span { background: var(--grey-2); }
+.ri-book-dot.is-on > span { background: var(--ink); transform: scale(1.35); }
+.ri-still .ri-book-dot > span { transition: none; }
 
 @media (prefers-reduced-motion: reduce) {
   .ri * { transition-duration: .01ms !important; }

@@ -40,6 +40,18 @@ export function prefersReducedMotion() {
     && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
+/* Phones and tablets. The hinged 180° page turn needs `perspective` +
+   `backface-visibility` + an animated `blur()` on four full-size screenshots —
+   the one combination iOS Safari's compositor drops, showing mirrored or blank
+   layers. On a compact screen the same sequence runs as a cross-fade instead,
+   which is honest 2D work every mobile browser composites correctly.
+   KEEP IN SYNC with the matching @media list in reporting-intro.css § 7. */
+const COMPACT_MQ = '(max-width: 900px), (pointer: coarse)';
+
+export function isCompactViewport() {
+  return typeof window !== 'undefined' && window.matchMedia(COMPACT_MQ).matches;
+}
+
 /**
  * Wire up the landing page's motion layer.
  * @param {HTMLElement} root  the `.ri` wrapper
@@ -101,12 +113,61 @@ export function initLandingMotion(root, handles = {}) {
   /* ---------------------------------------------------------------- *
    * 1. Bail out cleanly if animation isn't possible/wanted
    * ---------------------------------------------------------------- */
+  let bailed = false;
+
   function bail() {
-    if (disposed) return;
+    if (disposed || bailed) return;
+    bailed = true;
     // Reveal everything; the CSS keys its pre-animation states off this class.
     handles.onNoMotion?.();
     // Native anchor scrolling still applies via scroll-behavior.
     $$('a[href^="#"]').forEach((a) => on(a, 'click', closeMenu));
+    // The showcase is four screenshots in ONE box — with no GSAP to turn them
+    // it still has to show one at a time, or the box unrolls into a column of
+    // full-width plates and reads as a broken page. Plain class swapping, no
+    // library needed.
+    initFallbackShowcase();
+  }
+
+  /* One-view-at-a-time stepper for every no-GSAP path. Auto-advances with a CSS
+     cross-fade when motion is merely unavailable; when the visitor actually
+     asked for reduced motion it holds still and only steps on tap. */
+  function initFallbackShowcase() {
+    const showcase = $('[data-showcase]');
+    const layers = $$('[data-layer]');
+    if (!showcase || layers.length === 0) return;
+
+    const dots = $$('[data-dot]');
+    let idx = 0;
+    let timer = null;
+
+    const paint = () => {
+      layers.forEach((l, i) => l.classList.toggle('is-active', i === idx));
+      dots.forEach((d, i) => {
+        d.classList.toggle('is-on', i === idx);
+        d.setAttribute('aria-current', i === idx ? 'true' : 'false');
+      });
+    };
+
+    const stopAuto = () => { if (timer) { clearInterval(timer); timer = null; } };
+    const go = (n) => { idx = (n + layers.length) % layers.length; paint(); };
+
+    paint();
+
+    // Any manual step takes ownership — never yank the view out from under a
+    // finger that just chose one.
+    on(showcase, 'click', () => { stopAuto(); go(idx + 1); });
+    on(showcase, 'keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); stopAuto(); go(idx + 1); }
+    });
+    dots.forEach((d, i) => {
+      on(d, 'click', (e) => { e.stopPropagation(); stopAuto(); go(i); });
+    });
+
+    if (!prefersReducedMotion()) {
+      timer = setInterval(() => go(idx + 1), 3600);
+      listeners.push(stopAuto);
+    }
   }
 
   if (prefersReducedMotion()) {
@@ -114,8 +175,11 @@ export function initLandingMotion(root, handles = {}) {
     return dispose;
   }
 
-  // Guard against a CDN that resolves but never finishes: after 5s, show the
-  // page rather than leaving every [data-reveal] stuck at opacity 0.
+  /* Guard against a CDN that resolves but never finishes: show the page rather
+     than leaving the hero showcase and every [data-reveal] stuck at opacity 0.
+     Deliberately still short — three files off two hosts often miss this on
+     mobile data, and a visitor waiting on a blank hero is worse than one who
+     gets the cross-fade fallback a second early. */
   bailTimer = setTimeout(bail, 5000);
 
   Promise.all([
@@ -126,6 +190,9 @@ export function initLandingMotion(root, handles = {}) {
     .then(() => {
       clearTimeout(bailTimer);
       if (disposed) return;
+      // Landed after the bail timer already handed the page to the fallback
+      // stepper — starting now would fight it for the same layers.
+      if (bailed) return;
       if (!window.gsap || !window.ScrollTrigger) { bail(); return; }
       start();
     })
@@ -140,6 +207,10 @@ export function initLandingMotion(root, handles = {}) {
   function start() {
     const { gsap, ScrollTrigger } = window;
     gsap.registerPlugin(ScrollTrigger);
+
+    /* Read once: an orientation change mid-visit isn't worth rebuilding the
+       whole timeline for, and the two variants land on the same views. */
+    const compact = isCompactViewport();
 
     ctx = gsap.context(() => {
       /* ------------------------------------------------------------ *
@@ -231,6 +302,10 @@ export function initLandingMotion(root, handles = {}) {
          frame. Aborts the moment the visitor takes over — never fight input. */
       function introScroll() {
         if (!showcase || disposed) return;
+        // Not on touch. The showcase is already in frame on a phone, and a
+        // page that scrolls itself while a thumb is on the glass reads as the
+        // page malfunctioning rather than as a flourish.
+        if (compact) return;
         if (window.scrollY > 8) return;           // they already started scrolling
         if (!lenis) {                             // no Lenis: native smooth scroll
           showcase.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -280,6 +355,21 @@ export function initLandingMotion(root, handles = {}) {
         const img = layer.querySelector('img');
         const d = TURN_DUR;
 
+        /* Compact screens get the same step as a cross-fade: the top layer
+           fades and drifts a little to the left, revealing the one beneath in
+           the same box. No perspective, no backface culling, no filter — the
+           three things that make the page turn unreliable on iOS Safari. */
+        if (compact) {
+          const tlx = gsap.timeline();
+          tlx.to(layer, {
+            opacity: 0,
+            xPercent: -3,
+            duration: d * 0.62,
+            ease: 'power2.inOut',
+          }, 0);
+          return tlx;
+        }
+
         const tl = gsap.timeline();
         tl.to(layer, { rotationY: -180, duration: d, ease: 'power2.inOut' }, 0);
 
@@ -295,15 +385,28 @@ export function initLandingMotion(root, handles = {}) {
         return tl;
       }
 
-      // Put every layer back to its opening state (view 1 on top, nothing turned).
+      // Put every layer back to its opening state (view 1 on top, nothing
+      // turned). Clears BOTH variants' properties — cheap, and it keeps a
+      // rotated desktop layer from surviving a resize into the compact path.
       function resetShowcase() {
-        gsap.set(layers, { rotationY: 0 });
+        gsap.set(layers, { rotationY: 0, opacity: 1, xPercent: 0 });
         gsap.set(layers.map((l) => l.querySelector('img')).filter(Boolean), { filter: 'blur(0px)' });
       }
 
       /* One turn per view except the last — the bottom view has nothing to
          reveal, so N views give N-1 turns. */
       const steps = layers.slice(0, -1).map((_, i) => () => turnPage(i));
+
+      /* Position dots. `turned` doubles as the index of the view now on top, so
+         the same counter drives both variants. */
+      const dots = $$('[data-dot]');
+      const paintDots = () => {
+        dots.forEach((d, i) => {
+          d.classList.toggle('is-on', i === turned);
+          d.setAttribute('aria-current', i === turned ? 'true' : 'false');
+        });
+      };
+      paintDots();
 
       // Step forward; once the last view is showing, snap back to the first.
       function advance() {
@@ -314,23 +417,34 @@ export function initLandingMotion(root, handles = {}) {
         if (turned >= steps.length) {
           turned = 0;
           resetShowcase();
+          paintDots();
           done();
           return;
         }
         const tl = steps[turned]();
         turned++;
+        paintDots();
         if (tl) tl.eventCallback('onComplete', done);
         else done();
       }
 
       if (stack && showcase) {
         gsap.set(showcase, { opacity: 0, y: 60, scale: 0.95, transformOrigin: '50% 100%' });
-        // Book opening: it tips up off the surface and settles flat
-        gsap.set(stack, { rotationX: 14, rotationY: -12, transformOrigin: '50% 100%' });
+        // Book opening: it tips up off the surface and settles flat. Skipped on
+        // compact — a 3D tilt on the wrapper is what forces iOS to composite
+        // the whole stack in 3D, which is the case we're avoiding there.
+        if (!compact) {
+          gsap.set(stack, { rotationX: 14, rotationY: -12, transformOrigin: '50% 100%' });
+        }
 
         const intro = gsap.timeline({ delay: 0.2 })
-          .to(showcase, { opacity: 1, y: 0, scale: 1, duration: 1.1, ease: 'power3.out' }, 0)
-          .to(stack, { rotationX: 0, rotationY: 0, duration: 1.35, ease: 'power3.out' }, 0)
+          .to(showcase, { opacity: 1, y: 0, scale: 1, duration: 1.1, ease: 'power3.out' }, 0);
+
+        if (!compact) {
+          intro.to(stack, { rotationX: 0, rotationY: 0, duration: 1.35, ease: 'power3.out' }, 0);
+        }
+
+        intro
           // Frame the stack before the views start changing.
           // Remove this `.add()` line if you don't want the page to move itself.
           .add(introScroll, '+=0.5');
@@ -346,15 +460,43 @@ export function initLandingMotion(root, handles = {}) {
         on(showcase, 'keydown', (e) => {
           if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); advance(); }
         });
+        /* A dot jumps straight to its view instead of playing every turn in
+           between, and takes the sequence off autoplay — once someone has
+           picked a screenshot, the timeline must not pull them off it. Layers
+           before the target are set to their turned-away state, the rest to
+           their resting one. */
+        dots.forEach((d, i) => {
+          on(d, 'click', (e) => {
+            e.stopPropagation();
+            intro.pause();
+            const imgs = layers.map((l) => l.querySelector('img')).filter(Boolean);
+            gsap.killTweensOf(layers);
+            gsap.killTweensOf(imgs);        // a half-finished turn leaves blur on
+            gsap.set(imgs, { filter: 'blur(0px)' });
+            busy = false;
+            turned = i;
+            layers.forEach((l, j) => {
+              const gone = j < i;
+              if (compact) gsap.set(l, { opacity: gone ? 0 : 1, xPercent: gone ? -3 : 0 });
+              else gsap.set(l, { rotationY: gone ? -180 : 0 });
+            });
+            paintDots();
+          });
+        });
       }
 
-      $$('[data-parallax]').forEach((el) => {
-        gsap.to(el, {
-          yPercent: -6,
-          ease: 'none',
-          scrollTrigger: { trigger: el, start: 'top 80%', end: 'bottom top', scrub: 0.6 },
+      // Parallax scrubs a transform against scroll position — on iOS that runs
+      // against a viewport whose height changes as the URL bar collapses, so
+      // the hero jitters. Desktop only.
+      if (!compact) {
+        $$('[data-parallax]').forEach((el) => {
+          gsap.to(el, {
+            yPercent: -6,
+            ease: 'none',
+            scrollTrigger: { trigger: el, start: 'top 80%', end: 'bottom top', scrub: 0.6 },
+          });
         });
-      });
+      }
 
       /* ------------------------------------------------------------ *
        * 5. Integrations diagram — draw the connectors, pop the chips
