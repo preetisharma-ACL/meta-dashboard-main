@@ -71,10 +71,6 @@ const statusDotClass = (status) =>
       ? "bg-amber-500 dark:bg-amber-400"
       : "bg-red-500 dark:bg-red-400";
 
-// TODO: replace with the API field once the backend exposes the contracted
-// per-lead rate (e.g. budget.fixed_cpl). Hardcoded for now per requirement.
-const FIXED_CPL = "NA";
-
 // --- Primitive UI Components --------------------------------------------------
 
 function SectionLabel(props) {
@@ -701,6 +697,136 @@ function InvoiceModal(props) {
   );
 }
 
+// --- Overview: CPL per-project charges -----------------------------------------
+// CPL clients are billed per PROJECT at a contracted rate per qualified lead
+// (qualified = generated − replaced − disqualified), and one client can run
+// several projects on different rates — so a single headline rate is
+// meaningless. This table is the CPL equivalent of the hybrid statement's
+// ad-spend/SC/GST sub-rows: it shows where the month's charge comes from.
+// Rows come straight from month_spend.cpl_projects (empty for hybrid/retainer).
+function CplProjectTable(props) {
+  const rows = () => props.projects || [];
+  const num = (n) => Number(n || 0).toLocaleString("en-IN");
+  // A project with leads but no contracted rate isn't billed at all — the API
+  // sends charge "0.00" and missing_rate true, and also lists it in
+  // month_spend.missing_cpl_rate. Either source raises the banner.
+  const missingCount = () =>
+    Math.max(
+      props.missing?.length || 0,
+      rows().filter((p) => p.missing_rate).length,
+    );
+  const totalQualified = () =>
+    rows().reduce((s, p) => s + Number(p.qualified || 0), 0);
+  const totalCharge = () =>
+    rows().reduce((s, p) => s + Number(p.charge || 0), 0);
+
+  const numCell =
+    "px-3 py-3 text-right tabular-nums text-gray-500 dark:text-gray-400";
+  const numHead = "px-3 py-2.5 text-right font-medium";
+
+  return (
+    <Card
+      class="mt-4 overflow-hidden"
+      aria-label={`Project charges for ${props.monthLabel}`}
+    >
+      <div class="px-6 pt-5 pb-3">
+        <Eyebrow>Project Charges · {props.monthLabel}</Eyebrow>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          Each project is billed at its own contracted rate per qualified lead ·
+          qualified = generated − replaced − disqualified
+        </p>
+      </div>
+
+      <Show when={missingCount() > 0}>
+        <div class="mx-6 mb-4 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-4 py-2.5 text-sm font-medium text-amber-700 dark:text-amber-300">
+          Some projects don't have a contracted rate set and aren't being
+          billed. Contact admin.
+        </div>
+      </Show>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-y border-gray-200 dark:border-gray-700 text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              <th class="px-6 py-2.5 text-left font-medium">Project</th>
+              <th class={`hidden sm:table-cell ${numHead}`}>Generated</th>
+              <th class={`hidden sm:table-cell ${numHead}`}>Replaced</th>
+              <th class={`hidden md:table-cell ${numHead}`}>Disqualified</th>
+              <th class={numHead}>Qualified</th>
+              <th class={numHead}>Rate / lead</th>
+              <th class="px-6 py-2.5 text-right font-medium">Charge</th>
+            </tr>
+          </thead>
+          <tbody>
+            <For each={rows()}>
+              {(p) => (
+                <tr class="border-b border-gray-100 dark:border-gray-700/60">
+                  <td class="px-6 py-3 font-medium text-gray-900 dark:text-gray-100">
+                    {p.project_name}
+                  </td>
+                  <td class={`hidden sm:table-cell ${numCell}`}>
+                    {num(p.generated)}
+                  </td>
+                  <td class={`hidden sm:table-cell ${numCell}`}>
+                    {num(p.replaced)}
+                  </td>
+                  <td class={`hidden md:table-cell ${numCell}`}>
+                    {num(p.disqualified)}
+                  </td>
+                  <td class="px-3 py-3 text-right tabular-nums font-semibold text-gray-900 dark:text-gray-100">
+                    {num(p.qualified)}
+                  </td>
+                  <td class="px-3 py-3 text-right tabular-nums">
+                    <Show
+                      when={!p.missing_rate && p.fixed_cpl != null}
+                      fallback={
+                        <span class="text-amber-600 dark:text-amber-400">
+                          — rate not set
+                        </span>
+                      }
+                    >
+                      <span class="text-gray-600 dark:text-gray-300">
+                        {fmt(p.fixed_cpl)}
+                      </span>
+                    </Show>
+                  </td>
+                  <td class="px-6 py-3 text-right tabular-nums font-semibold text-gray-900 dark:text-gray-100">
+                    <Show
+                      when={!p.missing_rate && p.fixed_cpl != null}
+                      fallback={
+                        <span class="font-medium text-gray-400 dark:text-gray-500">
+                          —
+                        </span>
+                      }
+                    >
+                      {fmt(p.charge)}
+                    </Show>
+                  </td>
+                </tr>
+              )}
+            </For>
+            <tr class="border-t border-gray-200 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-900/30">
+              <td class="px-6 py-3 font-bold text-gray-900 dark:text-gray-100">
+                Total
+              </td>
+              <td class="hidden sm:table-cell" />
+              <td class="hidden sm:table-cell" />
+              <td class="hidden md:table-cell" />
+              <td class="px-3 py-3 text-right tabular-nums font-bold text-gray-900 dark:text-gray-100">
+                {num(totalQualified())}
+              </td>
+              <td />
+              <td class="px-6 py-3 text-right tabular-nums font-bold text-gray-900 dark:text-gray-100">
+                {fmt(totalCharge())}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
 // --- Root Component -----------------------------------------------------------
 export default function Billing() {
   const [tab, setTab] = createSignal("overview");
@@ -840,6 +966,12 @@ export default function Billing() {
   // clients have no replacement concept and the fields are absent, so
   // showsReplacement() keeps the whole section off their page.
   const leadBreakdown = createMemo(() => readLeadBreakdown(monthSpend()));
+
+  // ── CPL per-project charges ───────────────────────────────────────────────
+  // Only CPL clients get cpl_projects (one row per project with its own
+  // contracted rate); the array is absent/empty for hybrid and retainer.
+  const cplProjects = () => monthSpend().cpl_projects || [];
+  const missingCplRate = () => monthSpend().missing_cpl_rate || [];
   const clientTypeKey = () =>
     iscpl() ? "cpl" : ishybrid() ? "hybrid" : isRetainer() ? "retainer" : "";
   const showBreakdown = () =>
@@ -1129,17 +1261,12 @@ export default function Billing() {
               </div>
             </Show>
 
-            {/* ════ CPL: Fixed CPL + plain Total Spent + Total Leads ════
-                No SC/GST wording on any of these cards. */}
+            {/* ════ CPL: plain Total Spent + Total Leads ════
+                No single "CPL As Given" rate here — a CPL client can run
+                several projects on different rates, so the rates live in the
+                per-project table below. No SC/GST wording on these cards. */}
             <Show when={iscpl()}>
-              <div class="mt-5 grid grid-cols-1 md:grid-cols-3 gap-4">
-                <HeroCard
-                  accent
-                  ariaLabel="Fixed cost per lead"
-                  label="CPL As Given"
-                  value={fmt(FIXED_CPL)}
-                  sub="Contracted rate per lead"
-                />
+              <div class="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Show when={!iscpl()}>
                   <HeroCard
                     ariaLabel="Total spent this month"
@@ -1165,6 +1292,17 @@ export default function Billing() {
                 title={`Leads · ${monthLabel()}`}
                 breakdown={leadBreakdown()}
                 note="Replaced leads are credited back — the amounts in the statement below are already net of that credit."
+              />
+            </Show>
+
+            {/* ── CPL only: what each project charged this month ──
+                Replaces the old single "CPL As Given" card: rates are
+                per-project, so the charge is only meaningful per project. */}
+            <Show when={iscpl() && cplProjects().length > 0}>
+              <CplProjectTable
+                projects={cplProjects()}
+                missing={missingCplRate()}
+                monthLabel={monthLabel()}
               />
             </Show>
 
