@@ -2,6 +2,8 @@ import { createSignal, onMount } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { loginUser } from "../../services/login-service";
 import { clearAllCache } from "../../cacheStore/appStore";
+// Imported rather than referenced by path so Vite fingerprints and bundles it.
+import indianFlag from "../../assets/project-logo/indian-flag.png";
 
 // ✅ Decode JWT expiry
 const getTokenExpiry = (token) => {
@@ -248,6 +250,12 @@ export default function Login() {
 
         {/* ── RIGHT LOGIN PANEL ── */}
         <div class="login-right">
+          {/* ── Flag artwork, bottom-right ──
+              Decorative only: z-index:-1 (see the CSS), so the form, the logo
+              and the "Powered by" mark all stay above it, and it can't take a
+              click. */}
+          <img src={indianFlag} alt="" class="rp-flag" aria-hidden="true" />
+
           {/* ── Company logo — top-left ── */}
           <div class="rp-logo">
             <img src="/logo.webp" alt="Company Logo" class="rp-logo-img" />

@@ -1307,6 +1307,55 @@ html:not(.dark) .tiranga-name {
   background-clip: text;
 }
 
+/* ── Flag artwork in the login panel's bottom-right corner ──────────────────
+   z-index:-1 is why .login-right needs `isolation: isolate`: without it the
+   panel's own #fffff3 background paints straight over the image, because a
+   negative-z child only clears the background of an ancestor that forms a
+   stacking context — and neither .login-right nor .login-root did. With the
+   isolate the order is: panel background → flag → form and headings → .rp-logo
+   and .rp-powered at z-index 10. That also keeps .form-wrapper `position:
+   static`; making it relative would re-anchor .rp-powered to the form instead
+   of the panel and pull it off the corner.
+
+   The PNG already has a transparent background, so it needs no blend trick —
+   just a low opacity. */
+.login-right {
+  isolation: isolate;
+  /* Saffron across the top of the panel, gone by a quarter of the way down.
+     Saffron alone: a version carrying all three bands put green behind the
+     heading and muddied it.
+
+     Set as background-IMAGE, not the shorthand, so the #fffff3 fill from the
+     base rule survives underneath — and so the <900px rule further down
+     (`background: transparent`, where the mobile design paints its own
+     backdrop) still clears it in one line. */
+  background-image: linear-gradient(
+    180deg,
+    rgba(255, 153, 51, 0.28) 0%,
+    rgba(255, 153, 51, 0.1) 10%,
+    rgba(255, 153, 51, 0) 26%
+  );
+}
+
+.login-right .rp-flag {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: min(280px, 62%);
+  height: auto;
+  z-index: -1;
+  pointer-events: none;
+  user-select: none;
+  opacity: 0.18;
+}
+
+@media (max-width: 899px) {
+  .login-right .rp-flag {
+    width: min(200px, 55%);
+    opacity: 0.14;
+  }
+}
+
 /* ── Responsive guard — keep them from overlapping the form on small screens ── */
 /* ── Elements that belong only to the <900px login design ──
    Hidden by default so the >=900px split-screen renders exactly as it did
