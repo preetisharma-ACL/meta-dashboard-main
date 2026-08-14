@@ -350,11 +350,13 @@ const normaliseHierarchyClient = (c) => ({
   clientType: (c.client_type || "").toLowerCase() || null,
 });
 
-// Clients a replacement may be booked against, A→Z. Only CPL and hybrid — the
-// backend 400s a retainer client, so offering one is offering a guaranteed
-// failure. Clients whose type the roster doesn't report are kept (the backend
-// remains the authority) so a missing field can't empty the picker.
-export const fetchReplaceableClients = async () => {
+// Roster for a lead-action client picker, A→Z, restricted to `allowedTypes`.
+// Shared with the disqualification picker (see services/leadDisqualification.js)
+// so the admin→hierarchy fallback and the PK-vs-nomen normalisation above exist
+// in exactly one place — those are the parts that have been got wrong before.
+// Clients whose type the roster doesn't report are kept (the backend remains
+// the authority) so a missing field can't empty the picker.
+export const fetchClientsForLeadAction = async (allowedTypes) => {
   let rows = [];
   try {
     rows = (await fetchAllAdminClients()).map(normaliseAdminClient);
@@ -371,8 +373,14 @@ export const fetchReplaceableClients = async () => {
 
   return rows
     .filter((c) => c.id != null)
-    .filter((c) => !c.clientType || REPLACEABLE_TYPES.has(c.clientType))
+    .filter((c) => !c.clientType || allowedTypes.has(c.clientType))
     .sort((a, b) =>
       a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
     );
 };
+
+// Clients a replacement may be booked against. Only CPL and hybrid — the
+// backend 400s a retainer client, so offering one is offering a guaranteed
+// failure.
+export const fetchReplaceableClients = async () =>
+  await fetchClientsForLeadAction(REPLACEABLE_TYPES);

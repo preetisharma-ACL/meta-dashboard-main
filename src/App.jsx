@@ -59,6 +59,7 @@ import MyWork from "./pages/worklog/MyWork";
 import ClientWorkspace from "./pages/worklog/ClientWorkspace";
 import CplRules from "./pages/cpl/CplRules";
 import LeadReplacements from "./pages/leads/LeadReplacements";
+import LeadDisqualifications from "./pages/leads/LeadDisqualifications";
 import ClientBilling from "./pages/billing/ClientBilling";
 import PaymentsList from "./pages/payments/PaymentsList";
 import RecordPayment from "./pages/payments/RecordPayment";
@@ -313,6 +314,17 @@ function App() {
               component={() => (
                 <AdminRoute roles={["admin", "campaign_manager"]}>
                   <LeadReplacements />
+                </AdminRoute>
+              )}
+            />
+            {/* Lead disqualifications — the CPL-only twin of the above, gated
+                identically: route to admin + CM, the RECORD action to admin and
+                tier-1 CMs, revoke/audit-log to admin. */}
+            <Route
+              path="/lead-disqualifications"
+              component={() => (
+                <AdminRoute roles={["admin", "campaign_manager"]}>
+                  <LeadDisqualifications />
                 </AdminRoute>
               )}
             />

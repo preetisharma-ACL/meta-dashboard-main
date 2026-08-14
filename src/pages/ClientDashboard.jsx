@@ -67,6 +67,7 @@ import {
 import useRole, { clientRole } from "./../hooks/useRole";
 import LeadBreakdown from "../components/leads/LeadBreakdown";
 import RecordReplacementModal from "../components/leads/RecordReplacementModal";
+import RecordDisqualificationModal from "../components/leads/RecordDisqualificationModal";
 import {
   fetchDashboardSummary,
   summaryLeadBreakdown,
@@ -2020,6 +2021,18 @@ export default function MainDashboard() {
   // "Record Replacement" — admin + tier-1 CM only (canRecordReplacement()).
   const [showReplacementForm, setShowReplacementForm] = createSignal(false);
 
+  // "Record Disqualification" — same permission, but the action is CPL-only
+  // (the create endpoint 400s a hybrid or retainer client), so the button is
+  // additionally hidden on a client we KNOW isn't CPL. An unknown type still
+  // shows it: the backend stays the authority, and hiding on a missing field
+  // would strand a legitimate CPL client with no way to record.
+  const [showDisqualificationForm, setShowDisqualificationForm] =
+    createSignal(false);
+  const canDisqualifyViewedClient = () => {
+    const type = viewedClientType();
+    return !type || type === "cpl";
+  };
+
   // Project rows joined with their card-range stats (the same stats the old
   // KPI cards used), reused by hero / signals / charts below.
   const projectCardRows = createMemo(() => {
@@ -2723,7 +2736,7 @@ export default function MainDashboard() {
           Recording refetches the summary so the new Replaced/Billable figures
           appear without a reload. */}
       <Show when={canRecordReplacement()}>
-        <div class="flex justify-end mb-4">
+        <div class="flex flex-wrap justify-end gap-2 mb-4">
           <button
             onClick={() => setShowReplacementForm(true)}
             class="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-[#AC2334]/30 bg-[#FBEEF0] text-[#AC2334] text-sm font-bold hover:bg-[#AC2334] hover:text-white transition dark:bg-red-900/30 dark:text-red-300 dark:border-red-700 dark:hover:bg-red-900/50"
@@ -2733,6 +2746,18 @@ export default function MainDashboard() {
             </svg>
             Record Replacement
           </button>
+          {/* CPL-only twin — count of unbillable leads, no credit amount. */}
+          <Show when={canDisqualifyViewedClient()}>
+            <button
+              onClick={() => setShowDisqualificationForm(true)}
+              class="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-[#AC2334]/30 bg-[#FBEEF0] text-[#AC2334] text-sm font-bold hover:bg-[#AC2334] hover:text-white transition dark:bg-red-900/30 dark:text-red-300 dark:border-red-700 dark:hover:bg-red-900/50"
+            >
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+              </svg>
+              Record Disqualification
+            </button>
+          </Show>
         </div>
       </Show>
 
@@ -3975,6 +4000,21 @@ export default function MainDashboard() {
             showToast(
               `${r.count} lead${r.count === 1 ? "" : "s"} credited back on "${r.projectName}".`,
               "Replacement recorded",
+            );
+          }}
+        />
+        {/* Record Disqualification — same gate, CPL clients only. Recording
+            refetches the summary so the new qualified-lead figures land
+            without a reload, exactly as the replacement form does. */}
+        <RecordDisqualificationModal
+          open={showDisqualificationForm()}
+          onClose={() => setShowDisqualificationForm(false)}
+          clientId={selectedClientId() || undefined}
+          onRecorded={(r) => {
+            refetchSummary();
+            showToast(
+              `${r.count} lead${r.count === 1 ? "" : "s"} disqualified on "${r.projectName}".`,
+              "Disqualification recorded",
             );
           }}
         />
