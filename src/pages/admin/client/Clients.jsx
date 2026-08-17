@@ -27,6 +27,14 @@ import {
   STATUS_DOT,
   normaliseStatus,
 } from "../../../services/clientStatus";
+import CampaignActivityBadge from "../../../components/clientActivity/CampaignActivityBadge";
+import {
+  ACTIVITY_FILTERS,
+  ACTIVITY_MISMATCH,
+  ACTIVITY_RUNNING,
+  activityParam,
+  matchesActivityFilter,
+} from "../../../services/campaignActivity";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -112,6 +120,10 @@ const adaptHierarchyClient = (c) => ({
   // keyed by PK, and sending a nomen would patch a different client.
   client_pk: c.client_id ?? null,
   engagement_status: c.engagement_status ?? null,
+  // Derived "any campaign live right now" flag. Absent on hierarchy payloads
+  // cached before the field shipped — left null there, which the badge renders
+  // as nothing rather than inventing "Paused".
+  campaign_activity: c.campaign_activity ?? null,
 });
 
 export default function Clients() {
@@ -125,6 +137,10 @@ export default function Clients() {
   const [activeFilter, setActiveFilter] = createSignal("All");
   // Engagement status (manual label) — NOT the is_active flag above.
   const [statusFilter, setStatusFilter] = createSignal("all");
+  // Campaign activity (DERIVED from live campaigns) — a different axis from the
+  // engagement label above, and filtered differently: admins get a server-side
+  // ?activity=, CMs read the hierarchy, which has no such param.
+  const [activityFilter, setActivityFilter] = createSignal("all");
   const [historyFor, setHistoryFor] = createSignal(null);
 
   // ── Engagement status ─────────────────────────────────────────────────────
@@ -302,13 +318,16 @@ export default function Clients() {
   const loadAllClients = async () => {
     // CMs already have their full set from loadCmClients (hierarchy has no paging).
     if (isCampaignManager()) return;
+    // The activity chip is the one filter the API applies for us. Everything else
+    // on this page is filtered in the browser off the full roster.
+    const activity = activityParam(activityFilter());
     try {
       let currentPage = 1;
       let hasMore = true;
       let allData = [];
 
       while (hasMore) {
-        const res = await fetchClients(currentPage, 1000);
+        const res = await fetchClients(currentPage, 1000, undefined, activity);
         const clientsData = res.data || [];
 
         allData = [...allData, ...clientsData];
@@ -335,6 +354,27 @@ export default function Clients() {
       setLoading(false);
     }
   });
+
+  // Activity is filtered SERVER-side for admins (?activity=running|paused), so
+  // changing the chip re-fetches the roster. CMs are sourced from the hierarchy,
+  // which takes no such param — their rows are already in memory and get filtered
+  // locally in filtered() below, so no refetch there.
+  createEffect(
+    on(
+      activityFilter,
+      async () => {
+        if (isCampaignManager()) return;
+        setLoading(true);
+        setSelected(new Set());
+        try {
+          await loadAllClients();
+        } finally {
+          setLoading(false);
+        }
+      },
+      { defer: true },
+    ),
+  );
 
   // ── sort ──────────────────────────────────────────────────────────────────
   const toggleSort = (key) => {
@@ -395,6 +435,28 @@ export default function Clients() {
       data = data.filter((c) => normaliseStatus(statusOf(c)) === statusFilter());
     }
 
+    // Activity filter (derived). Two paths, because the two data sources differ:
+    //   • CM rows come from the hierarchy, which has no ?activity= — filter here.
+    //   • Admin rows were already narrowed by the API. Do NOT re-apply the same
+    //     predicate locally: if the endpoint ever answers the param without also
+    //     echoing campaign_activity on each row, a second local pass would empty
+    //     the table. Only Mismatch needs more work, and only the half the query
+    //     couldn't express — the server gave us the paused rows, so all that's
+    //     left is "and the manual label says Active".
+    const wantActivity = activityFilter();
+    if (wantActivity !== "all") {
+      if (isCampaignManager()) {
+        data = data.filter((c) =>
+          matchesActivityFilter(wantActivity, {
+            engagement: statusOf(c),
+            activity: c.campaign_activity,
+          }),
+        );
+      } else if (wantActivity === ACTIVITY_MISMATCH) {
+        data = data.filter((c) => normaliseStatus(statusOf(c)) === "active");
+      }
+    }
+
     data.sort((a, b) => {
       let va = a[sortKey()],
         vb = b[sortKey()];
@@ -432,7 +494,15 @@ export default function Clients() {
   // Snap back to page 1 when the result set changes underneath us.
   createEffect(
     on(
-      [search, clientTypes, assignFilter, cmFilter, activeFilter, statusFilter],
+      [
+        search,
+        clientTypes,
+        assignFilter,
+        cmFilter,
+        activeFilter,
+        statusFilter,
+        activityFilter,
+      ],
       () => setPage(1),
       { defer: true },
     ),
@@ -547,8 +617,19 @@ export default function Clients() {
           {/* pl-[46px] = tile (36px) + gap (10px), so this starts under the
               heading text rather than under the icon. */}
           <p class="pl-[46px] text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-            {allClients().length} total · click a row to open that client's
-            dashboard
+            {allClients().length} total
+            {/* Admins get a server-narrowed roster when an Activity chip is on,
+                so say so — otherwise "total" reads as the whole book. */}
+            <Show when={!isCampaignManager() && activityFilter() !== "all"}>
+              <span>
+                {" "}
+                with{" "}
+                {activityFilter() === ACTIVITY_MISMATCH
+                  ? "paused campaigns"
+                  : `campaigns ${activityFilter()}`}
+              </span>
+            </Show>
+            {" "}· click a row to open that client's dashboard
           </p>
         </div>
       </div>
@@ -618,6 +699,82 @@ export default function Clients() {
             }}
           </For>
         </div>
+      </div>
+
+      {/* ── Activity chips (DERIVED) ──
+          A different fact from the Engagement row above, so it gets its own row,
+          its own name, its own chip shape (rounded rectangle, monochrome ●/○
+          marks — not the coloured pills) and a caption saying where it comes
+          from. "Active" is somebody's label; "Running" is what the campaigns are
+          actually doing. */}
+      <div class="mb-4">
+        <div class="flex flex-wrap items-center gap-1.5">
+          <span class="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mr-1">
+            Activity
+          </span>
+          <div class="flex flex-wrap items-center gap-1.5">
+            <For each={ACTIVITY_FILTERS}>
+              {(f) => {
+                const on = () => activityFilter() === f.key;
+                const isMismatchChip = f.key === ACTIVITY_MISMATCH;
+                return (
+                  <button
+                    type="button"
+                    onClick={() => setActivityFilter(f.key)}
+                    aria-pressed={on()}
+                    title={
+                      isMismatchChip
+                        ? "Clients marked Active whose campaigns are all paused"
+                        : undefined
+                    }
+                    class={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[13px] font-semibold uppercase tracking-[0.05em] border transition-colors whitespace-nowrap ${
+                      on()
+                        ? "bg-gray-800 text-white border-gray-800 dark:bg-gray-200 dark:text-gray-900 dark:border-gray-200"
+                        : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-gray-500"
+                    }`}
+                  >
+                    <Show when={f.key !== "all"}>
+                      <Show
+                        when={!isMismatchChip}
+                        fallback={
+                          <svg
+                            class="w-3.5 h-3.5 text-[#B07A14] dark:text-amber-400"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2.2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                          >
+                            <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                            <path d="M12 9v4M12 17h.01" />
+                          </svg>
+                        }
+                      >
+                        {/* ● running · ○ paused — the badge's own marks */}
+                        <span
+                          class={`h-1.5 w-1.5 rounded-full ${
+                            f.key === ACTIVITY_RUNNING
+                              ? on()
+                                ? "bg-white dark:bg-gray-900"
+                                : "bg-gray-700 dark:bg-gray-200"
+                              : on()
+                                ? "border border-white dark:border-gray-900"
+                                : "border border-gray-400 dark:border-gray-500"
+                          }`}
+                        />
+                      </Show>
+                    </Show>
+                    {f.label}
+                  </button>
+                );
+              }}
+            </For>
+          </div>
+        </div>
+        <p class="pl-1 mt-1.5 text-[11px] text-gray-400 dark:text-gray-500">
+          Derived from live campaigns — not the manual Engagement label above.
+        </p>
       </div>
 
       {/* ── Filters ── */}
@@ -715,6 +872,7 @@ export default function Clients() {
             setCmFilter("all");
             setActiveFilter("All");
             setStatusFilter("all");
+            setActivityFilter("all");
             setSortKey("created_at");
             setSortDir("desc");
           }}
@@ -929,15 +1087,24 @@ export default function Clients() {
                         stopPropagation: the row itself navigates to the client
                         dashboard, and opening the popover must not do that. */}
                     <td class="p-3" onClick={(e) => e.stopPropagation()}>
-                      <ClientStatusControl
-                        clientId={pkOf(client)}
-                        status={statusOf(client)}
-                        latestChange={changeOf(client)}
-                        showCaption
-                        onChanged={(payload) =>
-                          applyStatusChange(pkOf(client), payload)
-                        }
-                      />
+                      <div class="flex items-start gap-2">
+                        <ClientStatusControl
+                          clientId={pkOf(client)}
+                          status={statusOf(client)}
+                          latestChange={changeOf(client)}
+                          showCaption
+                          onChanged={(payload) =>
+                            applyStatusChange(pkOf(client), payload)
+                          }
+                        />
+                        {/* Derived activity + the mismatch flag. Read-only — it
+                            follows the campaigns, there is nothing to set. */}
+                        <CampaignActivityBadge
+                          activity={client.campaign_activity}
+                          engagement={statusOf(client)}
+                          class="mt-[1px]"
+                        />
+                      </div>
                     </td>
 
                     {/* Is Active */}

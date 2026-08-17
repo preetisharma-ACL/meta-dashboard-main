@@ -22,6 +22,17 @@ import {
   STATUS_UNSET,
   normaliseStatus,
 } from "../../../services/clientStatus";
+import CampaignActivityBadge from "../../../components/clientActivity/CampaignActivityBadge";
+import {
+  ACTIVITY_FILTERS,
+  ACTIVITY_MISMATCH,
+  ACTIVITY_PAUSED,
+  ACTIVITY_RUNNING,
+  ACTIVITY_UNKNOWN,
+  isActivityMismatch,
+  matchesActivityFilter,
+  normaliseActivity,
+} from "../../../services/campaignActivity";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ADMIN · Campaign Manager's Clients  (route: /campaign-manager-clients)
@@ -143,6 +154,11 @@ export default function CampaignManagerClients() {
   // Engagement status (manual active/hold/completed label) — NOT is_active,
   // which this page already uses to decide which clients appear at all.
   const [statusFilter, setStatusFilter] = createSignal("all");
+  // Campaign activity (running / paused), derived from live campaigns. The
+  // hierarchy endpoint that feeds these cards takes no ?activity= param, so this
+  // one is applied entirely in the browser against `campaign_activity` on the
+  // rows. A different axis from the engagement label above — never merged.
+  const [activityFilter, setActivityFilter] = createSignal("all");
 
   // Toggle a client-type pill; never allow an empty selection.
   const toggleClientType = (key) => {
@@ -238,11 +254,19 @@ export default function CampaignManagerClients() {
 
   // Falls back to the admin roster's own engagement_status when the board has
   // no row for that nomen, so the badge still reads correctly even if the two
-  // lists disagree on membership.
-  const adminStatusByNomen = createMemo(() => {
+  // lists disagree on membership. The roster also carries `campaign_activity`,
+  // which is the second reason to keep this map: the per-manager hierarchy
+  // payloads are CACHED per scope + window, so one minted before that field
+  // shipped has no activity on it until it expires (or is refreshed). The admin
+  // roster isn't cached that way, so it backfills the gap.
+  const adminRowByNomen = createMemo(() => {
     const map = {};
     for (const c of adminClients() ?? []) {
-      map[String(c.client_nomen)] = { pk: c.id, status: c.engagement_status ?? null };
+      map[String(c.client_nomen)] = {
+        pk: c.id,
+        status: c.engagement_status ?? null,
+        activity: c.campaign_activity ?? null,
+      };
     }
     return map;
   });
@@ -250,13 +274,20 @@ export default function CampaignManagerClients() {
   const statusEntry = (nomenId) => {
     const key = String(nomenId);
     const board = statusByNomen()[key];
-    const admin = adminStatusByNomen()[key];
+    const admin = adminRowByNomen()[key];
     return {
       pk: board?.pk ?? admin?.pk ?? null,
       status: board?.status ?? admin?.status ?? null,
       change: board?.change ?? null,
     };
   };
+
+  // Activity for one hierarchy row: what the row itself reported, else the admin
+  // roster's value, else null (unknown — rendered as nothing, never as "paused").
+  const activityOf = (row) =>
+    row?.campaign_activity ??
+    adminRowByNomen()[String(row?.client_nomen_id)]?.activity ??
+    null;
 
   // Patch the board in place after an inline change, so the badge, the caption
   // and the status filter agree without a refetch.
@@ -291,6 +322,7 @@ export default function CampaignManagerClients() {
     const types = clientTypes();
     const filterAll = allTypesSelected();
     const wantStatus = statusFilter();
+    const wantActivity = activityFilter();
     return managers().map((m) => {
       const seen = new Set();
       const clients = (own[m.manager_id] ?? [])
@@ -301,6 +333,15 @@ export default function CampaignManagerClients() {
           if (
             wantStatus !== "all" &&
             normaliseStatus(statusEntry(key).status) !== wantStatus
+          )
+            return false;
+          // Activity filter — client-side, this endpoint has no ?activity=.
+          if (
+            wantActivity !== "all" &&
+            !matchesActivityFilter(wantActivity, {
+              engagement: statusEntry(key).status,
+              activity: activityOf(c),
+            })
           )
             return false;
           seen.add(key);
@@ -317,6 +358,7 @@ export default function CampaignManagerClients() {
             pk: s.pk,
             status: s.status,
             statusChange: s.change,
+            activity: activityOf(c),
           };
         })
         .sort((a, b) => String(a.name).localeCompare(String(b.name)));
@@ -374,6 +416,37 @@ export default function CampaignManagerClients() {
         if (!active.has(key) || seen.has(key)) continue;
         seen.add(key);
         acc[normaliseStatus(statusEntry(key).status)] += 1;
+        acc.total += 1;
+      }
+    }
+    return acc;
+  });
+
+  // Activity tallies across every manager's active clients, de-duped by nomen and
+  // NOT narrowed by the activity filter itself — same rule the other pill groups
+  // follow. `unknown` (no value on the row and none on the roster) is counted
+  // separately so it can't inflate "Paused"; it has no pill, so it only shows up
+  // as the gap between All and Running + Paused.
+  const activityCounts = createMemo(() => {
+    const own = ownLists() ?? {};
+    const active = activeNomen();
+    const acc = {
+      [ACTIVITY_RUNNING]: 0,
+      [ACTIVITY_PAUSED]: 0,
+      [ACTIVITY_UNKNOWN]: 0,
+      [ACTIVITY_MISMATCH]: 0,
+      total: 0,
+    };
+    const seen = new Set();
+    for (const m of managers()) {
+      for (const c of own[m.manager_id] ?? []) {
+        const key = String(c.client_nomen_id);
+        if (!active.has(key) || seen.has(key)) continue;
+        seen.add(key);
+        const activity = activityOf(c);
+        acc[normaliseActivity(activity)] += 1;
+        if (isActivityMismatch(statusEntry(key).status, activity))
+          acc[ACTIVITY_MISMATCH] += 1;
         acc.total += 1;
       }
     }
@@ -561,6 +634,48 @@ export default function CampaignManagerClients() {
               </div>
             </div>
 
+            {/* Activity filter (DERIVED) — its own group, its own name, and
+                monochrome ●/○ marks rather than the engagement group's coloured
+                dots, so "Active" (a label) never reads as "Running" (live
+                campaigns). */}
+            <div class="flex items-center gap-2.5 w-full sm:w-auto min-w-0">
+              <span
+                class="hidden sm:inline text-[10.5px] font-bold uppercase tracking-[0.12em] text-gray-400"
+                title="Derived from live campaigns — not the manual Engagement label"
+              >
+                Activity
+              </span>
+              <div class="flex flex-wrap bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-[11px] p-[3px] gap-0.5">
+                <For each={ACTIVITY_FILTERS}>
+                  {(f) => (
+                    <FilterPill
+                      active={activityFilter() === f.key}
+                      onClick={() => setActivityFilter(f.key)}
+                      label={f.label}
+                      count={
+                        f.key === "all"
+                          ? activityCounts().total
+                          : activityCounts()[f.key]
+                      }
+                      dot={
+                        f.key === ACTIVITY_RUNNING
+                          ? "bg-gray-700 dark:bg-gray-200"
+                          : null
+                      }
+                      dotActive="bg-white"
+                      dotHollow={f.key === ACTIVITY_PAUSED}
+                      warn={f.key === ACTIVITY_MISMATCH}
+                      title={
+                        f.key === ACTIVITY_MISMATCH
+                          ? "Clients marked Active whose campaigns are all paused"
+                          : undefined
+                      }
+                    />
+                  )}
+                </For>
+              </div>
+            </div>
+
             {/* Month */}
             <div class="relative w-full sm:w-auto sm:ml-auto">
               <svg
@@ -658,7 +773,8 @@ export default function CampaignManagerClients() {
                   No matches found
                 </div>
                 <div class="text-sm text-gray-400 dark:text-gray-500">
-                  Try a different name, or adjust the client type filter.
+                  Try a different name, or adjust the client type, engagement or
+                  activity filters.
                 </div>
               </div>
             }
@@ -769,6 +885,13 @@ function ManagerCard(props) {
                     props.onStatusChanged?.(c.id, c.pk, payload)
                   }
                 />
+                {/* Derived activity + mismatch flag — read-only, follows the
+                    campaigns. Deliberately unlike the badge to its left. */}
+                <CampaignActivityBadge
+                  compact
+                  activity={c.activity}
+                  engagement={c.status}
+                />
                 <Show when={c.type}>
                   <TypeTag type={c.type} />
                 </Show>
@@ -826,20 +949,49 @@ function StatCard(props) {
   );
 }
 
-// ── Client-type filter pill (coloured dot + label + count) ───────────────────
+// ── Filter pill (mark + label + count) ───────────────────────────────────────
+// Marks: `dot` fills a coloured disc (client type, engagement), `dotHollow` draws
+// an empty ring (activity: paused) and `warn` an amber triangle (mismatch).
 function FilterPill(props) {
   return (
     <button
       onClick={props.onClick}
       aria-pressed={props.active}
+      title={props.title}
       class={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] text-[12.5px] font-semibold transition-colors ${
         props.active
           ? "bg-[#14233A] text-white"
           : "text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-700"
       }`}
     >
+      <Show when={props.warn}>
+        <svg
+          class={`w-3.5 h-3.5 ${props.active ? "text-amber-300" : "text-[#B07A14] dark:text-amber-400"}`}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+          <path d="M12 9v4M12 17h.01" />
+        </svg>
+      </Show>
+      <Show when={props.dotHollow}>
+        <span
+          class={`w-[7px] h-[7px] rounded-full border ${
+            props.active ? "border-white/80" : "border-gray-400 dark:border-gray-500"
+          }`}
+        />
+      </Show>
       <Show when={props.dot}>
-        <span class={`w-[7px] h-[7px] rounded-full ${props.dot}`} />
+        {/* dotActive: a near-black dot vanishes on the selected pill's dark fill. */}
+        <span
+          class={`w-[7px] h-[7px] rounded-full ${
+            (props.active && props.dotActive) || props.dot
+          }`}
+        />
       </Show>
       {props.label}
       <span

@@ -7,10 +7,17 @@ import { api } from "../../../api/api";
 // `status` narrows to one engagement bucket (active | hold | completed | unset)
 // server-side; omit it — or pass "all" — for every client. It is the same param
 // the status board accepts, so the two surfaces filter identically.
-export const fetchClients = async (page = 1, pageSize = 20, status) => {
+// `activity` narrows to clients whose campaigns are currently running | paused.
+// DIFFERENT AXIS from `status`: that one is the manual engagement label, this one
+// is derived from live campaigns (see services/campaignActivity.js). They compose
+// — passing both asks for "marked Active but nothing running".
+export const fetchClients = async (page = 1, pageSize = 20, status, activity) => {
   let url = `/clients/admin/clients/?page=${page}&page_size=${pageSize}`;
   if (status && status !== "all") {
     url += `&status=${encodeURIComponent(status)}`;
+  }
+  if (activity && activity !== "all") {
+    url += `&activity=${encodeURIComponent(activity)}`;
   }
   return await api(url, { method: "GET" });
 };
@@ -19,7 +26,7 @@ export const fetchClients = async (page = 1, pageSize = 20, status) => {
 // roster in one shot (e.g. the authoritative is_active / client_type set that the
 // admin "Campaign Managers' Clients" section joins against the per-CM own-client
 // lists). Large page size keeps this to as few round-trips as possible.
-export const fetchAllAdminClients = async ({ status } = {}) => {
+export const fetchAllAdminClients = async ({ status, activity } = {}) => {
   let page = 1;
   let all = [];
   let total = Infinity;
@@ -33,7 +40,7 @@ export const fetchAllAdminClients = async ({ status } = {}) => {
   // the size the backend ACTUALLY applied so offsets line up even when it caps
   // our request. Guards: stop on an empty page, and a hard page cap.
   while (all.length < total) {
-    const res = await fetchClients(page, pageSize, status);
+    const res = await fetchClients(page, pageSize, status, activity);
     const batch = Array.isArray(res?.data) ? res.data : [];
     if (batch.length === 0) break;
     all = [...all, ...batch];
