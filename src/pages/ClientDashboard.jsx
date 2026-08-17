@@ -1937,13 +1937,23 @@ export default function MainDashboard() {
       0,
     );
 
-    const serviceChargeSpent =
-      totalSpent + totalSpent * serviceChargeRate().toFixed(2);
+    // Round the RESULT, not the rate. `serviceChargeRate().toFixed(2)` bound to
+    // the rate: the multiplication still worked (JS coerced "0.10" back to a
+    // number) but nothing was ever rounded, so the hero rendered the raw float
+    // as ₹1,80,202.022 — toLocaleString defaults to 3 fraction digits.
+    const serviceChargeSpent = Number(
+      (totalSpent + totalSpent * serviceChargeRate()).toFixed(2),
+    );
 
     // Admin view: spend + 18% GST (client view uses serviceChargeSpent above)
-    const gstSpent = totalSpent + totalSpent * 0.18;
+    const gstSpent = Number((totalSpent + totalSpent * 0.18).toFixed(2));
 
-    const avgCPL = totalLeads > 0 ? (totalSpent / totalLeads).toFixed(2) : 0;
+    // Number, not the string .toFixed() returns: this is rendered via
+    // .toLocaleString("en-IN"), and String's toLocaleString is a no-op that
+    // silently dropped the thousands grouping ("180202.02", not "1,80,202.02").
+    // Callers that already wrap it in Number() are unaffected.
+    const avgCPL =
+      totalLeads > 0 ? Number((totalSpent / totalLeads).toFixed(2)) : 0;
     // derive from statsMap (date-range aware)
     const activeCampaigns = all.reduce(
       (s, p) => s + (statsMap[p.id]?.activeCampaigns ?? 0),
