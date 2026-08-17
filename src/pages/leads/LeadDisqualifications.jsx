@@ -64,13 +64,17 @@ const normalise = (r = {}) => ({
   ]),
   receivedDate: first(r, ["received_date", "date"]),
   notes: first(r, ["notes", "reason", "note"]),
+  // VERIFIED against the live payload: this endpoint names the field
+  // recorded_by_email and its value is an email string
+  // ("jarvisaajneeti@gmail.com") — NOT created_by_name, which the replacement
+  // list uses. It leads the chain; the rest are fallbacks only.
   // A user id would print as a bare integer in a person column, so the *_name /
   // *_email keys are the only ones read here.
   recordedBy: first(r, [
+    "recorded_by_email",
+    "recorded_by_name",
     "created_by_name",
     "created_by_email",
-    "recorded_by_name",
-    "recorded_by_email",
     "uploaded_by_email",
   ]),
   createdAt: first(r, ["created_at", "uploaded_at"]),

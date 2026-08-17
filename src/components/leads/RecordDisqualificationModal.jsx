@@ -42,6 +42,31 @@ const FIELD =
 const LABEL =
   "block text-sm font-semibold text-[#14233A] dark:text-gray-200 mb-1.5";
 
+// VERIFIED against the live API: this endpoint reports its validation failures
+// as a FIELD MAP, not a top-level detail. The over-count guardrail arrives at
+//     error.fields.non_field_errors[0]
+//     "Replaced + disqualified cannot exceed generated. This project has N
+//      generated lead(s); X replaced and Y disqualified already recorded. You
+//      can disqualify at most Z more."
+// and `message` is only the generic wrapper. Reading message alone would throw
+// away the max-allowed count, which is the entire value of that error — so the
+// field map is read first and pinned verbatim.
+//
+// api() surfaces that map two ways depending on the transport: err.fields for a
+// 200-envelope failure ({ success:false, error:{ fields } }), and the whole
+// parsed body on err.data for an HTTP 4xx. Both are read here.
+const fieldErrors = (err) =>
+  err?.fields ?? err?.data?.error?.fields ?? err?.data?.fields ?? null;
+
+// DRF gives a list per key; take the first non-empty entry, but tolerate a bare
+// string so a shape change degrades to "shown verbatim" rather than "[object]".
+const fieldMessage = (fields, key) => {
+  const v = fields?.[key];
+  if (!v) return null;
+  if (Array.isArray(v)) return v.find((s) => typeof s === "string" && s) || null;
+  return typeof v === "string" ? v : null;
+};
+
 const emptyForm = () => ({
   target_client_id: "",
   project_id: "",
@@ -203,22 +228,37 @@ export default function RecordDisqualificationModal(props) {
       // api() lifts `message` off the envelope and attaches the HTTP status.
       // Show the BACKEND's wording — it names the client type and the max
       // allowed count, which is the whole value of these messages.
-      const msg = err?.message || "Could not record the disqualification.";
       const status = err?.status;
-      if (status === 403) {
-        setClientError(msg);
-      } else if (status === 400 && /cpl|client type|retainer|hybrid/i.test(msg)) {
+      const fields = fieldErrors(err);
+      const nonField = fieldMessage(fields, "non_field_errors");
+      const countField =
+        fieldMessage(fields, "disqualified_count") ??
+        fieldMessage(fields, "project_id");
+      const clientField = fieldMessage(fields, "target_client_id");
+      // The most specific text the server gave us. A field message always beats
+      // the generic `message`, and it is never paraphrased on its way to the UI.
+      const detail =
+        nonField ?? countField ?? clientField ?? err?.message ??
+        "Could not record the disqualification.";
+
+      if (clientField) {
+        setClientError(clientField);
+      } else if (status === 403) {
+        // A tier-1 CM picking a client outside their book.
+        setClientError(detail);
+      } else if (/cpl|client type|retainer|hybrid/i.test(detail)) {
         // The non-CPL rejection is about the CLIENT, so it belongs on that
         // field — checked before the count guard, whose pattern would
         // otherwise swallow a message mentioning both.
-        setClientError(msg);
-      } else if (
-        status === 400 &&
-        /disqualif|replac|generated|max|exceed/i.test(msg)
-      ) {
-        setCountError(msg);
+        setClientError(detail);
+      } else if (countField) {
+        setCountError(countField);
+      } else if (/disqualif|replac|generated|max|exceed/i.test(detail)) {
+        // The over-count guardrail: non_field_errors[0], pinned next to the
+        // count because that is the field the operator has to fix.
+        setCountError(detail);
       } else {
-        setFormError(msg);
+        setFormError(detail);
       }
     } finally {
       setSubmitting(false);
