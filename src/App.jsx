@@ -61,6 +61,7 @@ import CplRules from "./pages/cpl/CplRules";
 import LeadReplacements from "./pages/leads/LeadReplacements";
 import LeadDisqualifications from "./pages/leads/LeadDisqualifications";
 import ClientBilling from "./pages/billing/ClientBilling";
+import OnboardingWizard from "./pages/onboarding/OnboardingWizard";
 import PaymentsList from "./pages/payments/PaymentsList";
 import RecordPayment from "./pages/payments/RecordPayment";
 import NeedsDocs from "./pages/payments/NeedsDocs";
@@ -356,6 +357,18 @@ function App() {
               component={() => (
                 <AdminRoute roles={["admin", "campaign_manager"]}>
                   <ProjectDisplayConfig />
+                </AdminRoute>
+              )}
+            />
+            {/* Onboarding wizard — creates a login + its role profile in one
+                atomic call. Admin + coordination ONLY: the endpoint 403s every
+                other role, so a CM reaching this URL is bounced rather than
+                shown a form that can only fail. */}
+            <Route
+              path="/onboarding"
+              component={() => (
+                <AdminRoute roles={["admin", "coordination"]}>
+                  <OnboardingWizard />
                 </AdminRoute>
               )}
             />

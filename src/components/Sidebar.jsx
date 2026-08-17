@@ -310,6 +310,19 @@ export default function Sidebar() {
         ],
       },
       {
+        // Sits next to Clients because creating a client login is the common
+        // use of it. Top-level rather than a Clients sub-item: coordination
+        // doesn't get the Clients group at all, and this is one of the few
+        // screens they own — burying it under a group they can't see would
+        // hide it from half its audience.
+        name: "Onboarding",
+        roles: ["admin", "coordination"],
+        icon: () => (
+          <Icon d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+        ),
+        path: "/onboarding",
+      },
+      {
         name: "Accounts & Funding",
         roles: ["admin", "campaign_manager"],
         icon: () => (
