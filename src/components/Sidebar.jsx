@@ -102,55 +102,6 @@ const ChevronIcon = ({ open }) => (
   </svg>
 );
 
-// ── Tiranga bubbles ─────────────────────────────────────────────────────────
-// Decorative background for the sidebar: saffron / white / green orbs drifting
-// upward, each blinking on its own clock. Hand-authored (not random) so the
-// spread is even and the layout is identical on every render — a Math.random()
-// version reshuffles on each hydration and looks unstable.
-// White bubbles carry a navy ring, because a white fill on the white sidebar
-// sheet would otherwise be invisible; navy is the chakra colour, so the ring
-// belongs to the flag too.
-const SAFFRON = "rgba(255,153,51,.85)";
-const GREEN = "rgba(19,136,8,.8)";
-const WHITE = "rgba(255,255,255,.95)";
-const NAVY_RING = "0 0 0 1.5px rgba(0,0,128,.45), 0 2px 8px rgba(0,0,128,.12)";
-
-const BUBBLES = [
-  { left: 6, size: 22, color: SAFFRON, dur: 17, delay: 0, blink: 2.4 },
-  { left: 24, size: 12, color: WHITE, dur: 13, delay: 2.5, blink: 1.6 },
-  { left: 41, size: 28, color: GREEN, dur: 21, delay: 1.2, blink: 3.1 },
-  { left: 58, size: 15, color: SAFFRON, dur: 15, delay: 4.4, blink: 2 },
-  { left: 74, size: 20, color: WHITE, dur: 19, delay: 0.8, blink: 2.8 },
-  { left: 88, size: 10, color: GREEN, dur: 12, delay: 3.2, blink: 1.4 },
-  { left: 15, size: 34, color: GREEN, dur: 24, delay: 6, blink: 3.6 },
-  { left: 33, size: 9, color: SAFFRON, dur: 11, delay: 7.5, blink: 1.2 },
-  { left: 51, size: 17, color: WHITE, dur: 18, delay: 5.1, blink: 2.2 },
-  { left: 67, size: 26, color: SAFFRON, dur: 22, delay: 8.3, blink: 3.4 },
-  { left: 82, size: 13, color: GREEN, dur: 14, delay: 9.6, blink: 1.8 },
-  { left: 46, size: 11, color: SAFFRON, dur: 16, delay: 11, blink: 1.5 },
-];
-
-const TirangaBubbles = () => (
-  <div class="tiranga-bubbles" aria-hidden="true">
-    <For each={BUBBLES}>
-      {(b) => (
-        <span
-          style={{
-            left: `${b.left}%`,
-            width: `${b.size}px`,
-            height: `${b.size}px`,
-            background: b.color,
-            "box-shadow": b.color === WHITE ? NAVY_RING : "none",
-            "--dur": `${b.dur}s`,
-            "--delay": `${b.delay}s`,
-            "--blink": `${b.blink}s`,
-          }}
-        />
-      )}
-    </For>
-  </div>
-);
-
 // ── Animated collapse container ─────────────────────────────────────────────
 
 function AnimatedCollapse(props) {
@@ -800,14 +751,10 @@ export default function Sidebar() {
       >
         {/* Crimson hairline down the outer edge — the one flourish that marks
             this as Aajneeti chrome rather than a default shell. */}
-        <span class="pointer-events-none absolute z-20 inset-y-0 right-0 w-px bg-gradient-to-b from-[#AC2334]/40 via-[#AC2334]/10 to-transparent" />
-
-        {/* Tiranga wash — sits behind every row (the nav/logo/footer below all
-            carry z-10), so it never intercepts a click or dims a label. */}
-        <TirangaBubbles />
+        <span class="pointer-events-none absolute inset-y-0 right-0 w-px bg-gradient-to-b from-[#AC2334]/40 via-[#AC2334]/10 to-transparent" />
 
         {/* Logo — AAJneeti wordmark + gold "Reporting Dashboard" (all screens) */}
-        <div class="relative z-10 flex-shrink-0 px-4 py-5 flex items-center justify-center">
+        <div class="relative flex-shrink-0 px-4 py-5 flex items-center justify-center">
           <Show
             when={!isCollapsed()}
             fallback={
@@ -876,10 +823,10 @@ export default function Sidebar() {
 
         {/* Divider — a fading rule instead of a full-width border, so the
             wordmark sits on the same sheet as the nav rather than in a box. */}
-        <div class="relative z-10 flex-shrink-0 h-px mx-4 bg-gradient-to-r from-transparent via-[#D4DDE9] to-transparent dark:via-gray-700" />
+        <div class="flex-shrink-0 h-px mx-4 bg-gradient-to-r from-transparent via-[#D4DDE9] to-transparent dark:via-gray-700" />
 
         {/* Navigation */}
-        <nav class="sidebar-scroll relative z-10 p-3 space-y-1 flex-1 min-h-0 overflow-y-auto">
+        <nav class="sidebar-scroll p-3 space-y-1 flex-1 min-h-0 overflow-y-auto">
           <For each={menuItems()}>
             {(item) => (
               <Show
@@ -1015,7 +962,7 @@ export default function Sidebar() {
 
         {/* Footer */}
         <div
-          class={`relative z-10 flex-shrink-0 px-4 py-3 border-t border-[#E2E8F1] dark:border-gray-800 bg-[#F8FAFC]/90 dark:bg-gray-950/80 backdrop-blur-sm ${
+          class={`flex-shrink-0 px-4 py-3 border-t border-[#E2E8F1] dark:border-gray-800 bg-[#F8FAFC]/90 dark:bg-gray-950/80 backdrop-blur-sm ${
             isCollapsed() ? "text-center" : ""
           }`}
         >

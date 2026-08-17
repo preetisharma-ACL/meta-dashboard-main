@@ -96,9 +96,6 @@ function Layout(props) {
 
   return (
     <div class="min-h-screen bg-gray-50 dark:bg-gray-900">
-      {/* Saffron→green wash over every in-app screen; lives in Layout so no
-          page has to opt in. */}
-      <div class="tiranga-wash" aria-hidden="true" />
       <ImpersonationBanner />
       <Sidebar />
       <div
