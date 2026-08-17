@@ -307,6 +307,16 @@ export default function Sidebar() {
               <SmallIcon d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
             ),
           },
+          {
+            // Moved in from a top-level row. Coordination shares this screen
+            // but not the Clients group, so it still has its own entry below.
+            name: "Bulk Campaign Ops",
+            path: "/bulk-campaign-operations",
+            roles: ["admin", "campaign_manager"],
+            icon: () => (
+              <SmallIcon d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+            ),
+          },
         ],
       },
       {
@@ -405,10 +415,12 @@ export default function Sidebar() {
         icon: () => (
           <Icon d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
         ),
-        subMenus: PAYMENT_DESK_LINKS.filter(
-          (l) => l.path !== "/client-payments",
-        ).map((l) => ({
-          name: l.name,
+        // Includes /client-payments, which used to be a separate top-level
+        // "Client Payments" row for admin — it belongs on the payments desk.
+        // Labelled "Client Payments" here rather than accounts' "Billing", so
+        // the row keeps the name admin already knows it by.
+        subMenus: PAYMENT_DESK_LINKS.map((l) => ({
+          name: l.path === "/client-payments" ? "Client Payments" : l.name,
           path: l.path,
           roles: ["admin"],
           icon: () => <SmallIcon d={l.d} />,
@@ -462,8 +474,10 @@ export default function Sidebar() {
         path: "/cm-daily-report",
       },
       {
+        // CM only — admin reaches this page from inside "Payments Desk", and
+        // CMs don't get that group.
         name: "Client Payments",
-        roles: ["admin", "campaign_manager"],
+        roles: ["campaign_manager"],
         icon: () => (
           <Icon d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
         ),
@@ -509,49 +523,72 @@ export default function Sidebar() {
       // },
 
       {
-        name: "Manager Performance",
-        roles: ["admin"],
-        icon: () => (
-          <Icon d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-        ),
-        path: "/manager-performance",
-      },
-      {
+        // The three CM screens were three top-level rows; folded into one group
+        // so admin's sidebar doesn't spend three slots on the same subject.
         name: "Campaign Managers",
         roles: ["admin"],
         icon: () => (
           <Icon d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0h-6m6 0a3 3 0 01-5.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M9 7a4 4 0 11-8 0 4 4 0 018 0zm0 0a4 4 0 015.536 3.536M15.536 10.536A5.967 5.967 0 0121 16.941M16.536 10.536A5.973 5.973 0 0012 16c0 .132 0 .263.012.391M12 16a5.973 5.973 0 00-4.536-2.464" />
         ),
-        path: "/campaign-managers",
+        subMenus: [
+          {
+            name: "Manager Performance",
+            path: "/manager-performance",
+            roles: ["admin"],
+            icon: () => (
+              <SmallIcon d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            ),
+          },
+          {
+            name: "Campaign Managers",
+            path: "/campaign-managers",
+            roles: ["admin"],
+            icon: () => (
+              <SmallIcon d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0h-6m6 0a3 3 0 01-5.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M9 7a4 4 0 11-8 0 4 4 0 018 0zm0 0a4 4 0 015.536 3.536M15.536 10.536A5.967 5.967 0 0121 16.941M16.536 10.536A5.973 5.973 0 0012 16c0 .132 0 .263.012.391M12 16a5.973 5.973 0 00-4.536-2.464" />
+            ),
+          },
+          {
+            name: "Campaign Manager's Clients",
+            path: "/campaign-manager-clients",
+            roles: ["admin"],
+            icon: () => (
+              <SmallIcon d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            ),
+          },
+        ],
       },
       {
-        name: "Campaign Manager's Clients",
-        roles: ["admin"],
-        icon: () => (
-          <Icon d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-        ),
-        path: "/campaign-manager-clients",
-      },
-      {
-        name: "Sales Managers",
+        // Same folding as Campaign Managers above: the two sales screens share
+        // one subject, so they share one row.
+        name: "Sales",
         roles: ["admin"],
         icon: () => (
           <Icon d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0h-6m6 0a3 3 0 01-5.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M9 7a4 4 0 11-8 0 4 4 0 018 0zm0 0a4 4 0 015.536 3.536M15.536 10.536A5.967 5.967 0 0121 16.941M16.536 10.536A5.973 5.973 0 0012 16c0 .132 0 .263.012.391M12 16a5.973 5.973 0 00-4.536-2.464" />
         ),
-        path: "/sales-managers",
-      },
-      {
-        name: "Sales Leaderboard",
-        roles: ["admin"],
-        icon: () => (
-          <Icon d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-        ),
-        path: "/sales-leaderboard",
+        subMenus: [
+          {
+            name: "Sales Managers",
+            path: "/sales-managers",
+            roles: ["admin"],
+            icon: () => (
+              <SmallIcon d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0h-6m6 0a3 3 0 01-5.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M9 7a4 4 0 11-8 0 4 4 0 018 0zm0 0a4 4 0 015.536 3.536M15.536 10.536A5.967 5.967 0 0121 16.941M16.536 10.536A5.973 5.973 0 0012 16c0 .132 0 .263.012.391M12 16a5.973 5.973 0 00-4.536-2.464" />
+            ),
+          },
+          {
+            name: "Sales Leaderboard",
+            path: "/sales-leaderboard",
+            roles: ["admin"],
+            icon: () => (
+              <SmallIcon d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            ),
+          },
+        ],
       },
       {
         name: "Bulk Campaign Ops",
-        // No "accounts" — campaign writes are a CM/admin concern.
-        roles: ["admin", "coordination", "campaign_manager"],
+        // Coordination only — admin and CMs reach this from inside the
+        // "Clients" group, which coordination doesn't get.
+        roles: ["coordination"],
         icon: () => (
           <Icon d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
         ),
