@@ -12,6 +12,7 @@ import AssignmentHistoryDrawer from "./AssignmentHistoryDrawer";
 import {
   CARD,
   FIELD,
+  Avatar,
   TierBadge,
   ClientTypeBadge,
   InactiveBadge,
@@ -82,6 +83,161 @@ function SectionTitle(props) {
         {props.children}
       </h3>
       {props.right}
+    </div>
+  );
+}
+
+// ─── Roster panel chrome ──────────────────────────────────────────────────────
+// The roster is the screen's index — it is on-screen the whole session while the
+// detail pane swaps beneath the operator's cursor, so it gets a pinned header,
+// its own search and rows that read as a directory rather than a list of links.
+
+const ICON_USERS = (
+  <path
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
+  />
+);
+
+const ICON_CLIENTS = (
+  <path
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+  />
+);
+
+function RosterHeader(props) {
+  return (
+    <div class="px-4 pt-4 pb-3.5 border-b border-[#EDF1F7] dark:border-gray-700 bg-gradient-to-b from-[#FAFCFF] to-white dark:from-gray-800/40 dark:to-gray-800">
+      <div class="flex items-center gap-3">
+        <span class="flex-none w-9 h-9 rounded-xl grid place-items-center bg-[#14233A] dark:bg-white/10 shadow-[0_2px_6px_rgba(16,29,49,.18)]">
+          <svg
+            class="w-[18px] h-[18px] text-white"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            stroke-width="1.8"
+          >
+            {props.icon}
+          </svg>
+        </span>
+        <div class="min-w-0 flex-1">
+          <h3 class="text-[13px] font-bold uppercase tracking-[.08em] text-[#14233A] dark:text-gray-100 truncate">
+            {props.title}
+          </h3>
+          <p class="text-[11px] text-[#8593A8] mt-0.5 truncate">
+            {props.subtitle}
+          </p>
+        </div>
+        <span class="flex-none px-2.5 py-1 rounded-full text-[11px] font-bold tabular-nums ring-1 ring-inset ring-[#DCE4EF] bg-[#F4F7FB] text-[#54657E] dark:bg-gray-700 dark:text-gray-300 dark:ring-gray-600">
+          {props.count}
+        </span>
+      </div>
+      {props.children}
+    </div>
+  );
+}
+
+function RosterSearch(props) {
+  return (
+    <div class="relative mt-3">
+      <svg
+        class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8593A8]"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+        stroke-width="2"
+      >
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M21 21l-4.35-4.35M17 11a6 6 0 11-12 0 6 6 0 0112 0z"
+        />
+      </svg>
+      <input
+        type="text"
+        value={props.value}
+        onInput={(e) => props.onInput(e.target.value)}
+        placeholder={props.placeholder}
+        class="w-full pl-9 pr-8 py-2.5 rounded-xl text-sm border border-[#E2E8F1] dark:border-gray-600
+               bg-[#F8FAFC] dark:bg-gray-900/40 text-[#14233A] dark:text-gray-100
+               placeholder:text-[#8593A8] outline-none transition
+               focus:bg-white dark:focus:bg-gray-800 focus:border-[#AC2334] focus:ring-2 focus:ring-[#AC2334]/25"
+      />
+      <Show when={props.value}>
+        <button
+          type="button"
+          onClick={() => props.onInput("")}
+          aria-label="Clear search"
+          class="absolute right-2.5 top-1/2 -translate-y-1/2 w-5 h-5 grid place-items-center rounded-full
+                 text-[11px] text-[#8593A8] hover:bg-[#E2E8F1] hover:text-[#14233A]
+                 dark:hover:bg-gray-700 dark:hover:text-gray-100 transition"
+        >
+          ✕
+        </button>
+      </Show>
+    </div>
+  );
+}
+
+// The selected row is the one thing the detail pane is answering about, so it
+// carries a hard brand-coloured rail — visible at a glance from across the pane,
+// and readable without relying on the tint alone.
+function RowRail(props) {
+  return (
+    <span
+      aria-hidden="true"
+      class={`absolute left-0 top-1/2 -translate-y-1/2 w-[3px] rounded-r-full transition-all duration-150 ${
+        props.active ? "h-9 bg-[#AC2334]" : "h-0 bg-transparent"
+      }`}
+    />
+  );
+}
+
+// A hairline between rows, inset to the text column so it separates entries
+// without boxing them in. It is drawn on the row BELOW the join and pulled at
+// hover/selection, so the highlighted row always sits on clean edges.
+function RowDivider(props) {
+  return (
+    <Show when={props.show}>
+      <span
+        aria-hidden="true"
+        class="pointer-events-none absolute left-16 right-3 top-0 h-px bg-[#EDF1F7]
+               dark:bg-gray-700/70 transition-opacity duration-150 group-hover:opacity-0"
+      />
+    </Show>
+  );
+}
+
+// Shape-of-the-content placeholders rather than a "Loading…" line: the roster is
+// the first thing painted on this screen and a jumping layout reads as a bug.
+function RosterSkeleton() {
+  return (
+    <div class="space-y-1.5 px-1 py-1">
+      <For each={[0, 1, 2, 3, 4]}>
+        {() => (
+          <div class="flex items-center gap-3 px-3 py-3 animate-pulse">
+            <span class="w-9 h-9 rounded-xl bg-[#EDF1F7] dark:bg-gray-700" />
+            <span class="flex-1 space-y-2">
+              <span class="block h-2.5 w-2/3 rounded bg-[#EDF1F7] dark:bg-gray-700" />
+              <span class="block h-2 w-1/3 rounded bg-[#F2F5F9] dark:bg-gray-700/60" />
+            </span>
+          </div>
+        )}
+      </For>
+    </div>
+  );
+}
+
+function RosterEmpty(props) {
+  return (
+    <div class="px-4 py-10 text-center">
+      <p class="text-sm font-semibold text-[#14233A] dark:text-gray-200">
+        {props.title}
+      </p>
+      <p class="text-xs text-[#8593A8] mt-1">{props.hint}</p>
     </div>
   );
 }
@@ -231,11 +387,13 @@ export default function Assignments() {
 
   // ── Row renderers ──────────────────────────────────────────────────────────
   const listRowClass = (active) =>
-    `w-full text-left px-3.5 py-3 rounded-xl border transition ${
-      active
-        ? "border-[#AC2334] bg-[#FBEEF0] dark:bg-[#AC2334]/15 shadow-[inset_0_0_0_1px_rgba(172,35,52,.25)]"
-        : "border-transparent hover:bg-[#F6F9FC] dark:hover:bg-gray-700/40"
-    }`;
+    "group relative w-full text-left pl-4 pr-3 py-3 rounded-xl border overflow-hidden " +
+    "transition-all duration-150 outline-none focus-visible:ring-2 focus-visible:ring-[#AC2334]/40 " +
+    (active
+      ? "border-[#AC2334]/35 bg-gradient-to-r from-[#FBEEF0] to-white " +
+        "dark:from-[#AC2334]/20 dark:to-transparent dark:border-[#AC2334]/40 " +
+        "shadow-[0_1px_2px_rgba(16,29,49,.05),0_6px_16px_rgba(172,35,52,.10)]"
+      : "border-transparent hover:bg-[#F6F9FC] dark:hover:bg-gray-700/40");
 
   return (
     <section class="w-full px-4 sm:px-6 lg:px-8 py-6 bg-gray-50 dark:bg-gray-900 min-h-screen">
@@ -309,42 +467,41 @@ export default function Assignments() {
         </div>
       </Show>
 
-      <div class="grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-5 items-start">
+      <div class="grid grid-cols-1 lg:grid-cols-[400px_1fr] xl:grid-cols-[460px_1fr] gap-5 items-start">
         {/* ════════ LEFT — ROSTER ════════ */}
-        <div class={`${CARD} p-4`}>
+        <div class={`${CARD} overflow-hidden lg:sticky lg:top-6`}>
           <Show
             when={tab() === "cm"}
             fallback={
               <>
-                <SectionTitle
-                  right={
-                    <span class="text-xs text-[#8593A8]">
-                      {filteredClients().length}/{clients().length}
-                    </span>
+                <RosterHeader
+                  icon={ICON_CLIENTS}
+                  title="Clients"
+                  subtitle={
+                    clientSearch().trim()
+                      ? `${filteredClients().length} of ${clients().length} match`
+                      : "Pick one to manage its managers"
                   }
+                  count={`${filteredClients().length}/${clients().length}`}
                 >
-                  Clients
-                </SectionTitle>
-                <input
-                  type="text"
-                  value={clientSearch()}
-                  onInput={(e) => setClientSearch(e.target.value)}
-                  placeholder="Search by nomen or email…"
-                  class={`${FIELD} mb-3`}
-                />
-                <div class="max-h-[62vh] overflow-y-auto space-y-1 -mx-1 px-1">
+                  <RosterSearch
+                    value={clientSearch()}
+                    onInput={setClientSearch}
+                    placeholder="Search by nomen or email…"
+                  />
+                </RosterHeader>
+                <div class="max-h-[62vh] overflow-y-auto px-2.5 py-2.5">
                   <Show when={data.loading && !clients().length}>
-                    <p class="text-sm text-[#8593A8] px-2 py-3">
-                      Loading clients…
-                    </p>
+                    <RosterSkeleton />
                   </Show>
                   <Show when={!data.loading && !filteredClients().length}>
-                    <p class="text-sm text-[#8593A8] px-2 py-3">
-                      No clients match.
-                    </p>
+                    <RosterEmpty
+                      title="No clients match"
+                      hint="Try a shorter search, or clear it to see everyone."
+                    />
                   </Show>
                   <For each={filteredClients()}>
-                    {(c) => (
+                    {(c, i) => (
                       <button
                         type="button"
                         onClick={() => {
@@ -352,23 +509,42 @@ export default function Assignments() {
                           setAddCmSearch("");
                           setActionError(null);
                         }}
+                        aria-current={
+                          selectedClientId() === c.clientId ? "true" : undefined
+                        }
                         class={listRowClass(selectedClientId() === c.clientId)}
                       >
-                        <div class="flex items-start justify-between gap-2">
-                          <span class="min-w-0">
-                            <span class="block text-sm font-semibold text-[#14233A] dark:text-gray-100 truncate">
-                              {clientLabel(c)}
+                        <RowDivider
+                          show={
+                            i() > 0 &&
+                            selectedClientId() !== c.clientId &&
+                            selectedClientId() !==
+                              filteredClients()[i() - 1]?.clientId
+                          }
+                        />
+                        <RowRail active={selectedClientId() === c.clientId} />
+                        <span class="flex items-start gap-3">
+                          <Avatar
+                            name={clientLabel(c)}
+                            size="w-9 h-9"
+                            textSize="text-[11px]"
+                          />
+                          <span class="min-w-0 flex-1">
+                            <span class="flex items-start justify-between gap-2">
+                              <span class="block text-sm font-semibold text-[#14233A] dark:text-gray-100 truncate">
+                                {clientLabel(c)}
+                              </span>
+                              <CountChip count={c.cmCount} label="CM" />
                             </span>
-                            <span class="block text-xs text-[#8593A8] truncate">
+                            <span class="block text-xs text-[#8593A8] truncate mt-0.5">
                               {c.email ?? "—"}
                             </span>
+                            <span class="flex items-center gap-1.5 mt-2">
+                              <ClientTypeBadge type={c.clientType} />
+                              <InactiveBadge isActive={c.isActive} />
+                            </span>
                           </span>
-                          <CountChip count={c.cmCount} label="CM" />
-                        </div>
-                        <div class="flex items-center gap-1.5 mt-1.5">
-                          <ClientTypeBadge type={c.clientType} />
-                          <InactiveBadge isActive={c.isActive} />
-                        </div>
+                        </span>
                       </button>
                     )}
                   </For>
@@ -376,35 +552,34 @@ export default function Assignments() {
               </>
             }
           >
-            <SectionTitle
-              right={
-                <span class="text-xs text-[#8593A8]">
-                  {filteredManagers().length}/{managers().length}
-                </span>
+            <RosterHeader
+              icon={ICON_USERS}
+              title="Campaign managers"
+              subtitle={
+                cmSearch().trim()
+                  ? `${filteredManagers().length} of ${managers().length} match`
+                  : "Pick one to manage their clients"
               }
+              count={`${filteredManagers().length}/${managers().length}`}
             >
-              Campaign managers
-            </SectionTitle>
-            <input
-              type="text"
-              value={cmSearch()}
-              onInput={(e) => setCmSearch(e.target.value)}
-              placeholder="Search by email or name…"
-              class={`${FIELD} mb-3`}
-            />
-            <div class="max-h-[62vh] overflow-y-auto space-y-1 -mx-1 px-1">
+              <RosterSearch
+                value={cmSearch()}
+                onInput={setCmSearch}
+                placeholder="Search by email or name…"
+              />
+            </RosterHeader>
+            <div class="max-h-[62vh] overflow-y-auto px-2.5 py-2.5">
               <Show when={data.loading && !managers().length}>
-                <p class="text-sm text-[#8593A8] px-2 py-3">
-                  Loading campaign managers…
-                </p>
+                <RosterSkeleton />
               </Show>
               <Show when={!data.loading && !filteredManagers().length}>
-                <p class="text-sm text-[#8593A8] px-2 py-3">
-                  No campaign managers match.
-                </p>
+                <RosterEmpty
+                  title="No campaign managers match"
+                  hint="Try a shorter search, or clear it to see everyone."
+                />
               </Show>
               <For each={filteredManagers()}>
-                {(m) => (
+                {(m, i) => (
                   <button
                     type="button"
                     onClick={() => {
@@ -412,25 +587,43 @@ export default function Assignments() {
                       setAddClientSearch("");
                       setActionError(null);
                     }}
+                    aria-current={
+                      selectedCmId() === m.cmId ? "true" : undefined
+                    }
                     class={listRowClass(selectedCmId() === m.cmId)}
                   >
-                    <div class="flex items-start justify-between gap-2">
-                      <span class="min-w-0">
-                        <span class="block text-sm font-semibold text-[#14233A] dark:text-gray-100 truncate">
-                          {m.email ?? m.name ?? `CM #${m.cmId}`}
+                    <RowDivider
+                      show={
+                        i() > 0 &&
+                        selectedCmId() !== m.cmId &&
+                        selectedCmId() !== filteredManagers()[i() - 1]?.cmId
+                      }
+                    />
+                    <RowRail active={selectedCmId() === m.cmId} />
+                    <span class="flex items-start gap-3">
+                      <Avatar
+                        name={cmLabel(m)}
+                        size="w-9 h-9"
+                        textSize="text-[11px]"
+                      />
+                      <span class="min-w-0 flex-1">
+                        <span class="flex items-start justify-between gap-2">
+                          <span class="block text-sm font-semibold text-[#14233A] dark:text-gray-100 truncate">
+                            {m.email ?? m.name ?? `CM #${m.cmId}`}
+                          </span>
+                          <CountChip count={m.clientCount} label="clients" />
                         </span>
                         <Show when={m.name && m.email}>
-                          <span class="block text-xs text-[#8593A8] truncate">
+                          <span class="block text-xs text-[#8593A8] truncate mt-0.5">
                             {m.name}
                           </span>
                         </Show>
+                        <span class="flex items-center gap-1.5 mt-2">
+                          <TierBadge tier={m.tier} />
+                          <InactiveBadge isActive={m.isActive} />
+                        </span>
                       </span>
-                      <CountChip count={m.clientCount} label="clients" />
-                    </div>
-                    <div class="flex items-center gap-1.5 mt-1.5">
-                      <TierBadge tier={m.tier} />
-                      <InactiveBadge isActive={m.isActive} />
-                    </div>
+                    </span>
                   </button>
                 )}
               </For>
@@ -473,18 +666,28 @@ export default function Assignments() {
             >
               <div class={`${CARD} p-5 sm:p-6`}>
                 <div class="flex flex-wrap items-start justify-between gap-3 pb-4 border-b border-[#E2E8F1] dark:border-gray-700">
-                  <div class="min-w-0">
-                    <h2 class="text-lg font-bold text-[#14233A] dark:text-white break-all">
-                      {selectedCm().email ?? selectedCm().name}
-                    </h2>
-                    <div class="flex items-center gap-2 mt-1">
-                      <Show when={selectedCm().name && selectedCm().email}>
-                        <span class="text-sm text-[#54657E] dark:text-gray-400">
-                          {selectedCm().name}
-                        </span>
-                      </Show>
-                      <TierBadge tier={selectedCm().tier} />
-                      <InactiveBadge isActive={selectedCm().isActive} />
+                  {/* Same avatar as the roster row that was clicked — it is the
+                      only visual thread confirming which side of the list the
+                      detail pane is answering about. */}
+                  <div class="flex items-start gap-3 min-w-0">
+                    <Avatar
+                      name={cmLabel(selectedCm())}
+                      size="w-11 h-11"
+                      textSize="text-sm"
+                    />
+                    <div class="min-w-0">
+                      <h2 class="text-lg font-bold text-[#14233A] dark:text-white break-all">
+                        {selectedCm().email ?? selectedCm().name}
+                      </h2>
+                      <div class="flex items-center gap-2 mt-1">
+                        <Show when={selectedCm().name && selectedCm().email}>
+                          <span class="text-sm text-[#54657E] dark:text-gray-400">
+                            {selectedCm().name}
+                          </span>
+                        </Show>
+                        <TierBadge tier={selectedCm().tier} />
+                        <InactiveBadge isActive={selectedCm().isActive} />
+                      </div>
                     </div>
                   </div>
                   <button
@@ -541,16 +744,24 @@ export default function Assignments() {
                       <For each={selectedCm().clients}>
                         {(c) => (
                           <li class="flex items-center justify-between gap-3 px-3.5 py-2.5">
-                            <span class="min-w-0">
+                            <Avatar
+                              name={clientLabel(c)}
+                              size="w-8 h-8"
+                              textSize="text-[10px]"
+                            />
+                            <span class="min-w-0 flex-1">
                               <span class="block text-sm font-medium text-[#14233A] dark:text-gray-100 truncate">
                                 {clientLabel(c)}
                               </span>
-                              <span class="flex items-center gap-1.5 mt-0.5">
-                                <ClientTypeBadge type={c.clientType} />
-                                <InactiveBadge isActive={c.isActive} />
+                              {/* Email first, badges after: the address is what
+                                  identifies the row, so it keeps the left edge
+                                  and the labels trail it. */}
+                              <span class="flex items-center gap-1.5 mt-0.5 min-w-0">
                                 <span class="text-xs text-[#8593A8] truncate">
                                   {c.email ?? ""}
                                 </span>
+                                <ClientTypeBadge type={c.clientType} />
+                                <InactiveBadge isActive={c.isActive} />
                               </span>
                             </span>
                             <span class="flex-none flex items-center gap-2">
@@ -608,16 +819,21 @@ export default function Assignments() {
                       <For each={clientCandidates()}>
                         {(c) => (
                           <div class="flex items-center justify-between gap-3 px-3.5 py-2.5">
-                            <span class="min-w-0">
+                            <Avatar
+                              name={clientLabel(c)}
+                              size="w-8 h-8"
+                              textSize="text-[10px]"
+                            />
+                            <span class="min-w-0 flex-1">
                               <span class="block text-sm font-medium text-[#14233A] dark:text-gray-100 truncate">
                                 {clientLabel(c)}
                               </span>
-                              <span class="flex items-center gap-1.5 mt-0.5">
-                                <ClientTypeBadge type={c.clientType} />
-                                <InactiveBadge isActive={c.isActive} />
+                              <span class="flex items-center gap-1.5 mt-0.5 min-w-0">
                                 <span class="text-xs text-[#8593A8] truncate">
                                   {c.cmCount} CM
                                 </span>
+                                <ClientTypeBadge type={c.clientType} />
+                                <InactiveBadge isActive={c.isActive} />
                               </span>
                             </span>
                             <button
@@ -650,18 +866,25 @@ export default function Assignments() {
             >
               <div class={`${CARD} p-5 sm:p-6`}>
                 <div class="flex flex-wrap items-start justify-between gap-3 pb-4 border-b border-[#E2E8F1] dark:border-gray-700">
-                  <div class="min-w-0">
-                    <h2 class="text-lg font-bold text-[#14233A] dark:text-white break-all">
-                      {clientLabel(selectedClient())}
-                    </h2>
-                    <div class="flex items-center gap-2 mt-1">
-                      <Show when={selectedClient().email}>
-                        <span class="text-sm text-[#54657E] dark:text-gray-400 break-all">
-                          {selectedClient().email}
-                        </span>
-                      </Show>
-                      <ClientTypeBadge type={selectedClient().clientType} />
-                      <InactiveBadge isActive={selectedClient().isActive} />
+                  <div class="flex items-start gap-3 min-w-0">
+                    <Avatar
+                      name={clientLabel(selectedClient())}
+                      size="w-11 h-11"
+                      textSize="text-sm"
+                    />
+                    <div class="min-w-0">
+                      <h2 class="text-lg font-bold text-[#14233A] dark:text-white break-all">
+                        {clientLabel(selectedClient())}
+                      </h2>
+                      <div class="flex items-center gap-2 mt-1">
+                        <Show when={selectedClient().email}>
+                          <span class="text-sm text-[#54657E] dark:text-gray-400 break-all">
+                            {selectedClient().email}
+                          </span>
+                        </Show>
+                        <ClientTypeBadge type={selectedClient().clientType} />
+                        <InactiveBadge isActive={selectedClient().isActive} />
+                      </div>
                     </div>
                   </div>
                   <button
@@ -704,18 +927,23 @@ export default function Assignments() {
                       <For each={selectedClient().campaignManagers}>
                         {(m) => (
                           <li class="flex items-center justify-between gap-3 px-3.5 py-2.5">
-                            <span class="min-w-0">
+                            <Avatar
+                              name={cmLabel(m)}
+                              size="w-8 h-8"
+                              textSize="text-[10px]"
+                            />
+                            <span class="min-w-0 flex-1">
                               <span class="block text-sm font-medium text-[#14233A] dark:text-gray-100 truncate">
                                 {cmLabel(m)}
                               </span>
-                              <span class="flex items-center gap-1.5 mt-0.5">
-                                <TierBadge tier={m.tier} />
-                                <InactiveBadge isActive={m.isActive} />
+                              <span class="flex items-center gap-1.5 mt-0.5 min-w-0">
                                 <Show when={m.name}>
                                   <span class="text-xs text-[#8593A8] truncate">
                                     {m.name}
                                   </span>
                                 </Show>
+                                <TierBadge tier={m.tier} />
+                                <InactiveBadge isActive={m.isActive} />
                               </span>
                             </span>
                             <span class="flex-none flex items-center gap-2">
@@ -773,16 +1001,21 @@ export default function Assignments() {
                       <For each={cmCandidates()}>
                         {(m) => (
                           <div class="flex items-center justify-between gap-3 px-3.5 py-2.5">
-                            <span class="min-w-0">
+                            <Avatar
+                              name={cmLabel(m)}
+                              size="w-8 h-8"
+                              textSize="text-[10px]"
+                            />
+                            <span class="min-w-0 flex-1">
                               <span class="block text-sm font-medium text-[#14233A] dark:text-gray-100 truncate">
                                 {cmLabel(m)}
                               </span>
-                              <span class="flex items-center gap-1.5 mt-0.5">
-                                <TierBadge tier={m.tier} />
-                                <InactiveBadge isActive={m.isActive} />
+                              <span class="flex items-center gap-1.5 mt-0.5 min-w-0">
                                 <span class="text-xs text-[#8593A8]">
                                   {m.clientCount} clients
                                 </span>
+                                <TierBadge tier={m.tier} />
+                                <InactiveBadge isActive={m.isActive} />
                               </span>
                             </span>
                             <button
