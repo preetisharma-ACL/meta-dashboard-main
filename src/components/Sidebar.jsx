@@ -344,6 +344,18 @@ export default function Sidebar() {
         path: "/onboarding",
       },
       {
+        // Top-level for the same reason as Onboarding: coordination doesn't get
+        // the "Clients" group (admin+CM), and coordination is half this screen's
+        // audience — burying it under a group they can't see would hide it from
+        // them. Admin + coordination only: the value tier is an INTERNAL
+        // commercial classification and a CM never sees it, which is why this
+        // isn't a sibling of "Client Status" inside that group.
+        name: "Value Tier",
+        roles: ["admin", "coordination"],
+        icon: () => <Icon d="M12 3l4 5-4 13-4-13 4-5zm-4 5h8" />,
+        path: "/client-value-tier",
+      },
+      {
         // Coordination only — admin reaches this from inside the "Campaign
         // Managers" group, which coordination doesn't get. It sits next to
         // Onboarding here because creating a user and deciding what that user

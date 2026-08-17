@@ -137,6 +137,23 @@ export const canRevokeReplacement = () => {
   return role === "admin";
 };
 
+// ─── Value tier gate (internal commercial classification) ─────────────────────
+// Admin + coordination ONLY. Deliberately NOT the GLOBAL_READ set: accounts reads
+// money across every client but does not classify them, and a campaign manager
+// never sees this label at all — which is the difference from engagement status,
+// where a CM sets it on their own book.
+//
+// The tier is INTERNAL. A client must never see how we've classified them, so
+// this gate is strict role equality (no tier fallbacks, no "logged in and not a
+// client" shortcuts) and it fails CLOSED: an unknown or not-yet-resolved role
+// returns false, and ValueTierControl renders nothing at all rather than a
+// disabled or empty badge. The endpoints 403 everyone else regardless.
+const VALUE_TIER_ROLES = new Set(["admin", "coordination"]);
+export const canSeeValueTier = () => {
+  const role = currentUser.loaded ? currentUser.role : readAuth()?.role;
+  return VALUE_TIER_ROLES.has(role);
+};
+
 // True once the tier is actually known. A campaign_manager's tier arrives with
 // /auth/me, so a route guard must WAIT on this rather than treat "tier not
 // loaded yet" as "not tier-1" and bounce a legitimate tier-1 lead.

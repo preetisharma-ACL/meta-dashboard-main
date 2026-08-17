@@ -30,6 +30,7 @@ import ImpersonationBanner from "./pages/admin/component/ImpersonationBanner";
 import ProjectDisplayConfig from "./pages/admin/client/ProjectDisplayConfig";
 import ClientNomen from "./pages/admin/client/ClientNomen";
 import ClientStatusBoard from "./pages/clients/ClientStatusBoard";
+import ValueTierBoard from "./pages/clients/ValueTierBoard";
 import Campaigns from "./pages/admin/campaigns/Campaigns";
 import AdAccounts from "./pages/admin/client/AdAccounts";
 import AdAccountClients from "./pages/admin/client/AdAccountClients";
@@ -408,6 +409,18 @@ function App() {
               component={() => (
                 <AdminRoute roles={["admin", "campaign_manager"]}>
                   <ClientStatusBoard />
+                </AdminRoute>
+              )}
+            />
+            {/* Value-tier board. Admin + coordination ONLY — deliberately NOT the
+                same gate as the engagement board above: the tier is an INTERNAL
+                commercial classification, a CM never sees it, and the endpoints
+                403 every other role. */}
+            <Route
+              path="/client-value-tier"
+              component={() => (
+                <AdminRoute roles={["admin", "coordination"]}>
+                  <ValueTierBoard />
                 </AdminRoute>
               )}
             />

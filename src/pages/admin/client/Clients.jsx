@@ -27,6 +27,16 @@ import {
   STATUS_DOT,
   normaliseStatus,
 } from "../../../services/clientStatus";
+import ValueTierControl from "../../../components/clientValueTier/ValueTierControl";
+import ValueTierHistoryDrawer from "../../../components/clientValueTier/ValueTierHistoryDrawer";
+import {
+  fetchValueTierBoard,
+  VALUE_TIER_FILTERS,
+  VALUE_TIER_DOT,
+  isValueTierMismatch,
+  normaliseValueTier,
+} from "../../../services/valueTier";
+import { canSeeValueTier } from "../../../stores/currentUser";
 import CampaignActivityBadge from "../../../components/clientActivity/CampaignActivityBadge";
 import {
   ACTIVITY_FILTERS,
@@ -141,7 +151,11 @@ export default function Clients() {
   // engagement label above, and filtered differently: admins get a server-side
   // ?activity=, CMs read the hierarchy, which has no such param.
   const [activityFilter, setActivityFilter] = createSignal("all");
+  // Value tier (MANUAL, commercial, INTERNAL) — a fourth label, and the only one
+  // of the four that a client must never see. Admin + coordination only.
+  const [tierFilter, setTierFilter] = createSignal("all");
   const [historyFor, setHistoryFor] = createSignal(null);
+  const [tierHistoryFor, setTierHistoryFor] = createSignal(null);
 
   // ── Engagement status ─────────────────────────────────────────────────────
   // The admin client rows now carry `engagement_status`, but not the latest
@@ -200,6 +214,91 @@ export default function Clients() {
               : c,
           )
         : [...clients, { id: pk, engagement_status: status, latest_change: change }];
+      return { counts: prev?.counts ?? {}, clients: next };
+    });
+  };
+
+  // ── Value tier ────────────────────────────────────────────────────────────
+  // The list rows carry `value_tier`, but not the SUGGESTION — and the
+  // suggestion (with the funds behind it) is the reason this feature exists. The
+  // board serves tier + suggested_value_tier + month_funds_inc_gst + mismatch for
+  // every client the caller may see, so one call fills the column properly.
+  //
+  // Gated on canSeeValueTier(): a CM or any other role never issues this request
+  // at all, which keeps an internal classification off the wire for people who
+  // must not see it — not merely un-rendered.
+  const [tierBoard, { mutate: mutateTierBoard }] = createResource(
+    () => (canSeeValueTier() ? "load" : null),
+    async () => {
+      try {
+        return await fetchValueTierBoard();
+      } catch (err) {
+        console.error("Clients: value tier board failed", err);
+        return { counts: {}, clients: [] };
+      }
+    },
+  );
+
+  // Indexed by Client PK AND by nomen. Two keys because this board names its
+  // columns `client_id`/`client_nomen` while the engagement board next door uses
+  // `id` — if that difference ever moves, the column still resolves.
+  const tierByKey = createMemo(() => {
+    const byPk = {};
+    const byNomen = {};
+    for (const c of tierBoard()?.clients ?? []) {
+      const entry = {
+        tier: c.value_tier ?? null,
+        suggested: c.suggested_value_tier ?? null,
+        monthFunds: c.month_funds_inc_gst ?? null,
+        mismatch: c.mismatch ?? null,
+      };
+      if (c.client_id != null) byPk[String(c.client_id)] = entry;
+      if (c.client_nomen != null) byNomen[String(c.client_nomen)] = entry;
+    }
+    return { byPk, byNomen };
+  });
+
+  const tierEntry = (c) => {
+    const { byPk, byNomen } = tierByKey();
+    const pk = pkOf(c);
+    const hit =
+      (pk != null ? byPk[String(pk)] : null) ??
+      byNomen[String(c.client_nomen)] ??
+      null;
+    // Board first (it carries the suggestion); fall back to the tier the list row
+    // itself reported so the badge still renders if the board call failed.
+    return {
+      tier: hit?.tier ?? c.value_tier ?? null,
+      suggested: hit?.suggested ?? null,
+      monthFunds: hit?.monthFunds ?? null,
+      mismatch: hit?.mismatch ?? null,
+    };
+  };
+
+  // Keep the board in sync after an inline change so the badge, the hint and the
+  // tier filter agree without a refetch.
+  const applyTierChange = (pk, nomen, { tier, suggested, monthFunds }) => {
+    mutateTierBoard((prev) => {
+      const clients = prev?.clients ?? [];
+      const isRow = (c) =>
+        (c.client_id != null && String(c.client_id) === String(pk)) ||
+        (c.client_nomen != null && String(c.client_nomen) === String(nomen));
+      const patch = (c) => ({
+        ...c,
+        value_tier: tier,
+        suggested_value_tier: suggested ?? c.suggested_value_tier,
+        month_funds_inc_gst: monthFunds ?? c.month_funds_inc_gst,
+        // Recomputed, not carried over: the server's boolean described the tier
+        // we just replaced.
+        mismatch: isValueTierMismatch(tier, suggested ?? c.suggested_value_tier),
+      });
+      const hit = clients.some(isRow);
+      const next = hit
+        ? clients.map((c) => (isRow(c) ? patch(c) : c))
+        : [
+            ...clients,
+            patch({ client_id: pk, client_nomen: nomen }),
+          ];
       return { counts: prev?.counts ?? {}, clients: next };
     });
   };
@@ -457,6 +556,15 @@ export default function Clients() {
       }
     }
 
+    // Value-tier filter — client-side against the resolved tier. The whole board
+    // is already in memory, and this filter only exists for roles that fetched
+    // it, so there is nothing to gain from a round-trip.
+    if (canSeeValueTier() && tierFilter() !== "all") {
+      data = data.filter(
+        (c) => normaliseValueTier(tierEntry(c).tier) === tierFilter(),
+      );
+    }
+
     data.sort((a, b) => {
       let va = a[sortKey()],
         vb = b[sortKey()];
@@ -502,6 +610,7 @@ export default function Clients() {
         activeFilter,
         statusFilter,
         activityFilter,
+        tierFilter,
       ],
       () => setPage(1),
       { defer: true },
@@ -777,6 +886,53 @@ export default function Clients() {
         </p>
       </div>
 
+      {/* ── Value Tier chips (MANUAL · INTERNAL) ──
+          The fourth label, and the only one clients must never see — hence the
+          whole row is behind canSeeValueTier() (admin + coordination), and the
+          caption says so out loud so nobody screen-shares this into a client
+          call by accident. ◆ marks match the badge on the rows. */}
+      <Show when={canSeeValueTier()}>
+        <div class="mb-4">
+          <div class="flex flex-wrap items-center gap-1.5">
+            <span class="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mr-1">
+              Value tier
+            </span>
+            <div class="flex flex-wrap items-center gap-1.5">
+              <For each={VALUE_TIER_FILTERS}>
+                {(f) => {
+                  const on = () => tierFilter() === f.key;
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => setTierFilter(f.key)}
+                      aria-pressed={on()}
+                      class={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-[6px] text-[13px] font-semibold border transition-colors whitespace-nowrap ${
+                        on()
+                          ? "bg-[#14233A] text-white border-[#14233A]"
+                          : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-[#14233A]/40"
+                      }`}
+                    >
+                      <Show when={f.key !== "all"}>
+                        <span
+                          class={`h-1.5 w-1.5 rounded-full ${
+                            on() ? "bg-[#E9AE5C]" : VALUE_TIER_DOT[f.key]
+                          }`}
+                        />
+                      </Show>
+                      {f.label}
+                    </button>
+                  );
+                }}
+              </For>
+            </div>
+          </div>
+          <p class="pl-1 mt-1.5 text-[11px] text-gray-400 dark:text-gray-500">
+            Internal commercial classification — never shown to the client, and
+            unrelated to the billing basis in Client type.
+          </p>
+        </div>
+      </Show>
+
       {/* ── Filters ── */}
       <div
         class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200
@@ -873,6 +1029,7 @@ export default function Clients() {
             setActiveFilter("All");
             setStatusFilter("all");
             setActivityFilter("all");
+            setTierFilter("all");
             setSortKey("created_at");
             setSortDir("desc");
           }}
@@ -938,6 +1095,10 @@ export default function Clients() {
               </th>
               {/* Engagement status — the manual label, distinct from Is Active */}
               <th class="p-3 text-left whitespace-nowrap">Status</th>
+              {/* Internal commercial classification — admin + coordination only */}
+              <Show when={canSeeValueTier()}>
+                <th class="p-3 text-left whitespace-nowrap">Value Tier</th>
+              </Show>
               <th class="p-3 text-center whitespace-nowrap">Is Active</th>
               <th
                 class="p-3 text-left cursor-pointer hover:text-blue-900 whitespace-nowrap"
@@ -978,6 +1139,12 @@ export default function Clients() {
                       <td class="p-3">
                         <div class="h-5 w-20 bg-gray-200 dark:bg-gray-700 rounded-full" />
                       </td>
+                      {/* Value tier */}
+                      <Show when={canSeeValueTier()}>
+                        <td class="p-3">
+                          <div class="h-5 w-24 bg-gray-200 dark:bg-gray-700 rounded" />
+                        </td>
+                      </Show>
                       <td class="p-3 text-center">
                         <div class="h-5 w-5 bg-gray-200 dark:bg-gray-700 rounded-full mx-auto" />
                       </td>
@@ -1107,6 +1274,44 @@ export default function Clients() {
                       </div>
                     </td>
 
+                    {/* Value tier — its own column rather than crowded into the
+                        Status cell: the suggestion hint needs a line of its own,
+                        and three badges in one cell would undo the work of
+                        keeping the labels distinguishable. Adjacent to
+                        Engagement, which is what matters for reading them
+                        together. Internal — hidden outright for other roles. */}
+                    <Show when={canSeeValueTier()}>
+                      <td class="p-3" onClick={(e) => e.stopPropagation()}>
+                        <ValueTierControl
+                          clientId={pkOf(client)}
+                          tier={tierEntry(client).tier}
+                          suggested={tierEntry(client).suggested}
+                          monthFunds={tierEntry(client).monthFunds}
+                          mismatch={tierEntry(client).mismatch}
+                          showSuggestion
+                          onChanged={(payload) =>
+                            applyTierChange(
+                              pkOf(client),
+                              client.client_nomen,
+                              payload,
+                            )
+                          }
+                        />
+                        <button
+                          onClick={() =>
+                            setTierHistoryFor({
+                              id: pkOf(client),
+                              label: client.client_nomen_name || client.email,
+                            })
+                          }
+                          disabled={pkOf(client) == null}
+                          class="mt-1 block text-[11px] font-semibold text-[#3E6FB0] hover:underline disabled:opacity-40 disabled:no-underline"
+                        >
+                          Tier history
+                        </button>
+                      </td>
+                    </Show>
+
                     {/* Is Active */}
                     <td class="p-3 text-center">
                       {client.is_active ? (
@@ -1178,7 +1383,10 @@ export default function Clients() {
               <Show when={filtered().length === 0}>
                 <tr>
                   <td
-                    colspan={isCampaignManager() ? 9 : 10}
+                    colspan={
+                      (isCampaignManager() ? 9 : 10) +
+                      (canSeeValueTier() ? 1 : 0)
+                    }
                     class="py-16 text-center text-gray-400 dark:text-gray-500"
                   >
                     <svg
@@ -1205,7 +1413,9 @@ export default function Clients() {
           <tfoot>
             <tr class="border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60">
               <td
-                colspan={isCampaignManager() ? 7 : 8}
+                colspan={
+                  (isCampaignManager() ? 7 : 8) + (canSeeValueTier() ? 1 : 0)
+                }
                 class="px-4 py-2.5 text-xs text-gray-500 dark:text-gray-400"
               >
                 {paginated().length} client
@@ -1302,6 +1512,15 @@ export default function Clients() {
         clientId={historyFor()?.id}
         clientLabel={historyFor()?.label}
         onClose={() => setHistoryFor(null)}
+      />
+
+      {/* Separate drawer from the engagement one: different endpoint, different
+          fields (from_tier/to_tier), and an optional reason. */}
+      <ValueTierHistoryDrawer
+        open={!!tierHistoryFor()}
+        clientId={tierHistoryFor()?.id}
+        clientLabel={tierHistoryFor()?.label}
+        onClose={() => setTierHistoryFor(null)}
       />
     </div>
   );
