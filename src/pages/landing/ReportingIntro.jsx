@@ -22,7 +22,13 @@ const ctaHref = () => (signedIn() ? "/dashboard" : "/login");
 
 /* Screenshots live in /public/images/ and are served from the site root.
    The width/height on each <img> below are the files' real pixel dimensions —
-   they reserve the right box before the image lands, so nothing shifts. */
+   they reserve the right box before the image lands, so nothing shifts.
+
+   These are .webp, generated from the .png originals by
+   scripts/optimize-landing-images.mjs — 1,444 KB of PNG became 366 KB. Re-run
+   that script after replacing a screenshot and copy the dimensions it prints
+   into the entries below. Every browser this page supports reads WebP (Safari
+   since 14), so there's no <picture> fallback to keep in sync. */
 const SHOTS = "/images";
 
 /* Hero showcase — DOM order IS the display order. --i sets the stacking order
@@ -31,27 +37,27 @@ const SHOTS = "/images";
    matches the card gutters to a dark screenshot's own background. */
 const HERO_VIEWS = [
   {
-    src: `${SHOTS}/dashboard1.png`,
+    src: `${SHOTS}/dashboard1.webp`,
     alt: "Active Projects dashboard in light mode: total spend against monthly allocation with a day-28-of-31 pacing marker, alongside leads generated, average CPL and live campaign counts",
     w: 1892,
     h: 906,
     priority: true,
   },
   {
-    src: `${SHOTS}/dashboard2.png`,
+    src: `${SHOTS}/dashboard2.webp`,
     alt: "The same Active Projects dashboard in dark mode",
     w: 1896,
     h: 910,
     dark: true,
   },
   {
-    src: `${SHOTS}/reporting-dashboard4.png`,
+    src: `${SHOTS}/reporting-dashboard4.webp`,
     alt: "Campaign performance chart plotting leads as bars against spend as a line, above totals for campaigns, leads, spend and the top campaign",
     w: 1628,
     h: 620,
   },
   {
-    src: `${SHOTS}/dashboard3.png`,
+    src: `${SHOTS}/dashboard3.webp`,
     alt: "Campaign table listing start and paused dates, status, leads, clicks, impressions, spend and average CPL for every campaign",
     w: 1906,
     h: 908,
@@ -64,30 +70,30 @@ const FEATURE_CARDS = [
     icon: "ri-ico-portal",
     title: "Client portal",
     lead: "Clients Login in to their own projects only — nothing else is visible.",
-    src: `${SHOTS}/app-client-portal.png`,
+    src: `${SHOTS}/app-client-portal.webp`,
     alt: "Client dashboard listing their live projects with spend against allocation, leads and average CPL",
-    w: 1582,
-    h: 848,
+    w: 760,
+    h: 407,
     cap: "Spend against allocation, leads, CPL and where the month will land.",
   },
   {
     icon: "ri-ico-task",
     title: "Billing you can defend",
     lead: "Opening balance, funds added, service charge and GST — itemised.",
-    src: `${SHOTS}/app-billing.png`,
+    src: `${SHOTS}/app-billing.webp`,
     alt: "Client billing page showing remaining balance, budget utilised and a full monthly account statement",
-    w: 1582,
-    h: 848,
+    w: 760,
+    h: 407,
     cap: "A statement that answers the invoice question before it's asked.",
   },
   {
     icon: "ri-ico-usage",
     title: "Daily reports",
     lead: "Leads, CPL and spend grouped by date and project, ready to download.",
-    src: `${SHOTS}/reporting-dashboard8.png`,
+    src: `${SHOTS}/reporting-dashboard8.webp`,
     alt: "Daily reports table showing leads, cost per lead and amount spent for each project",
-    w: 1657,
-    h: 642,
+    w: 760,
+    h: 294,
     cap: "Service charge and GST worked out per project, before you ask.",
   },
 ];
@@ -155,11 +161,12 @@ export default function ReportingIntro() {
   // Decided during render, not in onMount, so the pre-animation states are on
   // the very first paint and nothing flashes visible then jumps to hidden.
   const [noMotion, setNoMotion] = createSignal(prefersReducedMotion());
-  /* Two different things, and conflating them is what made this page look
-     broken on iPhones. `ri-no-motion` = the scripted animation isn't running
-     (reduced motion OR the CDN never answered) — the layout has to stand on
-     its own. `ri-still` = the visitor actually asked for less movement, so even
-     the CSS transitions stop. A phone on slow data gets the first, not both. */
+  /* `ri-no-motion` = the scripted animation isn't running, so the layout has to
+     stand on its own. `ri-still` = the visitor asked for less movement, so even
+     the CSS transitions stop. Both are set by reduced motion today; they stay
+     separate because the layout rule and the movement rule answer to different
+     questions, and collapsing them is what left iPhones showing the fallback's
+     column of plates. */
   const still = prefersReducedMotion();
 
   onMount(() => {
@@ -652,10 +659,10 @@ export default function ReportingIntro() {
                 >
                   <div class="ri-bcard-ui ri-bshot p-4">
                     <img
-                      src={`${SHOTS}/project-brief.png`}
+                      src={`${SHOTS}/project-brief.webp`}
                       alt="Daily brief panel: what went well on the left, and an auto-tracked issues log flagging two accounts that have gone dark and one buying leads 65% over the portfolio average"
-                      width={1547}
-                      height={557}
+                      width={1400}
+                      height={504}
                       loading="lazy"
                       decoding="async"
                     />
@@ -679,10 +686,10 @@ export default function ReportingIntro() {
                 >
                   <div class="ri-bcard-ui ri-bshot p-4">
                     <img
-                      src={`${SHOTS}/budget.png`}
+                      src={`${SHOTS}/budget.webp`}
                       alt="Project ledger table listing each project's budget, total leads, total spent and average CPL, with a portfolio total row"
-                      width={1487}
-                      height={535}
+                      width={1100}
+                      height={396}
                       loading="lazy"
                       decoding="async"
                     />
@@ -717,10 +724,10 @@ export default function ReportingIntro() {
                   </div>
                   <div class="ri-bcard-ui ri-bshot p-4">
                     <img
-                      src={`${SHOTS}/campns.png`}
+                      src={`${SHOTS}/campns.webp`}
                       alt="A single campaign's detail view: leads, impressions, reach, spend and ROAS, with cost per result broken out alongside"
-                      width={1650}
-                      height={802}
+                      width={1400}
+                      height={680}
                       loading="lazy"
                       decoding="async"
                     />

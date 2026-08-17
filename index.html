@@ -14,6 +14,22 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
     rel="stylesheet">
+  <!-- Manrope is the landing page's display face, and ONLY the landing page's.
+       It used to be @imported from inside reporting-intro.css, which meant the
+       browser couldn't even discover it until that stylesheet had downloaded
+       and parsed — a second round trip in front of the first paint. Requesting
+       it here instead removes that chain.
+
+       `media="print"` keeps it from blocking render; the onload flips it to
+       `all` once it lands. Deliberately a separate tag from the Inter link
+       above rather than one combined request: Inter is the whole app's body
+       face and its loading behaviour stays exactly as it was. -->
+  <link rel="stylesheet" media="print" onload="this.media='all'"
+    href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap">
+  <noscript>
+    <link rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap">
+  </noscript>
 </head>
 
 <body>

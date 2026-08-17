@@ -3,37 +3,27 @@
  * started and torn down by a SolidJS component instead of running once at
  * document load:
  *   - every query is scoped to the page root, never `document`
- *   - GSAP/Lenis come off the CDN lazily (they aren't project dependencies), so
- *     nothing is downloaded on any other route
  *   - everything registers inside a gsap.context() and a listener list, so
  *     onCleanup can revert it completely when the visitor navigates to /login
  *
  * Everything is transform/opacity only, and the whole layer no-ops under
- * `prefers-reduced-motion` or if the CDN libraries fail to load.
+ * `prefers-reduced-motion`.
+ *
+ * GSAP and Lenis are bundled, NOT loaded from a CDN. They used to be three
+ * <script> tags off cdnjs and unpkg, injected at mount — which meant every
+ * [data-reveal] on the page sat at opacity 0 until two third-party hosts
+ * answered. On a fast desktop connection that's invisible; on Safari over
+ * mobile data it's seconds of scrolling past blank sections, which is exactly
+ * what it looked like. Bundled, they arrive in the same chunk as the page and
+ * the reveals are wired before the first paint. The route is lazy-loaded
+ * (see App.jsx), so this weight still lands on no other screen.
  * ──────────────────────────────────────────────────────────────────────────── */
 
-const CDN = {
-  gsap: 'https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js',
-  scrollTrigger: 'https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js',
-  lenis: 'https://unpkg.com/lenis@1.1.13/dist/lenis.min.js',
-};
+import { gsap } from 'gsap';
+import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import Lenis from 'lenis';
 
-// One promise per URL — remounting the page must not re-inject the script tag.
-const scriptCache = new Map();
-
-function loadScript(src) {
-  if (scriptCache.has(src)) return scriptCache.get(src);
-  const p = new Promise((resolve, reject) => {
-    const el = document.createElement('script');
-    el.src = src;
-    el.async = true;
-    el.onload = resolve;
-    el.onerror = () => reject(new Error('Failed to load ' + src));
-    document.head.appendChild(el);
-  });
-  scriptCache.set(src, p);
-  return p;
-}
+gsap.registerPlugin(ScrollTrigger);
 
 export function prefersReducedMotion() {
   return typeof window !== 'undefined'
@@ -66,7 +56,6 @@ export function initLandingMotion(root, handles = {}) {
   let ctx = null;      // gsap.context — reverts every tween/ScrollTrigger it made
   let lenis = null;
   let tickerFn = null;
-  let bailTimer = null;
 
   const on = (target, type, fn, opts) => {
     target.addEventListener(type, fn, opts);
@@ -122,16 +111,15 @@ export function initLandingMotion(root, handles = {}) {
     handles.onNoMotion?.();
     // Native anchor scrolling still applies via scroll-behavior.
     $$('a[href^="#"]').forEach((a) => on(a, 'click', closeMenu));
-    // The showcase is four screenshots in ONE box — with no GSAP to turn them
+    // The showcase is four screenshots in ONE box — with no page turn running
     // it still has to show one at a time, or the box unrolls into a column of
-    // full-width plates and reads as a broken page. Plain class swapping, no
-    // library needed.
+    // full-width plates and reads as a broken page.
     initFallbackShowcase();
   }
 
-  /* One-view-at-a-time stepper for every no-GSAP path. Auto-advances with a CSS
-     cross-fade when motion is merely unavailable; when the visitor actually
-     asked for reduced motion it holds still and only steps on tap. */
+  /* One-view-at-a-time stepper for the no-animation path. Holds still and only
+     steps on tap — this now runs solely under prefers-reduced-motion, so
+     autoplay would be the one thing the visitor asked us not to do. */
   function initFallbackShowcase() {
     const showcase = $('[data-showcase]');
     const layers = $$('[data-layer]');
@@ -139,7 +127,6 @@ export function initLandingMotion(root, handles = {}) {
 
     const dots = $$('[data-dot]');
     let idx = 0;
-    let timer = null;
 
     const paint = () => {
       layers.forEach((l, i) => l.classList.toggle('is-active', i === idx));
@@ -149,25 +136,19 @@ export function initLandingMotion(root, handles = {}) {
       });
     };
 
-    const stopAuto = () => { if (timer) { clearInterval(timer); timer = null; } };
     const go = (n) => { idx = (n + layers.length) % layers.length; paint(); };
 
     paint();
 
-    // Any manual step takes ownership — never yank the view out from under a
-    // finger that just chose one.
-    on(showcase, 'click', () => { stopAuto(); go(idx + 1); });
+    // Nothing advances on its own here — the visitor asked for reduced motion,
+    // so the view only changes when they change it.
+    on(showcase, 'click', () => go(idx + 1));
     on(showcase, 'keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); stopAuto(); go(idx + 1); }
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(idx + 1); }
     });
     dots.forEach((d, i) => {
-      on(d, 'click', (e) => { e.stopPropagation(); stopAuto(); go(i); });
+      on(d, 'click', (e) => { e.stopPropagation(); go(i); });
     });
-
-    if (!prefersReducedMotion()) {
-      timer = setInterval(() => go(idx + 1), 3600);
-      listeners.push(stopAuto);
-    }
   }
 
   if (prefersReducedMotion()) {
@@ -175,39 +156,15 @@ export function initLandingMotion(root, handles = {}) {
     return dispose;
   }
 
-  /* Guard against a CDN that resolves but never finishes: show the page rather
-     than leaving the hero showcase and every [data-reveal] stuck at opacity 0.
-     Deliberately still short — three files off two hosts often miss this on
-     mobile data, and a visitor waiting on a blank hero is worse than one who
-     gets the cross-fade fallback a second early. */
-  bailTimer = setTimeout(bail, 5000);
-
-  Promise.all([
-    loadScript(CDN.gsap).then(() => loadScript(CDN.scrollTrigger)),
-    // Lenis is optional — smooth scroll degrades to native if it 404s.
-    loadScript(CDN.lenis).catch(() => null),
-  ])
-    .then(() => {
-      clearTimeout(bailTimer);
-      if (disposed) return;
-      // Landed after the bail timer already handed the page to the fallback
-      // stepper — starting now would fight it for the same layers.
-      if (bailed) return;
-      if (!window.gsap || !window.ScrollTrigger) { bail(); return; }
-      start();
-    })
-    .catch(() => {
-      clearTimeout(bailTimer);
-      bail();
-    });
+  /* Synchronous — the libraries are in this chunk, so there is nothing to wait
+     for and no window in which the page can be scrolled while its content is
+     still hidden at opacity 0. */
+  start();
 
   /* ---------------------------------------------------------------- *
-   * The animation layer proper — runs once the libraries have landed
+   * The animation layer proper
    * ---------------------------------------------------------------- */
   function start() {
-    const { gsap, ScrollTrigger } = window;
-    gsap.registerPlugin(ScrollTrigger);
-
     /* Read once: an orientation change mid-visit isn't worth rebuilding the
        whole timeline for, and the two variants land on the same views. */
     const compact = isCompactViewport();
@@ -216,18 +173,20 @@ export function initLandingMotion(root, handles = {}) {
       /* ------------------------------------------------------------ *
        * 2. Lenis smooth scroll, driven by the GSAP ticker
        * ------------------------------------------------------------ */
-      if (typeof window.Lenis !== 'undefined') {
-        lenis = new window.Lenis({
-          duration: 1.15,
-          easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
-          smoothWheel: true,
-          touchMultiplier: 1.6,
-        });
-        lenis.on('scroll', ScrollTrigger.update);
-        tickerFn = (time) => lenis.raf(time * 1000);
-        gsap.ticker.add(tickerFn);
-        gsap.ticker.lagSmoothing(0);
-      }
+      /* Wheel only. Lenis never took over touch here (`syncTouch` is off by
+         default), and on iOS hijacking touch scrolling is what makes a page
+         feel like it's fighting the finger — native momentum is better than
+         anything we'd substitute. */
+      lenis = new Lenis({
+        duration: 1.15,
+        easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+        smoothWheel: true,
+        touchMultiplier: 1.6,
+      });
+      lenis.on('scroll', ScrollTrigger.update);
+      tickerFn = (time) => lenis.raf(time * 1000);
+      gsap.ticker.add(tickerFn);
+      gsap.ticker.lagSmoothing(0);
 
       // Anchor links routed through Lenis so in-page jumps stay smooth.
       $$('a[href^="#"]').forEach((a) => {
@@ -564,10 +523,9 @@ export function initLandingMotion(root, handles = {}) {
   function dispose() {
     if (disposed) return;
     disposed = true;
-    clearTimeout(bailTimer);
     listeners.forEach((off) => { try { off(); } catch { /* already gone */ } });
     listeners.length = 0;
-    if (tickerFn && window.gsap) window.gsap.ticker.remove(tickerFn);
+    if (tickerFn) gsap.ticker.remove(tickerFn);
     if (lenis) { try { lenis.destroy(); } catch { /* noop */ } lenis = null; }
     if (ctx) { try { ctx.revert(); } catch { /* noop */ } ctx = null; }
   }

@@ -9,7 +9,11 @@
  * connector diagram, the screenshot wells (.ri-shot/.ri-bshot), the
  * watermark and the pre-animation states that landingMotion.js drives.
  * ──────────────────────────────────────────────────────────────────────────── */
-@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap");
+/* Manrope used to be @imported here. An @import inside a stylesheet can only be
+   discovered AFTER that stylesheet has been downloaded and parsed, so it added
+   a second serial round trip in front of the first paint — the browser held the
+   page blank through both. It's requested from index.html now, alongside Inter,
+   in a single non-blocking <link>. */
 
 /* Lenis owns the document scroll while the landing page is mounted. These have
    to stay unscoped — Lenis puts the classes on <html>. */
@@ -517,12 +521,10 @@ html.lenis body { height: auto; }
 .ri.is-js:not(.ri-no-motion) [data-chip]   { opacity: 0; }
 .ri.is-js:not(.ri-no-motion) [data-intro]  { opacity: 0; }
 
-/* No-animation fallback — reduced motion, or the CDN libraries never landed.
-   This used to unroll the stack into a grid of four full-width plates, which
-   read as a broken page (and fired on any iPhone with Reduce Motion on, or on
-   mobile data slow enough to trip the CDN timeout). The box keeps its shape and
-   shows ONE view at a time; landingMotion's fallback stepper moves `is-active`
-   along, cross-fading here and stepping on tap. */
+/* No-animation fallback — prefers-reduced-motion. This used to unroll the stack
+   into a grid of four full-width plates, which read as a broken page on any
+   iPhone with Reduce Motion on. The box keeps its shape and shows ONE view at a
+   time; landingMotion's fallback stepper moves `is-active` along on tap. */
 .ri-no-motion .ri-book { cursor: pointer; }
 .ri-no-motion .ri-layer {
   opacity: 0;
