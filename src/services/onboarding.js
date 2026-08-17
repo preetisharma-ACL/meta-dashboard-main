@@ -71,72 +71,8 @@ export const createOnboardedUser = async (payload) => {
 };
 
 // ── Error plumbing ───────────────────────────────────────────────────────────
-// VERIFIED envelope: a 4xx answers
-//   { success:false, message:"Validation failed",
-//     error:{ code, detail, fields:{ <field>:[msg],
-//                                    client:{<field>:[msg]},
-//                                    campaign_manager:{<field>:[msg]},
-//                                    non_field_errors:[msg] } } }
-// api() attaches the WHOLE parsed body to err.data for an HTTP 4xx, and lifts
-// only the WRAPPER string ("Validation failed") onto err.message — so reading
-// err.message alone throws away every actual reason. The field map is read
-// first, both transports of it:
-//   err.fields          → 200-envelope failure ({ success:false, error:{fields} })
-//   err.data.error.fields → HTTP 4xx
-// Same helper shape as RecordDisqualificationModal's fieldErrors().
-const rawFieldErrors = (err) =>
-  err?.fields ?? err?.data?.error?.fields ?? err?.data?.fields ?? null;
-
-// DRF gives a list per key; take the first non-empty entry, but tolerate a bare
-// string so a shape change degrades to "shown verbatim" rather than "[object]".
-const firstMessage = (v) => {
-  if (!v) return null;
-  if (Array.isArray(v)) return v.find((s) => typeof s === "string" && s) || null;
-  return typeof v === "string" ? v : null;
-};
-
-// Flatten the field map to dotted paths so each message can be pinned to the
-// one input that produced it, NESTED ONES INCLUDED:
-//   fields.email                     → "email"
-//   fields.client.onboarded_by_id    → "client.onboarded_by_id"
-//   fields.campaign_manager.team_lead_id → "campaign_manager.team_lead_id"
-// Messages are never rewritten on the way through — the backend's wording names
-// the offending value (which nomen is taken, which user isn't a sales user), and
-// paraphrasing it away is exactly what makes these errors unactionable.
-export const collectFieldErrors = (err) => {
-  const fields = rawFieldErrors(err);
-  const out = {};
-  if (!fields || typeof fields !== "object") return out;
-
-  for (const [key, val] of Object.entries(fields)) {
-    if (val && typeof val === "object" && !Array.isArray(val)) {
-      for (const [sub, subVal] of Object.entries(val)) {
-        const msg = firstMessage(subVal);
-        if (msg) out[`${key}.${sub}`] = msg;
-      }
-    } else {
-      const msg = firstMessage(val);
-      if (msg) out[key] = msg;
-    }
-  }
-  return out;
-};
-
-// The banner text: the most specific thing the server said that ISN'T already
-// pinned to a field. non_field_errors first (that's where cross-field rules
-// land), then error.detail, then the wrapper message as a last resort.
-export const errorBanner = (err, pinned = {}) => {
-  const nonField =
-    pinned["non_field_errors"] ??
-    pinned["client.non_field_errors"] ??
-    pinned["campaign_manager.non_field_errors"] ??
-    pinned["staff_profile.non_field_errors"];
-  if (nonField) return nonField;
-
-  const detail = err?.data?.error?.detail ?? err?.data?.detail;
-  if (typeof detail === "string" && detail) return detail;
-
-  // err.message is only the wrapper ("Validation failed") on the 4xx path, so
-  // it is worth showing only when nothing more specific exists at all.
-  return err?.message || "Could not create the user.";
-};
+// Lives in utils/apiErrors now — the nested-field-map envelope is not specific
+// to onboarding (the assignment endpoints answer the same way), so the readers
+// are shared rather than reimplemented per screen. Re-exported here so callers
+// keep importing them alongside the endpoints they belong to.
+export { collectFieldErrors, errorBanner } from "../utils/apiErrors";

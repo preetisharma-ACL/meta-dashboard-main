@@ -62,6 +62,7 @@ import LeadReplacements from "./pages/leads/LeadReplacements";
 import LeadDisqualifications from "./pages/leads/LeadDisqualifications";
 import ClientBilling from "./pages/billing/ClientBilling";
 import OnboardingWizard from "./pages/onboarding/OnboardingWizard";
+import Assignments from "./pages/assignments/Assignments";
 import PaymentsList from "./pages/payments/PaymentsList";
 import RecordPayment from "./pages/payments/RecordPayment";
 import NeedsDocs from "./pages/payments/NeedsDocs";
@@ -369,6 +370,17 @@ function App() {
               component={() => (
                 <AdminRoute roles={["admin", "coordination"]}>
                   <OnboardingWizard />
+                </AdminRoute>
+              )}
+            />
+            {/* CM ↔ client assignments — the screen that decides which clients
+                each manager can see. Admin + coordination ONLY, same gate as
+                onboarding; the endpoints 403 every other role. */}
+            <Route
+              path="/assignments"
+              component={() => (
+                <AdminRoute roles={["admin", "coordination"]}>
+                  <Assignments />
                 </AdminRoute>
               )}
             />

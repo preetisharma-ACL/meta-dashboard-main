@@ -554,7 +554,7 @@ export default function OnboardingWizard() {
 
       setErrors(pinned);
       setUnpinned(leftovers);
-      setBanner(errorBanner(err, pinnedAll));
+      setBanner(errorBanner(err, pinnedAll, "Could not create the user."));
 
       // Land on the step that owns the first rejected field, so the message the
       // operator has to act on is actually on screen.

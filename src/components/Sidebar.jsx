@@ -323,6 +323,16 @@ export default function Sidebar() {
         path: "/onboarding",
       },
       {
+        // Next to Onboarding, and gated identically: creating a user and
+        // deciding what that user can see are the same job done in two steps.
+        name: "Assignments",
+        roles: ["admin", "coordination"],
+        icon: () => (
+          <Icon d="M13 16h-1v-4h-1m1-4h.01M9 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-4M16 3h5v5M21 3l-9 9" />
+        ),
+        path: "/assignments",
+      },
+      {
         name: "Accounts & Funding",
         roles: ["admin", "campaign_manager"],
         icon: () => (
