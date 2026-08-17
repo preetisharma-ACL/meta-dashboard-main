@@ -1861,8 +1861,12 @@ export default function MainDashboard() {
       (s, p) => s + (statsMap[p.id]?.totalSpent ?? 0),
       0,
     );
+    // Number, not the string .toFixed() returns — same reason as the hero tiles'
+    // avgCPL in overviewStatsCards below: the footer renders this as ₹, and
+    // String.prototype.toLocaleString is a silent no-op, so a string can never be
+    // grouped. Also drops a redundant parseFloat() of something already numeric.
     const avgCPL =
-      totalLeads > 0 ? parseFloat(totalSpent / totalLeads).toFixed(2) : 0;
+      totalLeads > 0 ? Number((totalSpent / totalLeads).toFixed(2)) : 0;
     // derive from statsMap (date-range aware)
     const activeCampaigns = all.reduce(
       (s, p) => s + (statsMap[p.id]?.activeCampaigns ?? 0),
@@ -3579,10 +3583,10 @@ export default function MainDashboard() {
                   </td>
                 </Show>
 
-                {/* Avg CPL */}
+                {/* Avg CPL — grouped like every other ₹ cell in this footer row */}
                 <td>
                   {"₹"}
-                  {overviewStats().avgCPL}
+                  {overviewStats().avgCPL.toLocaleString("en-IN")}
                 </td>
                 {/* Premium CPL — no meaningful aggregate, show dash */}
                 <Show when={isAdmin()}>
