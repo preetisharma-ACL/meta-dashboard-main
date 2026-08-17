@@ -268,6 +268,16 @@ export default function Sidebar() {
               <SmallIcon d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
             ),
           },
+           {
+            // Admin-only inside an otherwise admin+CM group, same as the
+            // top-level row it replaces.
+            name: "Campaigns",
+            path: "/campaigns",
+            roles: ["admin"],
+            icon: () => (
+              <SmallIcon d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" />
+            ),
+          },
           {
             name: "Project Display Config",
             path: "/project-display-config",
@@ -307,6 +317,7 @@ export default function Sidebar() {
               <SmallIcon d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
             ),
           },
+         
           {
             // Moved in from a top-level row. Coordination shares this screen
             // but not the Clients group, so it still has its own entry below.
@@ -333,10 +344,12 @@ export default function Sidebar() {
         path: "/onboarding",
       },
       {
-        // Next to Onboarding, and gated identically: creating a user and
-        // deciding what that user can see are the same job done in two steps.
+        // Coordination only — admin reaches this from inside the "Campaign
+        // Managers" group, which coordination doesn't get. It sits next to
+        // Onboarding here because creating a user and deciding what that user
+        // can see are the same job done in two steps.
         name: "Client Assignments",
-        roles: ["admin", "coordination"],
+        roles: ["coordination"],
         icon: () => (
           <Icon d="M13 16h-1v-4h-1m1-4h.01M9 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-4M16 3h5v5M21 3l-9 9" />
         ),
@@ -548,6 +561,17 @@ export default function Sidebar() {
             ),
           },
           {
+            // Moved in from a top-level row: assigning clients to CMs belongs
+            // with the CM screens. Coordination shares the page but not this
+            // group, so it keeps its own top-level entry.
+            name: "Client Assignments",
+            path: "/assignments",
+            roles: ["admin"],
+            icon: () => (
+              <SmallIcon d="M13 16h-1v-4h-1m1-4h.01M9 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-4M16 3h5v5M21 3l-9 9" />
+            ),
+          },
+          {
             name: "Campaign Manager's Clients",
             path: "/campaign-manager-clients",
             roles: ["admin"],
@@ -607,14 +631,6 @@ export default function Sidebar() {
         roles: ["admin", "campaign_manager"],
         icon: () => <Icon d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />,
         path: "/activity",
-      },
-      {
-        name: "Campaigns",
-        roles: ["admin"],
-        icon: () => (
-          <Icon d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0h-6m6 0a3 3 0 01-5.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M9 7a4 4 0 11-8 0 4 4 0 018 0zm0 0a4 4 0 015.536 3.536M15.536 10.536A5.967 5.967 0 0121 16.941M16.536 10.536A5.973 5.973 0 0012 16c0 .132 0 .263.012.391M12 16a5.973 5.973 0 00-4.536-2.464" />
-        ),
-        path: "/campaigns",
       },
 
       // {
