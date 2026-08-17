@@ -10,9 +10,10 @@ import Avatar from "../common/Avatar";
 import RowsPerPageSelect from "../common/RowsPerPageSelect";
 
 // ─── Shared sales UI ──────────────────────────────────────────────────────────
-// One copy of the payments table + money tiles + chips, serving SalesPayments
-// (own book) and the admin SalesManagers per-manager detail. Following the
-// ClientTypeFilter precedent: extract, don't fork.
+// One copy of the payments table + money tiles + chips, serving the merged
+// Client Payments screen (every role, backend-scoped) and the admin
+// SalesManagers per-manager detail. Following the ClientTypeFilter precedent:
+// extract, don't fork.
 
 // owes → red · low → amber · healthy/other → green
 export function StatusBadge(props) {
@@ -104,13 +105,17 @@ export function MoneyTilesRow(props) {
 // Column definitions for the payments table — drives both the sortable headers
 // and the sort accessors. `num` columns sort largest-first on the first click;
 // `str` columns A→Z. `align` mirrors the cell alignment so headers line up.
+//
+// Money columns carry a `base` instead of a `get`: the real key is resolved at
+// render time as `${base}_inc_gst` / `${base}_ex_gst` from the table's incGst
+// prop, so the visible numbers and the sort always read the same field.
 const PAY_COLUMNS = [
   { key: "client", label: "Client", align: "left", type: "str", get: (c) => c.client_nomen },
   { key: "type", label: "Type", align: "center", type: "str", get: (c) => c.client_type },
-  { key: "opening", label: "Opening", align: "right", type: "num", get: (c) => c.opening_balance_inc_gst },
-  { key: "received", label: "Received", align: "right", type: "num", get: (c) => c.received_inc_gst },
-  { key: "billed", label: "Billed", align: "right", type: "num", get: (c) => c.utilized_inc_gst },
-  { key: "remaining", label: "Remaining", align: "right", type: "num", get: (c) => c.closing_balance_inc_gst },
+  { key: "opening", label: "Opening", align: "right", type: "num", base: "opening_balance" },
+  { key: "received", label: "Received", align: "right", type: "num", base: "received" },
+  { key: "billed", label: "Billed", align: "right", type: "num", base: "utilized" },
+  { key: "remaining", label: "Remaining", align: "right", type: "num", base: "closing_balance" },
   { key: "leads", label: "Leads", align: "right", type: "num", get: (c) => c.total_leads },
   { key: "status", label: "Status", align: "center", type: "str", get: (c) => c.status },
 ];
@@ -123,11 +128,20 @@ const PAY_COL = Object.fromEntries(PAY_COLUMNS.map((c) => [c.key, c]));
 //
 // props.rows(): clients[]; props.loading(); props.emptyHint;
 // props.storageKey — where the rows-per-page choice is remembered (one key per
-// screen, so Client Payments and Sales Payments don't overwrite each other).
+// screen, so Client Payments and the SalesManagers per-manager table don't
+// overwrite each other).
+// props.incGst — false switches every money column to the _ex_gst fields.
+// Omitted (the default) keeps the inc-GST view every existing caller shows.
 export function PaymentsTable(props) {
   const cellTone = (v, negTone, posTone) =>
     "px-4 py-3 text-right tabular-nums font-medium " +
     (isNegativeMoney(v) ? negTone : posTone);
+
+  // GST-aware field picker. Reading it inside the cells and inside the sort
+  // comparator is what keeps the two in agreement when the toggle flips.
+  const gstSuffix = () => (props.incGst === false ? "ex_gst" : "inc_gst");
+  const money = (row, base) => row?.[`${base}_${gstSuffix()}`];
+  const valueOf = (row, col) => (col.base ? money(row, col.base) : col.get(row));
 
   // null sortKey → preserve the server's debtors-first order.
   const [sortKey, setSortKey] = createSignal(null);
@@ -160,15 +174,15 @@ export function PaymentsTable(props) {
   // Missing money/leads always sort to the bottom, regardless of direction.
   const compare = (a, b, col) => {
     if (col.type === "num") {
-      const na = isMissing(col.get(a)) ? null : Number(col.get(a));
-      const nb = isMissing(col.get(b)) ? null : Number(col.get(b));
+      const na = isMissing(valueOf(a, col)) ? null : Number(valueOf(a, col));
+      const nb = isMissing(valueOf(b, col)) ? null : Number(valueOf(b, col));
       if (na === null && nb === null) return 0;
       if (na === null) return 1;
       if (nb === null) return -1;
       return na - nb;
     }
-    const sa = String(col.get(a) ?? "").toLowerCase();
-    const sb = String(col.get(b) ?? "").toLowerCase();
+    const sa = String(valueOf(a, col) ?? "").toLowerCase();
+    const sb = String(valueOf(b, col) ?? "").toLowerCase();
     return sa < sb ? -1 : sa > sb ? 1 : 0;
   };
 
@@ -181,8 +195,8 @@ export function PaymentsTable(props) {
     const missingLast = (a, b) => {
       // keep "missing last" stable even when direction flips
       if (col.type === "num") {
-        const ma = isMissing(col.get(a));
-        const mb = isMissing(col.get(b));
+        const ma = isMissing(valueOf(a, col));
+        const mb = isMissing(valueOf(b, col));
         if (ma && !mb) return 1;
         if (!ma && mb) return -1;
       }
@@ -326,33 +340,33 @@ export function PaymentsTable(props) {
                       {c.client_type || "—"}
                     </span>
                   </td>
-                  {/* Opening (incl GST) */}
+                  {/* Opening — balance carried in from the previous month */}
                   <td
                     class={cellTone(
-                      c.opening_balance_inc_gst,
+                      money(c, "opening_balance"),
                       "text-[#AC2334] dark:text-red-300",
                       "text-[#14233A] dark:text-gray-300",
                     )}
                   >
-                    {fmtMoney(c.opening_balance_inc_gst, 2)}
+                    {fmtMoney(money(c, "opening_balance"), 2)}
                   </td>
-                  {/* Received (incl GST) */}
+                  {/* Received — funds added this month */}
                   <td class="px-4 py-3 text-right tabular-nums font-medium text-[#15966A] dark:text-green-300">
-                    {fmtMoney(c.received_inc_gst, 2)}
+                    {fmtMoney(money(c, "received"), 2)}
                   </td>
-                  {/* Billed / utilized (incl GST) */}
+                  {/* Billed / utilized — spend + service charge (+ GST) */}
                   <td class="px-4 py-3 text-right tabular-nums font-medium text-[#14233A] dark:text-gray-300">
-                    {fmtMoney(c.utilized_inc_gst, 2)}
+                    {fmtMoney(money(c, "utilized"), 2)}
                   </td>
-                  {/* Remaining / closing (incl GST) */}
+                  {/* Remaining / closing — negative means the client owes */}
                   <td
                     class={cellTone(
-                      c.closing_balance_inc_gst,
+                      money(c, "closing_balance"),
                       "text-[#AC2334] dark:text-red-300",
                       "text-[#15966A] dark:text-green-300",
                     )}
                   >
-                    {fmtMoney(c.closing_balance_inc_gst, 2)}
+                    {fmtMoney(money(c, "closing_balance"), 2)}
                   </td>
                   {/* Leads */}
                   <td class="px-4 py-3 text-right tabular-nums text-[#14233A] dark:text-gray-300">

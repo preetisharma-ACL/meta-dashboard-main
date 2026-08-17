@@ -189,8 +189,9 @@ export default function SalesDashboard() {
   });
   const clients = () => clientsRes() ?? [];
 
-  // ── Compact payments strip (current month) → links to /sales/payments ────────
-  // Same feed as SalesPayments; no refresh param here (server cache is fine).
+  // ── Compact payments strip (current month) → links to /client-payments ──────
+  // Same feed as the merged Client Payments screen (the backend scopes it to
+  // this rep's book); no refresh param here — the server cache is fine.
   const [paymentsRes] = createResource(async () => {
     try {
       const res = await fetchSalesPayments(currentMonthStr());
@@ -377,9 +378,9 @@ export default function SalesDashboard() {
         </Show>
       </div>
 
-      {/* ════════ THIS MONTH · PAYMENTS (compact, links to /sales/payments) ════════ */}
+      {/* ════════ THIS MONTH · PAYMENTS (compact, links to Client Payments) ════════ */}
       <A
-        href="/sales/payments"
+        href="/client-payments"
         class="group flex flex-wrap items-center gap-x-6 gap-y-2 bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] p-5 mb-8 hover:border-[#AC2334]/40 transition-all"
       >
         <span class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">

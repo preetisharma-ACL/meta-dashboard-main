@@ -1,25 +1,46 @@
-import { createSignal, createResource, createMemo, For, Show } from "solid-js";
+import { createSignal, createResource, createMemo, Show } from "solid-js";
 
 import { fetchSalesPayments } from "../../services/sales";
 import {
-  fmtMoney as fmtMoneyPay,
+  fmtMoney,
+  isMissing,
+  sumMoney,
   remainingTile,
   TONE_GREEN,
   TONE_NAVY,
 } from "../../components/sales/salesFormat";
-import { PaymentsTable } from "../../components/sales/salesUI";
+import { MoneyTilesRow, PaymentsTable } from "../../components/sales/salesUI";
 import MonthPicker from "../../components/sales/MonthPicker";
 import ClientTypeFilter, {
   CLIENT_TYPES,
   toggleClientTypeIn,
 } from "../../components/funding/ClientTypeFilter";
+import { currentUser } from "../../stores/currentUser";
 
-// ─── Client Billing · Payments overview ───────────────────────────────────────
-// Standalone page behind the sidebar "Client Billing → Client Payments" entry.
-// Reuses the exact role-scoped endpoint + shared sales billing components (no
-// fork). The backend role-scopes GET /billing/admin/payments-overview/ — a CM
-// gets only their tier-aware visible clients; admins get all — so we send no
-// scoping params, only month, plus refresh=1 from the explicit Refresh button.
+// ─── Client Payments — the single payments-overview screen ────────────────────
+// One page for every role that reads this ledger. It replaces three near-
+// identical screens (Client Billing, Sales → Payments, Coordination → Payment &
+// Billing) that all called the SAME endpoint, GET /billing/admin/payments-
+// overview/, and only differed in chrome.
+//
+// There is no frontend scoping here and there must not be: the BACKEND scopes
+// the response to the caller —
+//   sales                          → their onboarded clients
+//   campaign_manager               → tier-aware visible clients (tier-1 gets
+//                                    their own book + their team's, tier-2 own)
+//   admin / coordination / accounts → every client
+// and its cache keys are per-scope-per-user, so no role ever sees another's
+// rows. Because a CM/sales user genuinely gets a shorter table, those two roles
+// see a hint saying so — otherwise a short list reads as missing data.
+//
+// Columns (per client, straight off the endpoint):
+//   opening  = balance carried in from the previous month
+//   received = funds added this month (real payments, not the opening balance)
+//   utilized = spend + service charge + GST (the full billed amount)
+//   closing  = opening + received − utilized   (NEGATIVE = the client owes us)
+//   status   = owes (closing<0) · low (closing < 15% of budget) · healthy
+// Rows arrive closing-ascending (debtors first) and the table keeps that as its
+// default order — "who owes us" works without touching a control.
 
 const currentMonthStr = () => {
   const d = new Date();
@@ -28,15 +49,39 @@ const currentMonthStr = () => {
 
 const ALL_CLIENT_TYPES = CLIENT_TYPES.map((t) => t.key);
 
+// Roles whose data is narrowed server-side, and what to tell them. Everyone
+// else (admin / coordination / accounts) sees the whole org and needs no note.
+const SCOPE_HINTS = {
+  campaign_manager: "Showing the clients assigned to you.",
+  sales: "Showing the clients you onboarded.",
+};
+
 export default function ClientBilling() {
   const [month, setMonth] = createSignal(currentMonthStr());
   const [refreshing, setRefreshing] = createSignal(false);
-  // Search + client-type chips are CLIENT-SIDE only: the payments-overview
-  // endpoint takes just month/refresh, and the whole month already ships in one
-  // payload. Default is ALL three types — unlike the funding pages, this is a
-  // billing ledger, so retainer clients belong in it until you opt them out.
+  // Search, status and the client-type chips are CLIENT-SIDE only: the endpoint
+  // takes just month/refresh and ships the whole month in one payload.
   const [query, setQuery] = createSignal("");
+  const [status, setStatus] = createSignal("all");
+  // ALL three types by default, chips visible. This is a billing ledger:
+  // retainer clients owe money like any other, and silently dropping a client
+  // type from a ledger is how people end up trusting a wrong total.
   const [clientTypes, setClientTypes] = createSignal(ALL_CLIENT_TYPES);
+  // GST view. Including GST is the default — it is the amount actually payable.
+  const [incGst, setIncGst] = createSignal(true);
+
+  // Role decides only whether to show the scope hint, never what data to keep.
+  // Prefer the loaded /auth/me store; fall back to the role mirrored into
+  // localStorage at login so the hint doesn't flicker in on first paint.
+  const role = () => {
+    if (currentUser.loaded) return currentUser.role;
+    try {
+      return JSON.parse(localStorage.getItem("auth") || "{}")?.role ?? null;
+    } catch {
+      return null;
+    }
+  };
+  const scopeHint = () => SCOPE_HINTS[role()] ?? null;
 
   // Keyed on month → switching months refetches (cached, no refresh param). The
   // Refresh button calls refetch(true); the fetcher reads info.refetching to
@@ -52,60 +97,70 @@ export default function ClientBilling() {
   const rows = () => payload()?.clients ?? [];
   const loading = () => payload.loading;
 
-  // Chips + search applied on top of the server order (filter is order-neutral,
-  // so debtors-first survives). A row whose client_type isn't one of the three
-  // known keys (blank / something new server-side) is never hidden by the chips
-  // — it would silently vanish from a billing ledger with no way to get it back.
+  const suffix = () => (incGst() ? "inc_gst" : "ex_gst");
+
+  // A month total for one money column. NOTE the key asymmetry: rows use
+  // closing_BALANCE_inc_gst but TOTALS use closing_inc_gst (no "balance") —
+  // reading the row-style name here used to return undefined and print a false
+  // "Remaining ₹0 healthy". When a totals key is genuinely absent (the ex-GST
+  // totals are not all guaranteed in the payload) we sum the matching per-client
+  // column instead, and return null — never 0 — if no row carries it either, so
+  // a missing number renders "—" rather than looking like money in hand.
+  const totalMoney = (totalsBase, rowBase) => {
+    const t = totals()[`${totalsBase}_${suffix()}`];
+    if (!isMissing(t)) return t;
+    const rowKey = `${rowBase}_${suffix()}`;
+    const list = rows();
+    return list.some((r) => !isMissing(r?.[rowKey]))
+      ? sumMoney(list, rowKey)
+      : null;
+  };
+
+  const gstNote = () => (incGst() ? "incl. GST" : "excl. GST");
+
+  const tiles = createMemo(() => [
+    {
+      label: "Received",
+      value: fmtMoney(totalMoney("received", "received"), 0),
+      tone: TONE_GREEN,
+    },
+    {
+      label: `Billed · spend + S.C (${gstNote()})`,
+      value: fmtMoney(totalMoney("utilized", "utilized"), 0),
+      tone: TONE_NAVY,
+    },
+    remainingTile("Remaining", totalMoney("closing", "closing_balance")),
+  ]);
+
+  // Chips, status and search applied on top of the server order (filtering is
+  // order-neutral, so debtors-first survives). A row whose client_type isn't one
+  // of the three known keys (blank / something new server-side) is never hidden
+  // by the chips — it would vanish from a billing ledger with no way back.
   const filteredRows = createMemo(() => {
     const types = clientTypes();
+    const st = status();
     const q = query().trim().toLowerCase();
     return rows().filter((c) => {
       const t = String(c.client_type ?? "").toLowerCase();
       if (ALL_CLIENT_TYPES.includes(t) && !types.includes(t)) return false;
+      if (st !== "all" && c.status !== st) return false;
       if (!q) return true;
-      return [c.client_nomen, c.client_email, c.client_type, c.status]
-        .some((v) => String(v ?? "").toLowerCase().includes(q));
+      return [c.client_nomen, c.client_email, c.client_type, c.status].some((v) =>
+        String(v ?? "").toLowerCase().includes(q),
+      );
     });
   });
 
   const isFiltered = () =>
-    query().trim() !== "" || clientTypes().length !== ALL_CLIENT_TYPES.length;
+    query().trim() !== "" ||
+    status() !== "all" ||
+    clientTypes().length !== ALL_CLIENT_TYPES.length;
 
-  // Three tiles straight off TOTALS. NOTE the key asymmetry: rows use
-  // closing_BALANCE_inc_gst, but TOTALS use closing_inc_gst (no "balance").
-  // Reading the row-style name here returned undefined → a false "Remaining ₹0
-  // healthy". Read the totals name. No money read coerces undefined to 0 —
-  // fmtMoneyPay / remainingTile render missing as "—", never ₹0.
-  const tiles = createMemo(() => [
-    {
-      label: "Received",
-      value: fmtMoneyPay(totals().received_inc_gst, 0),
-      tone: TONE_GREEN,
-      caption: "payments in this month",
-    },
-    {
-      label: "Billed (incl. S.C + GST)",
-      value: fmtMoneyPay(totals().utilized_inc_gst, 0),
-      tone: TONE_NAVY,
-      caption: "service charge + GST included",
-      divider: true, // vertical rule before this stat (matches the budget panel)
-    },
-    {
-      ...remainingTile("Remaining", totals().closing_inc_gst),
-      caption: "closing balance",
-    },
-  ]);
-
-  // Collection rate for the focal donut — derived from the two totals already on
-  // screen, nothing new fetched. null whenever it can't be computed honestly
-  // (missing reads, or nothing billed yet) → the donut renders a "—" instead of
-  // a fake 0%. The arc is clamped to 100% but the printed number is not.
-  const collectedPct = createMemo(() => {
-    const r = Number(totals().received_inc_gst);
-    const b = Number(totals().utilized_inc_gst);
-    if (!Number.isFinite(r) || !Number.isFinite(b) || b <= 0) return null;
-    return (r / b) * 100;
-  });
+  const clearFilters = () => {
+    setQuery("");
+    setStatus("all");
+    setClientTypes(ALL_CLIENT_TYPES);
+  };
 
   const monthLabel = createMemo(() => {
     const m = payload()?.month || month();
@@ -145,12 +200,31 @@ export default function ClientBilling() {
             Client Payments
           </h1>
           <p class="text-md text-[#54657E] dark:text-gray-400">
-            Received, billed and remaining balances for your clients in{" "}
+            Opening, received, billed and remaining balances in{" "}
             <span class="font-semibold text-[#14233A] dark:text-gray-200">
               {monthLabel()}
             </span>
             .
           </p>
+          {/* Only for the roles the backend narrows — a shorter table is the
+              point, not a bug, and saying so beats letting them wonder. */}
+          <Show when={scopeHint()}>
+            <p class="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#ECF2FA] dark:bg-blue-900/30 text-[12px] font-semibold text-[#3E6FB0] dark:text-blue-300">
+              <svg
+                class="w-3.5 h-3.5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 16v-4M12 8h.01" />
+              </svg>
+              {scopeHint()}
+            </p>
+          </Show>
         </div>
 
         <div class="flex items-center gap-3 flex-wrap">
@@ -159,6 +233,37 @@ export default function ClientBilling() {
             max={currentMonthStr()}
             onChange={handleMonthChange}
           />
+
+          {/* GST toggle — flips every money column AND the tiles together. */}
+          <div class="inline-flex items-center gap-1 bg-white dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-600 rounded-full p-1">
+            <button
+              type="button"
+              onClick={() => setIncGst(true)}
+              aria-pressed={incGst()}
+              class={
+                "px-3.5 py-1.5 rounded-full text-xs font-bold transition-colors " +
+                (incGst()
+                  ? "bg-[#14233A] text-white"
+                  : "text-[#54657E] dark:text-gray-300 hover:text-[#14233A]")
+              }
+            >
+              Including GST
+            </button>
+            <button
+              type="button"
+              onClick={() => setIncGst(false)}
+              aria-pressed={!incGst()}
+              class={
+                "px-3.5 py-1.5 rounded-full text-xs font-bold transition-colors " +
+                (!incGst()
+                  ? "bg-[#14233A] text-white"
+                  : "text-[#54657E] dark:text-gray-300 hover:text-[#14233A]")
+              }
+            >
+              Excluding GST
+            </button>
+          </div>
+
           <button
             onClick={handleRefresh}
             disabled={refreshing()}
@@ -182,145 +287,58 @@ export default function ClientBilling() {
         </div>
       </div>
 
-      {/* ════════ CLIENT TYPE CHIPS (client-side filter) ════════ */}
-      <ClientTypeFilter
-        value={clientTypes()}
-        onToggle={(key) => setClientTypes((prev) => toggleClientTypeIn(prev, key))}
-        hint="Filters the table below; the summary stays month-wide."
-        class="mb-5"
-      />
-
       <Show when={payload.error}>
         <div class="mb-6 rounded-xl border border-[#AC2334]/25 bg-[#FBEEF0] dark:bg-red-900/20 dark:border-red-800 px-4 py-3 text-sm font-medium text-[#AC2334] dark:text-red-300">
           Could not load payments overview. Please try again.
         </div>
       </Show>
 
-      {/* ════════ SUMMARY PANEL (focal donut + money stats + debtor pill) ═══════
-          Same shape as the Allowed Budget summary panel: one card, a focal ring,
-          divider-separated stats, and a progress band along the bottom. The
-          numbers are the exact same three TOTALS reads as before — only the
-          presentation changed. */}
-      <div class="bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-2xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] px-5 sm:px-7 py-5 mb-6">
-        <div class="flex flex-wrap items-center gap-x-6 gap-y-4">
-          {/* focal — share of billed that has been collected */}
-          <div class="flex items-center gap-4 sm:pr-6 sm:border-r border-[#E2E8F1] dark:border-gray-700">
-            <div class="relative w-14 h-14 grid place-items-center flex-none">
-              <svg viewBox="0 0 56 56" class="absolute inset-0 -rotate-90">
-                <circle cx="28" cy="28" r="25" fill="none" stroke="#D8EFE6" stroke-width="5" />
-                <circle
-                  cx="28"
-                  cy="28"
-                  r="25"
-                  fill="none"
-                  stroke="#15966A"
-                  stroke-width="5"
-                  stroke-linecap="round"
-                  stroke-dasharray={2 * Math.PI * 25}
-                  stroke-dashoffset={
-                    2 *
-                    Math.PI *
-                    25 *
-                    (1 -
-                      Math.max(
-                        0,
-                        Math.min((collectedPct() ?? 0) / 100, 1),
-                      ))
-                  }
-                />
-              </svg>
-              <span class="text-[15px] font-extrabold text-[#15966A] dark:text-green-300 tabular-nums">
-                <Show when={!loading()} fallback="…">
-                  <Show when={collectedPct() !== null} fallback="—">
-                    {Math.round(collectedPct())}%
-                  </Show>
-                </Show>
-              </span>
-            </div>
-            <div>
-              <p class="text-[15px] font-extrabold text-[#14233A] dark:text-white">
-                Collected
-              </p>
-              <p class="text-xs text-[#54657E] dark:text-gray-400 max-w-[180px]">
-                of everything billed in {monthLabel()}
-              </p>
-            </div>
-          </div>
+      {/* ════════ CLIENT TYPE CHIPS (client-side filter) ════════
+          All three on by default — retainers included, and visibly so. */}
+      <ClientTypeFilter
+        value={clientTypes()}
+        onToggle={(key) => setClientTypes((prev) => toggleClientTypeIn(prev, key))}
+        hint="All client types are included; the summary stays month-wide."
+        class="mb-5"
+      />
 
-          {/* money stats — same tiles(), laid out as minis */}
-          <div class="flex flex-wrap gap-x-7 gap-y-3">
-            <For each={tiles()}>
-              {(t) => (
-                <div
-                  class={
-                    t.divider
-                      ? "sm:pl-7 sm:border-l border-[#E2E8F1] dark:border-gray-700"
-                      : ""
-                  }
-                >
-                  <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
-                    {t.label}
-                  </p>
-                  <p class={`text-xl font-bold mt-1 tabular-nums ${t.tone}`}>
-                    <Show
-                      when={!loading()}
-                      fallback={
-                        <span class="inline-block h-6 w-24 bg-gray-200 dark:bg-gray-700 rounded animate-pulse align-middle" />
-                      }
-                    >
-                      {t.value}
-                    </Show>
-                  </p>
-                  <p class="text-xs text-[#54657E] dark:text-gray-400">
-                    {t.caption}
-                  </p>
-                </div>
-              )}
-            </For>
-          </div>
+      {/* ════════ HERO STRIP — three tiles from the month totals ════════ */}
+      <div class="mb-3">
+        <MoneyTilesRow tiles={tiles} loading={loading} />
+      </div>
 
-          {/* A positive net Remaining can hide clients who owe — surface it. */}
-          <Show when={(totals().clients_owing ?? 0) > 0}>
-            <div class="ml-auto inline-flex items-center gap-3 px-4 py-2.5 rounded-xl bg-[#FBEEF0] dark:bg-red-900/20 border border-[#AC2334]/25 dark:border-red-800">
-              <span class="w-8 h-8 flex-none rounded-lg bg-[#AC2334] text-white grid place-items-center font-extrabold text-sm tabular-nums">
-                {totals().clients_owing}
-              </span>
-              <span class="text-left">
-                <span class="block text-[13px] font-bold text-[#AC2334] dark:text-red-300">
-                  of {totals().client_count} clients owe
-                </span>
-                <span class="block text-[11.5px] font-semibold text-[#54657E] dark:text-gray-400 tabular-nums">
-                  {fmtMoneyPay(totals().total_owed_inc_gst, 0)} outstanding
-                </span>
-              </span>
-            </div>
+      {/* owes / low / healthy counts + the outstanding callout */}
+      <div class="mb-8 flex flex-wrap items-center gap-x-4 gap-y-2">
+        <p class="text-sm text-[#54657E] dark:text-gray-400 flex flex-wrap items-center gap-x-4 gap-y-1">
+          <span>
+            <b class="text-[#AC2334]">{totals().clients_owing ?? 0}</b> owing
+          </span>
+          <span>
+            <b class="text-[#B07A14]">{totals().clients_low ?? 0}</b> low
+          </span>
+          <span>
+            <b class="text-[#15966A]">{totals().clients_healthy ?? 0}</b> healthy
+          </span>
+          <Show when={totals().client_count != null}>
+            <span class="text-[#8593A8]">· {totals().client_count} clients</span>
           </Show>
-        </div>
+        </p>
 
-        {/* collection band — the focal ratio, drawn wide */}
-        <Show when={!loading() && collectedPct() !== null}>
-          <div class="mt-5 pt-4 border-t border-[#E2E8F1] dark:border-gray-700">
-            <div class="flex items-center justify-between mb-2.5">
-              <span class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
-                Collection progress
-              </span>
-              <span class="text-xs font-semibold text-[#54657E] dark:text-gray-400 tabular-nums">
-                {fmtMoneyPay(totals().received_inc_gst, 0)} received of{" "}
-                {fmtMoneyPay(totals().utilized_inc_gst, 0)} billed
-              </span>
-            </div>
-            <div class="h-1.5 rounded-full overflow-hidden bg-[#E2E8F1] dark:bg-gray-700">
-              <div
-                class="h-full rounded-full bg-[#15966A]"
-                style={`width:${Math.max(0, Math.min(collectedPct(), 100))}%`}
-              />
-            </div>
-          </div>
+        {/* A positive net Remaining can hide clients who owe — surface it.
+            Always the incl-GST figure: that is the amount actually collectable,
+            and it is the only one the endpoint publishes. */}
+        <Show when={(totals().clients_owing ?? 0) > 0}>
+          <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#FBEEF0] dark:bg-red-900/20 border border-[#AC2334]/25 dark:border-red-800 text-[13px] font-bold text-[#AC2334] dark:text-red-300 tabular-nums">
+            {fmtMoney(totals().total_owed_inc_gst, 0)} outstanding
+            <span class="font-semibold text-[11.5px] text-[#54657E] dark:text-gray-400">
+              incl. GST
+            </span>
+          </span>
         </Show>
       </div>
 
-      {/* ════════ SEARCH ════════ */}
-      <div class="mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      {/* ════════ FILTERS: search · status · clear ════════ */}
+      <div class="mb-3 flex flex-col sm:flex-row sm:items-center gap-3">
         <div class="relative w-full sm:max-w-sm">
           <svg
             class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8593A8] dark:text-gray-500"
@@ -362,11 +380,47 @@ export default function ClientBilling() {
           </Show>
         </div>
 
+        {/* Status — the follow-up filter the coordination desk works from. */}
+        <select
+          value={status()}
+          onChange={(e) => setStatus(e.currentTarget.value)}
+          aria-label="Filter by status"
+          class="px-3 py-2 rounded-lg border border-[#E2E8F1] dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-[#14233A] dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-[#14233A]/20 focus:border-[#14233A]/40 cursor-pointer transition"
+        >
+          <option value="all">All statuses</option>
+          <option value="owes">Owes</option>
+          <option value="low">Low</option>
+          <option value="healthy">Healthy</option>
+        </select>
+
+        <Show when={isFiltered()}>
+          <button
+            onClick={clearFilters}
+            class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-semibold text-[#AC2334] dark:text-red-300 bg-[#FBEEF0] dark:bg-red-900/30 hover:bg-[#F7DDE1] dark:hover:bg-red-900/50 transition-colors whitespace-nowrap"
+          >
+            <svg
+              class="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+            Clear filters
+          </button>
+        </Show>
+
         {/* Tiles above are server totals for the whole month — say so whenever a
             filter is on, so a shrunken table never reads as shrunken money. */}
         <Show when={!loading() && isFiltered()}>
-          <p class="text-xs text-[#8593A8] dark:text-gray-400">
-            Showing <b class="text-[#14233A] dark:text-gray-200">
+          <p class="text-xs text-[#8593A8] dark:text-gray-400 sm:ml-auto">
+            Showing{" "}
+            <b class="text-[#14233A] dark:text-gray-200">
               {filteredRows().length}
             </b>{" "}
             of {rows().length} clients · summary above covers all clients
@@ -378,10 +432,11 @@ export default function ClientBilling() {
       <PaymentsTable
         rows={filteredRows}
         loading={loading}
+        incGst={incGst()}
         storageKey="clientPaymentsRowsPerPage"
         emptyHint={
           isFiltered()
-            ? "No clients match the current search or client-type filter."
+            ? "No clients match the current search, status or client-type filter."
             : "There is no payments data for this month yet."
         }
       />

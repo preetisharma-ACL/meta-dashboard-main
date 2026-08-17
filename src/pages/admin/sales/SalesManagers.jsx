@@ -80,7 +80,7 @@ export default function SalesManagers() {
   const [refreshing, setRefreshing] = createSignal(false);
 
   // Fetch the (admin-wide) overview only while a manager is open; keyed on month
-  // so switching months refetches. Same feed as SalesPayments — admin tokens get
+  // so switching months refetches. Same feed as Client Payments — admin tokens get
   // ALL clients, which is exactly what we filter to this manager's client_ids.
   const moneySource = createMemo(() => (selected() ? month() : null));
   const [overview, { refetch }] = createResource(moneySource, async (m, info) => {

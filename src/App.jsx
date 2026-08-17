@@ -1,4 +1,4 @@
-import { Router, Route } from "@solidjs/router";
+import { Router, Route, Navigate } from "@solidjs/router";
 import { ThemeProvider } from "./context/ThemeContext";
 import { SidebarProvider } from "./context/SidebarContext";
 import { useSidebar } from "./context/SidebarContext";
@@ -38,11 +38,9 @@ import FeededLeads from "./pages/admin/leads/FeededLeads";
 import ManualBatches from "./pages/admin/leads/FeededLeads";
 import Projects from "./pages/admin/projects/Projects";
 import AdminRoute from "./utils/AdminRoute";
-import CoordinationDashboard from "./pages/coordination/pages/CoordinationDashboard";
 import CMDashboard from "./pages/CMDashboard";
 import SalesDashboard from "./pages/sales/SalesDashboard";
 import SalesClients from "./pages/sales/SalesClients";
-import SalesPayments from "./pages/sales/SalesPayments";
 import SalesManagers from "./pages/admin/sales/SalesManagers";
 import SalesLeaderboard from "./pages/admin/sales/SalesLeaderboard";
 import CMDailyReport from "./pages/CMDailyReport";
@@ -241,24 +239,34 @@ function App() {
                 </AdminRoute>
               )}
             />
-            <Route
-              path="/sales/payments"
-              component={() => (
-                <AdminRoute roles={["sales"]}>
-                  <SalesPayments />
-                </AdminRoute>
-              )}
-            />
-            {/* Client Billing → Client Payments. Role-gated to CMs + admins;
-                the backend role-scopes the payments-overview feed (a CM gets
-                only their visible clients, admins get all). */}
+            {/* Client Payments — ONE payments-overview screen for every role
+                that reads this ledger. It replaced three near-identical pages
+                (this one, /sales/payments and /payment-billing) that all called
+                GET /billing/admin/payments-overview/ and differed only in
+                chrome. The roles list is wide because the BACKEND scopes the
+                response per caller: sales get their onboarded clients, a CM
+                gets their tier-aware visible clients, admin/coordination/
+                accounts get everything. The two retired paths redirect here
+                rather than 404 — bookmarks and old links are still in the wild. */}
             <Route
               path="/client-payments"
               component={() => (
-                <AdminRoute roles={["admin", "campaign_manager", "accounts"]}>
+                <AdminRoute
+                  roles={[
+                    "admin",
+                    "coordination",
+                    "accounts",
+                    "campaign_manager",
+                    "sales",
+                  ]}
+                >
                   <ClientBilling />
                 </AdminRoute>
               )}
+            />
+            <Route
+              path="/sales/payments"
+              component={() => <Navigate href="/client-payments" />}
             />
             {/* ── Payments desk ────────────────────────────────────────────
                 Accounts + admin get the ledger and the needs-docs queue;
@@ -451,13 +459,13 @@ function App() {
                 </AdminRoute>
               )}
             />
-             <Route
+            {/* Retired: the coordination payments dashboard was a third copy of
+                /client-payments. It was also gated by a bare <AdminRoute> whose
+                default roles=["admin"] locked the coordination team out of
+                their own screen; the merged route's roles list fixes that. */}
+            <Route
               path="/payment-billing"
-              component={() => (
-                <AdminRoute>
-                  <CoordinationDashboard/>
-                </AdminRoute>
-              )}
+              component={() => <Navigate href="/client-payments" />}
             />
           </Route>
         </Router>

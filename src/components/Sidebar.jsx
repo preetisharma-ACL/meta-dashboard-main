@@ -449,12 +449,15 @@ export default function Sidebar() {
         path: "/sales/clients",
       },
       {
+        // The merged Client Payments screen — the backend scopes it to this
+        // rep's onboarded clients, so sales lands on the same page admin does
+        // and simply sees fewer rows.
         name: "Payments",
         roles: ["sales"],
         icon: () => (
           <Icon d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
         ),
-        path: "/sales/payments",
+        path: "/client-payments",
       },
       // ── Accounts desk nav ─────────────────────────────────────────────────
       // Flat for accounts: the payments ledger IS their dashboard.
@@ -487,10 +490,12 @@ export default function Sidebar() {
         path: "/cm-daily-report",
       },
       {
-        // CM only — admin reaches this page from inside "Payments Desk", and
-        // CMs don't get that group.
+        // CM + coordination — admin reaches the same page from inside
+        // "Payments Desk" and accounts from its flat list, neither of which
+        // these two roles get. Coordination's old "Payment & Billing" entry
+        // pointed at the retired duplicate screen and is gone.
         name: "Client Payments",
-        roles: ["campaign_manager"],
+        roles: ["campaign_manager", "coordination"],
         icon: () => (
           <Icon d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
         ),
@@ -684,14 +689,9 @@ export default function Sidebar() {
       //   ],
       // },
 
-      {
-        name: "Payment & Billing",
-        roles: ["admin"],
-        icon: () => (
-          <Icon d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-        ),
-        path: "/payment-billing",
-      },
+      // "Payment & Billing" (/payment-billing) used to live here for admin. It
+      // was a duplicate of Client Payments and is retired — admin reaches the
+      // merged screen from the "Payments Desk" group above.
       {
         name: "Billing",
         roles: ["client"],
