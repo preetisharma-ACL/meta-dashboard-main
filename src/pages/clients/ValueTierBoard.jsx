@@ -42,8 +42,18 @@ const typeLabel = (t) =>
 export default function ValueTierBoard() {
   const [tab, setTab] = createSignal("all");
   const [query, setQuery] = createSignal("");
-  // Mismatches only — the review pass this page exists for.
-  const [mismatchOnly, setMismatchOnly] = createSignal(false);
+  // ── The two review passes ─────────────────────────────────────────────────
+  // They are DIFFERENT WORK and are deliberately never summed into one number,
+  // for the same reason Engagement and Activity stay apart:
+  //   mismatch      a tier IS set and disagrees with what the funding suggests
+  //                 → someone decided, and the money has since moved
+  //   unclassified  no tier set, but we have a suggestion to offer
+  //                 → nobody has decided yet
+  // The two sets are disjoint by construction (a mismatch requires a tier; an
+  // unclassified row is the absence of one), so this is one selector, not two
+  // independent toggles. "unclassified" is the live work today; "mismatch"
+  // becomes the live work once tiers exist.
+  const [review, setReview] = createSignal("none"); // none | mismatch | unclassified
   const [historyFor, setHistoryFor] = createSignal(null);
 
   const [board, { mutate, refetch }] = createResource(fetchValueTierBoard);
@@ -55,6 +65,20 @@ export default function ValueTierBoard() {
   // fallback so an absent field doesn't silently read as "all clean".
   const rowMismatch = (c) =>
     c.mismatch ?? isValueTierMismatch(c.value_tier, c.suggested_value_tier);
+
+  // No tier set, but the funding computed one worth offering. NOT a mismatch —
+  // nothing has been claimed, so there is nothing to contradict. A client with no
+  // suggestion either (no funding data at all) is not actionable from here and is
+  // deliberately left out of this count.
+  const rowUnclassified = (c) =>
+    normaliseValueTier(c.value_tier) === VALUE_TIER_UNSET &&
+    normaliseValueTier(c.suggested_value_tier) !== VALUE_TIER_UNSET;
+
+  // Has anybody classified anything yet? Decides which "nothing to review" story
+  // is the true one — see the empty state below.
+  const anyTierSet = createMemo(() =>
+    clients().some((c) => normaliseValueTier(c.value_tier) !== VALUE_TIER_UNSET),
+  );
 
   // Counts come from the server's `counts` block, with a local tally as a
   // fallback — a tab labelled "Premium" with no number is a worse failure than a
@@ -82,14 +106,50 @@ export default function ValueTierBoard() {
   const mismatchCount = createMemo(
     () => clients().filter((c) => rowMismatch(c)).length,
   );
+  const unclassifiedCount = createMemo(
+    () => clients().filter((c) => rowUnclassified(c)).length,
+  );
+
+  // Selecting a review pass moves the tier tab with it, because two of the four
+  // combinations are dead by definition and a filter that can only ever return
+  // nothing is a worse answer than no filter at all:
+  //   mismatch ∩ Unset       impossible — a mismatch needs a tier
+  //   unclassified ∩ Premium impossible — unclassified IS the unset bucket
+  const pickReview = (mode) => {
+    const next = review() === mode ? "none" : mode;
+    setReview(next);
+    if (next === "mismatch" && tab() === VALUE_TIER_UNSET) setTab("all");
+    // Unclassified lives entirely in the Unset bucket, so say so in the tabs
+    // rather than leaving "All" highlighted over a narrowed list.
+    if (next === "unclassified") setTab(VALUE_TIER_UNSET);
+  };
+
+  // The mirror of the above: picking a tab that can't contain the active review
+  // pass drops the pass instead of showing an empty table.
+  const pickTab = (key) => {
+    setTab(key);
+    if (review() === "mismatch" && key === VALUE_TIER_UNSET) setReview("none");
+    if (
+      review() === "unclassified" &&
+      key !== VALUE_TIER_UNSET &&
+      key !== "all"
+    )
+      setReview("none");
+  };
 
   const visible = createMemo(() => {
     const t = tab();
     const q = query().trim().toLowerCase();
-    const onlyBad = mismatchOnly();
+    const pass = review();
     return clients()
       .filter((c) => t === "all" || normaliseValueTier(c.value_tier) === t)
-      .filter((c) => !onlyBad || rowMismatch(c))
+      .filter((c) =>
+        pass === "mismatch"
+          ? rowMismatch(c)
+          : pass === "unclassified"
+            ? rowUnclassified(c)
+            : true,
+      )
       .filter(
         (c) =>
           !q ||
@@ -208,7 +268,7 @@ export default function ValueTierBoard() {
                 type="button"
                 role="tab"
                 aria-selected={on()}
-                onClick={() => setTab(f.key)}
+                onClick={() => pickTab(f.key)}
                 class={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-[13px] font-semibold border transition-colors whitespace-nowrap ${
                   on()
                     ? "bg-[#14233A] text-white border-[#14233A]"
@@ -258,13 +318,16 @@ export default function ValueTierBoard() {
           />
         </div>
 
-        {/* The review pass in one click. */}
+        {/* The two review passes, side by side and separately counted. Each
+            label names what its number counts, so neither can be read as "all
+            the outstanding work". */}
         <button
           type="button"
-          onClick={() => setMismatchOnly((v) => !v)}
-          aria-pressed={mismatchOnly()}
+          onClick={() => pickReview("mismatch")}
+          aria-pressed={review() === "mismatch"}
+          title="Clients whose set tier disagrees with what this month's funding suggests"
           class={`inline-flex items-center gap-2 px-3.5 py-2 text-sm font-semibold rounded-lg border transition-colors ${
-            mismatchOnly()
+            review() === "mismatch"
               ? "bg-[#B07A14] text-white border-[#B07A14]"
               : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-[#B07A14]/50"
           }`}
@@ -281,13 +344,42 @@ export default function ValueTierBoard() {
             <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
             <path d="M12 9v4M12 17h.01" />
           </svg>
-          Needs review
+          Disagrees with funding
           <span
             class={`text-[11px] font-bold tabular-nums ${
-              mismatchOnly() ? "text-white/75" : "text-gray-400"
+              review() === "mismatch" ? "text-white/75" : "text-gray-400"
             }`}
           >
             ({mismatchCount()})
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => pickReview("unclassified")}
+          aria-pressed={review() === "unclassified"}
+          title="Clients with no tier set, where this month's funding suggests one"
+          class={`inline-flex items-center gap-2 px-3.5 py-2 text-sm font-semibold rounded-lg border transition-colors ${
+            review() === "unclassified"
+              ? "bg-[#14233A] text-white border-[#14233A]"
+              : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-[#14233A]/50"
+          }`}
+        >
+          <span
+            class={
+              review() === "unclassified" ? "text-[#E9AE5C]" : "text-gray-400"
+            }
+            aria-hidden="true"
+          >
+            ◇
+          </span>
+          Unclassified
+          <span
+            class={`text-[11px] font-bold tabular-nums ${
+              review() === "unclassified" ? "text-white/75" : "text-gray-400"
+            }`}
+          >
+            ({unclassifiedCount()})
           </span>
         </button>
 
@@ -466,15 +558,43 @@ export default function ValueTierBoard() {
                       class="p-12 text-center text-gray-500 dark:text-gray-400"
                     >
                       <Show
-                        when={tab() !== "all" || query() || mismatchOnly()}
+                        when={tab() !== "all" || query() || review() !== "none"}
                         fallback="No clients to show."
                       >
                         <Show
-                          when={mismatchOnly()}
+                          when={review() !== "none"}
                           fallback="No clients in this bucket."
                         >
-                          Every tier agrees with this month's funding — nothing to
-                          review.
+                          {/* "Every tier agrees" is only true if any tier is
+                              actually SET. With none set there is nothing to
+                              agree or disagree with, and saying otherwise tells
+                              the reader the opposite of the truth in exactly the
+                              state this board opens in. */}
+                          <Show
+                            when={review() !== "mismatch" || anyTierSet()}
+                            fallback={
+                              <>
+                                No tier has been set yet, so there's nothing to
+                                contradict.{" "}
+                                <button
+                                  onClick={() => pickReview("unclassified")}
+                                  class="font-semibold text-[#3E6FB0] hover:underline"
+                                >
+                                  Start with the {unclassifiedCount()}{" "}
+                                  unclassified
+                                </button>
+                                .
+                              </>
+                            }
+                          >
+                            <Show
+                              when={review() === "mismatch"}
+                              fallback="Every client with a suggestion has been classified."
+                            >
+                              Every tier that's been set agrees with this month's
+                              funding — nothing to review.
+                            </Show>
+                          </Show>
                         </Show>
                       </Show>
                     </td>
@@ -491,6 +611,12 @@ export default function ValueTierBoard() {
         more suggests Ultra Premium, ₹1,00,000 or more Premium, otherwise
         Standard. They are a prompt, never applied automatically — the
         classification is a person's call.
+      </p>
+      <p class="mt-1.5 text-[12px] text-gray-400 dark:text-gray-500">
+        The two review passes count different things and are never added together:{" "}
+        <b class="font-semibold">Unclassified</b> is nobody has decided yet;{" "}
+        <b class="font-semibold">Disagrees with funding</b> is somebody decided and
+        the money has since moved.
       </p>
 
       <ValueTierHistoryDrawer
