@@ -125,7 +125,9 @@ export default function ClientBilling() {
       tone: TONE_GREEN,
     },
     {
-      label: `Billed · spend + S.C (${gstNote()})`,
+      // No per-tile GST note: all three flip on the same toggle, so the basis is
+      // stated once in the strip caption below and can't drift between labels.
+      label: "Billed · spend + S.C",
       value: fmtMoney(totalMoney("utilized", "utilized"), 0),
       tone: TONE_NAVY,
     },
@@ -302,8 +304,16 @@ export default function ClientBilling() {
         class="mb-5"
       />
 
-      {/* ════════ HERO STRIP — three tiles from the month totals ════════ */}
+      {/* ════════ HERO STRIP — three tiles from the month totals ════════
+          The GST basis lives here, once, for the whole strip: all three tiles
+          read the same suffix off the same toggle. Wording is scoped to these
+          totals rather than the page — the outstanding callout below is
+          inc-GST-only (the endpoint publishes no ex-GST counterpart) and
+          carries its own label. */}
       <div class="mb-3">
+        <p class="mb-2 text-[11.5px] font-semibold uppercase tracking-[0.08em] text-[#8593A8] dark:text-gray-400">
+          Month totals · {gstNote()}
+        </p>
         <MoneyTilesRow tiles={tiles} loading={loading} />
       </div>
 
