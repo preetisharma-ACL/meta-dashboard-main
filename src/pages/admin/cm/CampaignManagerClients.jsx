@@ -7,6 +7,7 @@ import {
   For,
   Show,
 } from "solid-js";
+import { A } from "@solidjs/router";
 import { fetchManagerPerformance } from "../../../services/performance";
 import {
   probeAdminSwitchMode,
@@ -22,6 +23,16 @@ import {
   STATUS_UNSET,
   normaliseStatus,
 } from "../../../services/clientStatus";
+import {
+  fetchValueTierBoard,
+  VALUE_TIER_FILTERS,
+  VALUE_TIER_DOT,
+  VALUE_TIER_UNSET,
+  normaliseValueTier,
+} from "../../../services/valueTier";
+import { canSeeValueTier } from "../../../stores/currentUser";
+import FilterGroup, { AXIS_ICON } from "../../../components/filters/FilterGroup";
+import FilterPill from "../../../components/filters/FilterPill";
 import CampaignActivityBadge from "../../../components/clientActivity/CampaignActivityBadge";
 import {
   ACTIVITY_FILTERS,
@@ -159,6 +170,10 @@ export default function CampaignManagerClients() {
   // one is applied entirely in the browser against `campaign_activity` on the
   // rows. A different axis from the engagement label above — never merged.
   const [activityFilter, setActivityFilter] = createSignal("all");
+  // Value tier (manual COMMERCIAL classification) — a fourth axis again, and the
+  // only INTERNAL one on this page: never merged with the three above, and gated
+  // by canSeeValueTier() so widening this route later can't leak it.
+  const [tierFilter, setTierFilter] = createSignal("all");
 
   // Toggle a client-type pill; never allow an empty selection.
   const toggleClientType = (key) => {
@@ -170,6 +185,29 @@ export default function CampaignManagerClients() {
     });
   };
   const allTypesSelected = () => clientTypes().length === CLIENT_TYPES.length;
+
+  // Is anything actually narrowed? Four independent axes plus a search box make
+  // it easy to lose a client behind a filter set two decisions ago, so the reset
+  // only appears when there's something to reset.
+  // Counts the AXES in play, not the pills: "2 active" means two of the four
+  // filters are narrowing the list. The search box is deliberately not counted —
+  // it's visible in its own field, and rolling it in would make the number
+  // disagree with what the four cards below show.
+  const activeFilterCount = () =>
+    (allTypesSelected() ? 0 : 1) +
+    (statusFilter() === "all" ? 0 : 1) +
+    (activityFilter() === "all" ? 0 : 1) +
+    (tierFilter() === "all" ? 0 : 1);
+
+  const filtersDirty = () => !!query().trim() || activeFilterCount() > 0;
+
+  const resetFilters = () => {
+    setQuery("");
+    setClientTypes(DEFAULT_CLIENT_TYPES);
+    setStatusFilter("all");
+    setActivityFilter("all");
+    setTierFilter("all");
+  };
 
   // ── Manager roster (admin-readable; month-scoped, refetches on change). ──
   const [rosterRes] = createResource(month, async (m) => {
@@ -282,6 +320,55 @@ export default function CampaignManagerClients() {
     };
   };
 
+  // ── Value tier ────────────────────────────────────────────────────────────
+  // Same one-call shape as the status board. Gated twice: switch-mode (no cards
+  // without it) AND canSeeValueTier(), so a role that can't see the tier never
+  // issues a request the backend would 403 anyway. Failure degrades to an empty
+  // board — every client reads "Unset" — rather than taking the page down, which
+  // is how the status board next door behaves.
+  const [tierBoard] = createResource(
+    () => (allowed() && canSeeValueTier() ? "load" : null),
+    async () => {
+      try {
+        return await fetchValueTierBoard();
+      } catch (err) {
+        console.error("[CMClients] value tier board failed:", err);
+        return { counts: {}, clients: [] };
+      }
+    },
+  );
+
+  // Two maps, not one merged map: `client_id` (the Client PK) and `client_nomen`
+  // are BOTH integers on this payload, so a single map keyed by either would let
+  // one client's PK collide with another's nomen id. Kept apart, the PK lookup
+  // always wins and the nomen map only answers for clients neither roster covers.
+  const tierByPk = createMemo(() => {
+    const map = {};
+    for (const c of tierBoard()?.clients ?? []) {
+      if (c.client_id != null) map[String(c.client_id)] = c.value_tier ?? null;
+    }
+    return map;
+  });
+  const tierByNomen = createMemo(() => {
+    const map = {};
+    for (const c of tierBoard()?.clients ?? []) {
+      if (c.client_nomen != null)
+        map[String(c.client_nomen)] = c.value_tier ?? null;
+    }
+    return map;
+  });
+
+  // Tier for one client nomen. PK first (see above), nomen as the fallback; null
+  // means "nobody has classified this one", which normalises to the Unset bucket.
+  const tierOf = (nomenId) => {
+    const pk = statusEntry(nomenId).pk;
+    if (pk != null) {
+      const hit = tierByPk()[String(pk)];
+      if (hit !== undefined) return hit;
+    }
+    return tierByNomen()[String(nomenId)] ?? null;
+  };
+
   // Activity for one hierarchy row: what the row itself reported, else the admin
   // roster's value, else null (unknown — rendered as nothing, never as "paused").
   const activityOf = (row) =>
@@ -323,6 +410,7 @@ export default function CampaignManagerClients() {
     const filterAll = allTypesSelected();
     const wantStatus = statusFilter();
     const wantActivity = activityFilter();
+    const wantTier = tierFilter();
     return managers().map((m) => {
       const seen = new Set();
       const clients = (own[m.manager_id] ?? [])
@@ -342,6 +430,12 @@ export default function CampaignManagerClients() {
               engagement: statusEntry(key).status,
               activity: activityOf(c),
             })
+          )
+            return false;
+          // Value tier — client-side too; the hierarchy endpoint has no ?tier=.
+          if (
+            wantTier !== "all" &&
+            normaliseValueTier(tierOf(key)) !== wantTier
           )
             return false;
           seen.add(key);
@@ -453,6 +547,31 @@ export default function CampaignManagerClients() {
     return acc;
   });
 
+  // Value-tier tallies, de-duped by nomen and NOT narrowed by the tier filter
+  // itself — the same "everything available" rule the other pill groups follow.
+  const tierCounts = createMemo(() => {
+    const own = ownLists() ?? {};
+    const active = activeNomen();
+    const acc = {
+      ultra_premium: 0,
+      premium: 0,
+      standard: 0,
+      [VALUE_TIER_UNSET]: 0,
+      total: 0,
+    };
+    const seen = new Set();
+    for (const m of managers()) {
+      for (const c of own[m.manager_id] ?? []) {
+        const key = String(c.client_nomen_id);
+        if (!active.has(key) || seen.has(key)) continue;
+        seen.add(key);
+        acc[normaliseValueTier(tierOf(key))] += 1;
+        acc.total += 1;
+      }
+    }
+    return acc;
+  });
+
   // ── Visible cards — apply the search, drop empties, order by client count ──
   // Search matches a client name OR the manager's name; a manager-name match
   // keeps that manager's whole (type-filtered) roster.
@@ -558,159 +677,249 @@ export default function CampaignManagerClients() {
       </div>
 
       <div class="max-w-[1480px] mx-auto px-4 md:px-9 pt-6 pb-16">
-        {/* ─────────────── Control bar (search · type filter · month) ─────────────── */}
+        {/* ─────────────── Control bar ───────────────
+            Two decks, because the controls answer two different questions and
+            mixing them into one wrapping row is what made this read as clutter:
+              deck 1  WHICH SLICE OF TIME + free-text search   (white)
+              deck 2  the four labelled filter axes            (recessed)
+            Deck 2 is a fixed 2-up grid rather than a flex-wrap, so the groups
+            land in aligned columns instead of re-flowing into ragged rows as
+            their pill counts change. */}
         <Show when={ready()}>
-          <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-sm px-4 py-3 mb-6 flex items-center gap-4 flex-wrap">
-            {/* Search */}
-            <div class="relative w-full sm:flex-1 sm:min-w-[220px] sm:max-w-[380px]">
-              <svg
-                class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-              >
-                <circle cx="11" cy="11" r="7" />
-                <path d="m20 20-3.5-3.5" />
-              </svg>
-              <input
-                type="search"
-                value={query()}
-                onInput={(e) => setQuery(e.target.value)}
-                placeholder="Search clients or managers…"
-                aria-label="Search clients or managers"
-                class="w-full h-10 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 pl-10 pr-3 text-[13.5px] text-gray-800 dark:text-gray-100 placeholder:text-gray-400 focus:outline-none focus:border-[#14233A] focus:bg-white dark:focus:bg-gray-900 focus:ring-2 focus:ring-[#14233A]/10 transition-colors"
-              />
-            </div>
-
-            {/* Client-type filter */}
-            <div class="flex items-center gap-2.5 w-full sm:w-auto min-w-0">
-              <span class="hidden sm:inline text-[10.5px] font-bold uppercase tracking-[0.12em] text-gray-400">
-                Client type
-              </span>
-              <div class="flex flex-wrap bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-[11px] p-[3px] gap-0.5">
-                <FilterPill
-                  active={allTypesSelected()}
-                  onClick={() => setClientTypes(DEFAULT_CLIENT_TYPES)}
-                  label="All"
-                  count={aggCounts().total}
+          <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_8px_28px_-18px_rgba(16,29,49,.35)] mb-6 overflow-hidden">
+            {/* ── Deck 1 · search + reporting period ── */}
+            <div class="flex flex-wrap items-center gap-3 px-4 md:px-5 py-4">
+              <div class="relative flex-1 min-w-[220px] sm:max-w-[420px]">
+                <svg
+                  class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                >
+                  <circle cx="11" cy="11" r="7" />
+                  <path d="m20 20-3.5-3.5" />
+                </svg>
+                {/* type="text", not "search": the native clear affordance would
+                    sit on top of ours below. */}
+                <input
+                  type="text"
+                  value={query()}
+                  onInput={(e) => setQuery(e.target.value)}
+                  placeholder="Search clients or managers…"
+                  aria-label="Search clients or managers"
+                  class="w-full h-11 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 pl-10 pr-10 text-[13.5px] text-gray-800 dark:text-gray-100 placeholder:text-gray-400 focus:outline-none focus:border-[#14233A] focus:bg-white dark:focus:bg-gray-900 focus:ring-2 focus:ring-[#14233A]/10 transition-colors"
                 />
-                <For each={CLIENT_TYPES}>
-                  {(t) => (
-                    <FilterPill
-                      active={clientTypes().includes(t.key) && !allTypesSelected()}
-                      onClick={() => toggleClientType(t.key)}
-                      label={t.label}
-                      count={aggCounts()[t.key]}
-                      dot={TYPE_DOT[t.key]}
-                    />
-                  )}
-                </For>
+                <Show when={query()}>
+                  <button
+                    onClick={() => setQuery("")}
+                    aria-label="Clear search"
+                    class="absolute right-2.5 top-1/2 -translate-y-1/2 grid h-6 w-6 place-items-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-200 transition-colors"
+                  >
+                    <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+                      <path d="M18 6 6 18M6 6l12 12" />
+                    </svg>
+                  </button>
+                </Show>
+              </div>
+
+              {/* Only offered once something is actually narrowed — with four
+                  axes it's easy to lose track of which one is hiding a client. */}
+              <Show when={filtersDirty()}>
+                <button
+                  onClick={resetFilters}
+                  class="inline-flex items-center gap-1.5 h-11 px-3.5 rounded-xl border border-gray-200 dark:border-gray-700 text-[13px] font-semibold text-gray-500 dark:text-gray-400 hover:text-[#AC2334] hover:border-[#AC2334]/40 dark:hover:text-[#E4566A] transition-colors whitespace-nowrap"
+                >
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 2v6h6" />
+                    <path d="M3.51 15a9 9 0 1 0 2.13-9.36L3 8" />
+                  </svg>
+                  Reset filters
+                </button>
+              </Show>
+
+              <div class="relative ml-auto w-full sm:w-auto">
+                <svg
+                  class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500 dark:text-gray-400 pointer-events-none"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <rect x="3" y="5" width="18" height="16" rx="2" />
+                  <path d="M8 3v4M16 3v4M3 10h18" />
+                </svg>
+                <select
+                  value={month()}
+                  onChange={(e) => setMonth(e.target.value)}
+                  aria-label="Reporting month"
+                  class="appearance-none w-full sm:w-auto h-11 pl-9 pr-9 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-[13px] font-semibold text-gray-800 dark:text-gray-100 cursor-pointer focus:outline-none focus:border-[#14233A] focus:ring-2 focus:ring-[#14233A]/10"
+                >
+                  <For each={monthOptions()}>
+                    {(o) => <option value={o.key}>{o.label}</option>}
+                  </For>
+                </select>
+                <svg
+                  class="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500 dark:text-gray-400 pointer-events-none"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                >
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
               </div>
             </div>
 
-            {/* Engagement-status filter */}
-            <div class="flex items-center gap-2.5 w-full sm:w-auto min-w-0">
-              <span class="hidden sm:inline text-[10.5px] font-bold uppercase tracking-[0.12em] text-gray-400">
-                Engagement
-              </span>
-              <div class="flex flex-wrap bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-[11px] p-[3px] gap-0.5">
-                <For each={STATUS_FILTERS}>
-                  {(f) => (
-                    <FilterPill
-                      active={statusFilter() === f.key}
-                      onClick={() => setStatusFilter(f.key)}
-                      label={f.label}
-                      count={
-                        f.key === "all"
-                          ? statusCounts().total
-                          : statusCounts()[f.key]
-                      }
-                      dot={f.key === "all" ? null : STATUS_DOT[f.key]}
-                    />
-                  )}
-                </For>
+            {/* ── Deck 2 · the four filter axes ── */}
+            <div class="border-t border-gray-100 dark:border-gray-800 bg-gradient-to-b from-[#F8F9FC] to-[#F1F3F8] dark:from-gray-800/30 dark:to-gray-800/10 px-4 md:px-5 py-4">
+              <div class="flex items-center gap-2.5 mb-3">
+                <span class="text-[10px] font-bold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
+                  Refine
+                </span>
+                <span class="h-px flex-1 bg-gradient-to-r from-gray-200 to-transparent dark:from-gray-700" />
+                {/* Gated on the AXIS count, not filtersDirty() — a search-only
+                    state would otherwise announce "0 active". */}
+                <Show when={activeFilterCount() > 0}>
+                  <span class="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#14233A] dark:text-gray-300">
+                    <span class="h-1.5 w-1.5 rounded-full bg-[#AC2334]" />
+                    {activeFilterCount()} filter
+                    {activeFilterCount() === 1 ? "" : "s"} active
+                  </span>
+                </Show>
+              </div>
+              <div class="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
+                <FilterGroup
+                  label="Client type"
+                  caption="How the client is billed"
+                  tone="type"
+                  on={!allTypesSelected()}
+                  icon={AXIS_ICON.type}
+                >
+                  <FilterPill
+                    active={allTypesSelected()}
+                    onClick={() => setClientTypes(DEFAULT_CLIENT_TYPES)}
+                    label="All"
+                    count={aggCounts().total}
+                  />
+                  <For each={CLIENT_TYPES}>
+                    {(t) => (
+                      <FilterPill
+                        active={
+                          clientTypes().includes(t.key) && !allTypesSelected()
+                        }
+                        onClick={() => toggleClientType(t.key)}
+                        label={t.label}
+                        count={aggCounts()[t.key]}
+                        dot={TYPE_DOT[t.key]}
+                      />
+                    )}
+                  </For>
+                </FilterGroup>
+
+                {/* Engagement — the MANUAL operational label. */}
+                <FilterGroup
+                  label="Engagement"
+                  caption="Set by hand — the operational label"
+                  tone="engagement"
+                  on={statusFilter() !== "all"}
+                  icon={AXIS_ICON.engagement}
+                >
+                  <For each={STATUS_FILTERS}>
+                    {(f) => (
+                      <FilterPill
+                        active={statusFilter() === f.key}
+                        onClick={() => setStatusFilter(f.key)}
+                        label={f.label}
+                        count={
+                          f.key === "all"
+                            ? statusCounts().total
+                            : statusCounts()[f.key]
+                        }
+                        dot={f.key === "all" ? null : STATUS_DOT[f.key]}
+                      />
+                    )}
+                  </For>
+                </FilterGroup>
+
+                {/* Activity (DERIVED) — its own group, its own name, and
+                    monochrome ●/○ marks rather than the engagement group's
+                    coloured dots, so "Active" (a label) never reads as "Running"
+                    (live campaigns). */}
+                <FilterGroup
+                  label="Activity"
+                  caption="Derived from live campaigns"
+                  tone="activity"
+                  on={activityFilter() !== "all"}
+                  icon={AXIS_ICON.activity}
+                >
+                  <For each={ACTIVITY_FILTERS}>
+                    {(f) => (
+                      <FilterPill
+                        active={activityFilter() === f.key}
+                        onClick={() => setActivityFilter(f.key)}
+                        label={f.label}
+                        count={
+                          f.key === "all"
+                            ? activityCounts().total
+                            : activityCounts()[f.key]
+                        }
+                        dot={
+                          f.key === ACTIVITY_RUNNING
+                            ? "bg-gray-700 dark:bg-gray-200"
+                            : null
+                        }
+                        dotActive="bg-white"
+                        dotHollow={f.key === ACTIVITY_PAUSED}
+                        warn={f.key === ACTIVITY_MISMATCH}
+                        title={
+                          f.key === ACTIVITY_MISMATCH
+                            ? "Clients marked Active whose campaigns are all paused"
+                            : undefined
+                        }
+                      />
+                    )}
+                  </For>
+                </FilterGroup>
+
+                {/* Value tier (MANUAL, INTERNAL) — its own group again, and the
+                    only one on this bar clients must never see. Set on the Value
+                    Tier board; this page only reads it. The INTERNAL tag is part
+                    of that promise, not decoration. */}
+                <Show when={canSeeValueTier()}>
+                  <FilterGroup
+                    label="Value tier"
+                    caption="Commercial classification"
+                    tone="tier"
+                    internal
+                    on={tierFilter() !== "all"}
+                    icon={AXIS_ICON.tier}
+                  >
+                    <For each={VALUE_TIER_FILTERS}>
+                      {(f) => (
+                        <FilterPill
+                          active={tierFilter() === f.key}
+                          onClick={() => setTierFilter(f.key)}
+                          label={f.label}
+                          count={
+                            f.key === "all"
+                              ? tierCounts().total
+                              : tierCounts()[f.key]
+                          }
+                          dot={f.key === "all" ? null : VALUE_TIER_DOT[f.key]}
+                          dotActive="bg-white"
+                        />
+                      )}
+                    </For>
+                  </FilterGroup>
+                </Show>
               </div>
             </div>
 
-            {/* Activity filter (DERIVED) — its own group, its own name, and
-                monochrome ●/○ marks rather than the engagement group's coloured
-                dots, so "Active" (a label) never reads as "Running" (live
-                campaigns). */}
-            <div class="flex items-center gap-2.5 w-full sm:w-auto min-w-0">
-              <span
-                class="hidden sm:inline text-[10.5px] font-bold uppercase tracking-[0.12em] text-gray-400"
-                title="Derived from live campaigns — not the manual Engagement label"
-              >
-                Activity
-              </span>
-              <div class="flex flex-wrap bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-[11px] p-[3px] gap-0.5">
-                <For each={ACTIVITY_FILTERS}>
-                  {(f) => (
-                    <FilterPill
-                      active={activityFilter() === f.key}
-                      onClick={() => setActivityFilter(f.key)}
-                      label={f.label}
-                      count={
-                        f.key === "all"
-                          ? activityCounts().total
-                          : activityCounts()[f.key]
-                      }
-                      dot={
-                        f.key === ACTIVITY_RUNNING
-                          ? "bg-gray-700 dark:bg-gray-200"
-                          : null
-                      }
-                      dotActive="bg-white"
-                      dotHollow={f.key === ACTIVITY_PAUSED}
-                      warn={f.key === ACTIVITY_MISMATCH}
-                      title={
-                        f.key === ACTIVITY_MISMATCH
-                          ? "Clients marked Active whose campaigns are all paused"
-                          : undefined
-                      }
-                    />
-                  )}
-                </For>
-              </div>
-            </div>
-
-            {/* Month */}
-            <div class="relative w-full sm:w-auto sm:ml-auto">
-              <svg
-                class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500 dark:text-gray-400 pointer-events-none"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <rect x="3" y="5" width="18" height="16" rx="2" />
-                <path d="M8 3v4M16 3v4M3 10h18" />
-              </svg>
-              <select
-                value={month()}
-                onChange={(e) => setMonth(e.target.value)}
-                aria-label="Reporting month"
-                class="appearance-none w-full sm:w-auto h-10 pl-9 pr-9 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-[13px] font-semibold text-gray-800 dark:text-gray-100 cursor-pointer focus:outline-none focus:border-[#14233A] focus:ring-2 focus:ring-[#14233A]/10"
-              >
-                <For each={monthOptions()}>
-                  {(o) => <option value={o.key}>{o.label}</option>}
-                </For>
-              </select>
-              <svg
-                class="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500 dark:text-gray-400 pointer-events-none"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-              >
-                <path d="m6 9 6 6 6-6" />
-              </svg>
-            </div>
           </div>
         </Show>
 
@@ -773,8 +982,8 @@ export default function CampaignManagerClients() {
                   No matches found
                 </div>
                 <div class="text-sm text-gray-400 dark:text-gray-500">
-                  Try a different name, or adjust the client type, engagement or
-                  activity filters.
+                  Try a different name, or adjust the client type, engagement,
+                  activity or value tier filters.
                 </div>
               </div>
             }
@@ -784,6 +993,7 @@ export default function CampaignManagerClients() {
                 {(card) => (
                   <ManagerCard
                     card={card}
+                    month={month()}
                     searching={!!query().trim()}
                     onStatusChanged={applyStatusChange}
                   />
@@ -812,6 +1022,14 @@ function ManagerCard(props) {
   const hidden = () => props.card.clients.length - PREVIEW_COUNT;
   const mgr = () => props.card.manager;
   const label = () => labelFromEmail(mgr().manager_email);
+
+  // "View dashboard" hands off to the Campaign Managers screen rather than
+  // embedding a second copy of <CMDashboard/> here: that screen already owns the
+  // whole selected-manager experience (own/team toggle, alerts, Back-from-a-
+  // campaign restore) and drives it entirely from the URL. The month rides along
+  // so the handoff lands on the SAME reporting period this card was built from.
+  const dashboardHref = () =>
+    `/campaign-managers?manager=${mgr().manager_id}&view=own&month=${props.month}`;
 
   return (
     <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-sm overflow-hidden flex flex-col transition-shadow hover:shadow-md">
@@ -901,26 +1119,54 @@ function ManagerCard(props) {
         </For>
       </div>
 
-      {/* Expander */}
-      <Show when={!props.searching && props.card.clients.length > PREVIEW_COUNT}>
-        <button
-          onClick={() => setExpanded((v) => !v)}
-          class="mt-auto w-full flex items-center gap-1.5 px-5 py-3 border-t border-gray-100 dark:border-gray-800 text-left text-[13px] font-semibold text-[#AC2334] hover:bg-[#AC2334]/[0.04] transition-colors"
+      {/* Footer — the expander (when there's more roster than the preview shows)
+          on the left, the manager's dashboard on the right. Always rendered, so
+          every card ends on the same action row whether or not it expands. */}
+      <div class="mt-auto flex items-center justify-between gap-3 px-5 py-3 border-t border-gray-100 dark:border-gray-800">
+        <Show
+          when={!props.searching && props.card.clients.length > PREVIEW_COUNT}
+          fallback={<span />}
         >
-          {expanded() ? "Show less" : `Show all ${props.card.clients.length} clients`}
+          <button
+            onClick={() => setExpanded((v) => !v)}
+            class="-mx-2 inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[13px] font-semibold text-[#AC2334] hover:bg-[#AC2334]/[0.06] transition-colors"
+          >
+            {expanded()
+              ? "Show less"
+              : `Show all ${props.card.clients.length} clients`}
+            <svg
+              class={`w-3.5 h-3.5 transition-transform ${expanded() ? "rotate-180" : ""}`}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </button>
+        </Show>
+
+        <A
+          href={dashboardHref()}
+          title={`Open ${label()}'s dashboard`}
+          class="group inline-flex flex-shrink-0 items-center gap-1.5 rounded-xl bg-[#14233A] dark:bg-gray-700 px-4 py-2 text-[13px] font-semibold text-white shadow-sm hover:bg-[#0E1A2C] dark:hover:bg-gray-600 transition-colors whitespace-nowrap"
+        >
+          View dashboard
           <svg
-            class={`w-3.5 h-3.5 transition-transform ${expanded() ? "rotate-180" : ""}`}
+            class="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
-            stroke-width="2.2"
+            stroke-width="2"
             stroke-linecap="round"
             stroke-linejoin="round"
           >
-            <path d="m6 9 6 6 6-6" />
+            <path d="m9 5 7 7-7 7" />
           </svg>
-        </button>
-      </Show>
+        </A>
+      </div>
     </div>
   );
 }
@@ -946,61 +1192,5 @@ function StatCard(props) {
         </div>
       </div>
     </div>
-  );
-}
-
-// ── Filter pill (mark + label + count) ───────────────────────────────────────
-// Marks: `dot` fills a coloured disc (client type, engagement), `dotHollow` draws
-// an empty ring (activity: paused) and `warn` an amber triangle (mismatch).
-function FilterPill(props) {
-  return (
-    <button
-      onClick={props.onClick}
-      aria-pressed={props.active}
-      title={props.title}
-      class={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] text-[12.5px] font-semibold transition-colors ${
-        props.active
-          ? "bg-[#14233A] text-white"
-          : "text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-700"
-      }`}
-    >
-      <Show when={props.warn}>
-        <svg
-          class={`w-3.5 h-3.5 ${props.active ? "text-amber-300" : "text-[#B07A14] dark:text-amber-400"}`}
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2.2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-          <path d="M12 9v4M12 17h.01" />
-        </svg>
-      </Show>
-      <Show when={props.dotHollow}>
-        <span
-          class={`w-[7px] h-[7px] rounded-full border ${
-            props.active ? "border-white/80" : "border-gray-400 dark:border-gray-500"
-          }`}
-        />
-      </Show>
-      <Show when={props.dot}>
-        {/* dotActive: a near-black dot vanishes on the selected pill's dark fill. */}
-        <span
-          class={`w-[7px] h-[7px] rounded-full ${
-            (props.active && props.dotActive) || props.dot
-          }`}
-        />
-      </Show>
-      {props.label}
-      <span
-        class={`text-[11px] tabular-nums ${
-          props.active ? "text-white/65" : "text-gray-400"
-        }`}
-      >
-        {props.count}
-      </span>
-    </button>
   );
 }

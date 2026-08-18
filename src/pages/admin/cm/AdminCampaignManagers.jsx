@@ -126,7 +126,16 @@ export default function AdminCampaignManagers() {
   // to /campaign/:id, and browser Back returns here to the SAME manager's
   // dashboard rather than resetting to the bare roster.
   const [searchParams, setSearchParams] = useSearchParams();
-  const [month, setMonth] = createSignal(currentMonthKey());
+  // Seeded from ?month= so a hand-off from another screen (e.g. the Campaign
+  // Manager's Clients cards) lands on the SAME reporting period — the roster is
+  // month-scoped, so opening a manager under the wrong month would resolve to no
+  // roster row and fall back to the bare list. Read once, at init: the picker
+  // below owns the value from then on.
+  const [month, setMonth] = createSignal(
+    /^\d{4}-\d{2}$/.test(String(searchParams.month ?? ""))
+      ? String(searchParams.month)
+      : currentMonthKey(),
+  );
   const [tab, setTab] = createSignal("dashboard"); // dashboard | alerts
   const [search, setSearch] = createSignal("");
 

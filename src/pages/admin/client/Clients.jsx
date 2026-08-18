@@ -41,10 +41,13 @@ import CampaignActivityBadge from "../../../components/clientActivity/CampaignAc
 import {
   ACTIVITY_FILTERS,
   ACTIVITY_MISMATCH,
+  ACTIVITY_PAUSED,
   ACTIVITY_RUNNING,
   activityParam,
   matchesActivityFilter,
 } from "../../../services/campaignActivity";
+import FilterGroup, { AXIS_ICON } from "../../../components/filters/FilterGroup";
+import FilterPill from "../../../components/filters/FilterPill";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -309,6 +312,39 @@ export default function Clients() {
       const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key];
       return next.length ? next : prev;
     });
+  };
+
+  // Is the client-type axis narrowing anything? Measured against the DEFAULT
+  // selection (CPL + Hybrid), not against "all three" — Retainer is off when the
+  // page opens, so treating a full set as the baseline would light this up on
+  // first paint and never light it up in the state that actually hides clients.
+  const typeFilterOn = () =>
+    clientTypes().length !== DEFAULT_CLIENT_TYPES.length ||
+    !DEFAULT_CLIENT_TYPES.every((k) => clientTypes().includes(k));
+
+  // How many of the four CLIENT axes are narrowing the list. Deck 1's lookups
+  // (search / account state / assignment / manager) are deliberately not counted:
+  // they're each visible in their own field, and folding them in would make the
+  // number disagree with the four cards it labels.
+  const axisFilterCount = () =>
+    (typeFilterOn() ? 1 : 0) +
+    (statusFilter() === "all" ? 0 : 1) +
+    (activityFilter() === "all" ? 0 : 1) +
+    (tierFilter() === "all" ? 0 : 1);
+
+  // Everything back to the state the page opens in — including the sort, which
+  // is why this isn't just the filter signals.
+  const clearAllFilters = () => {
+    setSearch("");
+    setClientTypes(DEFAULT_CLIENT_TYPES);
+    setAssignFilter("all");
+    setCmFilter("all");
+    setActiveFilter("All");
+    setStatusFilter("all");
+    setActivityFilter("all");
+    setTierFilter("all");
+    setSortKey("created_at");
+    setSortDir("desc");
   };
 
   // ── Campaign-manager map (client_nomen → owning CM) ────────────────────────
@@ -743,308 +779,237 @@ export default function Clients() {
         </div>
       </div>
 
-      {/* ── Client-type toggle chips ── */}
-      <div class="flex flex-wrap items-center gap-1.5 mb-4">
-        <span class="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mr-1">
-          Client type
-        </span>
-        {/* Keep CPL/Hybrid/Retainer together on a single line */}
-        <div class="flex items-center gap-1.5">
-          <For each={CLIENT_TYPE_CHIPS}>
-            {(t) => {
-              const on = () => clientTypes().includes(t.key);
-              return (
-                <button
-                  type="button"
-                  onClick={() => toggleClientType(t.key)}
-                  aria-pressed={on()}
-                  class={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[13px] font-semibold border transition-colors whitespace-nowrap ${
-                    on()
-                      ? "bg-[#14233A] text-white border-[#14233A]"
-                      : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-[#14233A]/40"
-                  }`}
-                >
-                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <Show when={on()} fallback={<circle cx="12" cy="12" r="9" stroke-width="1.6" />}>
-                      <path d="M20 6L9 17l-5-5" />
-                    </Show>
-                  </svg>
-                  {t.label}
-                </button>
-              );
-            }}
-          </For>
-        </div>
-      </div>
-
-      {/* ── Engagement-status chips ──
-          The manual active/hold/completed label, deliberately in its own row and
-          worded "Engagement" so it never reads as the is_active column. */}
-      <div class="flex flex-wrap items-center gap-1.5 mb-4">
-        <span class="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mr-1">
-          Engagement
-        </span>
-        <div class="flex flex-wrap items-center gap-1.5">
-          <For each={STATUS_FILTERS}>
-            {(f) => {
-              const on = () => statusFilter() === f.key;
-              return (
-                <button
-                  type="button"
-                  onClick={() => setStatusFilter(f.key)}
-                  aria-pressed={on()}
-                  class={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[13px] font-semibold border transition-colors whitespace-nowrap ${
-                    on()
-                      ? "bg-[#14233A] text-white border-[#14233A]"
-                      : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-[#14233A]/40"
-                  }`}
-                >
-                  <Show when={f.key !== "all"}>
-                    <span class={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[f.key]}`} />
-                  </Show>
-                  {f.label}
-                </button>
-              );
-            }}
-          </For>
-        </div>
-      </div>
-
-      {/* ── Activity chips (DERIVED) ──
-          A different fact from the Engagement row above, so it gets its own row,
-          its own name, its own chip shape (rounded rectangle, monochrome ●/○
-          marks — not the coloured pills) and a caption saying where it comes
-          from. "Active" is somebody's label; "Running" is what the campaigns are
-          actually doing. */}
-      <div class="mb-4">
-        <div class="flex flex-wrap items-center gap-1.5">
-          <span class="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mr-1">
-            Activity
-          </span>
-          <div class="flex flex-wrap items-center gap-1.5">
-            <For each={ACTIVITY_FILTERS}>
-              {(f) => {
-                const on = () => activityFilter() === f.key;
-                const isMismatchChip = f.key === ACTIVITY_MISMATCH;
-                return (
-                  <button
-                    type="button"
-                    onClick={() => setActivityFilter(f.key)}
-                    aria-pressed={on()}
-                    title={
-                      isMismatchChip
-                        ? "Clients marked Active whose campaigns are all paused"
-                        : undefined
-                    }
-                    class={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[13px] font-semibold uppercase tracking-[0.05em] border transition-colors whitespace-nowrap ${
-                      on()
-                        ? "bg-gray-800 text-white border-gray-800 dark:bg-gray-200 dark:text-gray-900 dark:border-gray-200"
-                        : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-gray-500"
-                    }`}
-                  >
-                    <Show when={f.key !== "all"}>
-                      <Show
-                        when={!isMismatchChip}
-                        fallback={
-                          <svg
-                            class="w-3.5 h-3.5 text-[#B07A14] dark:text-amber-400"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2.2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                          >
-                            <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                            <path d="M12 9v4M12 17h.01" />
-                          </svg>
-                        }
-                      >
-                        {/* ● running · ○ paused — the badge's own marks */}
-                        <span
-                          class={`h-1.5 w-1.5 rounded-full ${
-                            f.key === ACTIVITY_RUNNING
-                              ? on()
-                                ? "bg-white dark:bg-gray-900"
-                                : "bg-gray-700 dark:bg-gray-200"
-                              : on()
-                                ? "border border-white dark:border-gray-900"
-                                : "border border-gray-400 dark:border-gray-500"
-                          }`}
-                        />
-                      </Show>
-                    </Show>
-                    {f.label}
-                  </button>
-                );
-              }}
-            </For>
+      {/* ─────────────── Control panel ───────────────
+          Two decks, matching the Campaign Manager's Clients screen:
+            deck 1  the lookups — search, active, assignment, manager  (white)
+            deck 2  the four labelled client AXES                      (recessed)
+          Before this, the four axes were four full-width chip rows stacked down
+          the page, each with a different chip shape, and the lookups sat in a
+          separate card below them — so the page opened with five bands of
+          controls before a single client appeared. */}
+      <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_8px_28px_-18px_rgba(16,29,49,.35)] mb-5 overflow-hidden">
+        {/* ── Deck 1 · lookups ── */}
+        <div class="flex flex-wrap items-center gap-3 px-4 md:px-5 py-4">
+          <div class="relative flex-1 min-w-[220px] sm:max-w-[380px]">
+            <svg
+              class="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="11" cy="11" r="8" />
+              <path d="M21 21l-4.35-4.35" />
+            </svg>
+            <input
+              type="text"
+              placeholder="Search by email, client name, or org…"
+              value={search()}
+              onInput={(e) => setSearch(e.target.value)}
+              class="w-full h-11 pl-10 pr-10 text-[13.5px] rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-800 dark:text-white placeholder:text-gray-400 focus:outline-none focus:border-[#14233A] focus:bg-white dark:focus:bg-gray-900 focus:ring-2 focus:ring-[#14233A]/10 transition-colors"
+            />
+            <Show when={search()}>
+              <button
+                onClick={() => setSearch("")}
+                aria-label="Clear search"
+                class="absolute right-2.5 top-1/2 -translate-y-1/2 grid h-6 w-6 place-items-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-200 transition-colors"
+              >
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+                  <path d="M18 6 6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </Show>
           </div>
-        </div>
-        <p class="pl-1 mt-1.5 text-[11px] text-gray-400 dark:text-gray-500">
-          Derived from live campaigns — not the manual Engagement label above.
-        </p>
-      </div>
 
-      {/* ── Value Tier chips (MANUAL · INTERNAL) ──
-          The fourth label, and the only one clients must never see — hence the
-          whole row is behind canSeeValueTier() (admin + coordination), and the
-          caption says so out loud so nobody screen-shares this into a client
-          call by accident. ◆ marks match the badge on the rows. */}
-      <Show when={canSeeValueTier()}>
-        <div class="mb-4">
-          <div class="flex flex-wrap items-center gap-1.5">
-            <span class="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mr-1">
-              Value tier
-            </span>
-            <div class="flex flex-wrap items-center gap-1.5">
-              <For each={VALUE_TIER_FILTERS}>
-                {(f) => {
-                  const on = () => tierFilter() === f.key;
+          {/* Account state — the is_active flag, NOT the Engagement label below */}
+          <select
+            value={activeFilter()}
+            onChange={(e) => setActiveFilter(e.target.value)}
+            aria-label="Account state"
+            class="h-11 px-3.5 text-[13px] font-semibold rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 cursor-pointer focus:outline-none focus:border-[#14233A] focus:ring-2 focus:ring-[#14233A]/10"
+          >
+            <option value="All">All Status</option>
+            <option value="Yes">Active</option>
+            <option value="No">Inactive</option>
+          </select>
+
+          {/* Assignment + Campaign-manager filters are admin-only: they depend on
+              the manager roster, which CMs can't read. Hidden for CMs. */}
+          <Show when={!isCampaignManager()}>
+            <div class="flex items-center gap-0.5 h-11 p-1 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+              <For each={ASSIGN_OPTIONS}>
+                {(o) => {
+                  const on = () => assignFilter() === o.value;
                   return (
                     <button
                       type="button"
-                      onClick={() => setTierFilter(f.key)}
+                      onClick={() => setAssignFilter(o.value)}
                       aria-pressed={on()}
-                      class={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-[6px] text-[13px] font-semibold border transition-colors whitespace-nowrap ${
+                      class={`h-full px-3 rounded-lg text-[13px] font-semibold transition-colors whitespace-nowrap ${
                         on()
-                          ? "bg-[#14233A] text-white border-[#14233A]"
-                          : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-[#14233A]/40"
+                          ? "bg-[#14233A] text-white shadow-sm dark:bg-gray-600"
+                          : "text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-700"
                       }`}
                     >
-                      <Show when={f.key !== "all"}>
-                        <span
-                          class={`h-1.5 w-1.5 rounded-full ${
-                            on() ? "bg-[#E9AE5C]" : VALUE_TIER_DOT[f.key]
-                          }`}
-                        />
-                      </Show>
-                      {f.label}
+                      {o.label}
                     </button>
                   );
                 }}
               </For>
             </div>
+
+            <select
+              value={cmFilter()}
+              onChange={(e) => setCmFilter(e.target.value)}
+              disabled={!cmReady() || managerOptions().length === 0}
+              aria-label="Campaign manager"
+              class="h-11 px-3.5 text-[13px] font-semibold rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 cursor-pointer focus:outline-none focus:border-[#14233A] focus:ring-2 focus:ring-[#14233A]/10 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              <option value="all">
+                {cmReady() ? "All Campaign Managers" : "Loading managers…"}
+              </option>
+              <For each={managerOptions()}>
+                {(m) => <option value={m.email}>{m.name}</option>}
+              </For>
+            </select>
+          </Show>
+
+          <div class="ml-auto flex items-center gap-3">
+            <span class="text-[13px] font-semibold text-gray-500 dark:text-gray-400 tabular-nums whitespace-nowrap">
+              {filtered().length} results
+            </span>
+            <button
+              onClick={clearAllFilters}
+              class="h-11 px-3.5 text-[13px] font-semibold rounded-xl border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-[#AC2334] hover:border-[#AC2334]/40 dark:hover:text-[#E4566A] transition-colors whitespace-nowrap"
+            >
+              Clear all
+            </button>
           </div>
-          <p class="pl-1 mt-1.5 text-[11px] text-gray-400 dark:text-gray-500">
-            Internal commercial classification — never shown to the client, and
-            unrelated to the billing basis in Client type.
-          </p>
-        </div>
-      </Show>
-
-      {/* ── Filters ── */}
-      <div
-        class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200
-                        dark:border-gray-700 p-4 mb-4 flex flex-wrap items-center gap-3"
-      >
-        {/* Search */}
-        <div class="relative flex w-full sm:w-[360px]">
-          <svg
-            class="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <circle cx="11" cy="11" r="8" />
-            <path d="M21 21l-4.35-4.35" />
-          </svg>
-          <input
-            type="text"
-            placeholder="Search by email, client name, or org…"
-            value={search()}
-            onInput={(e) => setSearch(e.target.value)}
-            class="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-gray-200
-                               dark:border-gray-700 dark:bg-gray-800 dark:text-white
-                               focus:outline-none focus:ring-1 focus:ring-purple-400 dark:focus:ring-gray-600"
-          />
         </div>
 
-        {/* Active filter */}
-        {/* Active Status Dropdown */}
-        <select
-          value={activeFilter()}
-          onChange={(e) => setActiveFilter(e.target.value)}
-          class="w-full sm:w-auto px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700
-         bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300
-         focus:outline-none focus:ring-1 focus:ring-purple-400 dark:focus:ring-gray-600 cursor-pointer"
-        >
-          <option value="All">All Status</option>
-          <option value="Yes">Active</option>
-          <option value="No">Inactive</option>
-        </select>
+        {/* ── Deck 2 · the client axes ── */}
+        <div class="border-t border-gray-100 dark:border-gray-800 bg-gradient-to-b from-[#F8F9FC] to-[#F1F3F8] dark:from-gray-800/30 dark:to-gray-800/10 px-4 md:px-5 py-4">
+          <div class="flex items-center gap-2.5 mb-3">
+            <span class="text-[10px] font-bold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
+              Refine
+            </span>
+            <span class="h-px flex-1 bg-gradient-to-r from-gray-200 to-transparent dark:from-gray-700" />
+            <Show when={axisFilterCount() > 0}>
+              <span class="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#14233A] dark:text-gray-300">
+                <span class="h-1.5 w-1.5 rounded-full bg-[#AC2334]" />
+                {axisFilterCount()} filter{axisFilterCount() === 1 ? "" : "s"}{" "}
+                active
+              </span>
+            </Show>
+          </div>
 
-        {/* Assignment + Campaign-manager filters are admin-only: they depend on
-            the manager roster, which CMs can't read. Hidden for CMs. */}
-        <Show when={!isCampaignManager()}>
-        <div class="flex w-full sm:w-auto sm:inline-flex items-stretch sm:items-center gap-1 p-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
-          <For each={ASSIGN_OPTIONS}>
-            {(o) => {
-              const on = () => assignFilter() === o.value;
-              return (
-                <button
-                  type="button"
-                  onClick={() => setAssignFilter(o.value)}
-                  aria-pressed={on()}
-                  class={`flex-1 sm:flex-none min-w-0 sm:min-w-fit flex items-center justify-center text-center px-3 py-1.5 text-sm font-medium rounded-md transition-colors sm:whitespace-nowrap ${
-                    on()
-                      ? "bg-blue-900 text-white shadow-sm"
-                      : "text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-700"
-                  }`}
-                >
-                  {o.label}
-                </button>
-              );
-            }}
-          </For>
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
+            {/* Client type — MULTI-select, hence the ✓/○ marks: several can be
+                on at once, unlike the three axes beside it. */}
+            <FilterGroup
+              label="Client type"
+              caption="How the client is billed"
+              tone="type"
+              icon={AXIS_ICON.type}
+              on={typeFilterOn()}
+            >
+              <For each={CLIENT_TYPE_CHIPS}>
+                {(t) => (
+                  <FilterPill
+                    active={clientTypes().includes(t.key)}
+                    onClick={() => toggleClientType(t.key)}
+                    label={t.label}
+                    check
+                  />
+                )}
+              </For>
+            </FilterGroup>
+
+            {/* Engagement — the manual active/hold/completed label. Worded
+                "Engagement", never "Active", so it can't be read as the
+                is_active account state sitting in deck 1. */}
+            <FilterGroup
+              label="Engagement"
+              caption="Set by hand — the operational label"
+              tone="engagement"
+              icon={AXIS_ICON.engagement}
+              on={statusFilter() !== "all"}
+            >
+              <For each={STATUS_FILTERS}>
+                {(f) => (
+                  <FilterPill
+                    active={statusFilter() === f.key}
+                    onClick={() => setStatusFilter(f.key)}
+                    label={f.label}
+                    dot={f.key === "all" ? null : STATUS_DOT[f.key]}
+                    dotActive="bg-white"
+                  />
+                )}
+              </For>
+            </FilterGroup>
+
+            {/* Activity (DERIVED) — a different fact from Engagement beside it,
+                with monochrome ●/○ marks rather than coloured dots. "Active" is
+                somebody's label; "Running" is what the campaigns are doing. */}
+            <FilterGroup
+              label="Activity"
+              caption="Derived from live campaigns"
+              tone="activity"
+              icon={AXIS_ICON.activity}
+              on={activityFilter() !== "all"}
+            >
+              <For each={ACTIVITY_FILTERS}>
+                {(f) => (
+                  <FilterPill
+                    active={activityFilter() === f.key}
+                    onClick={() => setActivityFilter(f.key)}
+                    label={f.label}
+                    dot={
+                      f.key === ACTIVITY_RUNNING
+                        ? "bg-gray-700 dark:bg-gray-200"
+                        : null
+                    }
+                    dotActive="bg-white"
+                    dotHollow={f.key === ACTIVITY_PAUSED}
+                    warn={f.key === ACTIVITY_MISMATCH}
+                    title={
+                      f.key === ACTIVITY_MISMATCH
+                        ? "Clients marked Active whose campaigns are all paused"
+                        : undefined
+                    }
+                  />
+                )}
+              </For>
+            </FilterGroup>
+
+            {/* Value tier (MANUAL · INTERNAL) — the fourth label, and the only
+                one clients must never see, hence canSeeValueTier() (admin +
+                coordination) around the whole group and the INTERNAL tag on it:
+                nobody should screen-share this into a client call by accident. */}
+            <Show when={canSeeValueTier()}>
+              <FilterGroup
+                label="Value tier"
+                caption="Commercial — never shown to the client, and unrelated to the billing basis in Client type"
+                tone="tier"
+                icon={AXIS_ICON.tier}
+                internal
+                on={tierFilter() !== "all"}
+              >
+                <For each={VALUE_TIER_FILTERS}>
+                  {(f) => (
+                    <FilterPill
+                      active={tierFilter() === f.key}
+                      onClick={() => setTierFilter(f.key)}
+                      label={f.label}
+                      dot={f.key === "all" ? null : VALUE_TIER_DOT[f.key]}
+                      dotActive="bg-[#E9AE5C]"
+                    />
+                  )}
+                </For>
+              </FilterGroup>
+            </Show>
+          </div>
         </div>
-
-        {/* Campaign-manager filter */}
-        {/* Campaign Manager Dropdown — lists every manager; select to see their clients */}
-        <select
-          value={cmFilter()}
-          onChange={(e) => setCmFilter(e.target.value)}
-          disabled={!cmReady() || managerOptions().length === 0}
-          class="w-full sm:w-auto px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700
-         bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300
-         focus:outline-none focus:ring-1 focus:ring-purple-400 dark:focus:ring-gray-600 cursor-pointer
-         disabled:opacity-60 disabled:cursor-not-allowed"
-        >
-          <option value="all">
-            {cmReady() ? "All Campaign Managers" : "Loading managers…"}
-          </option>
-          <For each={managerOptions()}>
-            {(m) => <option value={m.email}>{m.name}</option>}
-          </For>
-        </select>
-        </Show>
-        {/* Clear All Filters Button */}
-        <button
-          onClick={() => {
-            setSearch("");
-            setClientTypes(DEFAULT_CLIENT_TYPES);
-            setAssignFilter("all");
-            setCmFilter("all");
-            setActiveFilter("All");
-            setStatusFilter("all");
-            setActivityFilter("all");
-            setTierFilter("all");
-            setSortKey("created_at");
-            setSortDir("desc");
-          }}
-          class="px-3 py-2 text-sm  rounded-lg
-                bg-red-50 text-red-600 border border-red-200
-                hover:bg-red-100 hover:border-red-300
-                dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700
-                transition-colors"
-        >
-          Clear All
-        </button>
-
-        <span class="ml-auto text-sm text-gray-400 dark:text-gray-500 whitespace-nowrap">
-          {filtered().length} results
-        </span>
       </div>
 
       {/* ── Table ── */}

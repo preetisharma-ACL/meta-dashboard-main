@@ -183,10 +183,9 @@ export default function Login() {
             than inside .login-left so it survives the <900px breakpoint that
             hides that panel (the CSS re-parks it on the form side there).
 
-            Gradient glass button holding a bare left arrow. The "Back" label
-            and the white circular badge that used to carry the arrow are both
-            gone, so aria-label is now the control's ONLY accessible name — it
-            has to stay, and the svg stays decorative beneath it. */}
+            Saturated gradient tile holding a curved return arrow. There is no
+            visible label, so aria-label is the control's ONLY accessible name —
+            it has to stay, and the svg stays decorative beneath it. */}
         <button
           type="button"
           class="lp-back"
@@ -199,21 +198,49 @@ export default function Login() {
               overhangs, but this keeps the glare independent of any future
               padding change. */}
           <span class="lp-back__sheen" aria-hidden="true" />
-          {/* Drawn on a wide 42x18 box rather than the stock square 24x24: the
-              SHAFT is what got longer, while the head stays about the size it
-              was (5.5 units ≈ 11px tall, against the old 10.5px). A square
-              viewBox can only lengthen the shaft by scaling the head with it.
-              1:1 with the CSS px size, so stroke-width reads as px. */}
+          {/* The RETURN arrow from the reference, traced rather than
+              approximated. Two independent contours:
+
+              1. A big OUTLINED arrow — not a stroked chevron. It's one closed
+                 path: triangular head on the left, then a crescent swoosh that
+                 leaves the head's shaft and sweeps down to a single point at
+                 the lower right. Outer edge of the crescent runs long and
+                 shallow, inner edge cuts back short and steep, and the two
+                 meet at that point — which is what gives the swoosh its taper.
+                 fill="none" on a closed path is what makes it read as an
+                 outline drawing, exactly as in the reference.
+
+              2. A rounded frame BEHIND it, open along its whole upper-left,
+                 where the arrow sits.
+
+              Coordinates come from measuring the reference and mapping its
+              bounding box onto this 25x20 viewBox at uniform scale, so the
+              proportions — head roughly twice the shaft's thickness, frame
+              about 17 units wide by 11.5 tall, corner radius ~2.2 — are the
+              reference's own, not invented.
+
+              Three clearances were then opened up, because the reference is a
+              large illustration and this renders at 37px, where its strokes
+              merge into blobs. Each is ~1 unit of daylight, ~1.3px on screen:
+              the frame's top edge starts at x=13, right of where the swoosh
+              has already dived past it; the swoosh's point stops at y=14.6,
+              above the frame's bottom edge rather than on it; and the frame's
+              left edge stops at y=14.2, below the arrow's lower head edge.
+              Without those three the glyph reads as one congested mass. */}
           <svg
-            viewBox="0 0 42 18"
+            viewBox="0 0 25 20"
             fill="none"
             stroke="currentColor"
-            stroke-width="2.4"
+            stroke-width="1.3"
             stroke-linecap="round"
             stroke-linejoin="round"
             aria-hidden="true"
           >
-            <path d="M41 9H1m0 0l5.5 5.5m-5.5-5.5l5.5-5.5" />
+            {/* Frame first, so the arrow paints over it if they ever meet. */}
+            <path d="M12.99 5.52h7.83a2.16 2.16 0 0 1 2.16 2.16v7.24a2.16 2.16 0 0 1-2.16 2.16H7.77a2.16 2.16 0 0 1-2.16-2.16V14.2" />
+            {/* Arrow: tip → head top → shaft top → outer swoosh → point →
+                inner swoosh → shaft bottom → head bottom → close to tip. */}
+            <path d="M1.6 8.15 7.87 2.3v3.1c2.43.3 7.73 2.4 9.33 9.2-1.5-2.7-5.5-3.7-9.33-3.7v3.1Z" />
           </svg>
         </button>
 
