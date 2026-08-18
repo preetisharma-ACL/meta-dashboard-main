@@ -1060,6 +1060,18 @@ export default function Clients() {
               </th>
               {/* Engagement status — the manual label, distinct from Is Active */}
               <th class="p-3 text-left whitespace-nowrap">Status</th>
+              {/* Activity gets a COLUMN of its own rather than riding along in
+                  the Status cell. Sharing that cell meant its x-position was set
+                  by whatever the engagement caption happened to be — a long
+                  hold reason shoved the badge right, a blank one pulled it left,
+                  and the badges never lined up down the page. A column pins them
+                  by table layout, which no caption can move. */}
+              <th
+                class="p-3 text-left whitespace-nowrap"
+                title="Derived from live campaigns — not the manual Status label"
+              >
+                Activity
+              </th>
               {/* Internal commercial classification — admin + coordination only */}
               <Show when={canSeeValueTier()}>
                 <th class="p-3 text-left whitespace-nowrap">Value Tier</th>
@@ -1103,6 +1115,10 @@ export default function Clients() {
                       {/* Engagement status */}
                       <td class="p-3">
                         <div class="h-5 w-20 bg-gray-200 dark:bg-gray-700 rounded-full" />
+                      </td>
+                      {/* Activity */}
+                      <td class="p-3">
+                        <div class="h-5 w-20 bg-gray-200 dark:bg-gray-700 rounded" />
                       </td>
                       {/* Value tier */}
                       <Show when={canSeeValueTier()}>
@@ -1218,25 +1234,27 @@ export default function Clients() {
                     {/* Engagement status — clickable badge + latest reason.
                         stopPropagation: the row itself navigates to the client
                         dashboard, and opening the popover must not do that. */}
-                    <td class="p-3" onClick={(e) => e.stopPropagation()}>
-                      <div class="flex items-start gap-2">
-                        <ClientStatusControl
-                          clientId={pkOf(client)}
-                          status={statusOf(client)}
-                          latestChange={changeOf(client)}
-                          showCaption
-                          onChanged={(payload) =>
-                            applyStatusChange(pkOf(client), payload)
-                          }
-                        />
-                        {/* Derived activity + the mismatch flag. Read-only — it
-                            follows the campaigns, there is nothing to set. */}
-                        <CampaignActivityBadge
-                          activity={client.campaign_activity}
-                          engagement={statusOf(client)}
-                          class="mt-[1px]"
-                        />
-                      </div>
+                    <td class="p-3 align-top" onClick={(e) => e.stopPropagation()}>
+                      <ClientStatusControl
+                        clientId={pkOf(client)}
+                        status={statusOf(client)}
+                        latestChange={changeOf(client)}
+                        showCaption
+                        onChanged={(payload) =>
+                          applyStatusChange(pkOf(client), payload)
+                        }
+                      />
+                    </td>
+
+                    {/* Derived activity + the mismatch flag. Read-only — it
+                        follows the campaigns, there is nothing to set. Its own
+                        column, so every badge starts at the same x no matter how
+                        long the engagement caption beside it runs. */}
+                    <td class="p-3 align-top">
+                      <CampaignActivityBadge
+                        activity={client.campaign_activity}
+                        engagement={statusOf(client)}
+                      />
                     </td>
 
                     {/* Value tier — its own column rather than crowded into the
@@ -1349,7 +1367,7 @@ export default function Clients() {
                 <tr>
                   <td
                     colspan={
-                      (isCampaignManager() ? 9 : 10) +
+                      (isCampaignManager() ? 10 : 11) +
                       (canSeeValueTier() ? 1 : 0)
                     }
                     class="py-16 text-center text-gray-400 dark:text-gray-500"
@@ -1379,7 +1397,7 @@ export default function Clients() {
             <tr class="border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60">
               <td
                 colspan={
-                  (isCampaignManager() ? 7 : 8) + (canSeeValueTier() ? 1 : 0)
+                  (isCampaignManager() ? 8 : 9) + (canSeeValueTier() ? 1 : 0)
                 }
                 class="px-4 py-2.5 text-xs text-gray-500 dark:text-gray-400"
               >
