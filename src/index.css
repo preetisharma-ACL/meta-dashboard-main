@@ -1454,3 +1454,92 @@
 .eye-btn:hover {
     color: #9dabbc;       /* slightly brighter on hover */
 }
+/* ── Tricolour ambience ─────────────────────────────────────────────────────
+   A tiranga-INSPIRED wash, deliberately not the flag. The earlier theme
+   (removed in 857ece2) painted literal saffron across the top of the viewport
+   and literal green across the bottom; this one reads as the same three
+   colours without quoting them:
+
+     marigold  #D98E2B   warmer and deeper than saffron #FF9933, and already
+                         the gold end of the app's crimson→gold headings
+     ivory     the CLEAR middle — the white band is an absence here, which is
+                         what keeps the working area legible
+     emerald   #0F7A55   a deep forest-teal rather than flag green #138808
+     navy      #14233A   the app's own navy, standing in for the chakra blue
+
+   The geometry is a TOP-TO-BOTTOM read: marigold across the top of the
+   viewport, clear through the middle, emerald across the bottom. The layer is
+   fixed to the viewport rather than the document, so the bands stay put while a
+   long page scrolls under them — the ambience belongs to the window, not to
+   whichever screen happens to be open.
+
+   It has to sit ABOVE the page content, not behind it — nearly every page
+   paints its own opaque bg-gray-50/bg-white wrapper, which would hide a layer
+   underneath. pointer-events:none keeps it click-through, and z-index 20 leaves
+   the sidebar (z-50), header (z-30), modals and dropdowns above it, so the
+   chrome stays untinted and the colour lives on the working canvas.
+
+   STRENGTH. Because it sits over the content, every point of alpha is paid for
+   in contrast. The budget is spent unevenly on purpose:
+     • top     13% marigold at the very top, where the page is chrome and margin
+               rather than cards
+     • bottom  6.5% emerald — half the top, and starting later
+     • middle  36%–68% of the viewport height is fully CLEAR — that band is
+               where forms, tables and readable copy live, and it stays the
+               lightest part of the screen
+     • corners two wide glows sharpen the top-left and bottom-right ends of the
+               bands so the wash has some depth instead of reading as two flat
+               stripes; they follow the vertical gradient, they don't fight it
+   A tint, not a colour field: at 13% the bands are just visible as warmth and
+   coolness at the two edges, and body text on white stays around 17:1 — far
+   clear of the 4.5:1 floor. */
+.tricolour-wash {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    pointer-events: none;
+    background:
+        /* depth at the two ends of the run — subtle, and in the same hues */
+        radial-gradient(64% 26% at 12% 0%, rgba(217, 142, 43, 0.05), rgba(217, 142, 43, 0) 74%),
+        radial-gradient(64% 24% at 88% 100%, rgba(15, 122, 85, 0.02), rgba(15, 122, 85, 0) 74%),
+        /* The run itself: marigold → clear → emerald, top to bottom. The two
+           ends are NOT symmetric — the emerald half runs at about half the
+           marigold's alpha and holds the clear band four points further down.
+           A green cast sits heavier on the eye than a warm one at equal alpha,
+           and the bottom of the viewport is where tables and footers end up, so
+           the cool end stays the fainter of the two. */
+        linear-gradient(
+            180deg,
+            rgba(217, 142, 43, 0.13) 0%,
+            rgba(217, 142, 43, 0.075) 14%,
+            rgba(217, 142, 43, 0.02) 30%,
+            rgba(255, 255, 255, 0) 36%,
+            rgba(255, 255, 255, 0) 68%,
+            rgba(15, 122, 85, 0.012) 78%,
+            rgba(15, 122, 85, 0.035) 90%,
+            rgba(15, 122, 85, 0.065) 100%
+        );
+}
+
+/* Dark mode runs at roughly a third of the light alphas, on LIFTED hues. The
+   same values over near-black read as grey haze rather than colour — and the
+   marigold in particular goes muddy — so the stops move to the tints
+   (#E9AE5C / #1AA070) the app already uses for dark surfaces. */
+:root.dark .tricolour-wash {
+    background:
+        radial-gradient(64% 26% at 12% 0%, rgba(233, 174, 92, 0.03), rgba(233, 174, 92, 0) 74%),
+        radial-gradient(64% 24% at 88% 100%, rgba(26, 160, 112, 0.012), rgba(26, 160, 112, 0) 74%),
+        linear-gradient(
+            180deg,
+            rgba(233, 174, 92, 0.07) 0%,
+            rgba(233, 174, 92, 0.04) 14%,
+            rgba(233, 174, 92, 0.012) 30%,
+            rgba(255, 255, 255, 0) 36%,
+            rgba(255, 255, 255, 0) 68%,
+            rgba(26, 160, 112, 0.008) 78%,
+            rgba(26, 160, 112, 0.02) 90%,
+            rgba(26, 160, 112, 0.035) 100%
+        );
+}
+
+/* Ambient only — nothing here animates, so there is no reduced-motion case. */

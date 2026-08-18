@@ -8,6 +8,7 @@ import Sidebar from "./components/Sidebar";
 import Header from "./components/Header";
 import CMBanner from "./components/CMBanner";
 import SuspendedAccountsBanner from "./components/SuspendedAccountsBanner";
+import TricolourWash from "./components/common/TricolourWash";
 import MainDashboard from "./pages/ClientDashboard";
 import AddProject from "./pages/AddProjects";
 import Billing from "./pages/Billing";
@@ -126,7 +127,15 @@ function Root(props) {
     onCleanup(() => window.removeEventListener("auth-logout", handleLogout));
   });
 
-  return <>{props.children}</>;
+  return (
+    <>
+      {/* Tricolour backdrop for every route. Mounted HERE rather than in Layout
+          so it also covers /login and the public intro, which render outside
+          it. Purely decorative; see components/common/TricolourWash. */}
+      <TricolourWash />
+      {props.children}
+    </>
+  );
 }
 
 //  ProtectedLayout combines auth guard + layout in one reusable component
