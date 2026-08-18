@@ -1454,21 +1454,23 @@
 .eye-btn:hover {
     color: #9dabbc;       /* slightly brighter on hover */
 }
-/* ── Tricolour ambience ─────────────────────────────────────────────────────
-   A tiranga-INSPIRED wash, deliberately not the flag. The earlier theme
-   (removed in 857ece2) painted literal saffron across the top of the viewport
-   and literal green across the bottom; this one reads as the same three
-   colours without quoting them:
+/* ── Page ambience ──────────────────────────────────────────────────────────
+   A gold-to-lilac wash that started from the tiranga idea and ended up in the
+   app's own palette. The earlier theme (removed in 857ece2) painted literal
+   saffron across the top of the viewport and literal green across the bottom;
+   green at the bottom is exactly what made it read as the flag, so the far end
+   is a pale lilac instead — no third band, and nothing at either end that could
+   be mistaken for a tricolour:
 
-     marigold  #D98E2B   warmer and deeper than saffron #FF9933, and already
-                         the gold end of the app's crimson→gold headings
-     ivory     the CLEAR middle — the white band is an absence here, which is
-                         what keeps the working area legible
-     emerald   #0F7A55   a deep forest-teal rather than flag green #138808
-     navy      #14233A   the app's own navy, standing in for the chakra blue
+     marigold  #FAF0E3   warm top — the gold end of the crimson→gold headings
+     white     the middle — untouched, which is what keeps the working area
+                         legible
+     lilac     #F5EAFD   pale bottom, specified exactly, and reached by MULTIPLY
+                         rather than alpha (see the rule) so the hex lands as
+                         given rather than as a tint of it
 
    The geometry is a TOP-TO-BOTTOM read: marigold across the top of the
-   viewport, clear through the middle, emerald across the bottom. The layer is
+   viewport, clear through the middle, lilac across the bottom. The layer is
    fixed to the viewport rather than the document, so the bands stay put while a
    long page scrolls under them — the ambience belongs to the window, not to
    whichever screen happens to be open.
@@ -1479,66 +1481,73 @@
    the sidebar (z-50), header (z-30), modals and dropdowns above it, so the
    chrome stays untinted and the colour lives on the working canvas.
 
-   STRENGTH. Because it sits over the content, every point of alpha is paid for
-   in contrast. The budget is spent unevenly on purpose:
-     • top     13% marigold at the very top, where the page is chrome and margin
-               rather than cards
-     • bottom  6.5% emerald — half the top, and starting later
-     • middle  36%–68% of the viewport height is fully CLEAR — that band is
-               where forms, tables and readable copy live, and it stays the
-               lightest part of the screen
+   The run, top to bottom:
+     • top     #FAF0E3 marigold at the very top, where the page is chrome and
+               margin rather than cards
+     • middle  36%–62% of the viewport height is #FFFFFF — under multiply that
+               is a literal no-op, so the band where forms, tables and readable
+               copy live is left exactly as the page painted it
+     • bottom  #F5EAFD as specified, reached at the foot of the viewport
      • corners two wide glows sharpen the top-left and bottom-right ends of the
                bands so the wash has some depth instead of reading as two flat
                stripes; they follow the vertical gradient, they don't fight it
-   A tint, not a colour field: at 13% the bands are just visible as warmth and
-   coolness at the two edges, and body text on white stays around 17:1 — far
-   clear of the 4.5:1 floor. */
+   Under multiply the contrast cost is close to nil — dark body copy multiplied
+   by a near-white wash is still dark body copy — so text over the lilac band
+   holds around 16:1, nowhere near the 4.5:1 floor. */
 .tricolour-wash {
     position: fixed;
     inset: 0;
     z-index: 20;
     pointer-events: none;
+    /* MULTIPLY, not alpha. An exact target shade like #F5EAFD is unreachable
+       with a translucent overlay: it is so close to white that the alpha needed
+       to actually show it would also veil the text underneath. Multiply solves
+       both halves at once —
+         white surface x #F5EAFD  =  #F5EAFD   the exact colour, on every card
+         dark text     x #F5EAFD  ~  dark text  (17,24,39) -> (16,22,39)
+       — so the page takes the shade while body copy keeps its contrast. It also
+       means WHITE is the no-op stop: the clear middle band is literally #FFFFFF
+       rather than a transparent one, and the gradient can be fully opaque. */
+    mix-blend-mode: multiply;
     background:
-        /* depth at the two ends of the run — subtle, and in the same hues */
+        /* depth at the two ends of the run — alpha layers, composited onto the
+           opaque gradient below before the whole thing multiplies */
         radial-gradient(64% 26% at 12% 0%, rgba(217, 142, 43, 0.05), rgba(217, 142, 43, 0) 74%),
-        radial-gradient(64% 24% at 88% 100%, rgba(15, 122, 85, 0.02), rgba(15, 122, 85, 0) 74%),
-        /* The run itself: marigold → clear → emerald, top to bottom. The two
-           ends are NOT symmetric — the emerald half runs at about half the
-           marigold's alpha and holds the clear band four points further down.
-           A green cast sits heavier on the eye than a warm one at equal alpha,
-           and the bottom of the viewport is where tables and footers end up, so
-           the cool end stays the fainter of the two. */
+        radial-gradient(64% 24% at 88% 100%, rgba(199, 158, 238, 0.13), rgba(199, 158, 238, 0) 74%),
+        /* The run itself: marigold → white → #F5EAFD, top to bottom. #FAF0E3 at
+           the top is the marigold tint the old 13% alpha resolved to, so the
+           warm end is unchanged; only the cool end moved. */
         linear-gradient(
             180deg,
-            rgba(217, 142, 43, 0.13) 0%,
-            rgba(217, 142, 43, 0.075) 14%,
-            rgba(217, 142, 43, 0.02) 30%,
-            rgba(255, 255, 255, 0) 36%,
-            rgba(255, 255, 255, 0) 68%,
-            rgba(15, 122, 85, 0.012) 78%,
-            rgba(15, 122, 85, 0.035) 90%,
-            rgba(15, 122, 85, 0.065) 100%
+            #faf0e3 0%,
+            #fcf5ec 14%,
+            #fefcf8 30%,
+            #ffffff 36%,
+            #ffffff 62%,
+            #fcf9fe 72%,
+            #f9f2fe 86%,
+            #f5eafd 100%
         );
 }
 
-/* Dark mode runs at roughly a third of the light alphas, on LIFTED hues. The
-   same values over near-black read as grey haze rather than colour — and the
-   marigold in particular goes muddy — so the stops move to the tints
-   (#E9AE5C / #1AA070) the app already uses for dark surfaces. */
+/* Dark mode goes back to plain alpha: multiplying a near-white wash into a
+   near-black page is a no-op, so the effect would simply vanish. Same shape,
+   lifted hues, roughly half strength. */
 :root.dark .tricolour-wash {
+    mix-blend-mode: normal;
     background:
         radial-gradient(64% 26% at 12% 0%, rgba(233, 174, 92, 0.03), rgba(233, 174, 92, 0) 74%),
-        radial-gradient(64% 24% at 88% 100%, rgba(26, 160, 112, 0.012), rgba(26, 160, 112, 0) 74%),
+        radial-gradient(64% 24% at 88% 100%, rgba(191, 150, 235, 0.04), rgba(191, 150, 235, 0) 74%),
         linear-gradient(
             180deg,
             rgba(233, 174, 92, 0.07) 0%,
             rgba(233, 174, 92, 0.04) 14%,
             rgba(233, 174, 92, 0.012) 30%,
             rgba(255, 255, 255, 0) 36%,
-            rgba(255, 255, 255, 0) 68%,
-            rgba(26, 160, 112, 0.008) 78%,
-            rgba(26, 160, 112, 0.02) 90%,
-            rgba(26, 160, 112, 0.035) 100%
+            rgba(255, 255, 255, 0) 62%,
+            rgba(191, 150, 235, 0.03) 72%,
+            rgba(191, 150, 235, 0.07) 86%,
+            rgba(191, 150, 235, 0.11) 100%
         );
 }
 

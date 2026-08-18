@@ -94,13 +94,15 @@ const coordinationBlurb = (c) =>
     : "Lead delivery, daily reports and data corrections.");
 
 // ── Avatar ──────────────────────────────────────────────────────────────────
-// A monogram on a brand gradient disc — the same fallback Slack, Notion and
-// Linear use when a person has no photo. Generated faces were tried here and
-// rejected: a face hashed from a name is a guess at someone's appearance, and a
-// letter never has to be one.
+// A real headshot when photo_url is set, otherwise a monogram on a brand
+// gradient disc — the same fallback Slack, Notion and Linear use. A broken or
+// expired photo URL falls through to the monogram rather than leaving a hole in
+// the card.
 //
-// photo_url wins whenever it is set, and a broken or expired URL falls through
-// to the monogram rather than leaving a hole in the card.
+// Nothing about the person is drawn from their name beyond the initial: the
+// roster is different for every client and grows over time, so anything the page
+// had to infer or keep a list of would be wrong for someone eventually. The
+// monogram is the one fallback that never is.
 
 // Deep navy for the routine contacts, crimson for the escalation tier. Both
 // carry a gold letter — the third colour of the app's ramp — and both are two
