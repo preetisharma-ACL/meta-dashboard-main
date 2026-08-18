@@ -41,7 +41,12 @@ export default function EntityPicker(props) {
   // Keyboard cursor into filtered(). -1 = nothing highlighted, so a blind Enter
   // never commits a client the operator hasn't actually looked at.
   const [active, setActive] = createSignal(-1);
-  let wrapper;
+  // `control` is the input row (field + clear/chevron buttons) — deliberately
+  // NOT the outer wrapper, which also holds the label and the hint/error text.
+  // Testing containment against the wrapper made a click on the "CLIENT" label
+  // count as a click inside the combobox, so the list stayed open; clicking a
+  // few pixels higher (outside the wrapper) closed it.
+  let control;
   let inputEl;
   let listEl;
 
@@ -62,7 +67,12 @@ export default function EntityPicker(props) {
 
   onMount(() => {
     const onDocClick = (e) => {
-      if (wrapper && !wrapper.contains(e.target)) close();
+      if (!open()) return;
+      // The list is a sibling of the control, so both have to be checked;
+      // anything else — label, hint, the rest of the form — is "outside".
+      const inside =
+        control?.contains(e.target) || listEl?.contains(e.target);
+      if (!inside) close();
     };
     document.addEventListener("click", onDocClick);
     onCleanup(() => document.removeEventListener("click", onDocClick));
@@ -167,7 +177,7 @@ export default function EntityPicker(props) {
   };
 
   return (
-    <div ref={wrapper} class="relative">
+    <div class="relative">
       <Show when={props.label}>
         <label class={labelClass}>
           {props.label}
@@ -178,7 +188,7 @@ export default function EntityPicker(props) {
         </label>
       </Show>
 
-      <div class="relative">
+      <div ref={control} class="relative">
         <input
           ref={inputEl}
           type="text"

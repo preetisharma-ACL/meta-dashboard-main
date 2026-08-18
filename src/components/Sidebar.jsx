@@ -83,15 +83,20 @@ const SmallIcon = ({ d }) => (
 // Stroked in its own colour with round joins, which softens the three corners
 // without needing a rounded-triangle path. No chip behind it — the colour
 // swap (slate → crimson) carries the open state on its own.
-const ChevronIcon = ({ open }) => (
+// props.open is read through `props`, NOT destructured: destructuring in the
+// parameter list reads the prop getter once, at creation, so the caret would
+// freeze in whatever state the group had on first render — a group that was
+// remembered as open in localStorage kept a red, flipped caret forever, even
+// while a different group was the expanded one.
+const ChevronIcon = (props) => (
   <svg
     class={
       "w-4 h-4 flex-shrink-0 transition-all duration-300 ease-out group-hover:scale-110 " +
-      (open
+      (props.open
         ? "text-[#AC2334] dark:text-red-300 drop-shadow-[0_1px_1px_rgba(172,35,52,.25)]"
         : "text-[#54657E] group-hover:text-[#AC2334] dark:text-gray-400 dark:group-hover:text-red-300")
     }
-    style={{ transform: open ? "rotate(180deg)" : "rotate(0deg)" }}
+    style={{ transform: props.open ? "rotate(180deg)" : "rotate(0deg)" }}
     viewBox="0 0 24 24"
     fill="currentColor"
     stroke="currentColor"
