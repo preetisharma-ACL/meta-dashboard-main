@@ -805,15 +805,29 @@ export default function Sidebar() {
   // Keep the submenu group that owns the active route expanded — including on a
   // fresh page load / refresh, where openMenu() would otherwise reset to null
   // and collapse the group even though we're still on one of its sub-pages.
-  // Runs on mount and whenever the route changes; it only ever OPENS the owning
-  // group, so a user manually collapsing a group while staying on the same page
-  // (no pathname change) is left untouched.
+  // Runs on mount and whenever the route changes.
+  //
+  // The mirror case: landing on a TOP-LEVEL page (a row with no subMenus, e.g.
+  // "CPL Rules & Alerts") collapses whatever group was open, so an expanded
+  // group never sits open next to an active row it doesn't own. Only an exact
+  // top-level path match closes it — drill-down routes (/project/:id,
+  // /campaign/:id, /ad-accounts/:id, /client-workspace/:nomenId) match neither
+  // branch and leave the remembered group alone, which is the whole reason
+  // openMenu is persisted. A user manually collapsing a group while staying on
+  // the same page (no pathname change) is likewise untouched.
   createEffect(() => {
     const path = location.pathname;
-    const parent = menuItems().find((item) =>
+    const items = menuItems();
+    const parent = items.find((item) =>
       item.subMenus?.some((sub) => sub.path === path),
     );
-    if (parent) setOpenMenu(parent.name);
+    if (parent) {
+      setOpenMenu(parent.name);
+      return;
+    }
+    if (items.some((item) => !item.subMenus && item.path === path)) {
+      setOpenMenu(null);
+    }
   });
 
   return (
