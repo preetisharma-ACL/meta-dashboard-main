@@ -1119,17 +1119,16 @@ function ManagerCard(props) {
         </For>
       </div>
 
-      {/* Footer — the expander (when there's more roster than the preview shows)
-          on the left, the manager's dashboard on the right. Always rendered, so
-          every card ends on the same action row whether or not it expands. */}
-      <div class="mt-auto flex items-center justify-between gap-3 px-5 py-3 border-t border-gray-100 dark:border-gray-800">
-        <Show
-          when={!props.searching && props.card.clients.length > PREVIEW_COUNT}
-          fallback={<span />}
-        >
+      {/* Footer — the expander band on top, then the dashboard hand-off as a
+          centred tab that flares out toward the card's bottom edge. The flare is
+          a clip-path trapezoid (narrow at the top, full-height wide at the base)
+          so the tab looks seated INTO the edge rather than floating on it. A solid
+          dark-blue fill and white label make it the card's one clear action. */}
+      <div class="mt-auto border-t border-gray-100 dark:border-gray-800">
+        <Show when={!props.searching && props.card.clients.length > PREVIEW_COUNT}>
           <button
             onClick={() => setExpanded((v) => !v)}
-            class="-mx-2 inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[13px] font-semibold text-[#AC2334] hover:bg-[#AC2334]/[0.06] transition-colors"
+            class="w-full flex items-center gap-1.5 px-5 py-2.5 border-b border-gray-100 dark:border-gray-800 text-left text-[13px] font-semibold text-gray-500 dark:text-gray-400 hover:text-[#AC2334] dark:hover:text-[#E4566A] transition-colors"
           >
             {expanded()
               ? "Show less"
@@ -1148,24 +1147,46 @@ function ManagerCard(props) {
           </button>
         </Show>
 
-        <A
-          href={dashboardHref()}
-          title={`Open ${label()}'s dashboard`}
-          class="group inline-flex flex-shrink-0 items-center gap-1.5 rounded-xl bg-[#14233A] dark:bg-gray-700 px-4 py-2 text-[13px] font-semibold text-white shadow-sm hover:bg-[#0E1A2C] dark:hover:bg-gray-600 transition-colors whitespace-nowrap"
-        >
-          View dashboard
-          <svg
-            class="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
+        <div class="flex justify-center bg-[#F5F8FC] dark:bg-blue-500/10">
+          <A
+            href={dashboardHref()}
+            title={`Open ${label()}'s dashboard`}
+            class="group flex items-center justify-center gap-2
+                   [clip-path:polygon(11%_0,89%_0,100%_100%,0_100%)]
+                   bg-[#1B3A6B] dark:bg-[#2B57A0]
+                   px-12 py-3 text-[13.5px] font-bold text-white
+                   hover:bg-[#0F2748] dark:hover:bg-[#3567BC]
+                   focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-white
+                   transition-colors"
           >
-            <path d="m9 5 7 7-7 7" />
-          </svg>
-        </A>
+            <svg
+              class="w-[15px] h-[15px] opacity-80"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <rect x="3" y="3" width="7" height="9" rx="1.5" />
+              <rect x="14" y="3" width="7" height="5" rx="1.5" />
+              <rect x="14" y="12" width="7" height="9" rx="1.5" />
+              <rect x="3" y="16" width="7" height="5" rx="1.5" />
+            </svg>
+            View dashboard
+            <svg
+              class="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="m9 5 7 7-7 7" />
+            </svg>
+          </A>
+        </div>
       </div>
     </div>
   );

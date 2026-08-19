@@ -467,7 +467,7 @@ export default function Assignments() {
         </div>
       </Show>
 
-      <div class="grid grid-cols-1 lg:grid-cols-[400px_1fr] xl:grid-cols-[460px_1fr] gap-5 items-start">
+      <div class="grid grid-cols-1 lg:grid-cols-[540px_1fr] xl:grid-cols-[640px_1fr] gap-5 items-start">
         {/* ════════ LEFT — ROSTER ════════ */}
         <div class={`${CARD} overflow-hidden lg:sticky lg:top-6`}>
           <Show
