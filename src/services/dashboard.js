@@ -70,19 +70,33 @@ export const fetchManualBatches = async () => {
 // Returns the FINISHED per-project ledger — spend, Meta / fed / total /
 // replaced / billable leads, CPL, impressions, clicks and campaign status
 // counts — plus a matching `totals` block. It replaces the browser-side join
-// this dashboard used to do: fetchAllCampaigns(10_000) + fetchBulkCampaignInsights
-// over every campaign id + the manual / fed / replacement batch sweeps, all
-// reduced in the tab. For an admin that was the whole agency's data over the
-// wire; this is one ~0.2s request.
+// this dashboard used to do: for privileged roles fetchAllCampaigns(10_000) plus
+// fetchBulkCampaignInsights over every campaign id plus the fed / replacement
+// batch sweeps; for a client a per-project campaigns sweep (2N requests on every
+// date change), a bulk-insights call and /leads/my-replacements/. All of it is
+// now one ~0.2s request per date window.
 //
 // Both dates are optional — the backend defaults to month-to-date, floors at
 // 2026-04-01 and caps at today, so nothing is clamped on this side.
 //
-// NOT FOR CLIENT LOGINS. This sums CampaignInsight.spend RAW — the agency's own
-// cost, with no display config and no markup — which is correct for admin / CM /
-// sales / coordination / accounts and ~23% under what a client is billed. The
-// backend 403s clients; callers must also make sure the request cannot fire (see
-// ClientDashboard's ledger resources, whose source is false for a client).
+// TWO PAYLOAD SHAPES, ONE URL. The money keys differ by role, on purpose:
+//
+//   privileged (admin / CM / sales / coordination / accounts)
+//     `spend` + `cpl` — RAW agency cost. Our true ad spend: no display config,
+//     no markup. What these roles are meant to see.
+//
+//   client
+//     `premium_spend` + `premium_cpl`, and NO `spend` / `cpl` keys AT ALL —
+//     absent, not zeroed, so a raw figure cannot reach a client through some
+//     future change. premium_spend is marked-up spend for a hybrid client,
+//     leads × fixed_cpl for a CPL client, and raw spend for a retainer client
+//     (they pay a flat fee, so the ad spend genuinely is theirs to see).
+//
+// Which shape you get is decided server-side by the caller's role — but the
+// READER is picked on this side, and the two must agree. readDashboardLedger()
+// and readClientLedger() below are deliberately separate functions that each
+// look at one set of keys and never fall back to the other's: a mismatch shows
+// up as a visible zero, never as a 23% understatement wearing the right label.
 //
 // SCOPING IS SERVER-SIDE. The same URL returns each role its own slice, so
 // nothing here filters by role. We still send the CLIENT CONTEXT — client_nomen
@@ -106,7 +120,7 @@ export const fetchDashboardLedger = async ({ startDate, endDate } = {}) => {
   return res;
 };
 
-// ── Ledger reader ────────────────────────────────────────────────────────────
+// ── Ledger readers ───────────────────────────────────────────────────────────
 // Envelope-proof read of a ledger response into the shape the dashboard renders.
 // Every numeric field is coerced HERE and nowhere else, so a string "912874.47"
 // can't reach a .toLocaleString() as a string (a silent no-op that drops the
@@ -121,18 +135,15 @@ const num = (v) => {
   return Number.isFinite(n) ? n : 0;
 };
 
-const ledgerRow = (r) => ({
+// Everything that means the same thing for every role.
+const commonRow = (r) => ({
   projectId: r?.project_id ?? null,
   projectName: r?.project_name ?? "",
-  spend: num(r?.spend),
   metaLeads: num(r?.meta_leads),
   fedLeads: num(r?.fed_leads),
   totalLeads: num(r?.total_leads),
   replacedLeads: num(r?.replaced_leads),
   billableLeads: num(r?.billable_leads),
-  // null (not 0) when the backend could not divide — no Meta leads in range.
-  // A 0 here would read as "free leads"; callers decide how to print the gap.
-  cpl: r?.cpl == null ? null : num(r.cpl),
   impressions: num(r?.impressions),
   clicks: num(r?.clicks),
   campaignsTotal: num(r?.campaigns_total),
@@ -141,9 +152,33 @@ const ledgerRow = (r) => ({
   campaignsCompleted: num(r?.campaigns_completed),
 });
 
-export const readDashboardLedger = (res) => {
+// `spend` / `cpl` on the NORMALISED row mean "the money this viewer is entitled
+// to see". Which wire keys that came from is settled here and nowhere else, so
+// no render site ever has to know which role it is drawing for.
+//
+// cpl is null (not 0) when the backend could not divide — no Meta leads in
+// range. A 0 there would read as "free leads"; callers decide how to print it.
+
+// PRIVILEGED — raw agency cost.
+const ledgerRow = (r) => ({
+  ...commonRow(r),
+  spend: num(r?.spend),
+  cpl: r?.cpl == null ? null : num(r.cpl),
+});
+
+// CLIENT — the marked-up / fixed-CPL figure they are billed against. This
+// function never reads `spend` or `cpl`, and a client payload never carries
+// them. Note there is no second "premium CPL" column for a client: their spend
+// already IS the marked-up figure, so premium_cpl is their AVG CPL.
+const clientRow = (r) => ({
+  ...commonRow(r),
+  spend: num(r?.premium_spend),
+  cpl: r?.premium_cpl == null ? null : num(r.premium_cpl),
+});
+
+const buildLedger = (res, rowOf) => {
   const data = res?.data ?? {};
-  const rows = (Array.isArray(data.rows) ? data.rows : []).map(ledgerRow);
+  const rows = (Array.isArray(data.rows) ? data.rows : []).map(rowOf);
 
   // project_id → row, for the join against the projects list (which carries the
   // city / type / budget / logo the ledger response doesn't).
@@ -156,20 +191,46 @@ export const readDashboardLedger = (res) => {
     rows,
     byProject,
     totals: {
-      ...ledgerRow(data.totals ?? {}),
+      ...rowOf(data.totals ?? {}),
       projectCount: num(data.totals?.project_count),
     },
     dateRange: data.date_range ?? null,
     scope: data.scope ?? null,
     // Distinguishes "the response landed and this client genuinely has nothing"
     // from "nothing has come back yet" — the difference between a truthful 0 and
-    // a placeholder, which the loading states below key off.
+    // a placeholder, which the loading states key off.
     loaded: true,
     // The request finished. `settled` is also true on a FAILURE (see the
     // caller), which is what stops a count-up animating forever on an error;
     // `loaded` stays false there so nothing treats the zeros as real.
     settled: true,
   };
+};
+
+export const readDashboardLedger = (res) => buildLedger(res, ledgerRow);
+
+// A client payload must be free of the raw money keys. The backend keeps them
+// out; this is the tripwire for the day something re-introduces one, because the
+// failure it guards against is invisible by construction — a plausible number,
+// 23% light, under exactly the right label. Dev only.
+const assertNoRawMoney = (res) => {
+  if (!import.meta.env?.DEV) return;
+  const rows = Array.isArray(res?.data?.rows) ? res.data.rows : [];
+  const suspect = rows.find(
+    (r) => r && ("spend" in r || "cpl" in r || "spend_raw" in r),
+  );
+  if (suspect) {
+    console.error(
+      "[ledger] a CLIENT payload carried a raw money key (spend / cpl / " +
+        "spend_raw). readClientLedger ignores it, so nothing raw reached the " +
+        `screen — but the endpoint should not return it. Project ${suspect.project_id}.`,
+    );
+  }
+};
+
+export const readClientLedger = (res) => {
+  assertNoRawMoney(res);
+  return buildLedger(res, clientRow);
 };
 
 // The shape every consumer reads BEFORE the first response lands, so no memo has

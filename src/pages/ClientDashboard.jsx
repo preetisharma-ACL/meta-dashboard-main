@@ -44,13 +44,10 @@ import {
   fetchProjects,
   fetchDashboardLedger,
   readDashboardLedger,
+  readClientLedger,
   EMPTY_LEDGER,
 } from "../services/dashboard";
 import { fmtFed } from "../services/fedLeads";
-import {
-  fetchCampaigns,
-  fetchBulkCampaignInsights,
-} from "../services/campaigns";
 import { fetchAllAdminClients } from "./admin/services/fetchClients";
 import { fetchSalesClients } from "../services/sales";
 import Avatar from "../components/common/Avatar";
@@ -73,8 +70,6 @@ import {
   fetchDashboardSummary,
   summaryLeadBreakdown,
   showsReplacement,
-  fetchMyReplacements,
-  replacedLeadsByProject,
 } from "../services/leadReplacement";
 import { canRecordReplacement } from "../stores/currentUser";
 import { scopeKey } from "../stores/cmScope";
@@ -88,19 +83,6 @@ import SuccessToast, { showToast } from "../components/common/SuccessToast";
 // slow client-data request can no longer clobber freshly loaded admin data.
 let activeLoadToken = 0;
 const bumpLoadToken = () => ++activeLoadToken;
-
-// ── Spend on a CLIENT's own bulk-insights row ────────────────────────────────
-// A client's rows come back through the backend's DISPLAY PIPELINE, so `spend`
-// is already the figure they are billed against: marked-up for a hybrid client,
-// leads × fixed_cpl for a CPL client, and ZERO on a day with no display config
-// rather than the raw charge passing through.
-//
-// `spend_raw` — the actual Meta charge, i.e. OUR cost — must never be read here,
-// even defensively. It runs ~23% under the client-facing figure on a real hybrid
-// client, so a fallback that prefers it would quietly show agency cost the moment
-// the backend started returning the field on a client row. Privileged roles read
-// raw spend from /dashboard/ledger/ instead; this function is client-only.
-const clientSpendOf = (row) => parseFloat(row?.spend || 0);
 
 // Replaced leads read as a deduction, so a real count shows as "−N"; none shows
 // a plain 0 — the batch list genuinely says "nothing replaced" for that project,
@@ -125,20 +107,6 @@ const assertLeadIdentity = (label, meta, fed, total) => {
         `The /dashboard/ledger/ row does not reconcile — do not patch it here.`,
     );
   }
-};
-
-// Reported once per bulk load when rows never reach a project — the silent
-// drop path behind a short Total. `dropped` rows are gone from leads AND spend.
-const reportRowAudit = (audit) => {
-  if (!DEV_ASSERTS) return;
-  if (audit.dropped === 0 && audit.dateless === 0) return;
-  console.error(
-    `[ledger] bulk rows not counted: ${audit.dropped} unmapped ` +
-      `(${audit.droppedLeads} leads — campaign_id not in the requested set), ` +
-      `${audit.dateless} dateless (${audit.datelessLeads} leads — no row.date, ` +
-      `so every date filter drops them). Received ${audit.received} rows, ` +
-      `${audit.leads} leads total.`,
-  );
 };
 
 // ── Design-section toggles (UI only) ─────────────────────────────────────────
@@ -302,18 +270,17 @@ export default function MainDashboard() {
   const allProjects = () => projectsCache.allProjects;
 
   // ── THE ROLE SPLIT ─────────────────────────────────────────────────────────
-  // /dashboard/ledger/ sums CampaignInsight.spend RAW — the agency's true cost,
-  // with no display config and no markup applied. That is the right figure for
-  // admin / CM / sales / coordination / accounts, and the WRONG one for a client:
-  // measured on a real hybrid client the raw ledger runs ~23% under what they are
-  // supposed to see (SKAImperia 3,320.60 raw vs 4,316.79 display). The endpoint
-  // 403s client logins for exactly that reason, but a 403 is a backstop, not a
-  // design — every client-facing code path below is gated so the call can't fire.
-  //
-  // Clients therefore stay on the per-client campaign + bulk-insights sweep,
-  // whose rows come back through the display pipeline already. That was never
-  // the slow case this change was aimed at: it is ONE client's data (~0.05s),
-  // not the whole agency's.
+  // Every role now reads /dashboard/ledger/ — one call, one shape on this side.
+  // What differs is which MONEY the endpoint returns, and therefore which reader
+  // decodes it:
+  //   • admin / CM / sales / coordination / accounts → `spend` + `cpl`, RAW
+  //     agency cost, via readDashboardLedger()
+  //   • client → `premium_spend` + `premium_cpl` (marked-up for hybrid, leads ×
+  //     fixed_cpl for CPL, raw passthrough for retainer, who pay a flat fee), via
+  //     readClientLedger(). A client payload carries NO `spend` / `cpl` keys at
+  //     all, so a raw figure has no route onto a client's screen.
+  // Picking the wrong reader yields a visible zero, never a plausible number that
+  // is 23% light — which is the whole point of the two key sets.
   //
   // Read from storage rather than the userRole() signal: this is needed above the
   // component's own `auth` const AND before onMount sets that signal.
@@ -328,7 +295,6 @@ export default function MainDashboard() {
 
   // ── Read from global store via accessors ─────────────────────────────────────
   const projects = () => projectsCache.data;
-  const projectInsightsMap = () => projectsCache.insightsMap;
   const loading = () => projectsCache.loading;
   const page = () => projectsCache.meta?.page ?? 1;
   // Slicing/labelling follow the user's rows-per-page choice, not the size the
@@ -339,39 +305,13 @@ export default function MainDashboard() {
   // the server's count describes a different set than the one on screen — that
   // mismatch is what printed "of 448 results" beside a single searched row.
 
-  // True once the PROJECT LIST itself has been swept in. For every role on
-  // /dashboard/ledger/ that is all the mount gate needs — the ledger resource
-  // owns its own loading state.
+  // True once the PROJECT LIST itself has been swept in — which is all the
+  // mount gate needs now, for every role. The ledger resource owns its own
+  // loading state, and no role fetches campaigns from this page any more.
   const hasRenderedProjectData = () => allProjects().length > 0;
 
-  // A CLIENT still builds its figures from the campaign/insights sweep, so for
-  // them "nothing to render" means an EMPTY insightsMap. The persisted cache can
-  // carry a fresh `lastFetchedAll` timestamp but an empty map — e.g. the write
-  // silently failed with QuotaExceededError — and a reload must re-run the sweep
-  // even though the staleness gate thinks the cache is fresh, otherwise
-  // spend/leads/CPL render as ₹0 until the TTL expires.
-  const hasRenderedCampaignData = () =>
-    projectsCache.insightsMap &&
-    Object.keys(projectsCache.insightsMap).length > 0;
-
   const needsInitialSweep = () =>
-    isAllProjectsCacheStale() ||
-    (isClientViewer() ? !hasRenderedCampaignData() : !hasRenderedProjectData());
-
-  // ── Date range the CLIENT path's campaign fetches are scoped to. Clamped:
-  //    floor 2026-04-01, ceiling today — the same window the ProjectDetails
-  //    ledger uses, so the two line up. Every other role gets this clamp from
-  //    the backend instead (/dashboard/ledger/ floors and caps it itself). ────
-  const PREMIUM_FLOOR = "2026-04-01";
-  const premiumRangeStart = () => {
-    const f = fromDate();
-    return f && f > PREMIUM_FLOOR ? f : PREMIUM_FLOOR;
-  };
-  const premiumRangeEnd = () => {
-    const today = new Date().toISOString().split("T")[0];
-    const t = toDate();
-    return t && t < today ? t : today;
-  };
+    isAllProjectsCacheStale() || !hasRenderedProjectData();
 
   // Recompute on navigation so the "Viewing Client" badge clears when the
   // client context is removed on the Main Dashboard.
@@ -769,15 +709,10 @@ export default function MainDashboard() {
       if (token !== activeLoadToken) return;
       setProjectsCache("allProjects", allData);
       setProjectsCache("lastFetchedAll", Date.now());
-      // CLIENT ONLY. Every other role's figures arrive from /dashboard/ledger/,
-      // fired by its own resource off the date range rather than by this loader.
-      // A client cannot use that endpoint (raw spend — see THE ROLE SPLIT), so
-      // they keep the original two-stage sweep: campaigns once, then ONE bulk
-      // insights call over the ids it returned.
-      if (isClientViewer()) {
-        const campaignsByProject = await deriveProjectStatuses(allData, token);
-        await loadAllProjectInsights(allData, token, campaignsByProject);
-      }
+      // Nothing chains off this for any role. The figures arrive from
+      // /dashboard/ledger/, fired by its own resource off the date range rather
+      // than by this loader; all that is left here is the projects list, which
+      // carries the city / type / budget / logo the ledger response doesn't.
     } catch (err) {
       console.error("Failed to load all projects", err);
     }
@@ -860,19 +795,12 @@ export default function MainDashboard() {
   // "unset": the backend then defaults to month-to-date, and it floors at
   // 2026-04-01 and caps at today itself, so nothing is clamped here.
   //
-  // FALSE for a client login, which stops createResource ever calling the
-  // fetcher. The endpoint 403s them, but relying on that would mean firing a
-  // request we know is wrong and rendering its failure; the call simply must not
-  // happen. See THE ROLE SPLIT above.
-  const ledgerRangeKey = () => {
-    if (isClientViewer()) return false;
-    return {
-      client: selectedClientNomen() ?? "self",
-      scope: scopeKey(),
-      start: ymd(fromDate()),
-      end: ymd(toDate()),
-    };
-  };
+  const ledgerRangeKey = () => ({
+    client: selectedClientNomen() ?? "self",
+    scope: scopeKey(),
+    start: ymd(fromDate()),
+    end: ymd(toDate()),
+  });
 
   // The CARD range (the preset chips above the hero) — a different picker, and
   // routinely a different window, so the hero gets its own request rather than
@@ -882,7 +810,6 @@ export default function MainDashboard() {
   // cardLedger() then reads the calendar response instead.
   const cardRangeKey = () => {
     const cal = ledgerRangeKey();
-    if (cal === false) return false; // client login — see ledgerRangeKey
     const { from, to } = getCardDateRange();
     const start = ymd(from);
     const end = ymd(to);
@@ -902,7 +829,13 @@ export default function MainDashboard() {
         startDate: key.start || undefined,
         endDate: key.end || undefined,
       });
-      return { ...readDashboardLedger(res), scopeSig };
+      // The reader must match the shape the backend sent for this role: a
+      // client payload carries premium_spend / premium_cpl and NO spend / cpl,
+      // so readDashboardLedger would read a raw key that isn't there and total
+      // ₹0 — visibly wrong, which is the failure mode we want. This is the ONLY
+      // place the two decoders are chosen between.
+      const read = isClientViewer() ? readClientLedger : readDashboardLedger;
+      return { ...read(res), scopeSig };
     } catch (err) {
       // A failed ledger must NOT read as "this client spent nothing" — loaded
       // stays false so nothing treats the zeros as real. But it IS settled: the
@@ -959,10 +892,7 @@ export default function MainDashboard() {
   // calendar one. Waiting on the wrong one was the second half of the same bug:
   // with two different date windows the calendar ledger settles first and would
   // release the animation while the hero's own payload is still out.
-  const heroLoading = () =>
-    isClientViewer()
-      ? !(projectsSwept() && hasRenderedCampaignData())
-      : !(projectsSwept() && cardLedger().settled);
+  const heroLoading = () => !(projectsSwept() && cardLedger().settled);
 
   const ledgerRowOf = (projectId) => ledger().byProject[String(projectId)];
 
@@ -980,9 +910,6 @@ export default function MainDashboard() {
   // Before the response lands we keep the project's existing status (null on a
   // first load), so the badge holds its skeleton instead of flashing "paused".
   const statusOf = (project) => {
-    // CLIENT: deriveProjectStatuses already wrote the status onto the cached
-    // project from that client's own campaigns. There is no ledger row.
-    if (isClientViewer()) return project.status ?? null;
     const row = ledgerRowOf(project.id);
     if (!row) return ledger().loaded ? "paused" : (project.status ?? null);
     if (row.campaignsTotal <= 0) return "paused";
@@ -1098,486 +1025,33 @@ export default function MainDashboard() {
     return result;
   };
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // CLIENT PATH — the pre-ledger aggregation, kept whole for the one role that
-  // must not read /dashboard/ledger/ (see THE ROLE SPLIT near the top).
-  //
-  // A client's bulk-insights rows come back through the backend's DISPLAY
-  // PIPELINE: `spend` is the marked-up / fixed-CPL figure they are billed
-  // against, and the rows are already INCLUSIVE of fed leads. That is why
-  // nothing is added on top here and why fedLeads is a flat 0 — adding the fed
-  // batches back is the 108 → 122 double count.
-  //
-  // None of this runs for any other role: every entry point is gated on
-  // isClientViewer(), so an admin / CM / sales session issues zero campaign or
-  // insight requests from this page.
-  // ═══════════════════════════════════════════════════════════════════════════
+  // ── Replaced → Billable ────────────────────────────────────────────────────
+  // Both figures come straight off the ledger row, for every role. They used to
+  // need their own paginated batch sweep — /leads/replacement-batches/ for
+  // admin/CM, /leads/my-replacements/ for a client — plus a client-side
+  // received_date + revoked roll-up. The backend applies those rules now, from
+  // one source.
+  const replacedOf = (projectId) => ledgerRowOf(projectId)?.replacedLeads ?? 0;
 
-  // Safely read insights/campaigns from the { campaigns, insights, range } shape.
-  // Falls back gracefully if the cache still holds the old flat-array shape.
-  const getProjectInsightData = (projectId) => {
-    const entry = projectInsightsMap()[projectId];
-    if (!entry) return { campaigns: [], insights: [], range: null };
-    if (Array.isArray(entry))
-      return { campaigns: [], insights: entry, range: null };
-    return entry;
-  };
-
-  // Roll a project's status up from its campaigns:
-  //   • any campaign still running (not paused, not completed) → "active"
-  //   • otherwise, every campaign completed (≥1 campaign)      → "completed"
-  //   • otherwise (all paused, or a paused/completed mix)       → "paused"
-  const deriveStatus = (camps) => {
-    if (!Array.isArray(camps) || camps.length === 0) return "paused";
-    const running = camps.filter(
-      (c) => c.status !== "paused" && c.status !== "completed",
-    ).length;
-    if (running > 0) return "active";
-    const completed = camps.filter((c) => c.status === "completed").length;
-    if (completed === camps.length) return "completed";
-    return "paused";
-  };
-
-  // One campaigns fetch per project, committed to the cache as a status + count
-  // update and handed back so the insights pass can reuse it rather than
-  // fetching the same campaigns twice.
-  const deriveProjectStatuses = async (
-    projectList,
-    token = activeLoadToken,
-  ) => {
-    const perProject = await Promise.all(
-      projectList.map(async (project) => {
-        try {
-          let allCampaigns = [];
-          let currentPage = 1;
-          let hasMore = true;
-
-          while (hasMore) {
-            const res = await fetchCampaigns(
-              currentPage,
-              project.id,
-              "",
-              1000,
-              premiumRangeStart(),
-              premiumRangeEnd(),
-            );
-            const batch = res.data?.results ?? res.data ?? [];
-            if (!Array.isArray(batch) || batch.length === 0) break;
-            allCampaigns = [...allCampaigns, ...batch];
-            hasMore = res.meta?.pagination?.has_next ?? false;
-            currentPage++;
-          }
-
-          // "Live" = not paused and not completed (matches the campaigns table /
-          // ProjectDetails). A strict === "active" check mislabels a project as
-          // paused when its live campaigns report a non-"active" status
-          // (e.g. in_review).
-          const activeCampaigns = allCampaigns.filter(
-            (c) => c.status !== "paused" && c.status !== "completed",
-          ).length;
-          const completedCampaigns = allCampaigns.filter(
-            (c) => c.status === "completed",
-          ).length;
-          const pausedCampaigns = allCampaigns.filter(
-            (c) => c.status === "paused",
-          ).length;
-
-          return {
-            status: {
-              id: project.id,
-              status: deriveStatus(allCampaigns),
-              activeCampaigns,
-              completedCampaigns,
-              pausedCampaigns,
-            },
-            campaigns: allCampaigns,
-          };
-        } catch (err) {
-          console.warn(
-            `deriveProjectStatuses: failed for project ${project.id}`,
-            err,
-          );
-          // Fall back to whatever the projects API said; keep original counts so
-          // the table isn't blanked.
-          return {
-            status: {
-              id: project.id,
-              status: project.status,
-              activeCampaigns: project.activeCampaigns,
-              completedCampaigns: project.completedCampaigns,
-              pausedCampaigns: project.pausedCampaigns,
-            },
-            campaigns: [],
-          };
-        }
-      }),
-    );
-
-    const statusUpdates = perProject.map((x) => x.status);
-    const campaignsByProject = {};
-    perProject.forEach((x) => {
-      campaignsByProject[x.status.id] = x.campaigns;
-    });
-
-    if (token !== activeLoadToken) return campaignsByProject;
-    setProjectsCache("data", (prev) =>
-      prev.map((x) => {
-        const update = statusUpdates.find((u) => u.id === x.id);
-        return update ? { ...x, ...update } : x;
-      }),
-    );
-    setProjectsCache("allProjects", (prev) =>
-      prev.map((x) => {
-        const update = statusUpdates.find((u) => u.id === x.id);
-        return update ? { ...x, ...update } : x;
-      }),
-    );
-
-    return campaignsByProject;
-  };
-
-  const loadAllProjectInsights = async (
-    projectList,
-    token = activeLoadToken,
-    campaignsByProject = null,
-  ) => {
-    const result = {};
-    const projectCampaigns = {};
-
-    // 1. Resolve campaigns per project — reuse what deriveProjectStatuses
-    //    already fetched, or fall back to a per-project fetch.
-    await Promise.all(
-      projectList.map(async (project) => {
-        let allCampaigns = campaignsByProject
-          ? campaignsByProject[project.id]
-          : undefined;
-
-        if (allCampaigns === undefined) {
-          let currentPage = 1;
-          allCampaigns = [];
-          let hasMore = true;
-          while (hasMore) {
-            const res = await fetchCampaigns(currentPage, project.id, "", 1000);
-            const campaigns = res.data?.results || res.data || [];
-            if (!Array.isArray(campaigns) || campaigns.length === 0) break;
-            allCampaigns = [...allCampaigns, ...campaigns];
-            hasMore = res.meta?.pagination?.has_next ?? false;
-            currentPage++;
-          }
-        }
-
-        projectCampaigns[project.id] = allCampaigns || [];
-      }),
-    );
-
-    // 2. Seed every project's entry: mapped campaigns + empty insights (filled
-    //    by the bulk call) + the date range those campaigns belong to. Real
-    //    leads are filtered by that stamped range so they stay in lockstep with
-    //    the insights window.
-    for (const project of projectList) {
-      const allCampaigns = projectCampaigns[project.id] || [];
-      result[project.id] = {
-        campaigns: allCampaigns.map((c) => ({
-          id: c.id,
-          status: c.status,
-        })),
-        insights: [],
-        range: { from: fromDate(), to: toDate() },
-      };
-    }
-
-    // 3. Build the campaign lookup.
-    const campaignById = {};
-    const allCampaignIds = [];
-    for (const project of projectList) {
-      for (const c of projectCampaigns[project.id] || []) {
-        campaignById[String(c.id)] = { campaign: c, projectId: project.id };
-        allCampaignIds.push(c.id);
-      }
-    }
-
-    // 4. ONE bulk insights call for every campaign (date-filtered client-side).
-    //    No as_client_id: that is the admin "preview as client" switch, and this
-    //    path only ever runs for a client's OWN login, which the backend scopes
-    //    by their token / nomen already.
-    if (allCampaignIds.length > 0) {
-      try {
-        const bulk = await fetchBulkCampaignInsights(allCampaignIds);
-        const rows = bulk.data || [];
-
-        // Every row that never reaches a project is a lead missing from the
-        // total. Audit both drop paths and report them in dev rather than
-        // absorbing them into a quietly short figure.
-        const audit = {
-          received: rows.length,
-          leads: 0,
-          dropped: 0,
-          droppedLeads: 0,
-          dateless: 0,
-          datelessLeads: 0,
-        };
-
-        for (const row of rows) {
-          const rowLeads = Number(row.leads || 0);
-          audit.leads += rowLeads;
-          if (!row.date) {
-            audit.dateless += 1;
-            audit.datelessLeads += rowLeads;
-          }
-
-          let entry = campaignById[String(row.campaign_id)];
-          if (!entry && row.project_id != null && result[row.project_id]) {
-            // The bulk response is scoped to this client, so a row we cannot map
-            // by campaign still belongs on its own project when it names one
-            // (a standalone synthetic row need not carry a campaign we asked
-            // for). Dropping it lost its leads from the total.
-            entry = { projectId: row.project_id, campaign: { id: null } };
-          }
-          if (!entry) {
-            audit.dropped += 1;
-            audit.droppedLeads += rowLeads;
-            continue;
-          }
-
-          result[entry.projectId].insights.push({
-            ...row,
-            campaignId: entry.campaign.id,
-          });
-        }
-
-        reportRowAudit(audit);
-      } catch (err) {
-        console.error("Failed to load bulk campaign insights", err);
-      }
-    }
-
-    if (token !== activeLoadToken) return;
-    setProjectsCache("insightsMap", result);
-  };
-
-  // ── Date-reactive campaign refetch ────────────────────────────────────────
-  // The campaigns are fetched range-scoped, so a date-filter change re-pulls
-  // them and re-stamps the range the cached insights are filtered against. The
-  // bulk-insights pass is deliberately skipped: that response carries no date
-  // filter and is re-scoped client-side.
-  const refreshCampaignsForRange = async () => {
-    const token = activeLoadToken;
-    const projects = allProjects();
-    if (!projects.length) return;
-
-    const start = premiumRangeStart();
-    const end = premiumRangeEnd();
-
-    await Promise.all(
-      projects.map(async (project) => {
-        try {
-          let all = [];
-          let currentPage = 1;
-          let hasMore = true;
-          while (hasMore) {
-            const res = await fetchCampaigns(
-              currentPage,
-              project.id,
-              "",
-              1000,
-              start,
-              end,
-            );
-            const batch = res.data?.results ?? res.data ?? [];
-            if (!Array.isArray(batch) || batch.length === 0) break;
-            all = [...all, ...batch];
-            hasMore = res.meta?.pagination?.has_next ?? false;
-            currentPage++;
-          }
-
-          if (token !== activeLoadToken) return;
-
-          const camps = all.map((c) => ({ id: c.id, status: c.status }));
-
-          // Patch this project's campaigns in place, preserving its insights and
-          // stamping the range they belong to (campaigns + range update together).
-          setProjectsCache("insightsMap", (prev) => {
-            const existing = prev?.[project.id];
-            const insights =
-              existing && !Array.isArray(existing) ? existing.insights : [];
-            return {
-              ...prev,
-              [project.id]: {
-                campaigns: camps,
-                insights,
-                range: { from: fromDate(), to: toDate() },
-              },
-            };
-          });
-        } catch (err) {
-          console.error(
-            "Failed to refresh campaigns for project",
-            project.id,
-            err,
-          );
-        }
-      }),
-    );
-  };
-
-  // Client only — every other role's date change re-keys the ledger resource.
-  // defer skips the initial run, which the mount pipeline already covers.
-  createEffect(
-    on(
-      [fromDate, toDate],
-      () => {
-        if (isClientViewer()) refreshCampaignsForRange();
-      },
-      { defer: true },
-    ),
-  );
-
-  // ── Lead-replacement batches (client) ─────────────────────────────────────
-  // /leads/my-replacements/ returns the client's own non-revoked batches. The
-  // roll-up reads the CALENDAR range — the same range the leads beside it use —
-  // so a replacement can't land in a different period than its leads. The source
-  // is false for every other role, so the resource never fires for them: their
-  // replaced / billable figures come off the ledger row instead.
-  const [replacementBatches] = createResource(
-    () => (isClientViewer() ? (selectedClientNomen() ?? "self") : false),
-    async () => {
-      try {
-        return await fetchMyReplacements();
-      } catch (err) {
-        console.error("[ClientDashboard] replacement batches failed:", err);
-        return [];
-      }
-    },
-  );
-
-  const replacedByProjectLedger = createMemo(() =>
-    isClientViewer()
-      ? replacedLeadsByProject(replacementBatches() ?? [], fromDate(), toDate())
-      : {},
-  );
-
-  const replacedOf = (projectId) =>
-    isClientViewer()
-      ? replacedByProjectLedger()[String(projectId)] || 0
-      : (ledgerRowOf(projectId)?.replacedLeads ?? 0);
-
-  // total − replaced. On the ledger path this is the backend's own
-  // billable_leads, deliberately NOT re-derived from the row's Total: the footer
-  // sums billable_leads, and a cell that subtracts for itself is precisely how a
-  // column and its own total drift. The client path has no such field, so it
-  // subtracts — floored at 0, exactly as the footer does.
-  const billableOf = (projectId) => {
-    if (!isClientViewer()) return ledgerRowOf(projectId)?.billableLeads ?? 0;
-    const st = allProjectStats()[projectId] || {};
-    const total = st.totalLeadsWithFed ?? st.totalLeads ?? 0;
-    return Math.max(0, total - replacedOf(projectId));
-  };
+  // total − replaced, as the backend computed it. Deliberately NOT re-derived
+  // from the row's own Total: the footer sums billable_leads, and a cell that
+  // subtracts for itself is precisely how a column and its own total drift.
+  const billableOf = (projectId) => ledgerRowOf(projectId)?.billableLeads ?? 0;
 
   // Only grow the Replaced / Billable columns once this client actually has
   // replacement activity in the range — replacements are a CPL/hybrid concept,
   // and a retainer client would otherwise get two columns of zeros. Within the
   // table every project still shows its own 0.
-  const showReplacedCols = () =>
-    isClientViewer()
-      ? Object.keys(replacedByProjectLedger()).length > 0
-      : ledger().rows.some((r) => r.replacedLeads > 0);
-
-  // Date-window filter for the cached insight rows. No range → every row,
-  // including any that arrived without a date.
-  const inRangeRows = (rows, rFrom, rTo) =>
-    !rFrom || !rTo
-      ? rows
-      : rows.filter((d) => {
-          if (!d.date) return false;
-          const date = new Date(d.date + "T00:00:00");
-          const start = new Date(rFrom);
-          start.setHours(0, 0, 0, 0);
-          const end = new Date(rTo);
-          end.setHours(23, 59, 59, 999);
-          return date >= start && date <= end;
-        });
-
-  // ── Per-project stats for a CLIENT, from the swept insight rows ───────────
-  // Same shape statsFromLedger returns, so every consumer below is indifferent
-  // to which path produced it.
-  const statsFromInsights = (projects, from, to) => {
-    const result = {};
-    for (const project of projects) {
-      const { campaigns, insights, range } = getProjectInsightData(project.id);
-      const filtered = inRangeRows(insights, from, to);
-
-      // Leads filtered by the range the LOADED campaigns belong to (stamped in
-      // the cache), so the leads column stays in lockstep with the insights
-      // window — no flicker while a date-change refetch is in flight.
-      const leadsRange = range ?? { from, to };
-      const leadSum = inRangeRows(
-        insights,
-        leadsRange.from,
-        leadsRange.to,
-      ).reduce((acc, d) => acc + (d.leads || 0), 0);
-
-      // Already inclusive of fed leads, and fed is never broken out for a
-      // client, so the identity is trivially satisfied — assert it anyway, the
-      // same way the ledger path does.
-      const totalLeads = leadSum;
-      assertLeadIdentity(
-        `project ${project.name ?? project.id}`,
-        totalLeads,
-        0,
-        totalLeads,
-      );
-
-      const totalSpent = filtered.reduce(
-        (acc, d) => acc + clientSpendOf(d),
-        0,
-      );
-      const avgCPL =
-        totalLeads > 0 ? Number((totalSpent / totalLeads).toFixed(2)) : 0;
-
-      // Campaign status counts are classified by c.status — a campaign's
-      // active/paused/completed state is NOT date-dependent, so the date range
-      // must not drive it. Counting "active" as "had spend or leads in range"
-      // mislabelled a now-paused campaign that spent earlier in the range.
-      const activeCampaigns = campaigns.filter(
-        (c) => c.status !== "paused" && c.status !== "completed",
-      ).length;
-      const completedCampaigns = campaigns.filter(
-        (c) => c.status === "completed",
-      ).length;
-      const pausedCampaigns = campaigns.filter(
-        (c) => c.status === "paused",
-      ).length;
-
-      result[project.id] = {
-        totalLeads,
-        fedLeads: 0,
-        totalLeadsWithFed: totalLeads,
-        totalSpent,
-        avgCPL,
-        // Premium CPL is an admin-only column — a client never renders it.
-        modifiedCpl: null,
-        activeCampaigns,
-        completedCampaigns,
-        pausedCampaigns,
-      };
-    }
-    return result;
-  };
+  const showReplacedCols = () => ledger().rows.some((r) => r.replacedLeads > 0);
 
   // The hero reads the CARD range, the ledger table reads the CALENDAR range.
-  const cardStats = createMemo(() => {
-    if (isClientViewer()) {
-      const { from, to } = getCardDateRange();
-      return statsFromInsights(statusedProjects(), from, to);
-    }
-    return statsFromLedger(cardLedger(), statusedProjects());
-  });
+  const cardStats = createMemo(() =>
+    statsFromLedger(cardLedger(), statusedProjects()),
+  );
 
-  const allProjectStats = createMemo(() => {
-    if (isClientViewer())
-      return statsFromInsights(statusedProjects(), fromDate(), toDate());
-    return statsFromLedger(ledger(), statusedProjects());
-  });
+  const allProjectStats = createMemo(() =>
+    statsFromLedger(ledger(), statusedProjects()),
+  );
 
   // The matching rows with their ledger figures joined on — the sortable shape.
   // Filtering happens in matchingProjects() and NOT again here, so the table and
@@ -2005,45 +1479,6 @@ export default function MainDashboard() {
   // the payload doesn't carry. It used to sum the per-day insight rows for every
   // campaign of every project in the browser.
   const funnelStats = createMemo(() => {
-    // CLIENT: sum the swept insight rows, as this always did. `spend` on those
-    // rows is the display-pipeline figure, so the funnel's CPM / CPC / CPL stay
-    // client-facing rather than exposing agency cost.
-    if (isClientViewer()) {
-      const { from, to } = getCardDateRange();
-      let impressions = 0;
-      let reach = 0;
-      let clicks = 0;
-      let leads = 0;
-      let spend = 0;
-
-      for (const project of statusedProjects()) {
-        const { insights } = getProjectInsightData(project.id);
-        for (const d of inRangeRows(insights, from, to)) {
-          impressions += Number(d.impressions || 0);
-          reach += Number(d.reach || 0);
-          clicks += Number(d.clicks || 0);
-          leads += Number(d.leads || 0);
-          spend += clientSpendOf(d);
-        }
-      }
-
-      return {
-        impressions,
-        reach,
-        clicks,
-        leads,
-        spend,
-        cpm: impressions > 0 ? (spend / impressions) * 1000 : 0,
-        frequency: reach > 0 ? impressions / reach : 0,
-        ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
-        cpc: clicks > 0 ? spend / clicks : 0,
-        clickToLead: clicks > 0 ? (leads / clicks) * 100 : 0,
-        cpl: leads > 0 ? spend / leads : 0,
-        hasReach: reach > 0,
-        hasData: impressions > 0 || clicks > 0 || leads > 0,
-      };
-    }
-
     // Summed over the SAME rows the hero tiles beside it sum — the ledger rows
     // joined onto this client's projects — rather than the response's `totals`
     // block. That block covers the caller's whole scope, so if it ever described
