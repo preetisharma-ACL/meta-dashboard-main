@@ -50,7 +50,7 @@ globalThis.sessionStorage ??= noopStorage;
 globalThis.window ??= { dispatchEvent: () => {}, addEventListener: () => {} };
 globalThis.atob ??= (b) => Buffer.from(b, "base64").toString("binary");
 
-const { readDashboardLedger, readClientLedger, EMPTY_LEDGER } =
+const { readDashboardLedger, readClientLedger, premiumRollup, EMPTY_LEDGER } =
   await import("../src/services/dashboard.js");
 
 let failures = 0;
@@ -274,6 +274,110 @@ console.log("\nmalformed envelopes degrade instead of throwing");
     }
     check(`${name} → empty rows, zero totals`, ok);
   }
+}
+
+// ── The footer's premium roll-up ────────────────────────────────────────────
+console.log("\npremiumRollup: Σ spend ÷ Σ premium LEADS");
+{
+  // The trap this guards: premium leads differ from Meta leads for a CPL
+  // client, who is billed on their own lead basis. Divide by the wrong
+  // denominator and the answer is plausible and quietly wrong, so the fixture
+  // makes the two disagree sharply.
+  const rows = [
+    { premiumSpend: 282224.28, premiumLeads: 1499, metaLeads: 2228 }, // CPL
+    { premiumSpend: 100000, premiumLeads: 500, metaLeads: 500 }, // hybrid
+    { premiumSpend: null, premiumLeads: null, metaLeads: 900 }, // retainer
+    { premiumSpend: null, premiumLeads: null, metaLeads: 40 }, // config missing
+  ];
+
+  const got = premiumRollup(rows);
+  const expected = Number(((282224.28 + 100000) / (1499 + 500)).toFixed(2));
+
+  check(
+    "spend sums only priced rows",
+    got.spend === 382224.28,
+    `(${got.spend})`,
+  );
+  check("leads sum only priced rows", got.leads === 1999, `(${got.leads})`);
+  check("cpl = Σ spend ÷ Σ leads", got.cpl === expected, `(${got.cpl})`);
+  check(
+    "covered counts the priced rows",
+    got.covered === 2,
+    `(${got.covered})`,
+  );
+
+  // Would the wrong denominator have been caught? Σ meta_leads is 2728.
+  const wrong = Number((382224.28 / 2728).toFixed(2));
+  check(
+    "dividing by META leads gives a DIFFERENT number (so this test bites)",
+    wrong !== got.cpl,
+    `(${wrong} vs ${got.cpl})`,
+  );
+
+  // Not the average of per-row CPLs either — that is a third, wrong number.
+  const meanOfCpls = Number(((282224.28 / 1499 + 100000 / 500) / 2).toFixed(2));
+  check(
+    "not the mean of per-row CPLs",
+    meanOfCpls !== got.cpl,
+    `(${meanOfCpls} vs ${got.cpl})`,
+  );
+
+  const none = premiumRollup([
+    { premiumSpend: null, premiumLeads: null },
+    { premiumSpend: null, premiumLeads: null },
+  ]);
+  check(
+    "no priced rows → cpl null, not 0",
+    none.cpl === null && none.covered === 0,
+  );
+  check("empty input → cpl null", premiumRollup([]).cpl === null);
+  check("undefined input → cpl null", premiumRollup().cpl === null);
+
+  // Spend present but zero leads: real billed money, nothing to divide by.
+  const noLeads = premiumRollup([{ premiumSpend: 500, premiumLeads: 0 }]);
+  check(
+    "spend with 0 premium leads → cpl null, spend still counted",
+    noLeads.cpl === null && noLeads.spend === 500 && noLeads.covered === 1,
+  );
+
+  // A half-populated row is not usable in a weighted average.
+  const half = premiumRollup([{ premiumSpend: 500, premiumLeads: null }]);
+  check(
+    "spend without leads is skipped, not counted at an unknown rate",
+    half.covered === 0 && half.spend === 0,
+  );
+}
+
+// ── The rollup reads what the decoder wrote — end to end ────────────────────
+console.log("\ndecoder → rollup, no hand-wiring in between");
+{
+  const mk = (id, spend, leads) => ({
+    ...common,
+    project_id: id,
+    spend: "1",
+    cpl: "1",
+    premium_spend: spend,
+    premium_leads: leads,
+    premium_cpl: spend == null ? null : String(Number(spend) / Number(leads)),
+  });
+  const led = readDashboardLedger({
+    data: {
+      rows: [mk(1, "282224.28", 1499), mk(2, "100000", 500), mk(3, null, null)],
+      totals: {},
+    },
+  });
+  const got = premiumRollup(led.rows);
+  check(
+    "premium_leads survives the decoder into the rollup",
+    got.leads === 1999,
+    `(${got.leads})`,
+  );
+  check("covered = 2 of 3 rows", got.covered === 2, `(${got.covered})`);
+  check(
+    "rollup cpl matches Σ/Σ of the decoded rows",
+    got.cpl === Number((382224.28 / 1999).toFixed(2)),
+    `(${got.cpl})`,
+  );
 }
 
 // ── Sorting a column that holds numbers AND blanks ──────────────────────────

@@ -172,6 +172,7 @@ const ledgerRow = (r) => ({
   spend: num(r?.spend),
   cpl: r?.cpl == null ? null : num(r.cpl),
   premiumSpend: r?.premium_spend == null ? null : num(r.premium_spend),
+  premiumLeads: r?.premium_leads == null ? null : num(r.premium_leads),
   premiumCpl: r?.premium_cpl == null ? null : num(r.premium_cpl),
 });
 
@@ -187,6 +188,7 @@ const clientRow = (r) => ({
   // ones. Null rather than a copy, so nothing downstream can render a client a
   // "Premium CPL" column comparing a number against itself.
   premiumSpend: null,
+  premiumLeads: null,
   premiumCpl: null,
 });
 
@@ -222,6 +224,44 @@ const buildLedger = (res, rowOf) => {
 };
 
 export const readDashboardLedger = (res) => buildLedger(res, ledgerRow);
+
+// ── Premium roll-up ──────────────────────────────────────────────────────────
+// Σ premium spend ÷ Σ premium LEADS over whatever rows are handed in — the
+// dashboard passes the rows currently on screen, because its Total row follows
+// the reader's filters and the response's own totals block cannot.
+//
+// The pair must travel together. premium_leads is NOT meta_leads: a CPL client
+// is billed on their own lead basis, so dividing premium spend by Meta leads is
+// subtly wrong in exactly the direction nobody notices. And it is Σ/Σ, never the
+// average of per-row CPLs — that is a different number, and the one a reconciler
+// would find doesn't tie out.
+//
+// Rows with no premium figure contribute nothing: a retainer client has no
+// display config by design, and some client+project pairs are missing one. That
+// makes this average describe FEWER projects than the raw CPL printed beside it,
+// which is why "covered" comes back too — the gap is worth showing rather than
+// leaving for someone to discover during a reconciliation.
+export const premiumRollup = (rows) => {
+  let spend = 0;
+  let leads = 0;
+  let covered = 0;
+
+  for (const r of rows ?? []) {
+    if (r?.premiumSpend == null || r?.premiumLeads == null) continue;
+    spend += r.premiumSpend;
+    leads += r.premiumLeads;
+    covered += 1;
+  }
+
+  return {
+    spend,
+    leads,
+    covered,
+    // null, not 0, when there is nothing to divide — same rule as a row's own
+    // cpl. The footer prints "—" for it.
+    cpl: leads > 0 ? Number((spend / leads).toFixed(2)) : null,
+  };
+};
 
 // A client payload must be free of the raw money keys. The backend keeps them
 // out; this is the tripwire for the day something re-introduces one, because the

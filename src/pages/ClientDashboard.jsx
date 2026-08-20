@@ -45,6 +45,7 @@ import {
   fetchDashboardLedger,
   readDashboardLedger,
   readClientLedger,
+  premiumRollup,
   EMPTY_LEDGER,
 } from "../services/dashboard";
 import { fmtFed } from "../services/fedLeads";
@@ -961,6 +962,13 @@ export default function MainDashboard() {
     return data;
   });
 
+  // Footer Premium CPL — Σ premium spend ÷ Σ premium leads over the rows on
+  // screen, so it narrows with the search box and the status dropdown like every
+  // other total in this row. `covered` is how many of those rows actually had a
+  // premium figure; the rest have no display config and are outside this average.
+  const ledgerPremiumTotals = () =>
+    premiumRollup(matchingProjects().map((p) => allProjectStats()[p.id]));
+
   // Ledger footer totals for the Replaced / Billable pair — Σ of the same
   // per-row figures those columns print, so the footer equals the sum of the
   // column above it.
@@ -1019,6 +1027,11 @@ export default function MainDashboard() {
         // one. Both must stay null so the cell prints "—"; defaulting to 0 would
         // claim the client was billed nothing.
         modifiedCpl: row?.premiumCpl ?? null,
+        // The pair the footer's roll-up divides. Kept as spend AND leads rather
+        // than just the per-row CPL, because a weighted total needs the
+        // denominator — and premium leads are not Meta leads for a CPL client.
+        premiumSpend: row?.premiumSpend ?? null,
+        premiumLeads: row?.premiumLeads ?? null,
         activeCampaigns: row?.campaignsActive ?? 0,
         completedCampaigns: row?.campaignsCompleted ?? 0,
         pausedCampaigns: row?.campaignsPaused ?? 0,
@@ -2948,13 +2961,53 @@ export default function MainDashboard() {
                   {"₹"}
                   {inr2(overviewStats().avgCPL)}
                 </td>
-                {/* Premium CPL — deliberately no total. A roll-up would have to
-                    be Σ premium spend ÷ Σ premium LEADS, and the row carries no
-                    premium lead count, so there is nothing to weight by; the
-                    average of per-row CPLs is a different (wrong) number. Adding
-                    premium_leads to the payload is what would unlock this. */}
+                {/* Premium CPL total — Σ premium spend ÷ Σ premium LEADS, never
+                    the average of the per-row CPLs and never divided by Meta
+                    leads (a CPL client is billed on a different lead basis).
+                    Covers only the rows that HAVE a premium figure, which is
+                    fewer than the rows above it — the subtext says how many, so
+                    a reader reconciling this against the raw total beside it can
+                    see the gap instead of hunting for it. */}
                 <Show when={isAdmin()}>
-                  <td>—</td>
+                  <td>
+                    <Show
+                      when={ledgerPremiumTotals().cpl != null}
+                      fallback={
+                        <span
+                          class="text-[#8593A8] dark:text-gray-500"
+                          title="No project in view has a premium figure — retainer clients have no display config by design, and some client+project pairs are missing one."
+                        >
+                          —
+                        </span>
+                      }
+                    >
+                      <span
+                        class={
+                          premiumBelowRaw(
+                            ledgerPremiumTotals().cpl,
+                            overviewStats().avgCPL,
+                          )
+                            ? "text-[#B07A14] dark:text-yellow-300"
+                            : ""
+                        }
+                        title={
+                          premiumBelowRaw(
+                            ledgerPremiumTotals().cpl,
+                            overviewStats().avgCPL,
+                          )
+                            ? "Premium is BELOW raw across these projects — spend with no display config counts in raw but not in premium. Expected while configs are outstanding."
+                            : undefined
+                        }
+                      >
+                        {"₹"}
+                        {inr2(ledgerPremiumTotals().cpl)}
+                      </span>
+                      <div class="mt-0.5 font-normal normal-case tracking-normal text-[11px] leading-tight whitespace-normal text-[#8593A8] dark:text-gray-400">
+                        {ledgerPremiumTotals().covered} of{" "}
+                        {matchingProjects().length} priced
+                      </div>
+                    </Show>
+                  </td>
                 </Show>
 
                 {/* Active Campaigns */}
