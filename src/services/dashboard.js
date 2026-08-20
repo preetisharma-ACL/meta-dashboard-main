@@ -158,11 +158,17 @@ export const readDashboardLedger = (res) => {
     // from "nothing has come back yet" — the difference between a truthful 0 and
     // a placeholder, which the loading states below key off.
     loaded: true,
+    // The request finished. `settled` is also true on a FAILURE (see the
+    // caller), which is what stops a count-up animating forever on an error;
+    // `loaded` stays false there so nothing treats the zeros as real.
+    settled: true,
   };
 };
 
 // The shape every consumer reads BEFORE the first response lands, so no memo has
-// to null-check its way through a render. loaded:false marks it as a placeholder.
+// to null-check its way through a render. loaded:false marks it as a placeholder,
+// and settled:false says the request is still out — nothing may animate to these
+// zeros, because they are not data.
 export const EMPTY_LEDGER = {
   rows: [],
   byProject: {},
@@ -170,4 +176,5 @@ export const EMPTY_LEDGER = {
   dateRange: null,
   scope: null,
   loaded: false,
+  settled: false,
 };

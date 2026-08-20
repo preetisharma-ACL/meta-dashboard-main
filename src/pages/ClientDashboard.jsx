@@ -334,10 +334,10 @@ export default function MainDashboard() {
   // Slicing/labelling follow the user's rows-per-page choice, not the size the
   // server happened to page at (the table renders the fully swept allProjects()).
   const pageSize = () => rowsPerPage();
-  const total = () => projectsCache.meta?.total ?? 0;
-  const totalPages = () => projectsCache.meta?.total_pages ?? 1;
-  const hasNext = () => projectsCache.meta?.has_next ?? false;
-  const hasPrev = () => projectsCache.meta?.has_prev ?? false;
+  // NOTE: the server pagination meta (total / total_pages / has_next) is no
+  // longer read here. The table paginates client-side over the FILTERED set, so
+  // the server's count describes a different set than the one on screen — that
+  // mismatch is what printed "of 448 results" beside a single searched row.
 
   // True once the PROJECT LIST itself has been swept in. For every role on
   // /dashboard/ledger/ that is all the mount gate needs — the ledger resource
@@ -890,36 +890,79 @@ export default function MainDashboard() {
     return { client: cal.client, scope: cal.scope, start, end };
   };
 
+  // Which client + CM scope a payload belongs to. Stamped on the result so a
+  // held-over payload can be checked against the context now on screen — see
+  // sticky() below.
+  const scopeSigOf = (key) => `${key.client}|${key.scope}`;
+
   const loadLedger = async (key) => {
+    const scopeSig = scopeSigOf(key);
     try {
       const res = await fetchDashboardLedger({
         startDate: key.start || undefined,
         endDate: key.end || undefined,
       });
-      return readDashboardLedger(res);
+      return { ...readDashboardLedger(res), scopeSig };
     } catch (err) {
-      // A failed ledger must NOT read as "this client spent nothing". The
-      // placeholder carries loaded:false, so the loading states below keep
-      // rolling instead of settling on a confident set of zeros.
+      // A failed ledger must NOT read as "this client spent nothing" — loaded
+      // stays false so nothing treats the zeros as real. But it IS settled: the
+      // request is over, and leaving it unsettled would leave every counter
+      // climbing forever on an error.
       console.error("[ClientDashboard] /dashboard/ledger/ failed:", err);
-      return EMPTY_LEDGER;
+      return { ...EMPTY_LEDGER, scopeSig, settled: true };
     }
   };
 
   const [ledgerRes] = createResource(ledgerRangeKey, loadLedger);
   const [cardLedgerRes] = createResource(cardRangeKey, loadLedger);
 
-  const ledger = () => ledgerRes() ?? EMPTY_LEDGER;
-  const cardLedger = () =>
-    cardRangeKey() === false ? ledger() : (cardLedgerRes() ?? EMPTY_LEDGER);
+  // Solid keeps the previously resolved payload readable while a refetch is in
+  // flight, rather than dropping back to undefined. For a DATE-RANGE change that
+  // is exactly right: the figures hold their last values instead of blanking to
+  // zero and re-running every count-up animation.
+  //
+  // For a CLIENT SWITCH it is exactly wrong — the previous client's money would
+  // sit on screen until the new request lands. So a payload is only accepted
+  // when it is stamped with the client + CM scope currently on screen; anything
+  // else falls back to the placeholder, and the counters go honestly back to
+  // their loading state. (Verified both ways against the Solid runtime rather
+  // than assumed: a mutable "last good" wrapper looked correct and was not.)
+  const scopedLedger = (res, keyFn) => () => {
+    const key = keyFn();
+    const scopeSig = key === false ? null : scopeSigOf(key);
+    const value = res();
+    return value && value.scopeSig === scopeSig ? value : EMPTY_LEDGER;
+  };
 
-  // True while the spend / leads figures are still arriving. Drives the CountUp
-  // "rolling number" so the hero never shows a static 0 during load. A client
-  // has no ledger response to wait on — for them it is the insights sweep.
-  const ledgerLoading = () =>
+  const ledger = scopedLedger(ledgerRes, ledgerRangeKey);
+  const cardLedgerOwn = scopedLedger(cardLedgerRes, cardRangeKey);
+  const cardLedger = () =>
+    cardRangeKey() === false ? ledger() : cardLedgerOwn();
+
+  // The projects list has been swept at least once this session. The store is
+  // never hydrated from storage, so this starts at 0 on every load — which is
+  // what separates "not loaded yet" from "this client genuinely has no
+  // projects". Without that distinction an empty portfolio leaves the counters
+  // climbing forever.
+  const projectsSwept = () => Number(projectsCache.lastFetchedAll) > 0;
+
+  // ── When a counter may animate ─────────────────────────────────────────────
+  // A counter must never animate to a number that isn't real data. It has real
+  // data only when BOTH halves have landed: the ledger payload AND the projects
+  // list its rows are joined onto. The ledger answers in ~0.2s, well ahead of
+  // the paginated projects sweep, so gating on the ledger alone flips loading
+  // off while every project row is still missing — the counter reveals to 0,
+  // latches "revealed", and then jumps when the projects arrive. That is the
+  // climb → 0 → climb the hero was doing on login.
+  //
+  // The hero reads the CARD ledger, so this waits on THAT resource, not the
+  // calendar one. Waiting on the wrong one was the second half of the same bug:
+  // with two different date windows the calendar ledger settles first and would
+  // release the animation while the hero's own payload is still out.
+  const heroLoading = () =>
     isClientViewer()
-      ? allProjects().length > 0 && !hasRenderedCampaignData()
-      : !ledger().loaded;
+      ? !(projectsSwept() && hasRenderedCampaignData())
+      : !(projectsSwept() && cardLedger().settled);
 
   const ledgerRowOf = (projectId) => ledger().byProject[String(projectId)];
 
@@ -955,19 +998,41 @@ export default function MainDashboard() {
     allProjects().map((p) => ({ ...p, status: statusOf(p) })),
   );
 
-  // The project set every ledger-footer total sums over. It follows the status
-  // dropdown: "All" keeps the complete roll-up, any other pick narrows the
-  // footer to that status so the Total row describes the rows on screen rather
-  // than a set the reader can't see. Same predicate filteredProjects uses.
+  // ── THE filtered set ───────────────────────────────────────────────────────
+  // Every row that matches EVERY active filter — the status dropdown and the
+  // search box. There is exactly one of these, and the table body, the Total
+  // row, the "of N results" count and the page count all read it, so the footer
+  // can never describe a set the reader cannot see. Searching one project used
+  // to leave agency-wide totals under a single row because the footer applied
+  // only the status filter.
+  //
+  // Pagination is deliberately NOT applied here: a Total row is the total of
+  // everything that matches, not of the page you happen to be on, and
+  // "Showing 1–20 of 34" already names that difference.
   //
   // This is also why the footer sums the SERVER's per-row figures instead of
-  // printing the response's own `totals` block: the backend cannot know which
-  // status the reader has filtered to. On "All" the two are the same number.
-  const ledgerScopedProjects = () => {
-    const status = statusFilter();
-    const all = statusedProjects();
-    return status === "all" ? all : all.filter((p) => p.status === status);
-  };
+  // printing the response's own `totals` block: that block covers the caller's
+  // whole scope by design and cannot know a client-side filter. One rule — sum
+  // the matching rows, always — rather than switching sources when a filter
+  // happens to be off.
+  const matchingProjects = createMemo(() => {
+    let data = statusedProjects();
+
+    if (statusFilter() !== "all") {
+      data = data.filter((x) => x.status === statusFilter());
+    }
+
+    const query = searchText().trim().toLowerCase();
+    if (query) {
+      data = data.filter((x) =>
+        [x.name, x.location, x.type, x.status]
+          .filter(Boolean)
+          .some((field) => String(field).toLowerCase().includes(query)),
+      );
+    }
+
+    return data;
+  });
 
   // Ledger footer totals for the Replaced / Billable pair — Σ of the same
   // per-row figures those columns print, so the footer equals the sum of the
@@ -975,7 +1040,7 @@ export default function MainDashboard() {
   const ledgerReplacedTotals = () => {
     let replaced = 0;
     let billable = 0;
-    for (const p of ledgerScopedProjects()) {
+    for (const p of matchingProjects()) {
       const row = ledgerRowOf(p.id);
       replaced += row?.replacedLeads ?? 0;
       billable += row?.billableLeads ?? 0;
@@ -1514,8 +1579,11 @@ export default function MainDashboard() {
     return statsFromLedger(ledger(), statusedProjects());
   });
 
-  const filteredProjects = createMemo(() => {
-    let data = statusedProjects().map((project) => {
+  // The matching rows with their ledger figures joined on — the sortable shape.
+  // Filtering happens in matchingProjects() and NOT again here, so the table and
+  // the footer are guaranteed to be looking at the same rows.
+  const matchingRows = createMemo(() =>
+    matchingProjects().map((project) => {
       const stats = allProjectStats()[project.id] || {};
 
       return {
@@ -1526,35 +1594,34 @@ export default function MainDashboard() {
         activeCampaigns: stats.activeCampaigns || 0,
         completedCampaigns: stats.completedCampaigns || 0,
         pausedCampaigns: stats.pausedCampaigns || 0,
-        modifiedCpl: stats.modifiedCpl ?? null, // ← add this
+        modifiedCpl: stats.modifiedCpl ?? null,
       };
-    });
+    }),
+  );
 
-    // Status filter
-    if (statusFilter() !== "all") {
-      data = data.filter((p) => p.status === statusFilter());
-    }
-
-    if (searchText().trim()) {
-      const query = searchText().toLowerCase().trim();
-
-      data = data.filter((p) =>
-        [p.name, p.location, p.type, p.status]
-          .filter(Boolean)
-          .some((field) => String(field).toLowerCase().includes(query)),
-      );
-    }
-
-    data = sortData(data);
+  // What the table body renders: the matching rows, sorted, sliced to the page.
+  const filteredProjects = createMemo(() => {
+    const data = sortData(matchingRows());
     const startIndex = (currentPage() - 1) * pageSize();
-    const endIndex = startIndex + pageSize();
-    return data.slice(startIndex, endIndex);
+    return data.slice(startIndex, startIndex + pageSize());
   });
+
+  // How many pages the matching set fills — at least 1, so an empty result reads
+  // "Page 1 of 1" rather than "Page 1 of 0".
+  const filteredPageCount = () =>
+    Math.max(1, Math.ceil(matchingProjects().length / pageSize()));
+
+  // A filter change re-slices the set, so the page the reader was on can end up
+  // past the end — searching from page 3 rendered an empty table under a
+  // populated footer. Go back to the first page whenever the set changes.
+  createEffect(
+    on([statusFilter, searchText], () => setCurrentPage(1), { defer: true }),
+  );
 
   // Ledger footer only. Scoped to the status the ledger is showing — with the
   // filter on "All" this is every project, exactly as before.
   const overviewStats = createMemo(() => {
-    const all = ledgerScopedProjects();
+    const all = matchingProjects();
     const statsMap = allProjectStats();
 
     // const totalBudget = all.reduce((s, p) => s + (p.budget ?? 0), 0);
@@ -1907,15 +1974,10 @@ export default function MainDashboard() {
   });
 
   // ── Proposed funnel: real Impression→Lead metrics ─────────────────────────
-  // Reads the CARD-range ledger's own totals block — impressions, clicks, spend
-  // and leads are all in it — and derives only the ratios (CPM, CTR, CPC,
-  // click-to-lead) that the payload doesn't carry. It used to sum the per-day
-  // insight rows for every campaign of every project in the browser.
-  //
-  // CPL comes off the response rather than being recomputed as spend ÷ leads:
-  // the backend divides by META leads, because fed leads cost nothing on Meta.
-  // `reach` has never been returned by any of these endpoints, so frequency
-  // stays unavailable — hasReach already gates the one cell that wanted it.
+  // Sums the CARD-range ledger rows — impressions, clicks, spend and leads are
+  // all on them — and derives only the ratios (CPM, CTR, CPC, click-to-lead)
+  // the payload doesn't carry. It used to sum the per-day insight rows for every
+  // campaign of every project in the browser.
   const funnelStats = createMemo(() => {
     // CLIENT: sum the swept insight rows, as this always did. `spend` on those
     // rows is the display-pipeline figure, so the funnel's CPM / CPC / CPL stay
@@ -1956,11 +2018,30 @@ export default function MainDashboard() {
       };
     }
 
-    const t = cardLedger().totals;
-    const impressions = t.impressions;
-    const clicks = t.clicks;
-    const leads = t.totalLeads;
-    const spend = t.spend;
+    // Summed over the SAME rows the hero tiles beside it sum — the ledger rows
+    // joined onto this client's projects — rather than the response's `totals`
+    // block. That block covers the caller's whole scope, so if it ever described
+    // a wider set than the projects on screen, the funnel would quietly disagree
+    // with the tile printed next to it. Nothing on this page reads `totals`.
+    const byProject = cardLedger().byProject;
+    let impressions = 0;
+    let clicks = 0;
+    let leads = 0;
+    let metaLeads = 0;
+    let spend = 0;
+
+    for (const project of statusedProjects()) {
+      const row = byProject[String(project.id)];
+      if (!row) continue;
+      impressions += row.impressions;
+      clicks += row.clicks;
+      leads += row.totalLeads;
+      metaLeads += row.metaLeads;
+      spend += row.spend;
+    }
+
+    // `reach` has never been returned by any of these endpoints, so frequency
+    // stays unavailable — hasReach gates the one cell that wanted it.
     const reach = 0;
 
     return {
@@ -1974,7 +2055,8 @@ export default function MainDashboard() {
       ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
       cpc: clicks > 0 ? spend / clicks : 0,
       clickToLead: clicks > 0 ? (leads / clicks) * 100 : 0,
-      cpl: t.cpl ?? 0,
+      // Per META lead — the backend's own rule, applied to the summed rows.
+      cpl: metaLeads > 0 ? spend / metaLeads : 0,
       hasReach: false,
       hasData: impressions > 0 || clicks > 0 || leads > 0,
     };
@@ -2563,7 +2645,7 @@ export default function MainDashboard() {
               <p class="text-3xl font-bold text-[#14233A] dark:text-white mt-1.5">
                 <CountUp
                   value={overviewStatsCards().totalLeads}
-                  loading={ledgerLoading()}
+                  loading={heroLoading()}
                 />
               </p>
               {/* Fed leads sit BESIDE the Meta figure, never inside it — this is
@@ -2660,7 +2742,7 @@ export default function MainDashboard() {
               {"₹"}
               <CountUp
                 value={overviewStatsCards().totalSpent}
-                loading={ledgerLoading()}
+                loading={heroLoading()}
               />
             </h2>
 
@@ -2776,7 +2858,7 @@ export default function MainDashboard() {
               <p class="text-xl font-bold text-[#14233A] dark:text-white mt-1">
                 <CountUp
                   value={overviewStatsCards().totalLeads}
-                  loading={ledgerLoading()}
+                  loading={heroLoading()}
                 />
               </p>
               {/* Fed leads sit BESIDE the Meta figure, never inside it — this is
@@ -2855,7 +2937,7 @@ export default function MainDashboard() {
                   {"₹"}
                   <CountUp
                     value={overviewStatsCards().gstSpent}
-                    loading={ledgerLoading()}
+                    loading={heroLoading()}
                   />
                 </p>
                 <p class="text-xs text-[#54657E] dark:text-gray-400 mt-0.5">
@@ -3369,9 +3451,12 @@ export default function MainDashboard() {
       <div class="flex items-center justify-between mt-5 mb-4 flex-wrap gap-3">
         <div class="flex items-center gap-3">
           <span class="text-sm text-[#8593A8] dark:text-gray-400">
-            {total() === 0
+            {matchingProjects().length === 0
               ? "No results"
-              : `Showing ${(currentPage() - 1) * pageSize() + 1}–${Math.min(currentPage() * pageSize(), total())} of ${total()} results`}
+              : `Showing ${(currentPage() - 1) * pageSize() + 1}–${Math.min(
+                  currentPage() * pageSize(),
+                  matchingProjects().length,
+                )} of ${matchingProjects().length} results`}
           </span>
 
           <RowsPerPageSelect
@@ -3401,18 +3486,15 @@ export default function MainDashboard() {
           </button>
 
           <span class="text-sm text-[#8593A8] dark:text-gray-400 px-1">
-            Page {currentPage()} of{" "}
-            {Math.ceil(allProjects().length / pageSize())}
+            Page {currentPage()} of {filteredPageCount()}
           </span>
 
           <button
             onClick={() =>
-              currentPage() < Math.ceil(allProjects().length / pageSize()) &&
+              currentPage() < filteredPageCount() &&
               setCurrentPage(currentPage() + 1)
             }
-            disabled={
-              currentPage() >= Math.ceil(allProjects().length / pageSize())
-            }
+            disabled={currentPage() >= filteredPageCount()}
             class="flex items-center gap-1.5 px-4 h-9 text-sm rounded-lg bg-[#AC2334] border border-[#AC2334] text-white hover:bg-[#8E1C2B] disabled:opacity-35 disabled:cursor-default transition-colors"
           >
             Next
