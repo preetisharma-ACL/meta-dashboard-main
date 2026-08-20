@@ -2,7 +2,6 @@ import {
   createSignal,
   createMemo,
   createResource,
-  createEffect,
   For,
   Show,
 } from "solid-js";
@@ -25,8 +24,14 @@ import {
 // nested block that rides along with another (campaign_manager), and it is
 // optional everywhere it appears.
 //
-// "admin" is never offered: the backend rejects it with a 400 no matter who
-// asks, so listing it would only hand the operator a guaranteed failure.
+// "admin" is never offered as a role to CREATE: the backend rejects it with a
+// 400 no matter who asks, so listing it would only hand the operator a
+// guaranteed failure. That is separate from "Onboarded by", where admins ARE
+// offered — some of them own client accounts and the endpoint accepts them.
+//
+// Two fields are pick-existing-or-create-new comboboxes rather than dropdowns —
+// the organization on step 1 and the client nomen on step 3. Both send EITHER
+// the id OR the name, never both, and neither is a 400.
 //
 // The creation is ONE transaction — a failure creates NOTHING, so a rejected
 // submit safely leaves the operator on the form to fix the value and resubmit.
@@ -94,6 +99,10 @@ const PINNED_PATHS = new Set([
   "first_name",
   "last_name",
   "organization_id",
+  "organization_name",
+  // The cross-field "pick one or type one" rejection — pinned to the same
+  // combobox those two paths belong to rather than left to the banner.
+  "organization",
   "role",
   "client.nomen_id",
   "client.nomen_name",
@@ -142,8 +151,15 @@ const emptyAccount = () => ({
   confirm: "",
   first_name: "",
   last_name: "",
+  // Exactly one of these two ends up in the payload — see buildPayload.
   organization_id: "",
+  organization_name: "",
 });
+
+// The three paths the organization combobox owns. Any edit to it clears all
+// three at once: the operator can't tell which one the backend pinned, so
+// leaving a stale sibling on screen would read as an unfixable error.
+const ORG_PATHS = ["organization_id", "organization_name", "organization"];
 
 const emptyClient = () => ({
   nomen_id: "",
@@ -199,6 +215,9 @@ export default function OnboardingWizard() {
   // Nomen combobox local state (the picker doubles as a "create new" input).
   const [nomenQuery, setNomenQuery] = createSignal("");
   const [nomenOpen, setNomenOpen] = createSignal(false);
+  // Organization combobox — same shape, same rules.
+  const [orgQuery, setOrgQuery] = createSignal("");
+  const [orgOpen, setOrgOpen] = createSignal(false);
   const [cmQuery, setCmQuery] = createSignal("");
 
   const errFor = (path) => errors()[path];
@@ -227,14 +246,10 @@ export default function OnboardingWizard() {
     clearErr(`staff_profile.${key}`);
   };
 
-  // A single organization is not a choice — preselect it so the operator isn't
-  // asked to confirm the only possible answer.
-  createEffect(() => {
-    const orgs = options()?.organizations ?? [];
-    if (orgs.length === 1 && !account().organization_id) {
-      setAccount((prev) => ({ ...prev, organization_id: String(orgs[0].id) }));
-    }
-  });
+  // No auto-preselect on the organization any more. It used to fill in the only
+  // existing org, which was right when picking was the only option — now that a
+  // new client usually arrives with a brand-new org, an effect that re-selects
+  // the moment the field is cleared would fight the operator typing a new name.
 
   const roles = () => options()?.creatableRoles ?? [];
   const clientTypes = () => options()?.clientTypes ?? [];
@@ -280,6 +295,82 @@ export default function OnboardingWizard() {
     }));
     clearErr("campaign_manager.tier", "campaign_manager.team_lead_id");
   };
+
+  // ── Organization combobox ──────────────────────────────────────────────────
+  // Pick an existing org OR name a new one, exactly like the nomen field below.
+  const filteredOrgs = createMemo(() => {
+    const q = orgQuery().trim().toLowerCase();
+    const list = options()?.organizations ?? [];
+    if (!q) return list;
+    return list.filter((o) => (o.name || "").toLowerCase().includes(q));
+  });
+
+  // The backend's duplicate check is case-insensitive, so this one is too —
+  // offering "create Acme" next to an existing "ACME" would only earn a 400.
+  const exactOrgMatch = createMemo(() => {
+    const q = orgQuery().trim().toLowerCase();
+    if (!q) return false;
+    return (options()?.organizations ?? []).some(
+      (o) => (o.name || "").toLowerCase() === q,
+    );
+  });
+
+  const selectedOrg = createMemo(() =>
+    (options()?.organizations ?? []).find(
+      (o) => String(o.id) === String(account().organization_id),
+    ),
+  );
+
+  const onOrgInput = (value) => {
+    setOrgQuery(value);
+    setOrgOpen(true);
+    setAccount((prev) => ({
+      ...prev,
+      organization_id: "",
+      organization_name: "",
+    }));
+    clearErr(...ORG_PATHS);
+  };
+
+  const chooseExistingOrg = (o) => {
+    setAccount((prev) => ({
+      ...prev,
+      organization_id: String(o.id),
+      organization_name: "",
+    }));
+    setOrgQuery(o.name);
+    setOrgOpen(false);
+    clearErr(...ORG_PATHS);
+  };
+
+  const chooseNewOrg = () => {
+    setAccount((prev) => ({
+      ...prev,
+      organization_id: "",
+      organization_name: orgQuery().trim(),
+    }));
+    setOrgOpen(false);
+    clearErr(...ORG_PATHS);
+  };
+
+  const orgErr = () =>
+    errFor("organization_id") ||
+    errFor("organization_name") ||
+    errFor("organization");
+
+  // ── Sales owner options ────────────────────────────────────────────────────
+  // sales_users carries admins as well as sales users; both are valid values for
+  // onboarded_by and admins really do own client accounts, so they are grouped
+  // and labelled rather than filtered out. An unrecognised role is still listed
+  // — the endpoint decides what it accepts, not this grouping.
+  const salesGroups = createMemo(() => {
+    const list = options()?.salesUsers ?? [];
+    return {
+      sales: list.filter((u) => u.role === "sales"),
+      admin: list.filter((u) => u.role === "admin"),
+      other: list.filter((u) => u.role !== "sales" && u.role !== "admin"),
+    };
+  });
 
   // ── Nomen combobox ─────────────────────────────────────────────────────────
   const filteredNomens = createMemo(() => {
@@ -366,7 +457,9 @@ export default function OnboardingWizard() {
     if (!a.confirm) found.confirm = "Confirm the password.";
     else if (a.confirm !== a.password)
       found.confirm = "The two passwords do not match.";
-    if (!a.organization_id) found.organization_id = "Pick an organization.";
+    if (!a.organization_id && !trimmed(a.organization_name))
+      found.organization_id =
+        "Pick an existing organization, or type a name to create a new one.";
     return found;
   };
 
@@ -491,9 +584,13 @@ export default function OnboardingWizard() {
     const payload = {
       email: trimmed(a.email),
       password: a.password,
-      organization_id: Number(a.organization_id),
       role: role(),
     };
+
+    // EITHER an existing organization OR a new name — never both, never
+    // neither. Both keys present is a 400, and so is an empty payload of them.
+    if (a.organization_id) payload.organization_id = Number(a.organization_id);
+    else payload.organization_name = trimmed(a.organization_name);
     const first = trimmed(a.first_name);
     const last = trimmed(a.last_name);
     if (first) payload.first_name = first;
@@ -581,6 +678,8 @@ export default function OnboardingWizard() {
     setUnpinned([]);
     setNomenQuery("");
     setNomenOpen(false);
+    setOrgQuery("");
+    setOrgOpen(false);
     setCmQuery("");
     setShowPassword(false);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -662,6 +761,17 @@ export default function OnboardingWizard() {
                   <dt class="text-[#54657E] dark:text-gray-400">User ID</dt>
                   <dd class="font-semibold text-[#14233A] dark:text-gray-100">
                     {result().user_id}
+                  </dd>
+                </div>
+              </Show>
+              <Show when={result().organization_created}>
+                <div class="flex justify-between gap-3">
+                  <dt class="text-[#54657E] dark:text-gray-400">Organization</dt>
+                  <dd class="font-semibold text-[#14233A] dark:text-gray-100 text-right break-all">
+                    {String(result().organization_created)}
+                    <span class="ml-2 inline-block px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-[#15966A]/15 text-[#0F7A55]">
+                      new
+                    </span>
                   </dd>
                 </div>
               </Show>
@@ -975,25 +1085,102 @@ export default function OnboardingWizard() {
                   </div>
                 </div>
 
+                {/* Organization: existing OR new */}
                 <div>
                   <label class={LABEL}>Organization <Req /></label>
-                  <select
-                    value={account().organization_id}
-                    onChange={(e) => setA("organization_id", e.target.value)}
-                    disabled={options.loading}
-                    class={`${FIELD} ${errFor("organization_id") ? FIELD_BAD : ""}`}
-                    aria-invalid={!!errFor("organization_id")}
+                  <div class="relative">
+                    <input
+                      type="text"
+                      value={orgQuery()}
+                      placeholder={
+                        options.loading
+                          ? "Loading organizations…"
+                          : "Search organizations, or type a new name…"
+                      }
+                      onFocus={() => setOrgOpen(true)}
+                      onInput={(e) => onOrgInput(e.target.value)}
+                      onBlur={() => setTimeout(() => setOrgOpen(false), 150)}
+                      class={`${FIELD} ${orgErr() ? FIELD_BAD : ""}`}
+                      aria-invalid={!!orgErr()}
+                    />
+                    <Show when={orgOpen()}>
+                      <div class="absolute z-50 mt-1 w-full max-h-60 overflow-y-auto rounded-lg border border-[#E2E8F1] dark:border-gray-700 bg-white dark:bg-gray-900 shadow-xl">
+                        <For each={filteredOrgs()}>
+                          {(o) => (
+                            <button
+                              type="button"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                chooseExistingOrg(o);
+                              }}
+                              class="w-full text-left px-3 py-2 hover:bg-[#FBEEF0] dark:hover:bg-gray-800 transition-colors"
+                            >
+                              <span class="font-medium text-[#14233A] dark:text-gray-100">
+                                {o.name}
+                              </span>
+                              <span class="block text-xs text-[#8593A8]">
+                                Existing · #{o.id}
+                              </span>
+                            </button>
+                          )}
+                        </For>
+
+                        <Show when={orgQuery().trim() && !exactOrgMatch()}>
+                          <button
+                            type="button"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              chooseNewOrg();
+                            }}
+                            class="w-full text-left px-3 py-2.5 border-t border-[#E2E8F1] dark:border-gray-700 hover:bg-[#E9F7F1] dark:hover:bg-green-900/20 transition-colors"
+                          >
+                            <span class="font-semibold text-[#0F7A55]">
+                              + Create new organization “{orgQuery().trim()}”
+                            </span>
+                          </button>
+                        </Show>
+
+                        <Show when={!filteredOrgs().length && !orgQuery().trim()}>
+                          <p class="px-3 py-3 text-sm text-[#8593A8]">
+                            No organizations yet — type a name to create one.
+                          </p>
+                        </Show>
+                      </div>
+                    </Show>
+                  </div>
+
+                  <Show when={selectedOrg()}>
+                    <p class={HINT}>
+                      Using existing organization{" "}
+                      <span class="font-semibold text-[#14233A] dark:text-gray-200">
+                        {selectedOrg().name}
+                      </span>{" "}
+                      (#{selectedOrg().id}).
+                    </p>
+                  </Show>
+                  <Show
+                    when={!selectedOrg() && trimmed(account().organization_name)}
                   >
-                    <option value="">
-                      {options.loading
-                        ? "Loading organizations…"
-                        : "Select an organization…"}
-                    </option>
-                    <For each={options()?.organizations ?? []}>
-                      {(o) => <option value={String(o.id)}>{o.name}</option>}
-                    </For>
-                  </select>
+                    <p class={HINT}>
+                      Creating a new organization named{" "}
+                      <span class="font-semibold text-[#0F7A55]">
+                        {trimmed(account().organization_name)}
+                      </span>
+                      .
+                    </p>
+                  </Show>
+                  <Show
+                    when={!selectedOrg() && !trimmed(account().organization_name)}
+                  >
+                    <p class={HINT}>
+                      Pick one from the list, or type a name and choose “Create
+                      new organization”.
+                    </p>
+                  </Show>
+
                   <ErrorText message={errFor("organization_id")} />
+                  <ErrorText message={errFor("organization_name")} />
+                  <ErrorText message={errFor("organization")} />
                 </div>
               </div>
             </Show>
@@ -1222,7 +1409,7 @@ export default function OnboardingWizard() {
                     </div>
                   </Show>
 
-                  {/* Onboarded by — sales users only */}
+                  {/* Onboarded by — sales users and the admins who own clients */}
                   <div>
                     <label class={LABEL}>Onboarded by <Req /></label>
                     <select
@@ -1234,19 +1421,45 @@ export default function OnboardingWizard() {
                     >
                       <option value="">
                         {options.loading
-                          ? "Loading sales users…"
-                          : "Select the sales user…"}
+                          ? "Loading sales owners…"
+                          : "Select the sales owner…"}
                       </option>
-                      <For each={options()?.salesUsers ?? []}>
-                        {(u) => <option value={String(u.id)}>{u.email}</option>}
-                      </For>
+                      <Show when={salesGroups().sales.length}>
+                        <optgroup label="Sales">
+                          <For each={salesGroups().sales}>
+                            {(u) => (
+                              <option value={String(u.id)}>{u.email}</option>
+                            )}
+                          </For>
+                        </optgroup>
+                      </Show>
+                      {/* The suffix repeats what the group says, because a
+                          closed select shows only the option's own text. */}
+                      <Show when={salesGroups().admin.length}>
+                        <optgroup label="Admins">
+                          <For each={salesGroups().admin}>
+                            {(u) => (
+                              <option value={String(u.id)}>
+                                {u.email} (admin)
+                              </option>
+                            )}
+                          </For>
+                        </optgroup>
+                      </Show>
+                      <Show when={salesGroups().other.length}>
+                        <For each={salesGroups().other}>
+                          {(u) => (
+                            <option value={String(u.id)}>{u.email}</option>
+                          )}
+                        </For>
+                      </Show>
                     </select>
                     <Show
                       when={errFor("client.onboarded_by_id")}
                       fallback={
                         <p class={HINT}>
-                          Must be a sales user — the client's payments are
-                          credited to them.
+                          Sales users, plus the admins who own client accounts —
+                          the client's payments are credited to whoever you pick.
                         </p>
                       }
                     >

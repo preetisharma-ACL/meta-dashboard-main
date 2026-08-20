@@ -29,11 +29,17 @@ const asArray = (v) => (Array.isArray(v) ? v : []);
 
 // GET /auth/onboarding/options/ — everything the wizard's dropdowns need, in
 // one round trip. Shapes:
-//   organizations           [{ id, name }]
+//   organizations           [{ id, name }]   ← pick one, or POST a new name
 //   unassigned_nomens       [{ id, name }]   ← nomens with no client yet
 //   tier1_campaign_managers [{ id, email }]  ← eligible CM team leads
 //   campaign_managers       [{ id, email, tier }]
-//   sales_users             [{ id, email }]  ← eligible onboarded_by
+//   sales_users             [{ id, email, role }]  ← eligible onboarded_by
+//
+// sales_users carries BOTH sales users and admins — `role` is "sales" or
+// "admin". Admins are in the list because some of them genuinely own client
+// accounts (Alok is second only to anish by client count), so the wizard groups
+// by role rather than filtering admins out. The backend accepts either and
+// still 400s anything else (a CM, say), so it stays the authority.
 export const fetchOnboardingOptions = async () => {
   const res = await api(`/auth/onboarding/options/`, { method: "GET" });
   const d = res?.data ?? {};
@@ -56,9 +62,13 @@ export const fetchOnboardingOptions = async () => {
 // POST /auth/onboarding/users/ — create the user + its role profile.
 // The caller builds the body; only ONE nested object may be present and it must
 // match `role` (a client:{} on a non-client role is a 400). Returns the `data`
-// block: { role, user_id, client_id?, client_nomen?, nomen_created?,
-//           campaign_managers?, billing_setup_pending?, cm_profile_id?, tier?,
-//           team_lead?, staff_profile? }.
+// block: { role, user_id, organization_created?, client_id?, client_nomen?,
+//           nomen_created?, campaign_managers?, billing_setup_pending?,
+//           cm_profile_id?, tier?, team_lead?, staff_profile? }.
+//
+// The organization works like the nomen: send EITHER organization_id (existing)
+// OR organization_name (creates it) — both together, or neither, is a 400.
+// `organization_created` echoes the name back when a new one was made.
 //
 // The whole creation is ONE transaction — a failure creates nothing, so it is
 // safe for the caller to let the operator fix the error and resubmit.
