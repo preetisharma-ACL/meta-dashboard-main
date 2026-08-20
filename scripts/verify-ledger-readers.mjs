@@ -27,6 +27,16 @@ registerHooks({
       throw err;
     }
   },
+  // Node refuses to load ".jsx". Columnsorting.jsx is a plain hook with no JSX
+  // syntax in it, so treating it as an ES module is enough to import the real
+  // sorter. If someone puts actual JSX in there, this fails loudly — which is
+  // the right outcome, not a silent skip.
+  load(url, context, nextLoad) {
+    if (url.endsWith(".jsx")) {
+      return nextLoad(url, { ...context, format: "module" });
+    }
+    return nextLoad(url, context);
+  },
 });
 
 const noopStorage = {
@@ -48,6 +58,10 @@ const check = (name, cond, extra = "") => {
   console.log(`  ${cond ? "PASS" : "FAIL"}  ${name}${cond ? "" : " " + extra}`);
   if (!cond) failures++;
 };
+
+// Renders a sorted result as "188.28,—,9.5" so a failure shows the actual order.
+const fmtSort = (out) =>
+  `(${out.map((r) => (r.modifiedCpl == null ? "—" : r.modifiedCpl)).join(",")})`;
 
 // Every field the two payloads share, with the campaign counts un-date-filtered.
 const common = {
@@ -76,18 +90,75 @@ const envelope = (row, totals) => ({
   },
 });
 
-// ── Privileged: spend / cpl are the RAW agency cost ─────────────────────────
+// ── Privileged: spend / cpl are the RAW agency cost, premium_* sits beside it ─
 console.log("\nprivileged payload → readDashboardLedger");
 {
-  const raw = { ...common, spend: "3320.60", cpl: "0.55" };
+  // NoidaEvent, from the live admin payload: raw 126.69 → premium 188.28.
+  const raw = {
+    ...common,
+    spend: "3320.60",
+    cpl: "126.69",
+    premium_spend: "282224.28",
+    premium_cpl: "188.28",
+  };
   const led = readDashboardLedger(envelope(raw, raw));
   const row = led.byProject["42"];
 
   check("spend read from `spend`", row.spend === 3320.6, `(${row.spend})`);
-  check("cpl read from `cpl`", row.cpl === 0.55, `(${row.cpl})`);
+  check("cpl read from `cpl`", row.cpl === 126.69, `(${row.cpl})`);
   check("string money coerced to Number", typeof row.spend === "number");
+  check(
+    "premium_cpl → premiumCpl (what the Premium CPL column renders)",
+    row.premiumCpl === 188.28,
+    `(${row.premiumCpl})`,
+  );
+  check(
+    "premium_spend → premiumSpend",
+    row.premiumSpend === 282224.28,
+    `(${row.premiumSpend})`,
+  );
+  check(
+    "raw and premium stay DISTINCT — neither overwrites the other",
+    row.cpl === 126.69 && row.premiumCpl === 188.28,
+  );
   check("totals decoded the same way", led.totals.spend === 3320.6);
   check("loaded + settled", led.loaded === true && led.settled === true);
+}
+
+// ── Missing premium is legitimate and must stay null, never 0 ───────────────
+// ~299 of 448 live rows have no premium: retainer clients have no display config
+// by design, and some client+project pairs are missing one. A 0 there would
+// claim the client was billed nothing.
+console.log("\nrows with no premium → null, not 0");
+{
+  const noPremium = {
+    ...common,
+    spend: "3320.60",
+    cpl: "126.69",
+    premium_spend: null,
+    premium_cpl: null,
+  };
+  const row = readDashboardLedger(envelope(noPremium, noPremium)).byProject[
+    "42"
+  ];
+  check("premium_cpl null → premiumCpl null", row.premiumCpl === null);
+  check("premium_spend null → premiumSpend null", row.premiumSpend === null);
+  check("raw side unaffected", row.cpl === 126.69 && row.spend === 3320.6);
+
+  // The key absent entirely, not just null.
+  const absent = { ...common, spend: "1", cpl: "1" };
+  const row2 = readDashboardLedger(envelope(absent, absent)).byProject["42"];
+  check("premium keys absent → null, not 0", row2.premiumCpl === null);
+}
+
+// ── A client never gets a second premium figure to compare against itself ───
+console.log("\nclient rows carry no separate premium pair");
+{
+  const client = { ...common, premium_spend: "4316.79", premium_cpl: "0.72" };
+  const row = readClientLedger(envelope(client, client)).byProject["42"];
+  check("premiumCpl null on a client row", row.premiumCpl === null);
+  check("premiumSpend null on a client row", row.premiumSpend === null);
+  check("...while spend/cpl carry the premium figures", row.spend === 4316.79);
 }
 
 // ── Client: premium_spend / premium_cpl, raw keys ABSENT ────────────────────
@@ -203,6 +274,79 @@ console.log("\nmalformed envelopes degrade instead of throwing");
     }
     check(`${name} → empty rows, zero totals`, ok);
   }
+}
+
+// ── Sorting a column that holds numbers AND blanks ──────────────────────────
+// The Premium CPL column is the first to mix real numbers with nulls. The shared
+// sorter's string fallback compares "" against "188.28", which scatters the
+// blanks through the middle of a numeric order — so blanks now sort last in both
+// directions. This imports the real hook, same as the readers above.
+console.log("\nPremium CPL sorts numerically, blanks last");
+{
+  const { default: useColumnSort } =
+    await import("../src/components/Columnsorting.jsx");
+  const { handleSort, sortData } = useColumnSort();
+  handleSort("modifiedCpl"); // first click on a numeric column → desc
+
+  // Enough rows, interleaved, that an inconsistent comparator cannot land the
+  // right answer by luck — the old code sorted number-vs-number numerically and
+  // number-vs-null as text, which V8's sort resolves differently depending on
+  // where the blanks start out.
+  const rows = [
+    { name: "a", modifiedCpl: 188.28 },
+    { name: "b", modifiedCpl: null },
+    { name: "c", modifiedCpl: 9.5 },
+    { name: "d", modifiedCpl: 208.18 },
+    { name: "e", modifiedCpl: null },
+    { name: "f", modifiedCpl: 134.44 },
+    { name: "g", modifiedCpl: null },
+    { name: "h", modifiedCpl: 1017.5 },
+  ];
+
+  // The two invariants, asserted as properties rather than as one expected
+  // permutation: blanks form an unbroken tail, and the values ahead of them are
+  // in numeric order.
+  const blanksLast = (out) => {
+    const firstBlank = out.findIndex((r) => r.modifiedCpl == null);
+    if (firstBlank === -1) return true;
+    return out.slice(firstBlank).every((r) => r.modifiedCpl == null);
+  };
+  const ordered = (out, dir) => {
+    const nums = out
+      .filter((r) => r.modifiedCpl != null)
+      .map((r) => r.modifiedCpl);
+    return nums.every(
+      (v, i) =>
+        i === 0 || (dir === "asc" ? nums[i - 1] <= v : nums[i - 1] >= v),
+    );
+  };
+
+  const desc = sortData(rows);
+  check("desc: blanks form an unbroken tail", blanksLast(desc), fmtSort(desc));
+  check(
+    "desc: values in numeric order (9.5 below 188.28, not above it as text)",
+    ordered(desc, "desc"),
+    fmtSort(desc),
+  );
+
+  handleSort("modifiedCpl"); // second click → asc
+  const asc = sortData(rows);
+  check("asc: blanks STILL a tail, not a head", blanksLast(asc), fmtSort(asc));
+  check("asc: values in numeric order", ordered(asc, "asc"), fmtSort(asc));
+
+  // Text columns must be untouched by the change.
+  const { handleSort: hs2, sortData: sd2 } = useColumnSort();
+  hs2("name");
+  const names = sd2([
+    { name: "Rosemont" },
+    { name: "" },
+    { name: "DLFMagnolias" },
+  ]).map((r) => r.name);
+  check(
+    "text column: empty string still sorts as text, first in asc",
+    names[0] === "",
+    `(${JSON.stringify(names)})`,
+  );
 }
 
 console.log(failures === 0 ? "\nALL CHECKS PASSED" : `\n${failures} FAILED`);

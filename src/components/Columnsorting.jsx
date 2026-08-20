@@ -42,6 +42,20 @@ export default function useColumnSort(initial = { key: "", direction: "desc" }) 
       let valA = a[key];
       let valB = b[key];
 
+      // MISSING VALUES SORT LAST, in both directions. A column can legitimately
+      // hold a real number for some rows and null for others — the dashboard's
+      // Premium CPL is null wherever a client has no display config — and
+      // without this the string fallback below compares "" against "188.28" and
+      // scatters the blanks through the middle of an otherwise numeric order.
+      // Only null/undefined count as missing; an empty string still sorts as
+      // text, so existing text columns behave exactly as before.
+      const missingA = valA === null || valA === undefined;
+      const missingB = valB === null || valB === undefined;
+      if (missingA || missingB) {
+        if (missingA && missingB) return 0;
+        return missingA ? 1 : -1;
+      }
+
       // number sorting
       const isNumber = typeof valA === "number" && typeof valB === "number";
 

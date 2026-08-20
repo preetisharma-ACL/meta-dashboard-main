@@ -1013,10 +1013,12 @@ export default function MainDashboard() {
         // Cost per META lead — already divided that way server-side. null (no
         // Meta leads to divide by) prints as ₹0, exactly as it did before.
         avgCPL: row?.cpl ?? 0,
-        // Premium CPL (the marked-up, client-facing figure) is NOT in the ledger
-        // payload yet — it needs the display pipeline and is a follow-up. Left
-        // null so the column renders "—" rather than a guess.
-        modifiedCpl: null,
+        // Premium CPL — the marked-up, client-facing figure, beside the raw one.
+        // Null on ~2/3 of rows for two legitimate reasons: a retainer client has
+        // no display config by design, and some client+project pairs are missing
+        // one. Both must stay null so the cell prints "—"; defaulting to 0 would
+        // claim the client was billed nothing.
+        modifiedCpl: row?.premiumCpl ?? null,
         activeCampaigns: row?.campaignsActive ?? 0,
         completedCampaigns: row?.campaignsCompleted ?? 0,
         pausedCampaigns: row?.campaignsPaused ?? 0,
@@ -1293,6 +1295,17 @@ export default function MainDashboard() {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     });
+
+  // Premium CPL under the raw CPL is possible and MEANINGFUL, not a glitch — so
+  // the row gets flagged rather than printed flat. On a project shared by several
+  // clients, premium_spend only counts the clients that have a display config
+  // while raw spend counts them all, so an unconfigured client drags premium
+  // below raw (FaridabadEvent: raw ₹150.49 vs premium ₹134.44, two of its four
+  // clients unconfigured). A CPL client billed under what their ads cost does the
+  // same thing. Either reading is worth a second look; both are invisible if the
+  // two numbers just sit next to each other.
+  const premiumBelowRaw = (premium, raw) =>
+    premium != null && Number(raw) > 0 && Number(premium) < Number(raw);
 
   // ── Lead replacement breakdown (GET /dashboard/summary/) ──────────────────
   // The ledger's leads/spend are still derived from the campaign sweep — this is
@@ -2796,17 +2809,49 @@ export default function MainDashboard() {
                         {"₹"}
                         {inr2(stats().avgCPL)}
                       </td>
-                      {/* Premium CPL — the marked-up, client-facing figure. NOT
-                          in the /dashboard/ledger/ payload yet (it needs the
-                          display pipeline), so the column holds its place and
-                          prints "—" rather than a guess. modifiedCpl is null for
-                          every row until the backend returns it. */}
+                      {/* Premium CPL — what the client is billed per lead,
+                          beside the raw Meta cost. "—" where there is no figure:
+                          a retainer client has no display config by design, and
+                          some client+project pairs are missing one. That blank is
+                          correct and is never filled with a 0. */}
                       <Show when={isAdmin()}>
-                        <td class="p-3 font-medium text-gray-700 dark:text-gray-100">
-                          {project.modifiedCpl !== null &&
-                          project.modifiedCpl !== undefined
-                            ? `₹${Number(project.modifiedCpl).toLocaleString("en-IN")}`
-                            : "—"}
+                        <td class="p-3 font-medium">
+                          <Show
+                            when={
+                              project.modifiedCpl !== null &&
+                              project.modifiedCpl !== undefined
+                            }
+                            fallback={
+                              <span
+                                class="text-[#8593A8] dark:text-gray-500"
+                                title="No premium figure for this project in this range — either a retainer client (no display config by design) or a client+project pair whose config is missing."
+                              >
+                                —
+                              </span>
+                            }
+                          >
+                            <span
+                              class={
+                                premiumBelowRaw(
+                                  project.modifiedCpl,
+                                  project.avgCPL,
+                                )
+                                  ? "text-[#B07A14] dark:text-yellow-300"
+                                  : "text-gray-700 dark:text-gray-100"
+                              }
+                              title={
+                                premiumBelowRaw(
+                                  project.modifiedCpl,
+                                  project.avgCPL,
+                                )
+                                  ? "Premium is BELOW raw. Usually a shared project where not every client has a display config — that spend counts in raw but not in premium. Can also mean a CPL client is billed under what their ads cost."
+                                  : undefined
+                              }
+                            >
+                              {"₹"}
+                              {inr2(project.modifiedCpl)}
+                            </span>
+                          </Show>
                         </td>
                       </Show>
 
@@ -2903,7 +2948,11 @@ export default function MainDashboard() {
                   {"₹"}
                   {inr2(overviewStats().avgCPL)}
                 </td>
-                {/* Premium CPL — no meaningful aggregate, show dash */}
+                {/* Premium CPL — deliberately no total. A roll-up would have to
+                    be Σ premium spend ÷ Σ premium LEADS, and the row carries no
+                    premium lead count, so there is nothing to weight by; the
+                    average of per-row CPLs is a different (wrong) number. Adding
+                    premium_leads to the payload is what would unlock this. */}
                 <Show when={isAdmin()}>
                   <td>—</td>
                 </Show>

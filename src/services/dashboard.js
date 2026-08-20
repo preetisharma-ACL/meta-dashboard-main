@@ -159,11 +159,20 @@ const commonRow = (r) => ({
 // cpl is null (not 0) when the backend could not divide — no Meta leads in
 // range. A 0 there would read as "free leads"; callers decide how to print it.
 
-// PRIVILEGED — raw agency cost.
+// PRIVILEGED — raw agency cost, PLUS the marked-up figure alongside it. These
+// roles are the only ones who see both, which is the whole point of the Premium
+// CPL column: raw is what the ads cost us, premium is what the client is billed.
+//
+// premiumCpl is null (never 0) when there is nothing to divide, and that happens
+// legitimately — a retainer client has no display config by design, and a
+// handful of client+project pairs are simply missing one. Null must reach the
+// render as null so it can print "—"; a 0 would read as "billed nothing".
 const ledgerRow = (r) => ({
   ...commonRow(r),
   spend: num(r?.spend),
   cpl: r?.cpl == null ? null : num(r.cpl),
+  premiumSpend: r?.premium_spend == null ? null : num(r.premium_spend),
+  premiumCpl: r?.premium_cpl == null ? null : num(r.premium_cpl),
 });
 
 // CLIENT — the marked-up / fixed-CPL figure they are billed against. This
@@ -174,6 +183,11 @@ const clientRow = (r) => ({
   ...commonRow(r),
   spend: num(r?.premium_spend),
   cpl: r?.premium_cpl == null ? null : num(r.premium_cpl),
+  // No SECOND premium figure for a client: the two above already ARE the premium
+  // ones. Null rather than a copy, so nothing downstream can render a client a
+  // "Premium CPL" column comparing a number against itself.
+  premiumSpend: null,
+  premiumCpl: null,
 });
 
 const buildLedger = (res, rowOf) => {
