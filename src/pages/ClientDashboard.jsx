@@ -40,16 +40,13 @@ import prestigelogo from "../assets/project-logo/prestige.png";
 import { A } from "@solidjs/router";
 import { DateRangeFilter } from "../components/DateRangeFilter";
 import useColumnSort from "../components/Columnsorting";
-import { fetchProjects, fetchManualBatches } from "../services/dashboard";
 import {
-  fedLeadsForProject,
-  fetchFedLeadBatches,
-  fedLeadsByProject,
-  fmtFed,
-} from "../services/fedLeads";
-import { fetchCampaigns } from "../services/campaigns";
-import { fetchBulkCampaignInsights } from "../services/campaigns";
-import { fetchAllCampaigns } from "../services/campaigns";
+  fetchProjects,
+  fetchDashboardLedger,
+  readDashboardLedger,
+  EMPTY_LEDGER,
+} from "../services/dashboard";
+import { fmtFed } from "../services/fedLeads";
 import { fetchAllAdminClients } from "./admin/services/fetchClients";
 import { fetchSalesClients } from "../services/sales";
 import Avatar from "../components/common/Avatar";
@@ -72,9 +69,6 @@ import {
   fetchDashboardSummary,
   summaryLeadBreakdown,
   showsReplacement,
-  fetchAllReplacementBatches,
-  fetchMyReplacements,
-  replacedLeadsByProject,
 } from "../services/leadReplacement";
 import { canRecordReplacement } from "../stores/currentUser";
 import { scopeKey } from "../stores/cmScope";
@@ -89,17 +83,6 @@ import SuccessToast, { showToast } from "../components/common/SuccessToast";
 let activeLoadToken = 0;
 const bumpLoadToken = () => ++activeLoadToken;
 
-// Admin/CM "preview as client" insight rows (returned when the bulk call is sent
-// with as_client_id) carry BOTH `spend` (client-facing — markup / fixed-CPL
-// applied) and `spend_raw` (the actual Meta charge). The ledger's "Total Spent"
-// / "AVG CPL" columns are the RAW Meta figures — the marked-up number lives in
-// the separate Premium CPL column — so read `spend_raw` whenever it is present.
-// A client's own rows have no `spend_raw`, so fall back to `spend` (which is
-// already their billed figure). This keeps the raw columns at the Meta charge
-// even after we start sending as_client_id (which flips `spend` to marked-up).
-const rawSpendOf = (row) =>
-  parseFloat((row?.spend_raw != null ? row.spend_raw : row?.spend) || 0);
-
 // Replaced leads read as a deduction, so a real count shows as "−N"; none shows
 // a plain 0 — the batch list genuinely says "nothing replaced" for that project,
 // which is a fact, not a gap. (Mirrors fmtFed's "+N" for the column beside it.)
@@ -107,11 +90,12 @@ const fmtReplacedLeads = (n) =>
   Number(n) > 0 ? `−${Number(n).toLocaleString("en-IN")}` : "0";
 
 // ── Dev-time ledger invariants ───────────────────────────────────────────────
-// The privileged ledger derives Meta by SUBTRACTING fed from an inclusive sum,
-// so a single lead lost anywhere between the bulk response and the rendered row
-// surfaces as a quietly wrong Meta figure, not as an obvious blank — which is
-// exactly how "Meta 65" shipped against a real 66. These fire in dev only and
-// name the stage that dropped it instead of leaving it to be re-derived by hand.
+// Meta + Fed == Total is now the BACKEND's identity: /dashboard/ledger/ returns
+// meta_leads, fed_leads and total_leads already reconciled, and this page prints
+// them verbatim. That makes a break here a payload bug rather than a join bug —
+// which is exactly why the assert stays. A lead lost server-side still surfaces
+// as a quietly wrong Meta figure on screen, not as an obvious blank ("Meta 65"
+// against a real 66 is how it shipped last time). Dev only.
 const DEV_ASSERTS = Boolean(import.meta.env?.DEV);
 
 const assertLeadIdentity = (label, meta, fed, total) => {
@@ -119,23 +103,9 @@ const assertLeadIdentity = (label, meta, fed, total) => {
   if (meta + fed !== total) {
     console.error(
       `[ledger] ${label}: Meta + Fed != Total (${meta} + ${fed} != ${total}). ` +
-        `A lead was lost or double-counted between the bulk rows and the split.`,
+        `The /dashboard/ledger/ row does not reconcile — do not patch it here.`,
     );
   }
-};
-
-// Reported once per bulk load when rows never reach a project — the silent
-// drop path behind a short Total. `dropped` rows are gone from leads AND spend.
-const reportRowAudit = (audit) => {
-  if (!DEV_ASSERTS) return;
-  if (audit.dropped === 0 && audit.dateless === 0) return;
-  console.error(
-    `[ledger] bulk rows not counted: ${audit.dropped} unmapped ` +
-      `(${audit.droppedLeads} leads — campaign_id not in the requested set), ` +
-      `${audit.dateless} dateless (${audit.datelessLeads} leads — no row.date, ` +
-      `so every date filter drops them). Received ${audit.received} rows, ` +
-      `${audit.leads} leads total.`,
-  );
 };
 
 // ── Design-section toggles (UI only) ─────────────────────────────────────────
@@ -285,7 +255,6 @@ export default function MainDashboard() {
   const [userRole, setUserRole] = createSignal("client");
   const cardRange = () => dashboardFilter.cardRange;
   const setCardRange = (v) => setDashboardFilter("cardRange", v);
-  const [manualBatches, setManualBatches] = createSignal([]);
   const [currentPage, setCurrentPage] = createSignal(1);
   // Rows-per-page. This table paginates client-side over allProjects(), so the
   // choice only re-slices — no refetch. Persisted so it survives navigation.
@@ -299,23 +268,8 @@ export default function MainDashboard() {
   };
   const allProjects = () => projectsCache.allProjects;
 
-  // ── Premium date range sent to the API (premium_metrics is server-computed
-  //    per window). Clamped: floor 2026-04-01, ceiling today — matches the
-  //    ProjectDetails ledger so the numbers line up. ──────────────────────────
-  const PREMIUM_FLOOR = "2026-04-01";
-  const premiumRangeStart = () => {
-    const f = fromDate();
-    return f && f > PREMIUM_FLOOR ? f : PREMIUM_FLOOR;
-  };
-  const premiumRangeEnd = () => {
-    const today = new Date().toISOString().split("T")[0];
-    const t = toDate();
-    return t && t < today ? t : today;
-  };
-
   // ── Read from global store via accessors ─────────────────────────────────────
   const projects = () => projectsCache.data;
-  const projectInsightsMap = () => projectsCache.insightsMap;
   const loading = () => projectsCache.loading;
   const page = () => projectsCache.meta?.page ?? 1;
   // Slicing/labelling follow the user's rows-per-page choice, not the size the
@@ -325,23 +279,12 @@ export default function MainDashboard() {
   const totalPages = () => projectsCache.meta?.total_pages ?? 1;
   const hasNext = () => projectsCache.meta?.has_next ?? false;
   const hasPrev = () => projectsCache.meta?.has_prev ?? false;
-  const insightsLoading = () => false; // handled inside loadAllProjectInsights
 
-  // True only when the store actually holds swept campaign/insight data to
-  // render. The persisted cache can carry a fresh `lastFetchedAll` timestamp but
-  // an EMPTY insightsMap — e.g. admin's map is too large for sessionStorage and
-  // the write silently fails (QuotaExceededError). In that case a reload must
-  // re-run the sweep even though the staleness gate thinks the cache is fresh,
-  // otherwise spend/leads/CPL render as ₹0 until the 5-min TTL expires.
-  const hasRenderedCampaignData = () =>
-    projectsCache.insightsMap &&
-    Object.keys(projectsCache.insightsMap).length > 0;
-
-  // True while the ledger's spend/leads figures are still being swept in — i.e.
-  // projects exist but their campaign insights haven't populated yet. Drives the
-  // CountUp "rolling number" so the ledger never shows a static 0 during load.
-  const ledgerLoading = () =>
-    allProjects().length > 0 && !hasRenderedCampaignData();
+  // True once the PROJECT LIST itself has been swept in. This used to check the
+  // cached insightsMap, because that map was where the ledger's money lived; the
+  // figures now come from /dashboard/ledger/ and the map is gone, so the old
+  // check would be permanently false and re-sweep the list on every pass.
+  const hasRenderedProjectData = () => allProjects().length > 0;
 
   // Recompute on navigation so the "Viewing Client" badge clears when the
   // client context is removed on the Main Dashboard.
@@ -421,7 +364,6 @@ export default function MainDashboard() {
           setProjectsCache("data", []);
 
           loadData(1);
-          loadManualBatches();
           loadAllProjects();
         };
 
@@ -555,20 +497,16 @@ export default function MainDashboard() {
     }
 
     loadData(1);
-    if (auth?.role === "admin") {
-      loadManualBatches();
-    }
 
-    // Fire the sweep when the cache is stale OR when there's nothing to render
-    // (fresh timestamp but empty insightsMap — see hasRenderedCampaignData).
-    // This guarantees data loads on every reload while still skipping the
-    // refetch when valid data is already present (cache benefit preserved).
-    // Gated on clientContextReady() so an admin previewing a client never fires
-    // the sweep before the client PK resolves (the createEffect below re-fires it
-    // the moment the context becomes ready, so it is never permanently skipped).
+    // Fire the project-list sweep when the cache is stale OR when there is
+    // nothing to render. This guarantees data loads on every reload while still
+    // skipping the refetch when valid data is already present. The heavy part of
+    // this pipeline — every campaign plus every campaign's insights — is gone;
+    // what remains is the projects list, which carries the city / type / budget
+    // the ledger response doesn't.
     if (
       clientContextReady() &&
-      (isAllProjectsCacheStale() || !hasRenderedCampaignData())
+      (isAllProjectsCacheStale() || !hasRenderedProjectData())
     ) {
       loadAllProjects();
     }
@@ -587,7 +525,7 @@ export default function MainDashboard() {
         if (
           ready &&
           !wasReady &&
-          (isAllProjectsCacheStale() || !hasRenderedCampaignData())
+          (isAllProjectsCacheStale() || !hasRenderedProjectData())
         ) {
           loadAllProjects();
         }
@@ -621,24 +559,6 @@ export default function MainDashboard() {
 
   const serviceChargeRate = () => serviceChargePercent() / 100;
 
-  const loadManualBatches = async () => {
-    const token = activeLoadToken;
-    try {
-      const res = await fetchManualBatches();
-      if (token !== activeLoadToken) return;
-
-      const data = Array.isArray(res?.data?.results)
-        ? res.data.results
-        : Array.isArray(res?.data)
-          ? res.data
-          : [];
-
-      setManualBatches(data);
-      console.log("manual batches:", manualBatches());
-    } catch (err) {
-      console.error("Failed to load manual batches", err);
-    }
-  };
   const loadData = async (pageNo = 1, search = "") => {
     const token = activeLoadToken;
     try {
@@ -674,15 +594,15 @@ export default function MainDashboard() {
             item.property_type.slice(1).toLowerCase()
           : "N/A",
         uploaddocument: item.upload_document ?? null,
-        // Seed status counts to 0 — deriveProjectStatuses fills them from c.status.
-        // campaign_count is a TOTAL, not an active count; seeding it here flashed
-        // the whole project total in the "Active Campaigns" column until derive ran.
+        // Seed status counts to 0 — the ledger row fills them. campaign_count
+        // is a TOTAL, not an active count; seeding it here flashed the whole
+        // project total in the "Active Campaigns" column until the ledger landed.
         activeCampaigns: 0,
         completedCampaigns: 0,
         pausedCampaigns: 0,
         // Seed status to null (skeleton) like the counts above — the backend's
-        // Project.status is stale (says "active" while every campaign is paused).
-        // deriveProjectStatuses fills it from the real per-campaign statuses.
+        // Project.status is stale (says "active" while every campaign is
+        // paused). statusOf() fills it from the ledger's campaign counts.
         status: null,
         clientRequest: item.client_request ?? null,
         priority: item.priority_label ?? "Standard",
@@ -743,14 +663,14 @@ export default function MainDashboard() {
             ? item.property_type.charAt(0).toUpperCase() +
               item.property_type.slice(1).toLowerCase()
             : "N/A",
-          // Seed status counts to 0 — deriveProjectStatuses fills them from
-          // c.status. campaign_count is a TOTAL, not an active count.
+          // Seed status counts to 0 — the ledger row fills them.
+          // campaign_count is a TOTAL, not an active count.
           activeCampaigns: 0,
           completedCampaigns: 0,
           pausedCampaigns: 0,
           // Seed status to null (skeleton) like the counts — the backend's stale
-          // Project.status is filled in by deriveProjectStatuses from real
-          // per-campaign statuses.
+          // Project.status is replaced by statusOf(), which reads the ledger's
+          // campaign counts.
           status: null,
           cpl: parseFloat(item.cpl) || 0,
           modifiedCpl: item.modified_cpl ?? null,
@@ -768,10 +688,10 @@ export default function MainDashboard() {
       if (token !== activeLoadToken) return;
       setProjectsCache("allProjects", allData);
       setProjectsCache("lastFetchedAll", Date.now());
-      // Fetch each project's campaigns ONCE here, then reuse them for insights
-      // so we don't fetch the same campaigns twice (was: two overlapping waves).
-      const campaignsByProject = await deriveProjectStatuses(allData, token);
-      await loadAllProjectInsights(allData, token, campaignsByProject);
+      // Nothing chains off this any more. It used to kick off a campaign sweep
+      // and then a bulk-insights sweep over every campaign id it returned; both
+      // are one /dashboard/ledger/ call now, fired by its own resource off the
+      // date range rather than by this loader.
     } catch (err) {
       console.error("Failed to load all projects", err);
     }
@@ -825,972 +745,216 @@ export default function MainDashboard() {
     return { from: fromDate(), to: toDate() }; // fallback to calendar picker
   };
 
-  // Safely read insights/campaigns from the new { campaigns, insights } shape
-  // Falls back gracefully if the cache still holds the old flat-array shape.
-  const getProjectInsightData = (projectId) => {
-    const entry = projectInsightsMap()[projectId];
-    if (!entry) return { campaigns: [], insights: [], range: null };
-    // Old flat-array shape (cache not yet refreshed)
-    if (Array.isArray(entry))
-      return { campaigns: [], insights: entry, range: null };
-    return entry;
+  // ── The server-built ledger ────────────────────────────────────────────────
+  // ONE call replaces the browser-side join that used to build every money and
+  // lead figure on this page: fetchAllCampaigns(10_000) + fetchBulkCampaignInsights
+  // over every campaign id + the manual-batch, fed-batch and replacement-batch
+  // sweeps, all reduced in the tab. For an admin that was the whole agency's
+  // data over the wire; /dashboard/ledger/ returns the finished rows in ~0.2s.
+  //
+  // The rules the old code carried now live behind that endpoint and are
+  // deliberately NOT re-derived on this side:
+  //   • CPL divides by META leads — fed leads cost nothing on Meta
+  //   • fed_leads is ALREADY INSIDE total_leads — never added on top (adding it
+  //     is the 108 → 122 double count this page shipped once already)
+  //   • campaign status counts are NOT date-filtered
+  //
+  // SCOPING IS SERVER-SIDE: the same URL hands each role its own slice, so
+  // nothing below filters by role. Rows are joined onto the projects list by
+  // project_id — that list carries the city / type / budget / logo the ledger
+  // response doesn't.
+  const ymd = (d) => (!d ? "" : typeof d === "string" ? d : formatDate(d));
+
+  // The CALENDAR range (the date picker), as the endpoint wants it. Empty means
+  // "unset": the backend then defaults to month-to-date, and it floors at
+  // 2026-04-01 and caps at today itself, so nothing is clamped here.
+  const ledgerRangeKey = () => ({
+    client: selectedClientNomen() ?? "self",
+    scope: scopeKey(),
+    start: ymd(fromDate()),
+    end: ymd(toDate()),
+  });
+
+  // The CARD range (the preset chips above the hero) — a different picker, and
+  // routinely a different window, so the hero gets its own request rather than
+  // sharing one and drifting from the numbers printed beside it. Returns FALSE
+  // when the two windows coincide (the common case: the card range falls back to
+  // the calendar range), which stops createResource firing a duplicate call —
+  // cardLedger() then reads the calendar response instead.
+  const cardRangeKey = () => {
+    const cal = ledgerRangeKey();
+    const { from, to } = getCardDateRange();
+    const start = ymd(from);
+    const end = ymd(to);
+    if (start === cal.start && end === cal.end) return false;
+    return { client: cal.client, scope: cal.scope, start, end };
   };
 
-  // ── Fed (manually-uploaded) leads for a CM viewing a client's dashboard ─────
-  //
-  // A CM's bulk-insights rows come back RAW: the display pipeline that folds
-  // synthetic leads into the normal rows does not run for privileged roles, so
-  // there is no is_manual row in this response to derive fed leads from. They
-  // have to come from the manual-batch list and be joined by project id — the
-  // same route CMDashboard and CMDailyReport already take. That shared join is
-  // the whole point: a CM's dashboard, their own daily report and the client's
-  // own view can no longer disagree about the same batch. The day/revoked rule
-  // is never re-implemented here; fedLeads.js owns it.
-  //
-  // This RESOURCE is CM-only — admin reads the same fedLeads.js helpers over the
-  // batches loadManualBatches() already holds (also fetchFedLeadBatches, scoped
-  // by client_nomen), so a second fetch here would be pure duplication. A
-  // client's own rows need no fed source at all: they are already INCLUSIVE, and
-  // adding batches on top is the 108 → 122 double count all over again.
-  const isCMViewer = () => auth?.role === "campaign_manager";
+  const loadLedger = async (key) => {
+    try {
+      const res = await fetchDashboardLedger({
+        startDate: key.start || undefined,
+        endDate: key.end || undefined,
+      });
+      return readDashboardLedger(res);
+    } catch (err) {
+      // A failed ledger must NOT read as "this client spent nothing". The
+      // placeholder carries loaded:false, so the loading states below keep
+      // rolling instead of settling on a confident set of zeros.
+      console.error("[ClientDashboard] /dashboard/ledger/ failed:", err);
+      return EMPTY_LEDGER;
+    }
+  };
+
+  const [ledgerRes] = createResource(ledgerRangeKey, loadLedger);
+  const [cardLedgerRes] = createResource(cardRangeKey, loadLedger);
+
+  const ledger = () => ledgerRes() ?? EMPTY_LEDGER;
+  const cardLedger = () =>
+    cardRangeKey() === false ? ledger() : (cardLedgerRes() ?? EMPTY_LEDGER);
+
+  // True while the ledger's spend / leads figures are still in flight. Drives
+  // the CountUp "rolling number" so the hero never shows a static 0 during load.
+  const ledgerLoading = () => !ledger().loaded;
+
+  const ledgerRowOf = (projectId) => ledger().byProject[String(projectId)];
 
   // Admin and CM both show the Meta / Fed / Total split; a client sees one
   // (already inclusive) leads figure. One flag drives every header, cell and
   // label so the two privileged ledgers cannot drift apart visually either.
+  const isCMViewer = () => auth?.role === "campaign_manager";
   const isFedAwareViewer = () => isAdmin() || isCMViewer();
 
-  // One fetch per viewed client. The list endpoint carries no date filter, so
-  // every range below is applied client-side by fedLeadsByProject. A null source
-  // means the fetcher never runs at all for admin / client viewers.
-  const cmFedScope = () =>
-    isCMViewer() ? (selectedClientNomen() ?? "cm") : null;
+  // ── Replaced → Billable ────────────────────────────────────────────────────
+  // Both figures come off the ledger row. They used to need their own paginated
+  // batch sweep — /leads/replacement-batches/ for admin/CM, /leads/my-replacements/
+  // for a client — plus a client-side received_date + revoked roll-up. The
+  // backend applies those rules now, from one source, for every role.
+  const replacedOf = (projectId) => ledgerRowOf(projectId)?.replacedLeads ?? 0;
 
-  const [cmFedBatches] = createResource(cmFedScope, async () => {
-    try {
-      // No client_nomen filter: the backend auto-scopes the list to the CM's
-      // visible clients, and we then join by project id against THIS client's
-      // own projects — so no other client's batch can surface here. A failure
-      // degrades to "no fed leads" rather than sinking the dashboard.
-      return await fetchFedLeadBatches();
-    } catch (err) {
-      console.error("[ClientDashboard] CM fed lead batches failed:", err);
-      return [];
-    }
-  });
+  // total − replaced, as the backend computed it. Deliberately NOT re-derived
+  // from the row's own Total: the footer sums billable_leads, and a cell that
+  // subtracts for itself is precisely how a column and its own total drift.
+  const billableOf = (projectId) => ledgerRowOf(projectId)?.billableLeads ?? 0;
 
-  // The hero reads the CARD range and the project ledger reads the CALENDAR
-  // range — two different pickers — so each gets its own roll-up rather than
-  // sharing one and drifting from the numbers printed beside it.
-  const cmFedByProjectCard = createMemo(() => {
-    if (!isCMViewer()) return {};
-    const { from, to } = getCardDateRange();
-    return fedLeadsByProject(cmFedBatches() ?? [], from, to);
-  });
+  // Only grow the two columns once this client actually has replacement activity
+  // in the range — replacements are a CPL/hybrid concept, and a retainer client
+  // would otherwise get two columns of zeros. Within the table every project
+  // still shows its own 0.
+  const showReplacedCols = () => ledger().rows.some((r) => r.replacedLeads > 0);
 
-  const cmFedByProjectLedger = createMemo(() =>
-    isCMViewer()
-      ? fedLeadsByProject(cmFedBatches() ?? [], fromDate(), toDate())
-      : {},
+  // ── Project status, from the ledger's campaign counts ─────────────────────
+  // Same rule the per-project campaign sweep used to apply: anything still
+  // running → active; every campaign completed → completed; otherwise paused.
+  // Those counts are NOT date-filtered server-side, which is the point — a
+  // now-paused campaign that spent earlier in the range must not read as active.
+  // Before the response lands we keep the project's existing status (null on a
+  // first load), so the badge holds its skeleton instead of flashing "paused".
+  const statusOf = (project) => {
+    const row = ledgerRowOf(project.id);
+    if (!row) return ledger().loaded ? "paused" : (project.status ?? null);
+    if (row.campaignsTotal <= 0) return "paused";
+    if (row.campaignsActive > 0) return "active";
+    if (row.campaignsCompleted >= row.campaignsTotal) return "completed";
+    return "paused";
+  };
+
+  // The projects list with its status resolved. EVERYTHING that reads a
+  // project's status — the badge, the status filter, the footer's active count —
+  // goes through this, so they cannot disagree about the same project.
+  const statusedProjects = createMemo(() =>
+    allProjects().map((p) => ({ ...p, status: statusOf(p) })),
   );
-
-  // Fed leads for one project, 0 for every non-CM viewer. Keys are strings.
-  const cmFedOf = (map, projectId) =>
-    isCMViewer() ? map[String(projectId)] || 0 : 0;
-
-  // ── Lead-replacement batches, per project ─────────────────────────────────
-  // Fetched and rolled up exactly like the fed batches above: one sweep per
-  // viewed client, server-scoped, then joined by project id against THIS
-  // client's own projects. The ledger reads the CALENDAR range (the same range
-  // its Meta / Fed / Total columns use), so a replacement can't land in a
-  // different period than the leads printed beside it.
-  //
-  // TWO SOURCES, ONE AGGREGATOR. /leads/replacement-batches/ is admin/CM-only,
-  // so a client login read it and got nothing — their Replaced/Billable columns
-  // rendered empty. Clients now read /leads/my-replacements/, which returns
-  // their own non-revoked batches with no cost/notes/internal fields. Both
-  // payloads carry project + replaced_count + received_date, which is all
-  // replacedLeadsByProject() consumes, so the roll-up below is identical either
-  // way. Keyed off the auth role rather than isFedAwareViewer(): sales also
-  // lands on this page and is neither, and must not be handed the client
-  // endpoint.
-  const isClientViewer = () => auth?.role === "client";
-
-  const [replacementBatches] = createResource(
-    () => selectedClientNomen() ?? "self",
-    async () => {
-      try {
-        return isClientViewer()
-          ? await fetchMyReplacements()
-          : await fetchAllReplacementBatches();
-      } catch (err) {
-        console.error("[ClientDashboard] replacement batches failed:", err);
-        return [];
-      }
-    },
-  );
-
-  const replacedByProjectLedger = createMemo(() =>
-    replacedLeadsByProject(replacementBatches() ?? [], fromDate(), toDate()),
-  );
-
-  // Only grow the two columns once this client actually has replacement
-  // activity in the range — replacements are a CPL/hybrid concept, and a
-  // retainer client would otherwise get two columns of zeros. Within the table
-  // every project still shows its own 0. This now behaves the same for a
-  // client's own login as it does for admin/CM, since both have a readable
-  // source.
-  const showReplacedCols = () =>
-    Object.keys(replacedByProjectLedger()).length > 0;
-
-  const replacedOf = (projectId) =>
-    replacedByProjectLedger()[String(projectId)] || 0;
 
   // The project set every ledger-footer total sums over. It follows the status
   // dropdown: "All" keeps the complete roll-up, any other pick narrows the
   // footer to that status so the Total row describes the rows on screen rather
   // than a set the reader can't see. Same predicate filteredProjects uses.
-  // A plain function, not a memo, for the same reason as ledgerReplacedTotals.
+  //
+  // This is also why the footer sums the SERVER's per-row figures instead of
+  // printing the response's own `totals` block: the backend cannot know which
+  // status the reader has filtered to. On "All" the two are the same number.
   const ledgerScopedProjects = () => {
     const status = statusFilter();
-    const all = allProjects();
+    const all = statusedProjects();
     return status === "all" ? all : all.filter((p) => p.status === status);
   };
 
-  // Ledger footer totals. Summed over the SAME per-row figures the column
-  // prints (including the floor at 0), so the footer equals the sum of the
-  // column rather than a separately-derived number.
-  // A plain function, not a memo: createMemo runs its body eagerly at creation,
-  // and allProjectStats is declared further down.
+  // Ledger footer totals for the Replaced / Billable pair — Σ of the same
+  // per-row figures those columns print, so the footer equals the sum of the
+  // column above it.
   const ledgerReplacedTotals = () => {
-    const statsMap = allProjectStats();
     let replaced = 0;
     let billable = 0;
     for (const p of ledgerScopedProjects()) {
-      const s = statsMap[p.id] || {};
-      const total = s.totalLeadsWithFed ?? s.totalLeads ?? 0;
-      const r = replacedOf(p.id);
-      replaced += r;
-      billable += Math.max(0, total - r);
+      const row = ledgerRowOf(p.id);
+      replaced += row?.replacedLeads ?? 0;
+      billable += row?.billableLeads ?? 0;
     }
     return { replaced, billable };
   };
 
-  // ── The ONE fed figure, for whichever viewer is looking ────────────────────
-  // Admin and CM now read the same helper over the same kind of batch list
-  // (fedLeads.js applies the shared received_date + revoked rules), so the two
-  // ledgers can no longer print different fed totals for the same client, day
-  // and project. The server-computed `extra_leads` column is deliberately NOT
-  // consulted anywhere on this ledger: two fed sources drift, one cannot.
-  //   • admin  → loadManualBatches(), client_nomen-scoped, swept over all pages
-  //   • CM     → the cmFedBatches resource, pre-rolled per project by the range
-  //   • client → 0; their bulk rows already include every fed lead
-  const fedLeadsOf = (projectId, cmMap, from, to) => {
-    if (isAdmin())
-      return fedLeadsForProject(manualBatches(), projectId, from, to);
-    return cmFedOf(cmMap, projectId);
-  };
-
-  // ── Raw Meta spend for ONE row ─────────────────────────────────────────────
-  // The ledger's "Total Spent" / "AVG CPL" are the RAW Meta charge; the
-  // marked-up figure lives in the separate Premium CPL column. On a privileged
-  // view that means `spend_raw` and ONLY `spend_raw`:
-  //   • with as_client_id, `spend` is the BILLED amount, so falling back to it
-  //     for any row missing spend_raw silently mixes billed money into the raw
-  //     total — ₹10,669.32 against a real ₹9,718.72 for Bullmen / NoidaEvent on
-  //     20 Jul 2026, an excess of exactly one row's markup.
-  //   • an is_manual row has no Meta charge at all (fed leads cost nothing on
-  //     Meta), so it contributes 0. f950175 stopped skipping those rows for
-  //     admin, which is right for LEADS but must not put their billed cost into
-  //     raw spend.
-  // This is the rule DailyReports' Raw column already uses (Σ spend_raw, no
-  // fallback). A client's own login has no spend_raw on any row and `spend` IS
-  // their billed figure, so the fallback stays for them — client view unchanged.
-  const metaSpendOf = (row) => {
-    if (!isFedAwareViewer()) return rawSpendOf(row);
-    if (row?.is_manual) return 0;
-    return parseFloat(row?.spend_raw || 0);
-  };
-
-  // Split one project's leads into Meta / Fed / Total from the bulk-row sum and
-  // that fed figure. The bases differ by viewer, and that is the whole bug this
-  // replaces — admin was printing an INCLUSIVE sum under "Total Leads" and then
-  // a fed count beside it, so the row added up to 174 against a real 123:
-  //   • ADMIN  — sent with as_client_id, so the backend runs the client display
-  //     pipeline: fed leads are already merged into the normal rows (plus any
-  //     standalone is_manual row we no longer drop). The sum IS the Total, and
-  //     Meta is what remains once fed is taken back out.
-  //   • CM     — privileged rows come back RAW, so the sum IS Meta and the
-  //     Total is Meta + fed.
-  //   • CLIENT — inclusive like admin, but fed is 0 here, so both are the sum
-  //     and the client view is bit-for-bit unchanged.
-  // Meta + Fed == Total holds BY CONSTRUCTION at every level: Total is always
-  // re-derived as Meta + Fed rather than carried alongside them, so no
-  // aggregation step can drift the three apart.
-  //
-  // The earlier clamp bounded FED into [0, sum]. That silently swallowed fed
-  // leads for any project with fed batches but no Meta delivery in range (fed
-  // clamped down to a 0 sum), and it hid a short sum instead of surfacing it.
-  // Clamp META at 0 instead: when fed exceeds the inclusive sum, Meta is 0 and
-  // Total becomes fed, which is honest and still satisfies the identity — and
-  // the dev assert below fires so the short sum gets found rather than absorbed.
-  const splitLeads = (sumLeads, fed) => {
-    const fedLeads = Math.max(Number(fed) || 0, 0);
-    const metaLeads = isAdmin()
-      ? Math.max(sumLeads - fedLeads, 0) // inclusive sum → back out fed
-      : sumLeads; // raw sum (CM) / already inclusive (client)
-    return {
-      totalLeads: metaLeads,
-      fedLeads,
-      totalLeadsWithFed: metaLeads + fedLeads,
-    };
-  };
-
-  const cardStats = createMemo(() => {
-    const { from, to } = getCardDateRange();
+  // ── Per-project stats, straight off one ledger response ────────────────────
+  // The hero and the ledger table share this builder, so they can only ever
+  // differ by their date range — never by rule. Nothing here recomputes a figure
+  // the backend already decided; it renames fields and asserts the identity.
+  const statsFromLedger = (led, projects) => {
     const result = {};
+    for (const project of projects) {
+      const row = led.byProject[String(project.id)];
 
-    for (const project of allProjects()) {
-      const { campaigns, insights, range } = getProjectInsightData(project.id);
+      // fed_leads is ALREADY INSIDE total_leads. `inclusive` is that total,
+      // printed as returned — the two are never added together.
+      const metaLeads = row?.metaLeads ?? 0;
+      const rowFed = row?.fedLeads ?? 0;
+      const inclusive = row?.totalLeads ?? metaLeads + rowFed;
 
-      const inRange = (rows, rFrom, rTo) =>
-        rows.filter((d) => {
-          if (!rFrom || !rTo) return true;
-          if (!d.date) return false;
-          const date = new Date(d.date + "T00:00:00");
-          const start = new Date(rFrom);
-          start.setHours(0, 0, 0, 0);
-          const end = new Date(rTo);
-          end.setHours(23, 59, 59, 999);
-          return date >= start && date <= end;
-        });
-
-      const filtered = inRange(insights, from, to);
-
-      // Leads filtered by the stamped campaign range so they stay in lockstep
-      // with the bulk-insights window (no flicker during a date-change refetch).
-      const leadsRange = range ?? { from, to };
-      const leadSum = inRange(
-        insights,
-        leadsRange.from,
-        leadsRange.to,
-      ).reduce((s, d) => s + (d.leads || 0), 0);
-      // Meta / Fed / Total from ONE sum and ONE fed source — see splitLeads.
-      const { totalLeads, fedLeads, totalLeadsWithFed } = splitLeads(
-        leadSum,
-        fedLeadsOf(project.id, cmFedByProjectCard(), from, to),
-      );
-      assertLeadIdentity(
-        `hero ${project.name ?? project.id}`,
-        totalLeads,
-        fedLeads,
-        totalLeadsWithFed,
-      );
-      const totalSpent = filtered.reduce(
-        (s, d) => s + metaSpendOf(d),
-        0,
-      );
-      // CPL is cost per META lead: raw spend ÷ Meta leads. Fed leads cost
-      // nothing on Meta, so dividing by the inclusive total would understate it.
-      const avgCPL =
-        totalLeads > 0 ? parseFloat(totalSpent / totalLeads).toFixed(2) : 0;
-
-      const resolvedCpl = totalLeads > 0 ? Number(avgCPL) : 1500;
-
-      // ✅ Date-range aware campaign counts
-      // Campaign status counts are classified by c.status — a campaign's
-      // active/paused/completed state is NOT date-dependent, so the date range
-      // must not drive it. The old range path counted "active" as "had spend or
-      // leads in range", which mislabelled a now-paused campaign that spent
-      // earlier in the range as active (e.g. DholeraEvent: 11 paused → 11 active).
-      // Same rule as deriveProjectStatuses: live = not paused and not completed.
-      const activeCampaigns = campaigns.filter(
-        (c) => c.status !== "paused" && c.status !== "completed",
-      ).length;
-      const completedCampaigns = campaigns.filter(
-        (c) => c.status === "completed",
-      ).length;
-      const pausedCampaigns = campaigns.filter(
-        (c) => c.status === "paused",
-      ).length;
-
-      // For ADMIN and CLIENT the bulk sum is already INCLUSIVE of synthetic
-      // leads (the endpoint merges them into normal rows and the standalone
-      // is_manual row is counted in `insights` too), so nothing is ever added on
-      // top — that add is what double-counted the merged portion (108 → 122).
-      // splitLeads subtracts instead, which is why admin's Meta + Fed = Total.
-      result[project.id] = {
-        totalLeads,
-        fedLeads,
-        totalLeadsWithFed,
-        totalSpent,
-        avgCPL,
-        resolvedCpl,
-        activeCampaigns,
-        completedCampaigns,
-        pausedCampaigns,
-      };
-    }
-
-    return result;
-  });
-  // ─── REPLACE deriveProjectStatuses in MainDashboard.jsx ──────────────────────
-  //
-  // Two fixes:
-  //  1. The campaigns API returns status "active" | "paused" (lowercase).
-  //     The old check (c.status === "active") was correct, but only ran if
-  //     fetchCampaigns returned data. With the wrong client_nomen filter (numeric
-  //     ID instead of name), it returned 0 campaigns → activeCampaigns = 0 every
-  //     time → every project became "paused" incorrectly.
-  //     Now that campaigns.js is fixed, this function receives real campaign data.
-  //
-  //  2. Page-1 with pageSize=1000 is kept, but we now also paginate if needed so
-  //     large accounts (>1000 campaigns per project) don't miss any active ones.
-
-  // Roll a project's status up from its campaigns:
-  //   • any campaign still running (not paused, not completed) → "active"
-  //   • otherwise, every campaign completed (≥1 campaign)      → "completed"
-  //   • otherwise (all paused, or a paused/completed mix)       → "paused"
-  const deriveStatus = (camps) => {
-    if (!Array.isArray(camps) || camps.length === 0) return "paused";
-    const running = camps.filter(
-      (c) => c.status !== "paused" && c.status !== "completed",
-    ).length;
-    if (running > 0) return "active";
-    const completed = camps.filter((c) => c.status === "completed").length;
-    if (completed === camps.length) return "completed";
-    return "paused";
-  };
-
-  const deriveProjectStatuses = async (
-    projectList,
-    token = activeLoadToken,
-  ) => {
-    // ── Admin fast path ──────────────────────────────────────────────────────
-    // Admins load every client's projects (hundreds), so the per-project loop
-    // below turns into an N+1 storm (one /campaigns/?project=N request each).
-    // Instead fetch ALL campaigns in ONE date-scoped paginated sweep and group
-    // them by project_id locally — identical result, ~1 request instead of N.
-    // The client path below is left exactly as-is so its behaviour is unchanged.
-    if (isAdmin()) {
-      const campaignsByProject = {};
-      for (const project of projectList) campaignsByProject[project.id] = [];
-
-      let sweepOk = true;
-      try {
-        const allCampaigns = await fetchAllCampaigns(
-          10000,
-          premiumRangeStart(),
-          premiumRangeEnd(),
-        );
-        for (const c of allCampaigns) {
-          const pid = c.project_id;
-          if (pid == null) continue;
-          if (!campaignsByProject[pid]) campaignsByProject[pid] = [];
-          campaignsByProject[pid].push(c);
-        }
-      } catch (err) {
-        sweepOk = false;
-        console.warn("deriveProjectStatuses: bulk campaign sweep failed", err);
-      }
-
-      const statusUpdates = projectList.map((project) => {
-        const camps = campaignsByProject[project.id] || [];
-        // Sweep failed → mirror the old per-project catch branch: keep whatever
-        // the projects API already reported so the table isn't blanked.
-        if (!sweepOk) {
-          return {
-            id: project.id,
-            status: project.status,
-            activeCampaigns: project.activeCampaigns,
-            completedCampaigns: project.completedCampaigns,
-            pausedCampaigns: project.pausedCampaigns,
-          };
-        }
-        // A campaign is "live" when it is anything other than paused — the same
-        // rule the campaigns table / ProjectDetails use (status !== "paused").
-        // Using a strict === "active" here mislabels projects as paused when
-        // their live campaigns carry a non-"active" status (e.g. in_review).
-        // Live only — completed campaigns are counted separately, not as active.
-        const activeCampaigns = camps.filter(
-          (c) => c.status !== "paused" && c.status !== "completed",
-        ).length;
-        const completedCampaigns = camps.filter(
-          (c) => c.status === "completed",
-        ).length;
-        const pausedCampaigns = camps.filter(
-          (c) => c.status === "paused",
-        ).length;
-        return {
-          id: project.id,
-          status: deriveStatus(camps),
-          activeCampaigns,
-          completedCampaigns,
-          pausedCampaigns,
-        };
-      });
-
-      if (token !== activeLoadToken) return campaignsByProject;
-      setProjectsCache("data", (prev) =>
-        prev.map((p) => {
-          const update = statusUpdates.find((u) => u.id === p.id);
-          return update ? { ...p, ...update } : p;
-        }),
-      );
-      setProjectsCache("allProjects", (prev) =>
-        prev.map((p) => {
-          const update = statusUpdates.find((u) => u.id === p.id);
-          return update ? { ...p, ...update } : p;
-        }),
-      );
-      return campaignsByProject;
-    }
-
-    const perProject = await Promise.all(
-      projectList.map(async (project) => {
-        try {
-          // Fetch all campaigns for this project (large page size avoids
-          // a second request in most cases; loop handles edge cases).
-          let allCampaigns = [];
-          let currentPage = 1;
-          let hasMore = true;
-
-          while (hasMore) {
-            const res = await fetchCampaigns(
-              currentPage,
-              project.id,
-              "",
-              1000,
-              premiumRangeStart(),
-              premiumRangeEnd(),
-            );
-            const batch = res.data?.results ?? res.data ?? [];
-            if (!Array.isArray(batch) || batch.length === 0) break;
-            allCampaigns = [...allCampaigns, ...batch];
-            hasMore = res.meta?.pagination?.has_next ?? false;
-            currentPage++;
-          }
-
-          // "Live" = not paused (matches the campaigns table / ProjectDetails).
-          // A strict === "active" check mislabels a project as paused when its
-          // live campaigns report a non-"active" status (e.g. in_review).
-          // Live only — completed campaigns are counted separately, not active.
-          const activeCampaigns = allCampaigns.filter(
-            (c) => c.status !== "paused" && c.status !== "completed",
-          ).length;
-          const completedCampaigns = allCampaigns.filter(
-            (c) => c.status === "completed",
-          ).length;
-          const pausedCampaigns = allCampaigns.filter(
-            (c) => c.status === "paused",
-          ).length;
-
-          return {
-            // status update committed to the cache (campaigns NOT spread in)
-            status: {
-              id: project.id,
-              // Active if any campaign is running; completed only when EVERY
-              // campaign is completed; otherwise paused.
-              status: deriveStatus(allCampaigns),
-              activeCampaigns,
-              completedCampaigns,
-              pausedCampaigns,
-            },
-            // raw campaigns handed back so the insights pass can reuse them
-            campaigns: allCampaigns,
-          };
-        } catch (err) {
-          console.warn(
-            `deriveProjectStatuses: failed for project ${project.id}`,
-            err,
-          );
-          // Fall back to whatever the projects API said; keep original counts.
-          return {
-            status: {
-              id: project.id,
-              status: project.status,
-              // project.activeCampaigns is mapped from campaign_count (total),
-              // not active-only. Preserve it so the table isn't blank.
-              activeCampaigns: project.activeCampaigns,
-              completedCampaigns: project.completedCampaigns,
-              pausedCampaigns: project.pausedCampaigns,
-            },
-            campaigns: [],
-          };
-        }
-      }),
-    );
-
-    const statusUpdates = perProject.map((p) => p.status);
-    const campaignsByProject = {};
-    perProject.forEach((p) => {
-      campaignsByProject[p.status.id] = p.campaigns;
-    });
-
-    if (token !== activeLoadToken) return campaignsByProject;
-    setProjectsCache("data", (prev) =>
-      prev.map((p) => {
-        const update = statusUpdates.find((u) => u.id === p.id);
-        return update ? { ...p, ...update } : p;
-      }),
-    );
-    setProjectsCache("allProjects", (prev) =>
-      prev.map((p) => {
-        const update = statusUpdates.find((u) => u.id === p.id);
-        return update ? { ...p, ...update } : p;
-      }),
-    );
-
-    // Return the campaigns so loadAllProjectInsights can skip re-fetching them.
-    return campaignsByProject;
-  };
-
-  const loadAllProjectInsights = async (
-    projectList,
-    token = activeLoadToken,
-    campaignsByProject = null,
-  ) => {
-    const result = {};
-    const projectCampaigns = {};
-
-    // 1. Resolve campaigns per project (reuse or fetch)
-    if (isAdmin() && !campaignsByProject) {
-      // Admin fast path: when called standalone (no precomputed campaigns),
-      // fetch ALL campaigns in ONE sweep and group by project_id locally,
-      // instead of one fetchCampaigns(project.id) per project (was 311 calls).
-      let allCampaigns = [];
-      try {
-        allCampaigns = await fetchAllCampaigns(10000, fromDate(), toDate());
-      } catch (err) {
-        console.error("loadAllProjectInsights: admin sweep failed", err);
-      }
-      const byProj = {};
-      for (const c of allCampaigns) {
-        const pid = c.project_id;
-        if (pid == null) continue;
-        if (!byProj[pid]) byProj[pid] = [];
-        byProj[pid].push(c);
-      }
-      for (const project of projectList) {
-        projectCampaigns[project.id] = byProj[project.id] || [];
-      }
-    } else {
-      // Client path / reuse path (unchanged): reuse precomputed campaigns, or
-      // fall back to a per-project fetch when none were supplied.
-      await Promise.all(
-        projectList.map(async (project) => {
-          let allCampaigns = campaignsByProject
-            ? campaignsByProject[project.id]
-            : undefined;
-
-          if (allCampaigns === undefined) {
-            let currentPage = 1;
-            allCampaigns = [];
-            let hasMore = true;
-            while (hasMore) {
-              const res = await fetchCampaigns(
-                currentPage,
-                project.id,
-                "",
-                1000,
-              );
-              const campaigns = res.data?.results || res.data || [];
-              if (!Array.isArray(campaigns) || campaigns.length === 0) break;
-              allCampaigns = [...allCampaigns, ...campaigns];
-              hasMore = res.meta?.pagination?.has_next ?? false;
-              currentPage++;
-            }
-          }
-
-          projectCampaigns[project.id] = allCampaigns || [];
-        }),
-      );
-    }
-
-    // Build the per-project result entry for every project (same shape as
-    // before): mapped campaigns + empty insights (filled by the bulk call) +
-    // the date range these campaigns belong to.
-    for (const project of projectList) {
-      const allCampaigns = projectCampaigns[project.id] || [];
-      result[project.id] = {
-        campaigns: allCampaigns.map((c) => ({
-          id: c.id,
-          status: c.status,
-          // server-computed premium (marked-up) figures for this campaign
-          premium_metrics: c.premium_metrics,
-        })),
-        insights: [],
-        // Date range these campaigns were fetched for. Real leads are filtered
-        // by this so they stay in lockstep with the bulk insights window.
-        range: { from: fromDate(), to: toDate() },
-      };
-    }
-
-    // ── Step 3: Build campaign lookup ────────────────────────────────────────
-    // (Premium CPL now comes straight off each campaign's server-computed
-    // premium_metrics — no markup-config history / reconstruction needed.)
-    const campaignById = {};
-    const allCampaignIds = [];
-
-    for (const project of projectList) {
-      for (const c of projectCampaigns[project.id] || []) {
-        campaignById[String(c.id)] = {
-          campaign: c,
-          projectId: project.id,
-        };
-        allCampaignIds.push(c.id);
-      }
-    }
-    // 4. ONE bulk insights call for all campaigns (raw, date-filtered later)
-    if (allCampaignIds.length > 0) {
-      try {
-        // ADMIN previewing a client: send the Client PK as as_client_id so the
-        // backend enters "preview as client" mode — it enables the Phase-4 history
-        // filter (correct per-day attribution, drops any foreign campaign's rows)
-        // and returns both `spend` (marked-up) and `spend_raw` (Meta charge). Null
-        // for the admin's own dashboard / a client's own login (already scoped),
-        // where the call falls back to the normal client_nomen scoping. Raw
-        // columns read spend_raw via metaSpendOf(), so the displayed figure is
-        // unchanged even though `spend` now carries the markup.
-        // NEVER for a CM: only the admin roster carries the Client PK, so any
-        // selectedClientId a CM session holds is a nomen id the backend 403s
-        // ("This client is not in your scope") → silent zeros. CMs are already
-        // server-scoped, so omitting it returns the correct rows. The isAdmin()
-        // guard is defence in depth — it keeps poisoned storage off the wire even
-        // though the write site is now admin-gated too.
-        const bulk = await fetchBulkCampaignInsights(allCampaignIds, {
-          asClientId: isAdmin() ? selectedClientId() : null, // PK; nomen id 403s
-        });
-        const rows = bulk.data || [];
-
-        // Every row that never reaches a project is a lead missing from the
-        // inclusive Total, and Meta is derived by subtracting fed FROM that
-        // Total — so a silent drop here reads as a wrong Meta on screen. Audit
-        // the two drop paths and report them in dev rather than absorbing them.
-        const audit = {
-          received: rows.length,
-          leads: 0,
-          dropped: 0,
-          droppedLeads: 0,
-          dateless: 0,
-          datelessLeads: 0,
-        };
-
-        for (const row of rows) {
-          const rowLeads = Number(row.leads || 0);
-          audit.leads += rowLeads;
-          if (!row.date) {
-            // No date → every range filter downstream drops it, from both leads
-            // and spend. Count it so a short Total names its own cause.
-            audit.dateless += 1;
-            audit.datelessLeads += rowLeads;
-          }
-
-          let entry = campaignById[String(row.campaign_id)];
-          if (!entry && row.project_id != null && result[row.project_id]) {
-            // The bulk response is scoped to THIS client, so a row we cannot map
-            // by campaign still belongs on its own project when it names one
-            // (standalone synthetic rows need not carry a campaign we asked for).
-            // Dropping it lost its leads from the inclusive Total.
-            entry = { projectId: row.project_id, campaign: { id: null } };
-          }
-          if (!entry) {
-            audit.dropped += 1;
-            audit.droppedLeads += rowLeads;
-            continue;
-          }
-          // Standalone is_manual rows are counted for EVERY viewer. Dropping
-          // them for admin (which the old code did, to keep that view exclusive)
-          // made admin's total silently under-count whenever a batch did not
-          // merge into a normal row — it happens to be 0 rows for Bullmen /
-          // NoidaEvent, but EdenWaveCity has had them. Admin's total must be the
-          // inclusive figure in EVERY case, because that is what the client sees
-          // and what the Fed column is now subtracted from.
-          //
-          // The bulk endpoint is inclusive of synthetic leads (most merged into
-          // normal rows; the remainder on standalone is_manual rows), so their
-          // LEADS are counted here like any other row's. Their SPEND is handled
-          // by metaSpendOf, which keeps the client's billed figure for a client
-          // and contributes 0 on a privileged view (no Meta charge exists for a
-          // fed lead). This replaces the old campaign.extra_leads add, which
-          // double-counted the merged portion.
-          result[entry.projectId].insights.push({
-            ...row,
-            campaignId: entry.campaign.id,
-          });
-        }
-
-        reportRowAudit(audit);
-      } catch (err) {
-        console.error("Failed to load bulk campaign insights", err);
-      }
-    }
-
-    if (token !== activeLoadToken) return;
-    setProjectsCache("insightsMap", result);
-  };
-
-  // ── Date-reactive premium refetch ──────────────────────────────────────────
-  // premium_metrics is computed server-side per date range, so when the table
-  // date filter changes we re-pull each project's campaigns (range-scoped) and
-  // patch just their premium_metrics into the cache. Raw columns already
-  // re-scope client-side from insights, so we deliberately skip the heavy
-  // bulk-insights pass here.
-  const refreshPremiumForRange = async () => {
-    const token = activeLoadToken;
-    const projects = allProjects();
-    if (!projects.length) return;
-
-    const start = premiumRangeStart();
-    const end = premiumRangeEnd();
-
-    // ── Admin fast path ──────────────────────────────────────────────────────
-    // This runs on every date-filter change. For admins (hundreds of projects)
-    // the per-project loop below is the main cause of the slow re-load. Replace
-    // it with ONE date-scoped sweep grouped by project_id locally. Client path
-    // (the Promise.all below) is left unchanged.
-    if (isAdmin()) {
-      let allCampaigns = [];
-      try {
-        allCampaigns = await fetchAllCampaigns(10000, start, end);
-      } catch (err) {
-        console.error("refreshPremiumForRange: bulk sweep failed", err);
-        return;
-      }
-
-      if (token !== activeLoadToken) return;
-
-      const campsByProject = {};
-      for (const c of allCampaigns) {
-        const pid = c.project_id;
-        if (pid == null) continue;
-        if (!campsByProject[pid]) campsByProject[pid] = [];
-        campsByProject[pid].push({
-          id: c.id,
-          status: c.status,
-          premium_metrics: c.premium_metrics,
-        });
-      }
-
-      // Patch every project's campaigns in-place, preserving its insights and
-      // stamping the range these campaigns belong to (same as the client path).
-      setProjectsCache("insightsMap", (prev) => {
-        const next = { ...prev };
-        for (const project of projects) {
-          const existing = next?.[project.id];
-          const insights =
-            existing && !Array.isArray(existing) ? existing.insights : [];
-          next[project.id] = {
-            campaigns: campsByProject[project.id] || [],
-            insights,
-            range: { from: fromDate(), to: toDate() },
-          };
-        }
-        return next;
-      });
-      return;
-    }
-
-    await Promise.all(
-      projects.map(async (project) => {
-        try {
-          let all = [];
-          let currentPage = 1;
-          let hasMore = true;
-          while (hasMore) {
-            const res = await fetchCampaigns(
-              currentPage,
-              project.id,
-              "",
-              1000,
-              start,
-              end,
-            );
-            const batch = res.data?.results ?? res.data ?? [];
-            if (!Array.isArray(batch) || batch.length === 0) break;
-            all = [...all, ...batch];
-            hasMore = res.meta?.pagination?.has_next ?? false;
-            currentPage++;
-          }
-
-          if (token !== activeLoadToken) return;
-
-          const camps = all.map((c) => ({
-            id: c.id,
-            status: c.status,
-            premium_metrics: c.premium_metrics,
-          }));
-
-          // Patch the project's campaigns in-place, preserving its insights.
-          // Stamp the range these campaigns belong to so real leads filter by
-          // the same window (campaigns + range update atomically here).
-          setProjectsCache("insightsMap", (prev) => {
-            const existing = prev?.[project.id];
-            const insights =
-              existing && !Array.isArray(existing) ? existing.insights : [];
-            return {
-              ...prev,
-              [project.id]: {
-                campaigns: camps,
-                insights,
-                range: { from: fromDate(), to: toDate() },
-              },
-            };
-          });
-        } catch (err) {
-          console.error(
-            "Failed to refresh premium for project",
-            project.id,
-            err,
-          );
-        }
-      }),
-    );
-  };
-
-  // Re-run on date-filter change only (defer skips the initial load, which the
-  // mount pipeline already covers with the same clamped range).
-  createEffect(
-    on(
-      [fromDate, toDate],
-      () => {
-        refreshPremiumForRange();
-      },
-      { defer: true },
-    ),
-  );
-
-  const normalizeLocalDate = (d) => {
-    const date = new Date(d);
-    date.setHours(0, 0, 0, 0);
-    return date.getTime();
-  };
-
-  const getLeadsInRange = (leadsByDate, from, to) => {
-    if (!from || !to) return 0;
-    const start = normalizeLocalDate(from);
-    const end = normalizeLocalDate(to);
-    return Object.entries(leadsByDate || {}).reduce((total, [date, leads]) => {
-      const current = normalizeLocalDate(date);
-      return current >= start && current <= end ? total + leads : total;
-    }, 0);
-  };
-
-  const allProjectStats = createMemo(() => {
-    const from = fromDate();
-    const to = toDate();
-    const result = {};
-
-    for (const project of allProjects()) {
-      const { campaigns, insights, range } = getProjectInsightData(project.id);
-
-      const inRange = (rows, rFrom, rTo) =>
-        !rFrom || !rTo
-          ? rows
-          : rows.filter((d) => {
-              if (!d.date) return false;
-              const date = new Date(d.date + "T00:00:00");
-              const start = new Date(rFrom);
-              start.setHours(0, 0, 0, 0);
-              const end = new Date(rTo);
-              end.setHours(23, 59, 59, 999);
-              return date >= start && date <= end;
-            });
-
-      const filtered = inRange(insights, from, to);
-
-      // Leads are filtered by the range the loaded campaigns belong to (stamped
-      // in the cache), so Total Leads stays in lockstep with the bulk-insights
-      // window — no flicker while a date-change campaign refetch is in flight.
-      const leadsRange = range ?? { from, to };
-      const leadSum = inRange(
-        insights,
-        leadsRange.from,
-        leadsRange.to,
-      ).reduce((s, d) => s + (d.leads || 0), 0);
-      // Meta / Fed / Total from ONE sum and ONE fed source — see splitLeads.
-      // Admin and CM feed the identical three columns from here, so a
-      // back-to-back capture of the two ledgers must agree per project.
-      const { totalLeads, fedLeads, totalLeadsWithFed } = splitLeads(
-        leadSum,
-        fedLeadsOf(project.id, cmFedByProjectLedger(), from, to),
-      );
-      // Row level. The footer asserts the same identity over the roll-up.
+      // WHICH figure the viewer's primary leads column shows:
+      //   • admin / CM — Meta only, with Fed and Total broken out beside it
+      //   • client     — ONE column, and it must be the INCLUSIVE total. Handing
+      //     them meta_leads under a "Total Leads" header silently drops every
+      //     fed lead they were delivered.
+      const fedAware = isFedAwareViewer();
+      const totalLeads = fedAware ? metaLeads : inclusive;
+      const fedLeads = fedAware ? rowFed : 0;
+      const totalLeadsWithFed = inclusive;
       assertLeadIdentity(
         `project ${project.name ?? project.id}`,
         totalLeads,
         fedLeads,
         totalLeadsWithFed,
       );
-      const totalSpent = filtered.reduce(
-        (s, d) => s + metaSpendOf(d),
-        0,
-      );
-      // Cost per META lead — raw spend ÷ Meta leads, never ÷ the inclusive total.
-      const avgCPL =
-        totalLeads > 0 ? parseFloat(totalSpent / totalLeads).toFixed(2) : 0;
-      const resolvedCpl = totalLeads > 0 ? Number(avgCPL) : 1500;
-
-      // ── Premium CPL: aggregate from the server-computed premium_metrics ──
-      // Same formula as the ProjectDetails footer (Project Ledger):
-      //   Σ premium spend ÷ Σ premium leads  (never an average of per-campaign
-      //   CPLs). Campaigns without premium_metrics contribute nothing.
-      let premiumSpend = 0;
-      let premiumLeads = 0;
-
-      for (const c of campaigns) {
-        const pm = c.premium_metrics;
-        if (pm && pm.spend != null && pm.leads_count != null) {
-          premiumSpend += Number(pm.spend);
-          premiumLeads += Number(pm.leads_count);
-        }
-      }
-
-      const modifiedCpl =
-        premiumLeads > 0
-          ? Number((premiumSpend / premiumLeads).toFixed(2))
-          : null;
-      // ─────────────────────────────────────────────────────────────────────
-
-      // Campaign status counts are classified by c.status — a campaign's
-      // active/paused/completed state is NOT date-dependent, so the date range
-      // must not drive it. The old range path counted "active" as "had spend or
-      // leads in range", which mislabelled a now-paused campaign that spent
-      // earlier in the range as active (e.g. DholeraEvent: 11 paused → 11 active).
-      // Same rule as deriveProjectStatuses: live = not paused and not completed.
-      const activeCampaigns = campaigns.filter(
-        (c) => c.status !== "paused" && c.status !== "completed",
-      ).length;
-      const completedCampaigns = campaigns.filter(
-        (c) => c.status === "completed",
-      ).length;
-      const pausedCampaigns = campaigns.filter(
-        (c) => c.status === "paused",
-      ).length;
-
       result[project.id] = {
-        // totalLeads is the META figure for admin and CM, and the (already
-        // inclusive) client figure for a client. campaign.extra_leads is never
-        // added on top for anyone — that add double-counted the merged portion
-        // (108 → 122), and the server-computed extra_leads column is retired
-        // from this ledger entirely so there is exactly one fed source.
         totalLeads,
         fedLeads,
         totalLeadsWithFed,
-        totalSpent,
-        avgCPL,
-        modifiedCpl, // ← now properly computed
-        resolvedCpl,
-        activeCampaigns,
-        completedCampaigns,
-        pausedCampaigns,
+        totalSpent: row?.spend ?? 0,
+        // Cost per META lead — already divided that way server-side. null (no
+        // Meta leads to divide by) prints as ₹0, exactly as it did before.
+        avgCPL: row?.cpl ?? 0,
+        // Premium CPL (the marked-up, client-facing figure) is NOT in the ledger
+        // payload yet — it needs the display pipeline and is a follow-up. Left
+        // null so the column renders "—" rather than a guess.
+        modifiedCpl: null,
+        activeCampaigns: row?.campaignsActive ?? 0,
+        completedCampaigns: row?.campaignsCompleted ?? 0,
+        pausedCampaigns: row?.campaignsPaused ?? 0,
       };
     }
-
     return result;
-  });
+  };
+
+  // The hero reads the CARD range, the ledger table reads the CALENDAR range.
+  const cardStats = createMemo(() =>
+    statsFromLedger(cardLedger(), statusedProjects()),
+  );
+
+  const allProjectStats = createMemo(() =>
+    statsFromLedger(ledger(), statusedProjects()),
+  );
 
   const filteredProjects = createMemo(() => {
-    let data = allProjects().map((project) => {
+    let data = statusedProjects().map((project) => {
       const stats = allProjectStats()[project.id] || {};
 
       return {
@@ -1914,7 +1078,7 @@ export default function MainDashboard() {
   });
 
   const overviewStatsCards = createMemo(() => {
-    const all = allProjects();
+    const all = statusedProjects();
     const statsMap = cardStats();
 
     // const totalBudget = all.reduce((s, p) => s + (p.budget ?? 0), 0);
@@ -1993,6 +1157,15 @@ export default function MainDashboard() {
   // ₹ formatter for the new sections (display only)
   const inr = (n) => `₹${Math.round(Number(n) || 0).toLocaleString("en-IN")}`;
 
+  // ₹ to 2dp with Indian grouping. The ledger returns CPL as a number, and a
+  // bare number loses both the trailing zero and the grouping that every other
+  // money cell in this table has ("1517.2", not "1,517.20").
+  const inr2 = (n) =>
+    Number(n || 0).toLocaleString("en-IN", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+
   // ── Lead replacement breakdown (GET /dashboard/summary/) ──────────────────
   // The ledger's leads/spend are still derived from the campaign sweep — this is
   // a separate, small read purely for the Generated → Replaced → Billable
@@ -2051,7 +1224,7 @@ export default function MainDashboard() {
   // KPI cards used), reused by hero / signals / charts below.
   const projectCardRows = createMemo(() => {
     const map = cardStats();
-    return allProjects().map((p) => ({
+    return statusedProjects().map((p) => ({
       ...p,
       s: map[p.id] || {
         totalLeads: 0,
@@ -2172,40 +1345,23 @@ export default function MainDashboard() {
     return { totalLeads, items };
   });
 
-  // ── Proposed funnel: real Impression→Lead metrics, summed per project ──────
-  // Aggregates the same date-range-filtered insight rows the KPI cards use
-  // (impressions / reach / clicks / leads / spend) across every project, then
-  // derives CPM, frequency, CTR, CPC, click-to-lead and avg CPL. Display-only:
-  // no new fetches — reads from insightsMap already loaded for the cards.
+  // ── Proposed funnel: real Impression→Lead metrics ─────────────────────────
+  // Reads the CARD-range ledger's own totals block — impressions, clicks, spend
+  // and leads are all in it — and derives only the ratios (CPM, CTR, CPC,
+  // click-to-lead) that the payload doesn't carry. It used to sum the per-day
+  // insight rows for every campaign of every project in the browser.
+  //
+  // CPL comes off the response rather than being recomputed as spend ÷ leads:
+  // the backend divides by META leads, because fed leads cost nothing on Meta.
+  // `reach` has never been returned by any of these endpoints, so frequency
+  // stays unavailable — hasReach already gates the one cell that wanted it.
   const funnelStats = createMemo(() => {
-    const { from, to } = getCardDateRange();
-    let impressions = 0;
-    let reach = 0;
-    let clicks = 0;
-    let leads = 0;
-    let spend = 0;
-
-    for (const project of allProjects()) {
-      const { insights } = getProjectInsightData(project.id);
-      const filtered = insights.filter((d) => {
-        if (!from || !to) return true;
-        if (!d.date) return false;
-        const date = new Date(d.date + "T00:00:00");
-        const start = new Date(from);
-        start.setHours(0, 0, 0, 0);
-        const end = new Date(to);
-        end.setHours(23, 59, 59, 999);
-        return date >= start && date <= end;
-      });
-
-      for (const d of filtered) {
-        impressions += Number(d.impressions || 0);
-        reach += Number(d.reach || 0);
-        clicks += Number(d.clicks || 0);
-        leads += Number(d.leads || 0);
-        spend += metaSpendOf(d);
-      }
-    }
+    const t = cardLedger().totals;
+    const impressions = t.impressions;
+    const clicks = t.clicks;
+    const leads = t.totalLeads;
+    const spend = t.spend;
+    const reach = 0;
 
     return {
       impressions,
@@ -2214,12 +1370,12 @@ export default function MainDashboard() {
       leads,
       spend,
       cpm: impressions > 0 ? (spend / impressions) * 1000 : 0,
-      frequency: reach > 0 ? impressions / reach : 0,
+      frequency: 0,
       ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
       cpc: clicks > 0 ? spend / clicks : 0,
       clickToLead: clicks > 0 ? (leads / clicks) * 100 : 0,
-      cpl: leads > 0 ? spend / leads : 0,
-      hasReach: reach > 0,
+      cpl: t.cpl ?? 0,
+      hasReach: false,
       hasData: impressions > 0 || clicks > 0 || leads > 0,
     };
   });
@@ -3471,17 +2627,14 @@ export default function MainDashboard() {
 
                       {/* Replaced → Billable — credited back, then charged.
                           Billable comes off the inclusive total (Meta + fed),
-                          which is the figure the client is billed against. */}
+                          which is the figure the client is billed against. Both
+                          are printed as the ledger returned them. */}
                       <Show when={showReplacedCols()}>
                         <td class="p-2 font-semibold text-[#AC2334] dark:text-red-400">
                           {fmtReplacedLeads(replacedOf(project.id))}
                         </td>
                         <td class="p-2 font-bold text-[#14233A] dark:text-white">
-                          {Math.max(
-                            0,
-                            (stats().totalLeadsWithFed ?? stats().totalLeads) -
-                              replacedOf(project.id),
-                          ).toLocaleString("en-IN")}
+                          {billableOf(project.id).toLocaleString("en-IN")}
                         </td>
                       </Show>
 
@@ -3493,11 +2646,18 @@ export default function MainDashboard() {
                         </td>
                       </Show>
 
-                      {/* Date-range AVG CPL */}
+                      {/* Date-range AVG CPL — spend ÷ META leads, divided
+                          server-side. Fed leads cost nothing on Meta, so this is
+                          never re-derived off the inclusive total here. */}
                       <td class="p-2 font-medium text-gray-700 dark:text-gray-100">
                         {"₹"}
-                        {stats().avgCPL}
+                        {inr2(stats().avgCPL)}
                       </td>
+                      {/* Premium CPL — the marked-up, client-facing figure. NOT
+                          in the /dashboard/ledger/ payload yet (it needs the
+                          display pipeline), so the column holds its place and
+                          prints "—" rather than a guess. modifiedCpl is null for
+                          every row until the backend returns it. */}
                       <Show when={isAdmin()}>
                         <td class="p-3 font-medium text-gray-700 dark:text-gray-100">
                           {project.modifiedCpl !== null &&
@@ -3583,10 +2743,10 @@ export default function MainDashboard() {
                   </td>
                 </Show>
 
-                {/* Avg CPL — grouped like every other ₹ cell in this footer row */}
+                {/* Avg CPL — grouped and 2dp like the column above it */}
                 <td>
                   {"₹"}
-                  {overviewStats().avgCPL.toLocaleString("en-IN")}
+                  {inr2(overviewStats().avgCPL)}
                 </td>
                 {/* Premium CPL — no meaningful aggregate, show dash */}
                 <Show when={isAdmin()}>

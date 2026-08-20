@@ -1,5 +1,6 @@
 import { api } from "../api/api";
 import { fetchFedLeadBatches } from "./fedLeads";
+import { scopeQuery, applyMeta } from "../stores/cmScope";
 
 const getClientNomen = () => {
   const auth = JSON.parse(localStorage.getItem("auth") || "{}");
@@ -63,4 +64,110 @@ export const fetchManualBatches = async () => {
   return { data: rows };
 };
 
+// ── Project ledger (server-aggregated) ───────────────────────────────────────
+// GET /dashboard/ledger/?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD
+//
+// Returns the FINISHED per-project ledger — spend, Meta / fed / total /
+// replaced / billable leads, CPL, impressions, clicks and campaign status
+// counts — plus a matching `totals` block. It replaces the browser-side join
+// this dashboard used to do: fetchAllCampaigns(10_000) + fetchBulkCampaignInsights
+// over every campaign id + the manual / fed / replacement batch sweeps, all
+// reduced in the tab. For an admin that was the whole agency's data over the
+// wire; this is one ~0.2s request.
+//
+// Both dates are optional — the backend defaults to month-to-date, floors at
+// 2026-04-01 and caps at today, so nothing is clamped on this side.
+//
+// SCOPING IS SERVER-SIDE. The same URL returns each role its own slice
+// (admin / coordination / accounts everything, a CM their tier, sales their
+// book, a client their own projects), so nothing here filters by role. We still
+// send the CLIENT CONTEXT — client_nomen plus the CM switch-mode params —
+// exactly the way /dashboard/summary/ does, because this dashboard renders ONE
+// client at a time and the backend intersects the two: it can only narrow what
+// the role may already see, never widen it.
+export const fetchDashboardLedger = async ({ startDate, endDate } = {}) => {
+  let url = `/dashboard/ledger/?1=1`;
+  if (startDate) url += `&start_date=${encodeURIComponent(startDate)}`;
+  if (endDate) url += `&end_date=${encodeURIComponent(endDate)}`;
 
+  const nomen = getClientNomen();
+  if (nomen) url += `&client_nomen=${encodeURIComponent(nomen)}`;
+  url += scopeQuery();
+
+  const res = await api(url, { method: "GET" });
+  applyMeta(res?.meta);
+  return res;
+};
+
+// ── Ledger reader ────────────────────────────────────────────────────────────
+// Envelope-proof read of a ledger response into the shape the dashboard renders.
+// Every numeric field is coerced HERE and nowhere else, so a string "912874.47"
+// can't reach a .toLocaleString() as a string (a silent no-op that drops the
+// thousands grouping) or a sort comparison as text.
+//
+// The per-row RULES are the backend's and are deliberately NOT re-derived:
+//   • cpl divides by META leads (fed leads cost nothing on Meta)
+//   • fed_leads is ALREADY INSIDE total_leads — never added on top
+//   • campaign status counts are NOT date-filtered
+const num = (v) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
+
+const ledgerRow = (r) => ({
+  projectId: r?.project_id ?? null,
+  projectName: r?.project_name ?? "",
+  spend: num(r?.spend),
+  metaLeads: num(r?.meta_leads),
+  fedLeads: num(r?.fed_leads),
+  totalLeads: num(r?.total_leads),
+  replacedLeads: num(r?.replaced_leads),
+  billableLeads: num(r?.billable_leads),
+  // null (not 0) when the backend could not divide — no Meta leads in range.
+  // A 0 here would read as "free leads"; callers decide how to print the gap.
+  cpl: r?.cpl == null ? null : num(r.cpl),
+  impressions: num(r?.impressions),
+  clicks: num(r?.clicks),
+  campaignsTotal: num(r?.campaigns_total),
+  campaignsActive: num(r?.campaigns_active),
+  campaignsPaused: num(r?.campaigns_paused),
+  campaignsCompleted: num(r?.campaigns_completed),
+});
+
+export const readDashboardLedger = (res) => {
+  const data = res?.data ?? {};
+  const rows = (Array.isArray(data.rows) ? data.rows : []).map(ledgerRow);
+
+  // project_id → row, for the join against the projects list (which carries the
+  // city / type / budget / logo the ledger response doesn't).
+  const byProject = {};
+  for (const row of rows) {
+    if (row.projectId != null) byProject[String(row.projectId)] = row;
+  }
+
+  return {
+    rows,
+    byProject,
+    totals: {
+      ...ledgerRow(data.totals ?? {}),
+      projectCount: num(data.totals?.project_count),
+    },
+    dateRange: data.date_range ?? null,
+    scope: data.scope ?? null,
+    // Distinguishes "the response landed and this client genuinely has nothing"
+    // from "nothing has come back yet" — the difference between a truthful 0 and
+    // a placeholder, which the loading states below key off.
+    loaded: true,
+  };
+};
+
+// The shape every consumer reads BEFORE the first response lands, so no memo has
+// to null-check its way through a render. loaded:false marks it as a placeholder.
+export const EMPTY_LEDGER = {
+  rows: [],
+  byProject: {},
+  totals: { ...ledgerRow({}), projectCount: 0 },
+  dateRange: null,
+  scope: null,
+  loaded: false,
+};
