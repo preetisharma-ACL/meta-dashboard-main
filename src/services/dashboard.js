@@ -78,13 +78,20 @@ export const fetchManualBatches = async () => {
 // Both dates are optional — the backend defaults to month-to-date, floors at
 // 2026-04-01 and caps at today, so nothing is clamped on this side.
 //
-// SCOPING IS SERVER-SIDE. The same URL returns each role its own slice
-// (admin / coordination / accounts everything, a CM their tier, sales their
-// book, a client their own projects), so nothing here filters by role. We still
-// send the CLIENT CONTEXT — client_nomen plus the CM switch-mode params —
-// exactly the way /dashboard/summary/ does, because this dashboard renders ONE
-// client at a time and the backend intersects the two: it can only narrow what
-// the role may already see, never widen it.
+// NOT FOR CLIENT LOGINS. This sums CampaignInsight.spend RAW — the agency's own
+// cost, with no display config and no markup — which is correct for admin / CM /
+// sales / coordination / accounts and ~23% under what a client is billed. The
+// backend 403s clients; callers must also make sure the request cannot fire (see
+// ClientDashboard's ledger resources, whose source is false for a client).
+//
+// SCOPING IS SERVER-SIDE. The same URL returns each role its own slice, so
+// nothing here filters by role. We still send the CLIENT CONTEXT — client_nomen
+// plus the CM switch-mode params — because this dashboard renders ONE client at
+// a time. Verified live against backend aba2257: with no param the caller gets
+// their whole scope (448 projects for admin), and client_nomen / client_nomen_id
+// / as_client_id each narrow it to that one client. The param can only NARROW —
+// a CM passing another CM's client id gets 0 projects and 0.00 spend — so
+// sending it can never widen what the role may already see.
 export const fetchDashboardLedger = async ({ startDate, endDate } = {}) => {
   let url = `/dashboard/ledger/?1=1`;
   if (startDate) url += `&start_date=${encodeURIComponent(startDate)}`;

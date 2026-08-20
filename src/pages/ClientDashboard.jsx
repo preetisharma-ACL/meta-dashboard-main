@@ -1606,6 +1606,32 @@ export default function MainDashboard() {
     return data.slice(startIndex, startIndex + pageSize());
   });
 
+  // ── What the Total row is the total OF ─────────────────────────────────────
+  // The status filter defaults to "active", so out of the box the Total row
+  // EXCLUDES every paused and completed project. That is intended, but it is
+  // invisible: the number just looks like the client's total, and the first
+  // person to reconcile it against a bill loses an hour finding out why it is
+  // short. So the footer states its own scope, in every state — including the
+  // unfiltered one, because "all 34 projects" is the sentence that makes the
+  // narrowed version legible when it appears.
+  const footerScope = createMemo(() => {
+    const shown = matchingProjects().length;
+    const all = statusedProjects().length;
+
+    const parts = [];
+    if (statusFilter() !== "all") parts.push(`${statusFilter()} only`);
+    const query = searchText().trim();
+    if (query) parts.push(`matching “${query}”`);
+
+    if (parts.length === 0)
+      return { narrowed: false, note: `all ${all} projects` };
+
+    return {
+      narrowed: true,
+      note: `${shown} of ${all} projects · ${parts.join(" · ")}`,
+    };
+  });
+
   // How many pages the matching set fills — at least 1, so an empty result reads
   // "Page 1 of 1" rather than "Page 1 of 0".
   const filteredPageCount = () =>
@@ -3374,6 +3400,18 @@ export default function MainDashboard() {
 
                 <td class="md:sticky md:left-[57px] md:z-20 bg-[#F8FAFC] dark:bg-gray-800 text-left text-xs uppercase tracking-wider text-[#54657E] dark:text-gray-300">
                   Total
+                  {/* Amber when the set is narrowed — the same "heads up, this
+                      is not everything" tone the paused badges use. */}
+                  <div
+                    class={
+                      "mt-0.5 font-normal normal-case tracking-normal text-[11px] leading-tight whitespace-normal " +
+                      (footerScope().narrowed
+                        ? "text-[#B07A14] dark:text-yellow-300"
+                        : "text-[#8593A8] dark:text-gray-400")
+                    }
+                  >
+                    {footerScope().note}
+                  </div>
                 </td>
 
                 <td></td>
