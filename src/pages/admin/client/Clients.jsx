@@ -790,35 +790,39 @@ export default function Clients() {
       <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_8px_28px_-18px_rgba(16,29,49,.35)] mb-5 overflow-hidden">
         {/* ── Deck 1 · lookups ── */}
         <div class="flex flex-wrap items-center gap-3 px-4 md:px-5 py-4">
-          <div class="relative flex-1 min-w-[220px] sm:max-w-[380px]">
-            <svg
-              class="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <circle cx="11" cy="11" r="8" />
-              <path d="M21 21l-4.35-4.35" />
-            </svg>
-            <input
-              type="text"
-              placeholder="Search by email, client name, or org…"
-              value={search()}
-              onInput={(e) => setSearch(e.target.value)}
-              class="w-full h-11 pl-10 pr-10 text-[13.5px] rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-800 dark:text-white placeholder:text-gray-400 focus:outline-none focus:border-[#14233A] focus:bg-white dark:focus:bg-gray-900 focus:ring-2 focus:ring-[#14233A]/10 transition-colors"
-            />
-            <Show when={search()}>
-              <button
-                onClick={() => setSearch("")}
-                aria-label="Clear search"
-                class="absolute right-2.5 top-1/2 -translate-y-1/2 grid h-6 w-6 place-items-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-200 transition-colors"
-              >
-                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-                  <path d="M18 6 6 18M6 6l12 12" />
+          {/* Search — the primary lookup on this screen, so it is the loudest
+              control in the deck: a navy-framed field with a solid navy icon
+              tile, taller than the filters beside it. Deliberately static —
+              no hover glow, no gradient halo; only the border deepens while
+              the field has focus. */}
+          <div class="group relative flex-1 min-w-[260px] sm:max-w-[460px]">
+            <div class="flex items-center gap-2.5 h-[46px] rounded-[14px] border-[1.5px] border-[#14233A]/25 dark:border-gray-600 bg-white dark:bg-gray-900 pl-2 pr-2 shadow-[0_2px_10px_-4px_rgba(20,35,58,.35)] dark:shadow-none transition-[border-color,box-shadow] duration-150 focus-within:border-[#14233A] focus-within:shadow-[0_10px_26px_-12px_rgba(20,35,58,.6)] dark:focus-within:border-gray-400">
+              {/* Icon tile — solid navy, the app's primary surface colour */}
+              <span class="grid h-8 w-8 flex-shrink-0 place-items-center rounded-[10px] bg-[#14233A] dark:bg-gray-700 text-white">
+                <svg class="w-[17px] h-[17px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+                  <circle cx="11" cy="11" r="7" />
+                  <path d="M20 20l-4.2-4.2" stroke-linecap="round" />
                 </svg>
-              </button>
-            </Show>
+              </span>
+              <input
+                type="text"
+                placeholder="Search clients by name, email, or org…"
+                value={search()}
+                onInput={(e) => setSearch(e.target.value)}
+                class="min-w-0 flex-1 h-full bg-transparent border-0 p-0 text-[14.5px] font-semibold tracking-[-0.01em] text-[#14233A] dark:text-white placeholder:font-normal placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-0"
+              />
+              <Show when={search()}>
+                <button
+                  onClick={() => setSearch("")}
+                  aria-label="Clear search"
+                  class="grid h-7 w-7 flex-shrink-0 place-items-center rounded-full text-gray-400 hover:text-[#14233A] dark:hover:text-gray-200 transition-colors"
+                >
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+                    <path d="M18 6 6 18M6 6l12 12" />
+                  </svg>
+                </button>
+              </Show>
+            </div>
           </div>
 
           {/* Account state — the is_active flag, NOT the Engagement label below */}
