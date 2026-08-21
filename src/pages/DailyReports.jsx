@@ -427,10 +427,15 @@ export default function DailyReports() {
   //   client login   the payload is already theirs — spend IS the billed figure
   //   privileged     premium_spend, the marked-up / fixed-CPL number
   //
-  // A RETAINER client is the one case where the two are the same figure: they
-  // pay a flat fee, so there is no display config and the backend treats their
-  // spend as raw passthrough (it does exactly this on the client payload). So a
-  // null premium on a retainer row falls back to raw.
+  // The retainer branch below is BELT AND BRACES, not load-bearing. A retainer
+  // client pays a flat fee, so raw IS their billed figure — and the backend
+  // already substitutes it on the privileged payload, not just the client one
+  // (verified: SunilTrinetraRealty / TheOryza returns spend and premium_spend
+  // both 4,906.45). The real rule lives in build_premium_by_project, in the
+  // backend's apps/insights/ledger.py; this is a safety net for the day a
+  // retainer row comes back with a null premium, nothing more. Removing it
+  // should change nothing — that is the point of saying so here, because dead
+  // code that LOOKS load-bearing is worse than no code at all.
   //
   // It does NOT fall back for anyone else. A missing display config on a
   // hybrid/CPL row means the billed figure is genuinely unknown, and printing
@@ -478,9 +483,16 @@ export default function DailyReports() {
 
       // ── The lead trio, TAKEN from the payload ──────────────────────────
       // Generated, Replaced and Billable are three fields of ONE row, so the
-      // subtraction shown on screen holds by construction. They used to come
-      // from two different sources over two different windows, which is how
-      // 621 − 40 rendered as 381.
+      // subtraction shown on screen holds by construction.
+      //
+      // How it used to fail is worth knowing, because the shape of the bug was
+      // not "a wrong number" but "two sources, one of them invisible": the row
+      // carried a generatedLeads field from the SAME block as replaced and
+      // billable — the correct, self-consistent figure — and the table never
+      // rendered it. It printed the bulk-insights lead count beside them
+      // instead, from a different endpoint over a different window. So the two
+      // numbers a reader subtracted had never met, and 621 − 40 showed 381.
+      // Anything that reintroduces a second lead source here reintroduces that.
       const leads = row.totalLeads; // meta + fed, additive
       const replacedLeads = row.replacedLeads;
       const billableLeads = row.billableLeads;
