@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "verify:ledger": "node scripts/verify-ledger-readers.mjs"
+    "verify:ledger": "node scripts/verify-ledger-readers.mjs",
+    "verify:org-client": "node scripts/verify-org-client-rule.mjs",
+    "verify": "npm run verify:ledger && npm run verify:org-client"
   },
   "dependencies": {
     "@dicebear/collection": "^9.4.2",

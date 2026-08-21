@@ -5,6 +5,7 @@ import {
   fetchPaymentOrganizations,
 } from "../../services/payments";
 import { computeGstPreview, GST_OPTIONS } from "./gst";
+import { resolveOrgSelection, clientsForOrg } from "./orgClientRule";
 import {
   fieldClass,
   labelClass,
@@ -35,10 +36,20 @@ import {
 //                component stays presentational.
 //
 // The ORGANIZATION picker is shown to every role that can reach this form
-// (accounts and tier-1 CM alike). It is never auto-filled from the client: that
-// link is campaign-derived and unreliable, and a wrong auto-fill silently books
-// money against the wrong org. Left empty, the backend derives it — so blank is
-// safe, just less deliberate.
+// (accounts and tier-1 CM alike). Left empty, the backend derives the org from
+// the client's campaigns — so blank is safe, just less deliberate.
+//
+// CLIENT AND ORGANIZATION STEER EACH OTHER, and neither ever locks the other:
+//   • pick a CLIENT first → the org is seeded from that client's own
+//     organization_id, unless the operator has already picked an org deliberately
+//     (a client pick must not quietly rewrite a considered choice)
+//   • pick an ORGANIZATION first → exactly one client under it is PRE-FILLED and
+//     announced by name; several are narrowed-to and the list is opened for the
+//     operator to choose; none leaves the client untouched and says so
+//
+// Every one of those is a starting point. The client field is never disabled and
+// never restricted — the narrowing is a view with a "Show all clients" way back,
+// because a hard filter would strand the clients whose org link is missing.
 //
 // The preview panel is explicitly labelled as a preview: the server recomputes
 // on save and the caller re-renders the returned row.
@@ -76,8 +87,42 @@ export default function PaymentForm(props) {
 
   const [touched, setTouched] = createSignal(false);
   // Tracks whether the org currently in the box came from the client rather
-  // than from the operator, purely so the hint can say so.
+  // than from the operator. Drives the hint, and decides whether a later client
+  // pick may overwrite it — an operator's deliberate org must survive one.
   const [orgFromClient, setOrgFromClient] = createSignal(false);
+
+  // ── Organization → client steering ────────────────────────────────────────
+  // The loaded option lists, handed over by the pickers as they resolve. The
+  // form needs the client list to know whether an organization has one client or
+  // several; taking it from the picker avoids fetching the same endpoint twice.
+  const [clientOptions, setClientOptions] = createSignal([]);
+  const [orgOptions, setOrgOptions] = createSignal([]);
+
+  // Which organization the CLIENT list is currently narrowed to, or null for the
+  // full list. Deliberately separate from organization(): "Show all clients"
+  // drops the narrowing without disturbing the org the operator picked.
+  const [clientOrgFilter, setClientOrgFilter] = createSignal(null);
+
+  // Bumped to hand the operator into the client list when an org has several.
+  const [clientFocusToken, setClientFocusToken] = createSignal(0);
+
+  // What the last organization pick did to the client field, in words.
+  // { tone: "info" | "warn", text }. Never null-and-silent: an auto-fill the
+  // operator didn't see is how money gets booked against the wrong client.
+  const [orgNotice, setOrgNotice] = createSignal(null);
+
+  const sameId = (a, b) =>
+    a !== null && a !== undefined && String(a) === String(b);
+
+  // Counted by the rule module, so the "showing N of…" hint and the rule can
+  // never disagree about how many clients an organization has.
+  const clientsInOrg = (orgId) => clientsForOrg(clientOptions(), orgId);
+
+  const clientName = (id) =>
+    clientOptions().find((c) => sameId(c.id, id))?.name ?? null;
+
+  const orgName = (id) =>
+    orgOptions().find((o) => sameId(o.id, id))?.name ?? "this organization";
 
   // ── Client → organization pre-select (RECORD ONLY) ────────────────────────
   // /payments/clients/ now carries each client's real organization_id, so
@@ -91,14 +136,62 @@ export default function PaymentForm(props) {
   // A null organization_id (the ~14 clients whose user has no org) clears the
   // field instead of leaving the previous client's org sitting there — a stale
   // org is worse than a blank one, because blank makes the backend derive it.
+  //
+  // It seeds ONLY into an org the operator hasn't chosen for themselves. Once
+  // they pick an org — and especially once that pick has narrowed this very
+  // list — a client selection rewriting it would undo the choice that produced
+  // the list they just picked from. Worse, a client with a null organization_id
+  // would blank it entirely. The existing rule for edit mode ("don't rewrite a
+  // value accounts may have deliberately corrected") is the same argument; this
+  // extends it to a deliberate pick on the record form.
   const handleClientChange = (id, option) => {
     batch(() => {
       setClientNomen(id);
-      if (!isEdit()) {
-        const orgId = option?.organizationId ?? null;
-        setOrganization(orgId);
-        setOrgFromClient(orgId !== null);
-      }
+      // The operator has now spoken about the client, so whatever the last
+      // organization pick did to this field is history.
+      setOrgNotice(null);
+      if (isEdit()) return;
+      const deliberateOrg = organization() != null && !orgFromClient();
+      if (deliberateOrg) return;
+      const orgId = option?.organizationId ?? null;
+      setOrganization(orgId);
+      setOrgFromClient(orgId !== null);
+    });
+  };
+
+  // ── Organization → client ─────────────────────────────────────────────────
+  // One rule, re-run on EVERY organization pick — including one made after a
+  // client is already chosen, so a client from a different org can never just
+  // sit there unremarked.
+  //
+  // What it never does: clear a client. Clearing the organization leaves the
+  // client alone (an operator who blanks an optional field has not asked to lose
+  // a required one), and neither does the "no clients here" case. The only write
+  // into the client field is the single-match pre-fill, which announces itself.
+  const handleOrgChange = (id) => {
+    batch(() => {
+      setOrganization(id);
+      setOrgFromClient(false); // an explicit pick is no longer the client's
+
+      // Edit mode has no client picker to steer — the client is fixed on an
+      // existing payment — so the rule doesn't apply.
+      if (isEdit()) return;
+
+      // The decision lives in orgClientRule.js; this only applies it. `pick`
+      // null always means "leave the client alone" — the rule has no outcome
+      // that clears it.
+      const outcome = resolveOrgSelection({
+        orgId: id,
+        clients: clientOptions(),
+        currentClientId: clientNomen(),
+        currentClientName: clientName(clientNomen()),
+        orgLabel: orgName(id),
+      });
+
+      if (outcome.pick) setClientNomen(outcome.pick.id);
+      setClientOrgFilter(outcome.filterOrgId);
+      setOrgNotice(outcome.notice);
+      if (outcome.focusClient) setClientFocusToken((n) => n + 1);
     });
   };
 
@@ -292,17 +385,41 @@ export default function PaymentForm(props) {
             placeholder="Select a client…"
             value={clientNomen()}
             onChange={handleClientChange}
+            onOptions={setClientOptions}
+            focusToken={clientFocusToken()}
+            filter={
+              clientOrgFilter() == null
+                ? undefined
+                : (o) => sameId(o.organizationId, clientOrgFilter())
+            }
             disabled={props.submitting}
             error={show("client")}
             forbiddenMsg="You don't have access to the client list for payments."
             errorMsg="Could not load the client list. Please retry."
             emptyMsg="No clients available to you."
+            emptyFilteredMsg="No clients under the selected organization."
+            hint={
+              clientOrgFilter() == null ? undefined : (
+                <>
+                  Showing the {clientsInOrg(clientOrgFilter()).length} clients
+                  under {orgName(clientOrgFilter())}.{" "}
+                  <button
+                    type="button"
+                    onClick={() => setClientOrgFilter(null)}
+                    class="underline underline-offset-2 font-medium text-[#14233A] dark:text-gray-300 hover:text-[#AC2334] dark:hover:text-red-300"
+                  >
+                    Show all clients
+                  </button>
+                </>
+              )
+            }
           />
         </Show>
 
-        {/* Organization — both roles. Pre-filled from the selected client on
-            the record form (see handleClientChange) and always editable. "NA"
-            is a real org in this list, not a placeholder. */}
+        {/* Organization — both roles. Seeded from the selected client, or picked
+            first to steer the client field (see handleOrgChange). Always
+            editable either way. "NA" is a real org in this list, not a
+            placeholder. */}
         <EntityPicker
           fetcher={fetchPaymentOrganizations}
           label="Organization"
@@ -310,10 +427,8 @@ export default function PaymentForm(props) {
           allowClear
           clearLabel="Let the system decide"
           value={organization()}
-          onChange={(id) => {
-            setOrganization(id);
-            setOrgFromClient(false); // an explicit pick is no longer the client's
-          }}
+          onChange={handleOrgChange}
+          onOptions={setOrgOptions}
           disabled={props.submitting}
           hint={
             orgFromClient()
@@ -323,6 +438,24 @@ export default function PaymentForm(props) {
           forbiddenMsg="You don't have access to the organization list."
           errorMsg="Could not load organizations. You can still save without one."
         />
+
+        {/* What the last organization pick did to the client field. Amber when
+            it needs a decision (nothing to pre-fill, or a client that no longer
+            belongs), muted when it is just reporting a pre-fill. Nothing here is
+            an error — the form is still perfectly saveable in every one of these
+            states — so none of it uses the error red. */}
+        <Show when={orgNotice()}>
+          <p
+            class={
+              "-mt-2 text-xs " +
+              (orgNotice().tone === "warn"
+                ? "text-[#B07A14] dark:text-yellow-300"
+                : "text-[#8593A8] dark:text-gray-500")
+            }
+          >
+            {orgNotice().text}
+          </p>
+        </Show>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
           {/* Base amount */}

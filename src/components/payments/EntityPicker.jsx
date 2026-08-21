@@ -3,6 +3,7 @@ import {
   createResource,
   createMemo,
   createEffect,
+  on,
   For,
   Show,
   onMount,
@@ -33,8 +34,24 @@ import { fieldClass, labelClass } from "./paymentsFormat";
 //   value        id | null          onChange(id | null)
 //   label, placeholder, required, disabled, error
 //   allowClear   show a "none" option (optional fields)
-//   hint         helper text under the control
+//   hint         helper text under the control (string or JSX)
 //   forbiddenMsg / errorMsg  copy for a 403 vs a generic load failure
+//
+//   filter       optional (option) => boolean, narrowing the list BEFORE the
+//                search query. The payment form uses it to show only the
+//                selected organization's clients. It is a VIEW, not a
+//                restriction — the caller is expected to offer a way back to the
+//                full list, because a hard narrowing would strand the handful of
+//                clients whose org link is missing.
+//   emptyFilteredMsg  copy for "the filter matched nothing", as distinct from
+//                "this role has nothing to pick from at all".
+//   onOptions    called with the loaded options once they arrive. The form needs
+//                the client list to decide whether an org has one client or
+//                several, and this hands it over rather than making the caller
+//                fetch the same endpoint a second time.
+//   focusToken   changing this to a new value opens the list and focuses the
+//                input. Used to hand the operator straight to the client picker
+//                when an org turns out to have several.
 export default function EntityPicker(props) {
   const [query, setQuery] = createSignal("");
   const [open, setOpen] = createSignal(false);
@@ -54,15 +71,47 @@ export default function EntityPicker(props) {
 
   const options = () => items() ?? [];
 
+  // Hand the loaded list to the caller once. The form counts an organization's
+  // clients from it; without this it would have to re-fetch the same endpoint.
+  createEffect(() => {
+    const loaded = items();
+    if (loaded) props.onOptions?.(loaded);
+  });
+
+  // Open and focus on demand — the form does this when an organization has more
+  // than one client, so the operator lands in the list instead of being left to
+  // notice that the field is now narrowed. defer:true so mounting doesn't open
+  // every picker on the page.
+  createEffect(
+    on(
+      () => props.focusToken,
+      () => {
+        if (props.disabled || items.loading || items.error) return;
+        setOpen(true);
+        setActive(-1);
+        inputEl?.focus();
+      },
+      { defer: true },
+    ),
+  );
+
   const selected = createMemo(
     () =>
       options().find((o) => String(o.id) === String(props.value ?? "")) ?? null,
   );
 
+  // The caller's narrowing, applied before the typed query. Kept separate from
+  // filtered() so the empty-state copy can tell "this org has no clients" apart
+  // from "your search matched nothing".
+  const visible = createMemo(() => {
+    const f = props.filter;
+    return typeof f === "function" ? options().filter(f) : options();
+  });
+
   const filtered = createMemo(() => {
     const q = query().trim().toLowerCase();
-    if (!q) return options();
-    return options().filter((o) => o.name.toLowerCase().includes(q));
+    if (!q) return visible();
+    return visible().filter((o) => o.name.toLowerCase().includes(q));
   });
 
   onMount(() => {
@@ -297,7 +346,9 @@ export default function EntityPicker(props) {
             <p class="px-3 py-3 text-sm text-[#8593A8] dark:text-gray-500">
               {options().length === 0
                 ? (props.emptyMsg ?? "Nothing available to pick from.")
-                : "No match for that search."}
+                : visible().length === 0
+                  ? (props.emptyFilteredMsg ?? "Nothing matches the current filter.")
+                  : "No match for that search."}
             </p>
           </Show>
         </div>
