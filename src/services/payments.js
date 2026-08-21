@@ -149,7 +149,9 @@ const normalizeOrgOption = (o = {}) => ({
 //
 // NOTE — nothing is filtered by NAME. "NA" (id 87) is a real organization for
 // clients with no distinct company, not a placeholder, and dropping it would
-// silently remove a legitimate choice from a 141-entry list.
+// silently remove a legitimate choice from a 141-entry list. Seven clients sit
+// under it today; a further 20 have no organization at all. Both are backend
+// data cleanup in progress — neither is a reason to filter or default here.
 const toOptions = (rows, normalize, noun) =>
   rows
     .map(normalize)

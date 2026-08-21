@@ -16,8 +16,13 @@
 //   a payment gets booked against the wrong client.
 //
 // The caller stays free either way: the narrowing is a VIEW over the client list
-// with a way back to the full one, never a restriction. Some clients have no org
-// link at all, and a hard filter would make them unreachable.
+// with a way back to the full one, never a restriction.
+//
+// That escape hatch is load-bearing, not politeness: 20 ACTIVE CLIENTS HAVE NO
+// ORGANIZATION AT ALL (organization_id null), so a hard filter would make every
+// one of them unreachable the moment an org is picked. The count is here so the
+// next person to reach for "just filter the list" can see what it costs. It is
+// a data-cleanup task on the backend side, not something this file works around.
 
 const sameId = (a, b) =>
   a !== null && a !== undefined && String(a) === String(b);
