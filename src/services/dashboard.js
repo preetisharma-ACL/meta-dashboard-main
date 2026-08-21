@@ -149,6 +149,11 @@ const num = (v) => {
 };
 
 // Everything that means the same thing for every role.
+//
+// billed_amount = max(0, premium_spend − replaced_cost): the client-facing spend
+// less the credit for replaced leads. It is NOT an invoice — no service charge,
+// no GST — and the Billing page stays the authoritative figure. null (never 0)
+// where there is no premium figure to deduct from, so callers render a gap.
 const commonRow = (r) => ({
   projectId: r?.project_id ?? null,
   projectName: r?.project_name ?? "",
@@ -157,6 +162,7 @@ const commonRow = (r) => ({
   totalLeads: num(r?.total_leads),
   replacedLeads: num(r?.replaced_leads),
   billableLeads: num(r?.billable_leads),
+  billedAmount: r?.billed_amount == null ? null : num(r.billed_amount),
   impressions: num(r?.impressions),
   clicks: num(r?.clicks),
   campaignsTotal: num(r?.campaigns_total),

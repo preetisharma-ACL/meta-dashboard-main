@@ -183,6 +183,118 @@ console.log("\nDholeraEvent: one row, one period, one lead set");
   );
 }
 
+// ── billed_amount: taken, never re-derived ──────────────────────────────────
+// max(0, premium_spend − replaced_cost). The frontend must PRINT it, not
+// recompute it — replaced_cost is a per-client rate the payload never carries,
+// so any local arithmetic would be a guess wearing a money label. The fixtures
+// use the two verified live rows.
+console.log("\nbilled_amount is printed, not reconstructed");
+{
+  const mk = (id, premium, billed, replaced) => ({
+    ...common,
+    project_id: id,
+    total_leads: 700,
+    replaced_leads: replaced,
+    billable_leads: 700 - replaced,
+    spend: "1",
+    cpl: "1",
+    premium_spend: premium,
+    premium_leads: 700,
+    premium_cpl: "1",
+    billed_amount: billed,
+  });
+
+  // GwaliorEvent 95,082 − 8,280 (60 × ₹138) = 86,802
+  // DholeraEvent 71,816 − 7,520 (40 × ₹188) = 64,296
+  const led = readDashboardLedger({
+    data: {
+      rows: [
+        mk(601, "95082.00", "86802.00", 60),
+        mk(602, "71816.00", "64296.00", 40),
+      ],
+      totals: { billed_amount: "151098.00" },
+    },
+  });
+
+  check(
+    "GwaliorEvent billed = 86,802",
+    led.byProject["601"].billedAmount === 86802,
+    `(${led.byProject["601"].billedAmount})`,
+  );
+  check(
+    "DholeraEvent billed = 64,296",
+    led.byProject["602"].billedAmount === 64296,
+    `(${led.byProject["602"].billedAmount})`,
+  );
+  check(
+    "the two sum to the totals block's 1,51,098",
+    led.byProject["601"].billedAmount + led.byProject["602"].billedAmount ===
+      led.totals.billedAmount,
+    `(${led.totals.billedAmount})`,
+  );
+  check(
+    "billed is BELOW premium spend — the credit is deducted, not added",
+    led.byProject["601"].billedAmount < led.byProject["601"].premiumSpend,
+  );
+
+  // If the payload ever disagrees with premium − credit, the payload wins:
+  // this reader has no business arbitrating a money figure.
+  const odd = readDashboardLedger({
+    data: { rows: [mk(603, "1000.00", "777.00", 1)], totals: {} },
+  });
+  check(
+    "a billed_amount that doesn't match local arithmetic is still printed",
+    odd.byProject["603"].billedAmount === 777,
+    `(${odd.byProject["603"].billedAmount})`,
+  );
+
+  // No premium figure → no billed figure. Null, so the cell renders "—".
+  const none = readDashboardLedger({
+    data: {
+      rows: [
+        {
+          ...common,
+          project_id: 604,
+          premium_spend: null,
+          billed_amount: null,
+        },
+      ],
+      totals: {},
+    },
+  });
+  check(
+    "null billed_amount stays null, not 0",
+    none.byProject["604"].billedAmount === null,
+  );
+
+  const absent = readDashboardLedger({
+    data: { rows: [{ ...common, project_id: 605 }], totals: {} },
+  });
+  check(
+    "absent billed_amount → null, not 0",
+    absent.byProject["605"].billedAmount === null,
+  );
+
+  // A client sees the same field — it is on their payload too.
+  const asClient = readClientLedger({
+    data: {
+      rows: [
+        {
+          ...common,
+          project_id: 606,
+          premium_spend: "500",
+          billed_amount: "450",
+        },
+      ],
+      totals: {},
+    },
+  });
+  check(
+    "clients get billed_amount as well",
+    asClient.byProject["606"].billedAmount === 450,
+  );
+}
+
 // ── Missing premium is legitimate and must stay null, never 0 ───────────────
 // ~299 of 448 live rows have no premium: retainer clients have no display config
 // by design, and some client+project pairs are missing one. A 0 there would

@@ -370,16 +370,30 @@ export default function DailyReports() {
     (reportClientType() === "cpl" ||
       reportClientType() === "hybrid" ||
       anyReplaced());
-  // The credited amount actually billed, AFTER the replacement credit.
+  // The spend after the replacement credit — max(0, premium_spend −
+  // replaced_cost), straight off the ledger row.
   //
-  // CURRENTLY UNAVAILABLE, so this column stays hidden. It used to come from
-  // each project report's `lead_breakdown.billed_amount` — the same block that
+  // It is NOT an invoice: no service charge, no GST. The Billing page is the
+  // authoritative billed figure, which the footnote under the table already
+  // says. That distinction is why the column carries a tooltip rather than
+  // sitting there looking like a total someone could pay against.
+  //
+  // It briefly had no source at all: the old per-project lead_breakdown block
   // was returning a wrong billable count (381 where the truth was 342 on
-  // DholeraEvent), so it is not a source to keep trusting for money. The ledger
-  // does not carry billed_amount yet; adding it there is what turns this back
-  // on, and nothing here should reconstruct it in the meantime — billable ×
-  // whatever-rate is a guess, and this is an invoice figure.
-  const showBilledAmount = () => false;
+  // DholeraEvent), so it stopped being trustworthy for money and the column was
+  // hidden rather than reconstructed from billable × a guessed rate. The ledger
+  // carries it now. Worth noting the old column was not uniformly wrong —
+  // GwaliorEvent's 86,802 was right — which is exactly why a partly-correct
+  // money source is the dangerous kind.
+  const showBilledAmount = () =>
+    showReplacement() && ledger().rows.some((r) => r.billedAmount != null);
+
+  // One sentence, used on the column header and its preview/PDF counterparts,
+  // so the same caveat travels with the number wherever it is read.
+  const BILLED_HINT =
+    "Client-facing spend less the credit for replaced leads " +
+    "(premium spend − replaced cost). Not an invoice: no service charge, " +
+    "no GST. The Billing page is the authoritative billed amount.";
 
   // …and these are what the table actually renders: availability AND the user's
   // per-column checkbox. Checking a box can never reveal a column the gating
@@ -530,8 +544,10 @@ export default function DailyReports() {
         generatedLeads: leads,
         replacedLeads,
         billableLeads,
-        // Not on the ledger payload yet; the column is gated off entirely.
-        billedAmount: null,
+        // Spend less the replacement credit, as the backend computed it —
+        // never re-derived here. null where there is no premium figure to
+        // deduct from, and the cell renders "—" rather than a zero.
+        billedAmount: row.billedAmount,
       });
     }
 
@@ -1210,7 +1226,9 @@ export default function DailyReports() {
                 </Show>
                 {/* Ad spend (above) vs Billed (after the replacement credit) */}
                 <Show when={showBilledAmount()}>
-                  <th class="p-3">Billed</th>
+                  <th class="p-3" title={BILLED_HINT}>
+                    Billed
+                  </th>
                 </Show>
                 {/* S.C + GST only when the client has a service charge */}
                 <Show when={showSc()}>
