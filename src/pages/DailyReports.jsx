@@ -1,10 +1,12 @@
 import { For, Show, createSignal, createMemo, createEffect, batch } from "solid-js";
 import { DateRangeFilter } from "../components/DateRangeFilter";
-import { fetchProjects } from "../services/dashboard";
 import {
-  fetchAllCampaigns,
-  fetchBulkCampaignInsights,
-} from "../services/campaigns";
+  fetchProjects,
+  fetchDashboardLedger,
+  readDashboardLedger,
+  readClientLedger,
+  EMPTY_LEDGER,
+} from "../services/dashboard";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import * as XLSX from "xlsx";
@@ -12,7 +14,6 @@ import useRole, { clientRole } from "./../hooks/useRole";
 import { createResource } from "solid-js"; // add to existing solid-js import
 import { fetchBillingOverview } from "../services/billing-service";
 import { fetchAllAdminClients } from "./admin/services/fetchClients";
-import { fetchProjectLeadBreakdown } from "../services/leadReplacement";
 const logoUrl = "/logo.webp";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -43,9 +44,7 @@ const normaliseDate = (d) => {
 export default function DailyReports() {
   /* ── state ── */
   const [projects, setProjects] = createSignal([]);
-  const [insightsMap, setInsightsMap] = createSignal({}); // projectId → [{date, leads, spend, …}]
   const [loading, setLoading] = createSignal(false);
-  const [loadingInsights, setLoadingInsights] = createSignal(false);
   const [statusFilter, setStatusFilter] = createSignal("all");
   // No default range — the report shows nothing until the user picks a range
   // (avoids the all-time dump). Gated by ready()/the empty-state prompt below.
@@ -70,14 +69,27 @@ export default function DailyReports() {
   // overview, which is wrong when an admin/CM is looking at a client.
   const [reportSummary, setReportSummary] = createSignal(null);
 
-  // ── Lead replacement, per project ─────────────────────────────────────────
-  // { [projectId]: { generated, replaced, billable, billedAmount } }
-  // Sourced from each project's report (GET /reports/project/{id}/), whose
-  // `lead_breakdown` block is scoped to the SELECTED DATE RANGE — the same
-  // window the Leads / CPL / spend columns beside it use, so the whole row is
-  // one consistent period and the daily figures roll up to the monthly invoice.
-  // Projects with no breakdown in the range aren't in the map and render "—".
-  const [leadBreakdownMap, setLeadBreakdownMap] = createSignal({});
+  // ── Where every figure on this report comes from ──────────────────────────
+  // ONE call: GET /dashboard/ledger/?start_date&end_date, range-scoped and
+  // role-scoped server-side. It replaced fetchAllCampaigns + a bulk-insights
+  // sweep over every campaign id (reduced and date-filtered in the browser) and
+  // a per-project /reports/project/{id}/ sweep for the replacement trio.
+  //
+  // Three bugs died with that pipeline, all on the same row:
+  //   • Generated came from the insight rows while Replaced / Billable came from
+  //     the project report — DIFFERENT LEAD SETS, so the subtraction printed on
+  //     screen didn't hold (621 − 40 showing 381).
+  //   • The range re-filtered CLIENT-SIDE over rows fetched once, so an August
+  //     filter still counted a July block (621 against a real 382).
+  //   • Spend matched neither the raw nor the client-facing figure.
+  // All three columns now come off ONE row of ONE payload, so they cannot
+  // disagree about the period or the lead set they describe.
+  //
+  // The lead arithmetic is TAKEN, not recomputed: meta_leads + fed_leads =
+  // total_leads (fed leads are ADDITIVE — synthetic leads live only as a count
+  // on ManualLeadBatch, and Meta's own numbers cannot know about them), and
+  // billable_leads = total_leads − replaced_leads.
+  // (the loading flag is the resource's own — see ledgerLoading below)
 
   // Include raw (agency-cost) columns — Raw Spend + Raw CPL — in the on-screen
   // table AND all downloads. ON by default = internal report (shows the agency's
@@ -154,13 +166,10 @@ export default function DailyReports() {
       setAdminClientQuery("");
       setAdminClientOpen(true);
       setProjects([]);
-      setInsightsMap({});
       setReportSummary(null);
-      setLeadBreakdownMap({});
       setShowPreview(false);
     });
     loadedKey = null; // allow a fresh load when a client is re-picked
-    breakdownKey = null;
   };
   // Admin must pick a client before the report is meaningful.
   const adminNeedsClient = () => isAdmin() && !selectedAdminClientId();
@@ -221,17 +230,11 @@ export default function DailyReports() {
       }
       setProjects(allProjects);
 
-      // NOTE: the lead-replacement breakdown is NOT loaded here — it is
-      // range-scoped, so it hangs off the effect below and reloads when the
-      // date range changes without refetching projects/insights.
-
-      // ② fetch insights (fire-and-forget — table shows skeleton until done).
-      //    Pass clientId so the bulk-insights call sends as_client_id and the
-      //    backend returns marked-up `spend` (Client Billed) vs raw `spend_raw`.
-      setLoadingInsights(true);
-      loadAllInsights(allProjects, clientId).finally(() =>
-        setLoadingInsights(false),
-      );
+      // Nothing chains off this. Every number on the report comes from the
+      // ledger resource below, which is keyed on the client AND the date range —
+      // so changing the range refetches instead of re-filtering rows that were
+      // fetched for a different window. That re-filter is what put July leads
+      // under an August heading.
     } catch (err) {
       console.error("DailyReports: loadAllData error", err);
     } finally {
@@ -239,152 +242,60 @@ export default function DailyReports() {
     }
   };
 
-  // Sweep the per-project reports in small batches so a long project list
-  // doesn't fire dozens of parallel requests. A project whose report fails is
-  // left out of the map rather than shown as "0 replaced", which would read as
-  // a fact rather than a gap.
-  // clientId (the Client PK, admin picker) is threaded through as as_client_id —
-  // exactly as loadAllInsights does for the leads/spend columns. A project shared
-  // by two clients answers the project-wide breakdown without it, so Billable /
-  // Replaced would count BOTH clients' leads while Generated beside them counts
-  // only the selected one. Null (admin "all clients") leaves the project-level
-  // numbers, which are the right ones there.
-  const loadLeadBreakdowns = async (projectList, from, to, clientId = null) => {
-    const out = {};
-    const batchSize = 5;
-    for (let i = 0; i < projectList.length; i += batchSize) {
-      const batch = projectList.slice(i, i + batchSize);
-      await Promise.all(
-        batch.map(async (p) => {
-          try {
-            const breakdown = await fetchProjectLeadBreakdown(p.id, {
-              startDate: from,
-              endDate: to,
-              asClientId: clientId,
-            });
-            if (breakdown) out[String(p.id)] = breakdown;
-          } catch {
-            // No report / no breakdown for this project in the range.
-          }
-        }),
-      );
-    }
-    setLeadBreakdownMap(out);
-  };
-
-  // Reload the breakdown whenever the project set, the range, OR the selected
-  // client changes. The range is part of the request now, so narrowing the dates
-  // re-reads these columns without refetching projects or insights (which reuse
-  // loadedKey); the client is part of it too (as_client_id) so switching clients
-  // re-reads per-client breakdowns rather than reusing the previous client's.
-  let breakdownKey = null;
-  createEffect(() => {
-    const list = projects();
+  // ── THE one request ────────────────────────────────────────────────────────
+  // Keyed on the client AND the range, so narrowing the dates refetches rather
+  // than re-slicing rows fetched for another window. The admin picker's Client
+  // PK goes out as as_client_id; a client's own login and a CM are already
+  // scoped server-side and send nothing.
+  //
+  // A CLIENT reads a different payload from everyone else — premium_spend /
+  // premium_cpl with no raw keys at all — so the decoder is chosen by role, the
+  // same way ClientDashboard does it. Reading with the wrong one totals ₹0,
+  // which is visible, rather than showing agency cost under a client's heading.
+  const ledgerKey = () => {
     const from = fromDate();
     const to = toDate();
-    // Same source loadAllData scopes off: the admin picker's Client PK, or null
-    // for a client's own login / CM view (already server-scoped).
-    const cid = isAdmin() ? selectedAdminClientId() || null : null;
-    if (!list.length || !from || !to) return;
-    const key = `${cid ?? ""}|${from}|${to}|${list.map((p) => p.id).join(",")}`;
-    if (breakdownKey === key) return;
-    breakdownKey = key;
-    loadLeadBreakdowns(list, from, to, cid);
-  });
-
-  const loadAllInsights = async (projectList, clientId = null) => {
-    const result = {};
-    // Seed every project so it always emits a row, even with no campaigns.
-    for (const project of projectList) {
-      result[project.id] = { insights: [], status: "paused" };
-    }
-
-    // 1. Fetch ALL campaigns for the client in ONE paginated sweep, then group
-    //    them by project_id locally (was: one /campaigns/?project=N per project).
-    let allCampaigns = [];
-    try {
-      allCampaigns = await fetchAllCampaigns(1000);
-    } catch (err) {
-      console.error("DailyReports: failed to load campaigns", err);
-    }
-
-    const projectCampaigns = {};
-    for (const c of allCampaigns) {
-      const pid = c.project_id;
-      if (pid == null) continue;
-      if (!projectCampaigns[pid]) projectCampaigns[pid] = [];
-      projectCampaigns[pid].push(c);
-    }
-
-    // Derive each project's status from its grouped campaigns.
-    for (const project of projectList) {
-      const camps = projectCampaigns[project.id] || [];
-      const activeCampaigns = camps.filter(
-        (c) => c.status?.toLowerCase() === "active",
-      ).length;
-      result[project.id].status = activeCampaigns > 0 ? "active" : "paused";
-
-      // Earliest campaign start_date for this project — the authoritative
-      // "when did this project start running" signal. Used by the date-range
-      // filter to drop projects that only started AFTER the selected range
-      // (e.g. a project that started this month must not appear under a
-      // "Last Month" filter). Stored as a "YYYY-MM-DD" string so it can be
-      // compared lexicographically against the range's `to` date.
-      const starts = camps
-        .map((c) => c.start_date)
-        .filter(Boolean)
-        .map((s) => String(s).slice(0, 10));
-      result[project.id].firstStart = starts.length ? starts.sort()[0] : null;
-    }
-
-    // 2. Build a campaign → {project, canonical id} lookup + the full ID list.
-    const campaignById = {};
-    const allCampaignIds = [];
-    for (const project of projectList) {
-      for (const c of projectCampaigns[project.id] || []) {
-        campaignById[String(c.id)] = { campaign: c, projectId: project.id };
-        allCampaignIds.push(c.id);
-      }
-    }
-
-    // 3. ONE bulk insights call for every campaign across all projects
-    //    (replaces the old per-campaign fetch loop — same fix as the dashboard).
-    if (allCampaignIds.length > 0) {
-      try {
-        // as_client_id (Client PK) makes the backend apply the client's markup
-        // to `spend` (Client Billed); `spend_raw` stays raw. Only set for admin/
-        // CM previewing a client — null for a client's own login (already scoped).
-        const bulk = await fetchBulkCampaignInsights(allCampaignIds, {
-          asClientId: clientId,
-        });
-        const rows = bulk.data || [];
-
-        // 4. Group rows back onto their project — EVERY row, including the
-        //    synthetic (is_manual) ones. Summing `leads` across all rows is the
-        //    bulk endpoint's inclusive total: fed leads landing on a day with
-        //    campaign delivery are merged into the normal row, and fed leads on
-        //    a day with NO delivery come back as a standalone is_manual row.
-        //    Skipping those standalone rows undercounted the report against the
-        //    dashboard ledger (EdenWaveCity, 1–23 Jul 2026: 5 vs 16 leads).
-        //    This page has no separate manual-lead path and must NOT add one —
-        //    adding extras on top would re-create the 108 → 122 double count.
-        for (const row of rows) {
-          const entry = campaignById[String(row.campaign_id)];
-          if (!entry) continue;
-          result[entry.projectId].insights.push({
-            ...row,
-            campaignId: entry.campaign.id,
-          });
-        }
-      } catch (err) {
-        console.error("DailyReports: bulk insights error", err);
-      }
-    }
-
-    setInsightsMap(result);
+    if (!from || !to) return false;
+    if (isAdmin() && !selectedAdminClientId()) return false;
+    return {
+      clientId: isAdmin() ? selectedAdminClientId() : null,
+      from,
+      to,
+    };
   };
 
-  // ── Service charge + client type — from the report's `summary`, per client ──
+  const [ledgerRes] = createResource(ledgerKey, async (key) => {
+    try {
+      const res = await fetchDashboardLedger({
+        startDate: key.from,
+        endDate: key.to,
+        asClientId: key.clientId,
+      });
+      return isClientViewer() ? readClientLedger(res) : readDashboardLedger(res);
+    } catch (err) {
+      // Never let a failed report read as "this client spent nothing".
+      console.error("DailyReports: /dashboard/ledger/ failed", err);
+      return EMPTY_LEDGER;
+    }
+  });
+
+  const ledger = () => ledgerRes() ?? EMPTY_LEDGER;
+  const ledgerLoading = () => ledgerRes.loading;
+
+  // A client's own login never receives raw agency cost — see the decoder split
+  // above — so the internal Raw columns are keyed off the role rather than off
+  // whether a key happened to be present on a row.
+  const isClientViewer = () => {
+    try {
+      return (
+        JSON.parse(localStorage.getItem("auth") || "{}")?.role === "client"
+      );
+    } catch {
+      return false;
+    }
+  };
+
+  // ── Service charge + client type — from the report's `summary`, per client ──  // ── Service charge + client type — from the report's `summary`, per client ──
   // The S.C rate is the SELECTED client's own rate (set by the admin at
   // onboarding), read from summary.service_charge — a percentage string like
   // "13.00", or null when the client has no service charge (CPL). We never
@@ -419,18 +330,11 @@ export default function DailyReports() {
     return iscplRole();
   };
 
-  // Raw (agency-cost) spend rides on the per-day bulk-insights rows as
-  // `spend_raw`, added by the backend ONLY for admin/CM (absent for a client's
-  // own login). Its presence on any row gates the internal-only "Raw Spend"
-  // column — a client login never renders it. Same windowed source as the
-  // client-billed `spend`, so the Raw column is range-reactive too.
-  const hasRawSpend = () => {
-    const m = insightsMap();
-    for (const k in m) {
-      if ((m[k]?.insights ?? []).some((d) => d.spend_raw != null)) return true;
-    }
-    return false;
-  };
+  // Raw (agency-cost) spend is on the privileged ledger payload and absent from
+  // the client one BY CONSTRUCTION, so this is a question about the viewer, not
+  // about whether a key happened to appear on a row. A client login never
+  // renders the internal Raw columns.
+  const hasRawSpend = () => !isClientViewer();
 
   // Raw columns (Raw Spend + Raw CPL) render — on-screen AND in every download —
   // only when raw data exists (admin/CM) AND the user opted in via the toggle.
@@ -460,18 +364,22 @@ export default function DailyReports() {
     if (isRetainer()) return "retainer";
     return "";
   };
-  const anyReplaced = () =>
-    Object.values(leadBreakdownMap()).some((b) => (b.replaced ?? 0) > 0);
+  const anyReplaced = () => ledger().rows.some((r) => r.replacedLeads > 0);
   const showReplacement = () =>
-    Object.keys(leadBreakdownMap()).length > 0 &&
+    ledger().rows.length > 0 &&
     (reportClientType() === "cpl" ||
       reportClientType() === "hybrid" ||
       anyReplaced());
-  // The credited amount actually billed. Separate gate: a client can have the
-  // lead trio without the backend exposing billed_spend on every project.
-  const showBilledAmount = () =>
-    showReplacement() &&
-    Object.values(leadBreakdownMap()).some((b) => b.billedAmount != null);
+  // The credited amount actually billed, AFTER the replacement credit.
+  //
+  // CURRENTLY UNAVAILABLE, so this column stays hidden. It used to come from
+  // each project report's `lead_breakdown.billed_amount` — the same block that
+  // was returning a wrong billable count (381 where the truth was 342 on
+  // DholeraEvent), so it is not a source to keep trusting for money. The ledger
+  // does not carry billed_amount yet; adding it there is what turns this back
+  // on, and nothing here should reconstruct it in the meantime — billable ×
+  // whatever-rate is a guess, and this is an invoice figure.
+  const showBilledAmount = () => false;
 
   // …and these are what the table actually renders: availability AND the user's
   // per-column checkbox. Checking a box can never reveal a column the gating
@@ -514,104 +422,86 @@ export default function DailyReports() {
   };
 
   /* ── derived: ONE row per project (aggregated over selected date range) ── */
+  // The spend the CLIENT is charged, as opposed to what the ads cost us.
+  //
+  //   client login   the payload is already theirs — spend IS the billed figure
+  //   privileged     premium_spend, the marked-up / fixed-CPL number
+  //
+  // A RETAINER client is the one case where the two are the same figure: they
+  // pay a flat fee, so there is no display config and the backend treats their
+  // spend as raw passthrough (it does exactly this on the client payload). So a
+  // null premium on a retainer row falls back to raw.
+  //
+  // It does NOT fall back for anyone else. A missing display config on a
+  // hybrid/CPL row means the billed figure is genuinely unknown, and printing
+  // raw there would show agency cost — ~23% under the truth — under a column
+  // headed "Client Billed". Unknown renders "—".
+  const billedSpendOf = (row) => {
+    if (!row) return null;
+    if (isClientViewer()) return row.spend;
+    if (row.premiumSpend != null) return row.premiumSpend;
+    return reportClientType() === "retainer" ? row.spend : null;
+  };
+
   const reportRows = createMemo(() => {
-    const from = fromDate();
-    const to = toDate();
+    const led = ledger();
     const rows = [];
 
     for (const project of projects()) {
+      const row = led.byProject[String(project.id)];
+
       // ── Status filter ──────────────────────────────────────────────────
-      // The API returns "active" or "paused". We always emit a row even
-      // when insights are empty, so filter happens here — NOT inside the
-      // insights loop. This is the root cause of paused rows disappearing.
+      // A campaign's active/paused state is NOT date-dependent, so the ledger's
+      // campaign counts drive it — the same rule the dashboard uses. Falls back
+      // to the projects API's own (stale) status before the ledger lands.
       if (statusFilter() !== "all") {
-        const status =
-          insightsMap()[project.id]?.status?.toLowerCase() ||
-          project.status?.toLowerCase();
-
-        if (statusFilter() === "active" && status !== "active") {
-          continue;
-        }
-
-        if (statusFilter() === "paused" && status !== "paused") {
-          continue;
-        }
+        const status = row
+          ? row.campaignsActive > 0
+            ? "active"
+            : "paused"
+          : (project.status ?? "").toLowerCase();
+        if (statusFilter() !== status) continue;
       }
-
-      // ── Started-after-range filter ─────────────────────────────────────
-      // Drop projects that started AFTER the selected range ended. Example:
-      // today is 7 Jul, filter = "Last Month" (1–30 Jun), and a project's
-      // earliest campaign started on 2 Jul → firstStart ("2026-07-02") > to
-      // ("2026-06-30") → the project did not exist during the range, so hide
-      // it. ISO "YYYY-MM-DD" strings compare correctly with `>`.
-      if (from && to) {
-        const firstStart = insightsMap()[project.id]?.firstStart;
-        if (firstStart && firstStart > to) {
-          continue;
-        }
-      }
-
-      // ── Date filter ────────────────────────────────────────────────────
-      const insights = insightsMap()[project.id]?.insights ?? []; // default [] so 0-row still emits
-
-      const filtered =
-        !from || !to
-          ? insights
-          : insights.filter((d) => {
-              if (!d.date) return false;
-              const date = normaliseDate(
-                d.date.includes("T") ? d.date : d.date + "T00:00:00",
-              );
-              const start = normaliseDate(new Date(from));
-              const end = new Date(to);
-              end.setHours(23, 59, 59, 999);
-              return date >= start && date <= end;
-            });
 
       // ── "Running in range" filter ──────────────────────────────────────
-      // Only show projects that were actually active during the selected
-      // range. Each insight row is a day a campaign delivered, so a project
-      // with at least one row dated inside the range was running then. A
-      // project that started this month (or was otherwise inactive in the
-      // range) has zero rows in the range and is dropped. When no range is
-      // selected we skip this and show every project as before.
-      if (from && to && filtered.length === 0) {
-        continue;
-      }
+      // Only projects that actually did something in the selected window. The
+      // range is the SERVER's now, so this is a presence test on the row rather
+      // than a client-side date sweep — which is what used to let a July block
+      // through an August filter.
+      const active =
+        !!row &&
+        (row.totalLeads > 0 ||
+          row.spend > 0 ||
+          row.impressions > 0 ||
+          row.clicks > 0);
+      if (!active) continue;
 
-      // ── Aggregate all filtered insight rows into one project total ─────
-      const leads = filtered.reduce((s, d) => s + (d.leads || 0), 0);
-      const spent = parseFloat(
-        filtered.reduce((s, d) => s + parseFloat(d.spend || 0), 0).toFixed(2),
-      );
-      const cpl = leads > 0 ? parseFloat((spent / leads).toFixed(2)) : 0;
+      // ── The lead trio, TAKEN from the payload ──────────────────────────
+      // Generated, Replaced and Billable are three fields of ONE row, so the
+      // subtraction shown on screen holds by construction. They used to come
+      // from two different sources over two different windows, which is how
+      // 621 − 40 rendered as 381.
+      const leads = row.totalLeads; // meta + fed, additive
+      const replacedLeads = row.replacedLeads;
+      const billableLeads = row.billableLeads;
+
+      // Raw = what the ads cost us. Internal, admin/CM only.
+      const rawSpent = hasRawSpend() ? row.spend : null;
+      const rawCpl = hasRawSpend() ? row.cpl : null;
+
+      // Billed = what the client is charged. null when genuinely unknown.
+      const billed = billedSpendOf(row);
+      const spentKnown = billed != null;
+      const spent = spentKnown ? billed : 0;
+      const cpl = spentKnown && leads > 0
+        ? parseFloat((spent / leads).toFixed(2))
+        : 0;
+
       const spentwithServiceCharge = parseFloat((spent * scMult()).toFixed(2));
       const spentwithservice_gst = parseFloat(
         (iscplReport() ? spent * gstMult() : spent * scMult() * gstMult()).toFixed(2),
       );
 
-      // Raw (agency-cost) spend — INTERNAL, admin/CM only. Aggregated from the
-      // SAME filtered per-day rows as `spent` (the marked-up client-billed
-      // figure), but from each row's `spend_raw`. null when the rows carry no
-      // spend_raw (client login) → the Raw column stays hidden.
-      const anyRaw = filtered.some((d) => d.spend_raw != null);
-      const rawSpent = anyRaw
-        ? parseFloat(
-            filtered
-              .reduce((s, d) => s + parseFloat(d.spend_raw || 0), 0)
-              .toFixed(2),
-          )
-        : null;
-      const rawCpl =
-        anyRaw && leads > 0 ? parseFloat((rawSpent / leads).toFixed(2)) : null;
-
-      // Lead replacement — from the project report's `lead_breakdown`, NOT from
-      // the per-day insight rows (the backend owns the replacement batches).
-      // Already scoped to the same [from, to] window as everything above, so no
-      // client-side re-filtering here.
-      const bill = leadBreakdownMap()[String(project.id)] ?? null;
-
-      // Always push — even when leads === 0 and spent === 0
       rows.push({
         projectId: project.id,
         projectName: project.name,
@@ -619,16 +509,17 @@ export default function DailyReports() {
         leads,
         cpl,
         spent,
+        spentKnown,
         spentwithServiceCharge,
         spentwithservice_gst,
         rawSpent,
         rawCpl,
-        generatedLeads: bill?.generated ?? null,
-        replacedLeads: bill?.replaced ?? null,
-        billableLeads: bill?.billable ?? null,
-        // The amount actually billed after the credit. `spent` above stays the
-        // true ad spend and keeps driving CPL / utilisation.
-        billedAmount: bill?.billedAmount ?? null,
+        // Generated is the same figure as `leads` now — one lead set, not two.
+        generatedLeads: leads,
+        replacedLeads,
+        billableLeads,
+        // Not on the ledger payload yet; the column is gated off entirely.
+        billedAmount: null,
       });
     }
 
@@ -640,15 +531,24 @@ export default function DailyReports() {
   const totals = createMemo(() => {
     const rows = reportRows();
     const totalLeads = rows.reduce((s, r) => s + r.leads, 0);
+    // Only rows whose CLIENT-BILLED figure is known — a project with no display
+    // config has no billed number, and counting it as 0 would understate the
+    // total as a confident fact. Same convention as the replacement totals
+    // below. The Raw totals are unaffected: raw exists on every privileged row.
+    const priced = rows.filter((r) => r.spentKnown);
     const totalSpent = parseFloat(
-      rows.reduce((s, r) => s + r.spent, 0).toFixed(2),
+      priced.reduce((s, r) => s + r.spent, 0).toFixed(2),
     );
     const totalspentwithServiceCharge = parseFloat(
-      rows.reduce((s, r) => s + r.spentwithServiceCharge, 0).toFixed(2),
+      priced.reduce((s, r) => s + r.spentwithServiceCharge, 0).toFixed(2),
     );
     const totalspentwithservice_gst = parseFloat(
-      rows.reduce((s, r) => s + r.spentwithservice_gst, 0).toFixed(2),
+      priced.reduce((s, r) => s + r.spentwithservice_gst, 0).toFixed(2),
     );
+    // How many rows the money totals actually describe, so a partial figure can
+    // say so rather than looking complete.
+    const pricedRows = priced.length;
+    const totalRows = rows.length;
     const avgCPL =
       totalLeads > 0 ? parseFloat((totalSpent / totalLeads).toFixed(2)) : 0;
     // Raw (agency-cost) totals — internal only; null unless the rows carried
@@ -687,6 +587,8 @@ export default function DailyReports() {
       totalReplaced,
       totalBillable,
       totalBilledAmount,
+      pricedRows,
+      totalRows,
     };
   });
 
@@ -842,10 +744,10 @@ export default function DailyReports() {
       base.push(r.replacedLeads ?? "", r.billableLeads ?? "");
     base.push(r.cpl);
     if (showRaw()) base.push(r.rawCpl ?? "", r.rawSpent ?? "");
-    if (showBilled()) base.push(r.spent);
+    if (showBilled()) base.push(r.spentKnown ? r.spent : "");
     if (showBilledAmount()) base.push(r.billedAmount ?? "");
-    if (showSc()) base.push(r.spentwithServiceCharge);
-    if (showGst()) base.push(r.spentwithservice_gst);
+    if (showSc()) base.push(r.spentKnown ? r.spentwithServiceCharge : "");
+    if (showGst()) base.push(r.spentKnown ? r.spentwithservice_gst : "");
     return base;
   };
   const exportTotalsRow = () => {
@@ -975,7 +877,7 @@ export default function DailyReports() {
         </div>
 
         {/* live indicator */}
-        <Show when={loadingInsights()}>
+        <Show when={ledgerLoading()}>
           <div class="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400">
             <div class="w-3.5 h-3.5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
             Loading insights…
@@ -1308,7 +1210,7 @@ export default function DailyReports() {
               </tr>
             </thead>
 
-            <Show when={!loadingInsights()} fallback={<SkeletonRows />}>
+            <Show when={!ledgerLoading()} fallback={<SkeletonRows />}>
               <Show
                 when={reportRows().length > 0}
                 fallback={
@@ -1417,7 +1319,7 @@ export default function DailyReports() {
                         </Show>
                         <Show when={showBilled()}>
                           <td class="p-3 text-green-700 dark:text-green-400">
-                            {fmt(row.spent)}
+                            {row.spentKnown ? fmt(row.spent) : "—"}
                           </td>
                         </Show>
                         <Show when={showBilledAmount()}>
@@ -1427,13 +1329,13 @@ export default function DailyReports() {
                         </Show>
                         <Show when={showSc()}>
                           <td class="p-3 text-green-700 dark:text-green-400">
-                            {fmt(row.spentwithServiceCharge)}
+                            {row.spentKnown ? fmt(row.spentwithServiceCharge) : "—"}
                           </td>
                         </Show>
                         {/* spent + service charge + GST  */}
                         <Show when={showGst()}>
                           <td class="p-3 text-green-900 dark:text-green-400">
-                            {fmt(row.spentwithservice_gst)}
+                            {row.spentKnown ? fmt(row.spentwithservice_gst) : "—"}
                           </td>
                         </Show>
                       </tr>
@@ -1838,7 +1740,7 @@ export default function DailyReports() {
                       </Show>
                       <Show when={showBilled()}>
                         <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
-                          {fmt(row.spent)}
+                          {row.spentKnown ? fmt(row.spent) : "—"}
                         </td>
                       </Show>
                       <Show when={showBilledAmount()}>
@@ -1848,13 +1750,13 @@ export default function DailyReports() {
                       </Show>
                       <Show when={showSc()}>
                         <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
-                          {fmt(row.spentwithServiceCharge)}
+                          {row.spentKnown ? fmt(row.spentwithServiceCharge) : "—"}
                         </td>
                       </Show>
                       {/* GST — warm gold tint */}
                       <Show when={showGst()}>
                         <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
-                          {fmt(row.spentwithservice_gst)}
+                          {row.spentKnown ? fmt(row.spentwithservice_gst) : "—"}
                         </td>
                       </Show>
                     </tr>
@@ -2102,7 +2004,7 @@ export default function DailyReports() {
                       </Show>
                       <Show when={showBilled()}>
                         <td style="padding:10px 14px;text-align:center;font-size:14px;color:#333;border-right:1px solid rgba(123,28,28,0.1);">
-                          {fmt(row.spent)}
+                          {row.spentKnown ? fmt(row.spent) : "—"}
                         </td>
                       </Show>
                       <Show when={showBilledAmount()}>
@@ -2112,12 +2014,12 @@ export default function DailyReports() {
                       </Show>
                       <Show when={showSc()}>
                         <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:600;color:#6b4c10;background:rgba(201,168,76,0.10);">
-                          {fmt(row.spentwithServiceCharge)}
+                          {row.spentKnown ? fmt(row.spentwithServiceCharge) : "—"}
                         </td>
                       </Show>
                       <Show when={showGst()}>
                         <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:600;color:#6b4c10;background:rgba(201,168,76,0.10);">
-                          {fmt(row.spentwithservice_gst)}
+                          {row.spentKnown ? fmt(row.spentwithservice_gst) : "—"}
                         </td>
                       </Show>
                     </tr>

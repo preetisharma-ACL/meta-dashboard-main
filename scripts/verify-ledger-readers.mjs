@@ -125,6 +125,64 @@ console.log("\nprivileged payload → readDashboardLedger");
   check("loaded + settled", led.loaded === true && led.settled === true);
 }
 
+// ── The Daily Report row that was wrong three ways ──────────────────────────
+// DholeraEvent / Emperor Home Solution, 1–21 Aug 2026. The old page showed
+// 621 generated, −40 replaced, 381 billable and ₹1,12,431.59 spend: generated
+// came from date-filtered insight rows (which leaked a July block), replaced and
+// billable came from a different endpoint over a different window, and the spend
+// matched neither the raw nor the client-facing figure. One payload row makes
+// all of that arithmetically impossible, so the row is pinned here.
+console.log("\nDholeraEvent: one row, one period, one lead set");
+{
+  const row = {
+    project_id: 501,
+    project_name: "DholeraEvent",
+    meta_leads: 183,
+    fed_leads: 199,
+    total_leads: 382,
+    replaced_leads: 40,
+    billable_leads: 342,
+    impressions: 0,
+    clicks: 0,
+    campaigns_total: 3,
+    campaigns_active: 1,
+    campaigns_paused: 2,
+    campaigns_completed: 0,
+    spend: "35819.60",
+    cpl: "195.74",
+    premium_spend: "71816.00",
+    premium_leads: 382,
+    premium_cpl: "187.99",
+  };
+  const r = readDashboardLedger(envelope(row, row)).byProject["501"];
+
+  check(
+    "fed leads are ADDITIVE: meta + fed = total (183 + 199 = 382)",
+    r.metaLeads + r.fedLeads === r.totalLeads && r.totalLeads === 382,
+    `(${r.metaLeads} + ${r.fedLeads} = ${r.totalLeads})`,
+  );
+  check(
+    "the subtraction on screen holds: total − replaced = billable",
+    r.totalLeads - r.replacedLeads === r.billableLeads,
+    `(${r.totalLeads} − ${r.replacedLeads} ≠ ${r.billableLeads})`,
+  );
+  check(
+    "generated and billable come from the SAME lead set",
+    r.billableLeads === 342,
+    `(${r.billableLeads})`,
+  );
+  check("raw spend is the agency cost", r.spend === 35819.6, `(${r.spend})`);
+  check(
+    "client-facing spend is the premium figure",
+    r.premiumSpend === 71816,
+    `(${r.premiumSpend})`,
+  );
+  check(
+    "neither is the 1,12,431.59 the old pipeline produced",
+    r.spend !== 112431.59 && r.premiumSpend !== 112431.59,
+  );
+}
+
 // ── Missing premium is legitimate and must stay null, never 0 ───────────────
 // ~299 of 448 live rows have no premium: retainer clients have no display config
 // by design, and some client+project pairs are missing one. A 0 there would

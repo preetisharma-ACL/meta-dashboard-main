@@ -106,13 +106,26 @@ export const fetchManualBatches = async () => {
 // / as_client_id each narrow it to that one client. The param can only NARROW —
 // a CM passing another CM's client id gets 0 projects and 0.00 spend — so
 // sending it can never widen what the role may already see.
-export const fetchDashboardLedger = async ({ startDate, endDate } = {}) => {
+// asClientId — the Client PK, for a surface with its OWN client picker rather
+// than the global selectedClientNomen context (the Daily Report's admin picker).
+// It REPLACES client_nomen: the two scope by different keys, and the caller that
+// has a PK is the one being explicit. Omit it and the localStorage context is
+// used, which is what every other caller wants.
+export const fetchDashboardLedger = async ({
+  startDate,
+  endDate,
+  asClientId = null,
+} = {}) => {
   let url = `/dashboard/ledger/?1=1`;
   if (startDate) url += `&start_date=${encodeURIComponent(startDate)}`;
   if (endDate) url += `&end_date=${encodeURIComponent(endDate)}`;
 
-  const nomen = getClientNomen();
-  if (nomen) url += `&client_nomen=${encodeURIComponent(nomen)}`;
+  if (asClientId != null && asClientId !== "") {
+    url += `&as_client_id=${encodeURIComponent(asClientId)}`;
+  } else {
+    const nomen = getClientNomen();
+    if (nomen) url += `&client_nomen=${encodeURIComponent(nomen)}`;
+  }
   url += scopeQuery();
 
   const res = await api(url, { method: "GET" });
