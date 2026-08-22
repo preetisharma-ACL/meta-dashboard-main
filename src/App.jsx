@@ -50,6 +50,7 @@ import AccountFunding from "./pages/funding/AccountFunding";
 import FundsAdded from "./pages/funding/FundsAdded";
 import SpendSegregation from "./pages/spend/SpendSegregation";
 import AllowedBudget from "./pages/budget/AllowedBudget";
+import BudgetGuard from "./pages/budget/BudgetGuard";
 import ManagerPerformance from "./pages/performance/ManagerPerformance";
 import AdminCampaignManagers from "./pages/admin/cm/AdminCampaignManagers";
 import CampaignManagerClients from "./pages/admin/cm/CampaignManagerClients";
@@ -189,6 +190,18 @@ function App() {
             <Route path="/funds-added" component={FundsAdded} />
             <Route path="/spend-segregation" component={SpendSegregation} />
             <Route path="/allowed-budget" component={AllowedBudget} />
+            {/* Budget Guard approval queue — ADMIN ONLY, and deliberately not
+                widened to the roles that can otherwise write campaigns. This is
+                the screen that puts a campaign the guard stopped back on air at
+                its original daily budget; the endpoints 403 every other role. */}
+            <Route
+              path="/budget-guard"
+              component={() => (
+                <AdminRoute roles={["admin"]}>
+                  <BudgetGuard />
+                </AdminRoute>
+              )}
+            />
             <Route path="/manager-performance" component={ManagerPerformance} />
             <Route
               path="/campaign-managers"

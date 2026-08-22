@@ -2,6 +2,10 @@ import { createSignal, createMemo, For, Show, onMount, createEffect, untrack } f
 import { useNavigate } from "@solidjs/router";
 import { fetchAlerts, fetchAllSuspensionAlerts } from "../services/alert-service";
 import { setHeaderCache, headerCache } from "../cacheStore/appStore";
+import {
+  budgetGuardPending,
+  canSeeBudgetGuard,
+} from "../stores/budgetGuardPending";
 
 // Which alerts this panel surfaces: the existing info-only view, PLUS
 // account-suspension alerts (type "danger") so they're consistent with the
@@ -501,6 +505,35 @@ export default function Notifications() {
             </button> */}
           </div>
         </div>
+
+        {/* ── Budget Guard queue ──
+            Kept OUTSIDE the alert list on purpose: these are not alerts, they
+            are campaigns the guard has already paused and capped, each one
+            frozen until an admin approves it. Admin only; the queue endpoint
+            403s every other role. The count is the queue's own pending_count. */}
+        <Show when={canSeeBudgetGuard() && budgetGuardPending() > 0}>
+          <button
+            onClick={() => navigate("/budget-guard")}
+            class="w-full text-left flex items-center gap-3 px-4 py-3.5 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 hover:bg-amber-100 dark:hover:bg-amber-500/15 transition-colors"
+          >
+            <span class="min-w-[26px] h-[26px] px-2 rounded-full bg-amber-500 text-white text-xs font-bold flex items-center justify-center">
+              {budgetGuardPending()}
+            </span>
+            <span class="min-w-0">
+              <span class="block text-sm font-semibold text-amber-900 dark:text-amber-200">
+                Budget Guard — waiting for approval
+              </span>
+              <span class="block text-xs text-amber-800/85 dark:text-amber-300/85">
+                {budgetGuardPending() === 1
+                  ? "1 campaign is paused with its budget capped until an admin approves it."
+                  : `${budgetGuardPending()} campaigns are paused with their budgets capped until an admin approves them.`}
+              </span>
+            </span>
+            <span class="ml-auto text-sm font-semibold text-amber-900 dark:text-amber-200 whitespace-nowrap">
+              Review →
+            </span>
+          </button>
+        </Show>
 
         {/* ── Error state ── */}
         <Show when={error()}>

@@ -12,6 +12,10 @@ import {
 import { handleLogout } from "../pages/login/LoginForm";
 import { clearClientDashboardContext } from "../cacheStore/appStore";
 import { isTier1CM } from "../stores/currentUser";
+import {
+  budgetGuardPending,
+  watchBudgetGuardPending,
+} from "../stores/budgetGuardPending";
 
 // Expanded submenu group, remembered across reloads (see openMenu below).
 const OPEN_MENU_KEY = "sidebarOpenMenu";
@@ -216,6 +220,13 @@ export default function Sidebar() {
     };
     window.addEventListener("storage", handleStorage);
     onCleanup(() => window.removeEventListener("storage", handleStorage));
+
+    // Budget Guard pending count. The sidebar mounts once per session and never
+    // remounts on navigation, so this is where the poll belongs. It no-ops for
+    // every role but admin (the endpoint 403s them anyway) — the badge on the
+    // "Budget Guard" row is the only thing that tells anyone a campaign is
+    // sitting paused, which is how this feature fails when it fails.
+    watchBudgetGuardPending();
   });
 
   const menuItems = createMemo(() =>
@@ -778,6 +789,24 @@ export default function Sidebar() {
       //   path: "/settings",
       // },
       {
+        // Sits directly above Alerts because it is read the same way: a queue
+        // somebody has to notice. The badge is the whole point — a campaign the
+        // guard paused makes no noise anywhere else, so an unnoticed row here is
+        // a client's campaign silently off air. Count comes from the endpoint's
+        // own pending_count (see stores/budgetGuardPending), and is left off
+        // entirely at zero rather than shown as a "0" chip.
+        name: "Budget Guard",
+        roles: ["admin"],
+        icon: () => (
+          <Icon
+            d="M12 3l7 4v5c0 4.418-2.985 8.167-7 9-4.015-.833-7-4.582-7-9V7l7-4z"
+            d2="M12 9v3m0 3h.01"
+          />
+        ),
+        path: "/budget-guard",
+        badge: budgetGuardPending() > 0 ? budgetGuardPending() : null,
+      },
+      {
         name: "Alert & Notifications",
         roles: ["admin", "client"],
         icon: () => (
@@ -954,13 +983,20 @@ export default function Sidebar() {
                     </Show>
 
                     <span
-                      class={`flex-shrink-0 transition-all duration-200 group-hover:scale-110 ${
+                      class={`relative flex-shrink-0 transition-all duration-200 group-hover:scale-110 ${
                         isActive(item.path)
                           ? "text-[#AC2334] dark:text-red-300"
                           : "text-[#8593A8] group-hover:text-[#AC2334] dark:group-hover:text-red-300"
                       }`}
                     >
                       {item.icon()}
+                      {/* The numeric badge below lives in the label row, which a
+                          collapsed rail doesn't render — so a count would vanish
+                          exactly when the rail is narrow. A dot on the glyph
+                          keeps "something is waiting" visible in both states. */}
+                      <Show when={isCollapsed() && item.badge}>
+                        <span class="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-[#AC2334] ring-2 ring-white dark:ring-gray-900" />
+                      </Show>
                     </span>
 
                     <Show when={!isCollapsed()}>

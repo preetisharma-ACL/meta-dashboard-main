@@ -22,6 +22,10 @@ import {
   setHeaderCache,
   isHeaderCacheStale,
 } from "../cacheStore/appStore";
+import {
+  budgetGuardPending,
+  canSeeBudgetGuard,
+} from "../stores/budgetGuardPending";
 
 export default function Header() {
   const { isCollapsed, toggleSidebar, toggleMobileSidebar } = useSidebar();
@@ -311,6 +315,18 @@ export default function Header() {
                   {unreadCount()}
                 </span>
               </Show>
+              {/* Budget Guard, admin only. A SEPARATE mark, not added into the
+                  unread count above: that number counts alerts, this counts
+                  campaigns sitting paused, and one number fed by two sources is
+                  a number that matches neither list. The dot only says
+                  "something is waiting"; the count itself is in the panel below
+                  and on the sidebar row. */}
+              <Show when={canSeeBudgetGuard() && budgetGuardPending() > 0}>
+                <span
+                  title={`${budgetGuardPending()} campaign(s) paused, waiting for approval`}
+                  class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-amber-500 ring-2 ring-white dark:ring-gray-800"
+                />
+              </Show>
             </button>
 
             <Show when={showNotifications()}>
@@ -325,6 +341,36 @@ export default function Header() {
                     </span>
                   </Show>
                 </div>
+                {/* Pinned above the alert list, never mixed into it: these rows
+                    are campaigns the Budget Guard paused and capped, and each
+                    one is a client's spend stopped until an admin acts. Admin
+                    only — the queue 403s everyone else. */}
+                <Show when={canSeeBudgetGuard() && budgetGuardPending() > 0}>
+                  <button
+                    onClick={() => {
+                      setShowNotifications(false);
+                      navigate("/budget-guard");
+                    }}
+                    class="w-full text-left px-4 py-3 border-b border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-950/25 hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-colors"
+                  >
+                    <div class="flex items-center gap-3">
+                      <span class="min-w-[22px] h-[22px] px-1.5 rounded-full bg-amber-500 text-white text-[11px] font-bold flex items-center justify-center">
+                        {budgetGuardPending()}
+                      </span>
+                      <div class="min-w-0">
+                        <p class="text-sm font-semibold text-amber-900 dark:text-amber-200">
+                          Budget Guard
+                        </p>
+                        <p class="text-xs text-amber-800/85 dark:text-amber-300/85">
+                          {budgetGuardPending() === 1
+                            ? "1 campaign is paused and capped, waiting for approval"
+                            : `${budgetGuardPending()} campaigns are paused and capped, waiting for approval`}
+                        </p>
+                      </div>
+                    </div>
+                  </button>
+                </Show>
+
                 <div class="max-h-96 overflow-y-auto">
                   <Show
                     when={notifications().length > 0}
