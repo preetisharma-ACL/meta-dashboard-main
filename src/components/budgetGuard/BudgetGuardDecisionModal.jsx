@@ -4,7 +4,11 @@ import {
   rejectBudgetGuardEntry,
   approveSentence,
   rejectSentence,
-  budgetChangeSentence,
+  guardEventSentence,
+  untouchedBudgetLine,
+  triggerLabel,
+  triggerChip,
+  involvesBudgetChange,
   fmtPerDay,
   hasMetaError,
 } from "../../services/budgetGuard";
@@ -121,7 +125,13 @@ export default function BudgetGuardDecisionModal(props) {
           <div class="flex items-start justify-between px-6 py-4 border-b border-[#E2E8F1] dark:border-gray-700 bg-[#F8FAFC] dark:bg-gray-800">
             <div class="min-w-0">
               <h2 class="text-lg font-bold text-[#14233A] dark:text-white">
-                {isApprove() ? "Approve and restore" : "Reject and keep capped"}
+                {isApprove()
+                  ? involvesBudgetChange(row())
+                    ? "Approve and restore"
+                    : "Approve and resume"
+                  : involvesBudgetChange(row())
+                    ? "Reject and keep capped"
+                    : "Reject and keep paused"}
               </h2>
               <p class="text-sm text-[#54657E] dark:text-gray-400 truncate">
                 {row().campaign_name || "Campaign"}
@@ -148,14 +158,29 @@ export default function BudgetGuardDecisionModal(props) {
               </Show>
 
               {/* What the guard did — carried into the confirm step so the
-                  decision is taken against the same facts the card stated. */}
+                  decision is taken against the same facts the card stated,
+                  including WHICH RULE fired: approving a wrong-objective
+                  campaign and approving an over-budget one are different acts
+                  with different consequences. */}
               <div class="rounded-xl border border-[#E2E8F1] dark:border-gray-700 bg-[#F8FAFC] dark:bg-gray-800/60 px-4 py-3.5">
-                <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
-                  What happened
-                </p>
+                <div class="flex items-center justify-between gap-2">
+                  <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
+                    What happened
+                  </p>
+                  <span
+                    class={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold ${triggerChip(row())}`}
+                  >
+                    {triggerLabel(row())}
+                  </span>
+                </div>
                 <p class="mt-1.5 text-sm text-[#14233A] dark:text-gray-100 leading-relaxed">
-                  {budgetChangeSentence(row())}
+                  {guardEventSentence(row())}
                 </p>
+                <Show when={untouchedBudgetLine(row())}>
+                  <p class="mt-1.5 text-sm text-[#54657E] dark:text-gray-300">
+                    {untouchedBudgetLine(row())}
+                  </p>
+                </Show>
               </div>
 
               {/* What this decision DOES. The approve wording carries the row's
@@ -220,8 +245,12 @@ export default function BudgetGuardDecisionModal(props) {
                   class={FIELD}
                   placeholder={
                     isApprove()
-                      ? "Who authorised this budget, and how it was verified"
-                      : "Why this campaign should stay capped"
+                      ? involvesBudgetChange(row())
+                        ? "Who authorised this budget, and how it was verified"
+                        : "Why this campaign should run as it is"
+                      : involvesBudgetChange(row())
+                        ? "Why this campaign should stay capped"
+                        : "Why this campaign should stay paused"
                   }
                   value={reason()}
                   disabled={submitting() || alreadyDecided()}
@@ -260,11 +289,18 @@ export default function BudgetGuardDecisionModal(props) {
                     : "bg-[#14233A] hover:bg-[#0F1B2E]"
                 }`}
               >
+                {/* The button names the write it performs. On an objective or
+                    daily-spend row there is no budget write at all, so it must
+                    not offer to restore one. */}
                 {submitting()
                   ? "Saving…"
                   : isApprove()
-                    ? `Restore ${fmtPerDay(row().original_daily_budget) ?? "the budget"}`
-                    : "Keep it capped"}
+                    ? involvesBudgetChange(row())
+                      ? `Restore ${fmtPerDay(row().original_daily_budget) ?? "the budget"}`
+                      : "Resume the campaign"
+                    : involvesBudgetChange(row())
+                      ? "Keep it capped"
+                      : "Keep it paused"}
               </button>
             </div>
           </form>

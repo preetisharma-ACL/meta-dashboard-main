@@ -1,12 +1,18 @@
 import { createResource, createSignal, For, Show } from "solid-js";
 import {
   fetchBudgetGuardQueue,
-  budgetChangeSentence,
+  guardEventSentence,
   thresholdSentence,
   approveSentence,
+  untouchedBudgetLine,
   guardActions,
   guardIsPartial,
   hasMetaError,
+  detailText,
+  triggerLabel,
+  triggerChip,
+  triggerMeaning,
+  involvesBudgetChange,
   stateLabel,
   STATE_PILL,
   STATE_PENDING,
@@ -20,12 +26,22 @@ import SuccessToast, { showToast } from "../../components/common/SuccessToast";
 import { errorMessage } from "../../utils/apiErrors";
 
 // ─── Budget Guard ─────────────────────────────────────────────────────────────
-// Where a campaign the guard paused AND capped gets released — or doesn't.
+// Where a campaign the guard stopped gets released — or doesn't.
 //
 // The reader of this screen has to be able to answer, without asking anybody:
-// what was paused, what the budget was, what it is now, and what happens if they
-// approve. So the budget change is one sentence, not two cells to compare, and
-// the approve button says what it will restore.
+// what was stopped, WHICH RULE stopped it, what the budget was, what it is now,
+// and what happens if they approve. So what happened is one sentence, not cells
+// to compare, and the approve button says exactly what it will do.
+//
+// THREE RULES, and approving means something different under each:
+//   budget       paused AND the ad-set budget dropped to ₹100/day →
+//                approving RESTORES the original budget
+//   objective    paused because the objective isn't lead generation →
+//                the budget was never touched; approving only resumes
+//   daily_spend  paused because the day's spend passed the daily limit →
+//                the budget was never touched; approving only resumes
+// The service builds every sentence off the row's `trigger`, so a card can never
+// promise a restore the backend will not perform. See services/budgetGuard.
 //
 // ADMIN ONLY (route-gated; the endpoints 403 everyone else).
 //
@@ -140,18 +156,28 @@ export default function BudgetGuard() {
 
   const openDecision = (row, mode) => setDecision({ row, mode });
 
-  const onDecided = (row, mode) => {
-    setDecision(null);
-    showToast(
-      mode === "approve"
-        ? `${row.campaign_name || "The campaign"} is back on at ${
+  // The toast repeats the decision in the same terms the card used — a budget
+  // row names the restored figure, the other two rules name none, because none
+  // was restored.
+  const decisionToast = (row, mode) => {
+    const name = row.campaign_name || "The campaign";
+    if (mode === "approve") {
+      return involvesBudgetChange(row)
+        ? `${name} is back on at ${
             fmtPerDay(row.original_daily_budget) ?? "its original budget"
           }.`
-        : `${row.campaign_name || "The campaign"} stays capped at ${
-            fmtPerDay(row.capped_daily_budget) ?? "the guard budget"
-          }.`,
-      mode === "approve" ? "Approved" : "Rejected",
-    );
+        : `${name} is running again. Its budget was not changed.`;
+    }
+    return involvesBudgetChange(row)
+      ? `${name} stays capped at ${
+          fmtPerDay(row.capped_daily_budget) ?? "the guard budget"
+        }.`
+      : `${name} stays paused.`;
+  };
+
+  const onDecided = (row, mode) => {
+    setDecision(null);
+    showToast(decisionToast(row, mode), mode === "approve" ? "Approved" : "Rejected");
     refetch();
   };
 
@@ -185,10 +211,13 @@ export default function BudgetGuard() {
             </span>
           </h1>
           <p class="pl-[46px] text-sm text-[#54657E] dark:text-gray-400 mt-0.5 max-w-2xl">
-            A campaign whose ad-set daily budget crosses the cap is paused and its
-            budget dropped to ₹100/day automatically. It stays that way until an
-            admin approves it here, with a reason. The budget cap is the half that
-            holds — a pause can be undone by an automated rule, a cap cannot.
+            Three rules stop a campaign automatically: an ad-set daily budget
+            above the cap (which also drops the budget to ₹100/day, because a
+            pause alone can be undone by an automated rule and a cap cannot), an
+            objective that isn't lead generation, and a day's spend past the
+            daily limit. Each campaign stays stopped until an admin decides here,
+            with a reason. Only the budget rule changes a budget — the card says
+            which rule fired and what approving it will do.
           </p>
         </div>
 
@@ -291,20 +320,40 @@ export default function BudgetGuard() {
                       </h3>
                       <IdentityLine row={row} />
                     </div>
-                    <span
-                      class={`inline-flex flex-shrink-0 items-center px-2.5 py-1 rounded-full text-xs font-bold ${
-                        STATE_PILL[row.state] ?? STATE_PILL[STATE_PENDING]
-                      }`}
-                    >
-                      {stateLabel(row.state)}
-                    </span>
+                    <div class="flex flex-shrink-0 items-center gap-2">
+                      {/* WHICH RULE FIRED. First thing read after the name,
+                          because it decides what the rest of the card means —
+                          and what approving will actually do. */}
+                      <span
+                        class={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold ${triggerChip(row)}`}
+                      >
+                        {triggerLabel(row)}
+                      </span>
+                      <span
+                        class={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold ${
+                          STATE_PILL[row.state] ?? STATE_PILL[STATE_PENDING]
+                        }`}
+                      >
+                        {stateLabel(row.state)}
+                      </span>
+                    </div>
                   </div>
 
-                  {/* The budget change, as ONE sentence. Both figures come off
-                      this row and neither is recomputed. */}
+                  {/* What happened, as ONE sentence, written for the rule that
+                      fired. On an objective or daily-spend row it carries NO
+                      capped figure, because no budget was capped. */}
                   <p class="mt-4 text-[15px] font-semibold text-[#14233A] dark:text-gray-100 leading-relaxed">
-                    {budgetChangeSentence(row)}
+                    {guardEventSentence(row)}
                   </p>
+
+                  {/* The budget on a non-budget row: shown, because approving a
+                      ₹9,00,000/day campaign is a different decision from a
+                      ₹5,000 one — and labelled as untouched, because it is. */}
+                  <Show when={untouchedBudgetLine(row)}>
+                    <p class="mt-1.5 text-sm text-[#54657E] dark:text-gray-300">
+                      {untouchedBudgetLine(row)}
+                    </p>
+                  </Show>
 
                   <p class="mt-1.5 text-xs text-[#54657E] dark:text-gray-400">
                     <Show when={thresholdSentence(row)}>
@@ -314,11 +363,32 @@ export default function BudgetGuard() {
                     <span>Guarded {fmtDateTime(row.created_at)}</span>
                   </p>
 
+                  {/* What this rule is for. On a daily-spend card it is also the
+                      line that stops the row reading as an accusation: Meta
+                      overdelivers by 10–20%, so a correctly budgeted campaign
+                      can land here through nobody's fault. */}
+                  <Show when={triggerMeaning(row)}>
+                    <p class="mt-3 text-xs text-[#54657E] dark:text-gray-400 leading-relaxed">
+                      {triggerMeaning(row)}
+                    </p>
+                  </Show>
+
+                  {/* The guard's own words for this row, printed verbatim —
+                      the sentence above is built from it, and if it ever stops
+                      parsing, everything the server said is still on screen. */}
+                  <Show when={detailText(row) && !involvesBudgetChange(row)}>
+                    <p class="mt-2 text-xs text-[#8593A8] dark:text-gray-400 font-mono break-words">
+                      {detailText(row)}
+                    </p>
+                  </Show>
+
                   <MetaErrorNotice row={row} />
                   <PartialGuardNotice row={row} />
 
                   {/* What approve does, stated before the button is anywhere
-                      near the cursor — in this row's own original_daily_budget. */}
+                      near the cursor — restoring this row's own
+                      original_daily_budget on a budget row, and explicitly
+                      restoring nothing on the other two. */}
                   <p class="mt-4 text-sm text-[#54657E] dark:text-gray-300">
                     {approveSentence(row)}
                   </p>
@@ -328,7 +398,9 @@ export default function BudgetGuard() {
                       onClick={() => openDecision(row, "approve")}
                       class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#AC2334] text-white text-sm font-semibold hover:bg-[#93192a] transition shadow-sm"
                     >
-                      Approve and restore
+                      {involvesBudgetChange(row)
+                        ? "Approve and restore"
+                        : "Approve and resume"}
                     </button>
                     <button
                       onClick={() => openDecision(row, "reject")}
@@ -364,14 +436,27 @@ export default function BudgetGuard() {
                     </h3>
                     <IdentityLine row={row} />
                   </div>
-                  <span
-                    class={`inline-flex flex-shrink-0 items-center px-2.5 py-1 rounded-full text-xs font-bold ${
-                      STATE_PILL[row.state] ?? STATE_PILL[STATE_PENDING]
-                    }`}
-                  >
-                    {stateLabel(row.state)}
-                  </span>
+                  <div class="flex flex-shrink-0 items-center gap-2">
+                    <span
+                      class={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold ${triggerChip(row)}`}
+                    >
+                      {triggerLabel(row)}
+                    </span>
+                    <span
+                      class={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold ${
+                        STATE_PILL[row.state] ?? STATE_PILL[STATE_PENDING]
+                      }`}
+                    >
+                      {stateLabel(row.state)}
+                    </span>
+                  </div>
                 </div>
+
+                {/* What the rule said at the time, in that rule's own wording —
+                    so a past decision can be read back without opening Meta. */}
+                <p class="mt-2 text-sm text-[#54657E] dark:text-gray-300 leading-relaxed">
+                  {guardEventSentence(row)}
+                </p>
 
                 <div class="mt-3 grid gap-3 sm:grid-cols-3">
                   <div>
@@ -387,13 +472,29 @@ export default function BudgetGuard() {
                     </p>
                   </div>
                   <div>
-                    {/* restored_budget is what the SERVER says it put back —
-                        printed as returned, never inferred from the approval. */}
-                    <p class={META_LABEL}>Budget restored</p>
-                    <p class="mt-1 text-sm font-semibold text-[#14233A] dark:text-gray-100 tabular-nums">
-                      {fmtPerDay(row.restored_budget) ??
-                        (row.state === STATE_APPROVED ? "not recorded" : "—")}
-                    </p>
+                    {/* Only the budget rule has a budget to restore. On the
+                        other two this column would invite the reader to wonder
+                        what happened to a budget that was never touched, so it
+                        says so instead. restored_budget itself is what the
+                        SERVER says it put back — printed as returned, never
+                        inferred from the approval. */}
+                    <Show
+                      when={involvesBudgetChange(row)}
+                      fallback={
+                        <>
+                          <p class={META_LABEL}>Budget</p>
+                          <p class="mt-1 text-sm text-[#54657E] dark:text-gray-300">
+                            not changed by this rule
+                          </p>
+                        </>
+                      }
+                    >
+                      <p class={META_LABEL}>Budget restored</p>
+                      <p class="mt-1 text-sm font-semibold text-[#14233A] dark:text-gray-100 tabular-nums">
+                        {fmtPerDay(row.restored_budget) ??
+                          (row.state === STATE_APPROVED ? "not recorded" : "—")}
+                      </p>
+                    </Show>
                   </div>
                 </div>
 
