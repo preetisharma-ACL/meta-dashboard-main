@@ -12,7 +12,6 @@ import html2canvas from "html2canvas";
 import * as XLSX from "xlsx";
 import useRole, { clientRole } from "./../hooks/useRole";
 import { createResource } from "solid-js"; // add to existing solid-js import
-import { fetchBillingOverview } from "../services/billing-service";
 import { fetchAllAdminClients } from "./admin/services/fetchClients";
 import {
   money,
@@ -70,14 +69,12 @@ export default function DailyReports() {
   // type allows still renders.
   const { isClient } = useRole();
 
-  // inside DailyReports(), near the other state:
-  const [billingOverview] = createResource(() => fetchBillingOverview());
-
-  // The daily-report response carries a per-client `meta.report_summary` block
-  // with the client's own service-charge rate + type. This is the source of
-  // truth for the S.C column (see scPct/iscplReport below) — NOT the viewer's
-  // overview, which is wrong when an admin/CM is looking at a client.
-  const [reportSummary, setReportSummary] = createSignal(null);
+  // The `meta.report_summary` block off the PROJECTS response — the client's
+  // service-charge rate and type. It is now only a fallback: the ledger carries
+  // the same block, arriving with the figures the rate multiplies, and that is
+  // what scPct() reads first. See the summary chain below for when this still
+  // gets used and why it hasn't simply been deleted.
+  const [projectsSummary, setProjectsSummary] = createSignal(null);
 
   // ── Where every figure on this report comes from ──────────────────────────
   // ONE call: GET /dashboard/ledger/?start_date&end_date, range-scoped and
@@ -176,7 +173,7 @@ export default function DailyReports() {
       setAdminClientQuery("");
       setAdminClientOpen(true);
       setProjects([]);
-      setReportSummary(null);
+      setProjectsSummary(null);
       setShowPreview(false);
     });
     loadedKey = null; // allow a fresh load when a client is re-picked
@@ -226,7 +223,7 @@ export default function DailyReports() {
         // absent when not scoped to one client (admin viewing all) → null, and
         // scPct()/iscplReport() fall back to the billing overview / role flag.
         if (page === 1) {
-          setReportSummary(res?.meta?.report_summary ?? null);
+          setProjectsSummary(res?.meta?.report_summary ?? null);
         }
         const mapped = apiData.map((item) => ({
           id: item.id,
@@ -305,39 +302,89 @@ export default function DailyReports() {
     }
   };
 
-  // ── Service charge + client type — from the report's `summary`, per client ──  // ── Service charge + client type — from the report's `summary`, per client ──
-  // The S.C rate is the SELECTED client's own rate (set by the admin at
-  // onboarding), read from summary.service_charge — a percentage string like
-  // "13.00", or null when the client has no service charge (CPL). We never
-  // hardcode it. Until the report response lands, fall back to the viewer's
-  // billing overview so a logged-in client still sees their rate immediately.
-  // GST stays 18% (applied on top of the with-S.C figure) per the Billing page.
-  const monthSpendInfo = () => billingOverview()?.data?.month_spend || {};
+  // ── Service charge + client type — ONE summary, per client ────────────────
+  // The rate is the SELECTED client's own, set at onboarding, read from
+  // meta.report_summary.service_charge — a percentage string like "10.00", or
+  // null when the client has no service charge (CPL, by design).
+  //
+  // The LEDGER's own summary is read first. It arrives on the same response as
+  // the figures the rate multiplies, for the same client over the same range,
+  // which is the only arrangement that can't drift.
+  //
+  // The projects-response summary stays as a fallback for exactly one path: the
+  // admin picker scopes the ledger with as_client_id, and the backend populates
+  // report_summary for client_id / client_nomen_id / client_nomen. If as_client_id
+  // joins that list this fallback can go, and with it the last rate source
+  // outside the ledger.
+  //
+  // What was removed, and why it mattered:
+  //   • `Number(s.service_charge ?? 0)` — a summary with a null rate became a
+  //     confident 0% S.C. That is the same fabricated-rate bug the CM report
+  //     had, in a column headed "+ N% S.C" that would have read "+ 0% S.C".
+  //   • the viewer's billing overview, for BOTH the S.C rate and the GST rate.
+  //     That overview belongs to whoever is logged in. For an admin or a CM
+  //     looking at a client it is not that client's rate at all, and it was
+  //     wired in as the fallback for precisely the case where the viewer isn't
+  //     the client. A wrong rate is worse than no rate: no rate shows a gap.
+  const reportSummary = () => ledger().summary ?? projectsSummary();
   const scPct = () => {
-    const s = reportSummary();
-    if (s) return Number(s.service_charge ?? 0);
-    return Number(monthSpendInfo().service_charge_pct ?? 0);
+    const v = reportSummary()?.service_charge;
+    if (v == null || v === "") return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
   };
-  const gstPctNum = () => Number(monthSpendInfo().gst_pct ?? 18);
-  const scMult = () => 1 + scPct() / 100;
-  const gstMult = () => 1 + gstPctNum() / 100;
-  const scColLabel = () => `Amt Spent + ${scPct()}% S.C`;
-  const finalColLabel = () =>
-    iscplReport()
-      ? `Amt Spent + ${gstPctNum()}% GST`
-      : `Amt Spent + ${scPct()}% S.C + ${gstPctNum()}% GST`;
+  // GST is a flat 18% platform-wide — a policy constant, not a per-client rate,
+  // so there is nothing to resolve and nothing that can come back missing.
+  const GST_PCT = 18;
+  const scMult = () => {
+    const p = scPct();
+    return p == null ? null : 1 + p / 100;
+  };
+  const gstMult = () => 1 + GST_PCT / 100;
+  // Labels name the rate only when there IS one; an unresolved rate must not
+  // print as "+ 0% S.C" in a header any more than in a cell.
+  const scColLabel = () =>
+    scPct() == null ? "Amt Spent + S.C" : `Amt Spent + ${scPct()}% S.C`;
+  const finalColLabel = () => {
+    if (iscplReport()) return `Amt Spent + ${GST_PCT}% GST`;
+    return scPct() == null
+      ? `Amt Spent + S.C + ${GST_PCT}% GST`
+      : `Amt Spent + ${scPct()}% S.C + ${GST_PCT}% GST`;
+  };
+
+  // ── Why the S.C columns are a gap, when they are ──────────────────────────
+  // Same three-way split as the CM report: a null rate has three meanings and
+  // only one is a bug.
+  //   "n/a"      CPL client — null BY DESIGN, the rate is set only for
+  //              hybrid/retainer at onboarding. These columns are hidden for
+  //              CPL anyway, so this state never reaches a note.
+  //   "missing"  a hybrid/retainer client came back with no rate. A bug in the
+  //              client record: someone needs to go set it.
+  //   "unknown"  no summary block at all, so the two can't be told apart.
+  const scState = () => {
+    if (scPct() != null) return "ok";
+    if (!reportSummary()) return "unknown";
+    if (iscplReport()) return "n/a";
+    return "missing";
+  };
 
   // CPL clients (service_charge null / client_type "cpl") pay per lead — no
   // service-charge or GST markup, so their S.C/GST columns are hidden. Keyed to
   // the REPORTED client's type (summary), not the viewer's role — this is what
   // stops the admin/CM view from showing S.C/GST columns for a CPL client.
   // Falls back to the viewer's role flag until the report response lands.
+  //
+  // client_type DECIDES when it is present. The old rule also treated a null
+  // service_charge as CPL, which is true for a CPL client and wrong for anyone
+  // else: a hybrid client whose rate failed to resolve was silently reclassified
+  // as CPL and had its S.C/GST columns hidden — the missing rate disappearing
+  // instead of showing as the gap it is. The null-rate test survives only for a
+  // summary that carries no client_type at all.
   const iscplReport = () => {
     const s = reportSummary();
-    if (s)
-      return (s.client_type || "").toLowerCase() === "cpl" ||
-        s.service_charge == null;
-    return iscplRole();
+    if (!s) return iscplRole();
+    if (s.client_type) return String(s.client_type).toLowerCase() === "cpl";
+    return s.service_charge == null;
   };
 
   // Raw (agency-cost) spend is on the privileged ledger payload and absent from
@@ -995,7 +1042,7 @@ export default function DailyReports() {
               setShowPreview(false);
               setProjects([]);
               setInsightsMap({});
-              setReportSummary(null);
+              setProjectsSummary(null);
               if (isAdmin()) {
                 setSelectedAdminClientId("");
                 setAdminClientQuery("");
@@ -1374,6 +1421,31 @@ export default function DailyReports() {
             true ad spend; <b class="font-semibold">Billed</b> is the amount
             charged after the replacement credit.
           </p>
+        </Show>
+
+        {/* Why the S.C columns are a gap, when they are. Same split as the CM
+            report, and for the same reason: "no rate applies" and "the rate is
+            missing" are both an em dash on screen, and only the second is
+            something to go and fix. The "n/a" case doesn't appear here — these
+            columns are hidden for CPL clients entirely. */}
+        <Show when={showScGstNote() && reportRows().length > 0}>
+          <Show when={scState() === "missing"}>
+            <p class="mt-3 text-xs text-amber-700 dark:text-amber-500 leading-relaxed">
+              This client is{" "}
+              <b class="font-semibold">{reportClientType() || "not CPL"}</b>, so
+              a service-charge rate should be set against it — none came back
+              with this report. The S.C and GST columns show “—” rather than
+              assuming 0%; the rate needs setting on the client record. Client
+              Billed beside them is unaffected.
+            </p>
+          </Show>
+          <Show when={scState() === "unknown"}>
+            <p class="mt-3 text-xs text-amber-700 dark:text-amber-500 leading-relaxed">
+              No client summary came back with this report, so the
+              service-charge rate is unknown. The S.C and GST columns show “—”
+              rather than assuming 0%. Client Billed beside them is unaffected.
+            </p>
+          </Show>
         </Show>
 
         {/* Indicative-figures footnote — only when the S.C/GST columns show

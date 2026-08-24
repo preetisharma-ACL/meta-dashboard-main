@@ -249,6 +249,15 @@ const buildLedger = (res, rowOf) => {
     },
     dateRange: data.date_range ?? null,
     scope: data.scope ?? null,
+    // The per-client summary block — {client_type, service_charge} — live on
+    // this endpoint as of backend 5987aca, populated only when the request is
+    // scoped to ONE client (client_id / client_nomen_id / client_nomen).
+    //
+    // It rides here rather than being fetched separately because the rate and
+    // the figures it multiplies have to describe the same client over the same
+    // range. A rate fetched from a second endpoint is a second source, and this
+    // file's whole subject is what second sources do.
+    summary: res?.meta?.report_summary ?? null,
     // Distinguishes "the response landed and this client genuinely has nothing"
     // from "nothing has come back yet" — the difference between a truthful 0 and
     // a placeholder, which the loading states key off.
@@ -334,6 +343,7 @@ export const EMPTY_LEDGER = {
   totals: { ...ledgerRow({}), projectCount: 0 },
   dateRange: null,
   scope: null,
+  summary: null,
   loaded: false,
   settled: false,
 };
