@@ -69,13 +69,6 @@ export default function DailyReports() {
   // type allows still renders.
   const { isClient } = useRole();
 
-  // The `meta.report_summary` block off the PROJECTS response — the client's
-  // service-charge rate and type. It is now only a fallback: the ledger carries
-  // the same block, arriving with the figures the rate multiplies, and that is
-  // what scPct() reads first. See the summary chain below for when this still
-  // gets used and why it hasn't simply been deleted.
-  const [projectsSummary, setProjectsSummary] = createSignal(null);
-
   // ── Where every figure on this report comes from ──────────────────────────
   // ONE call: GET /dashboard/ledger/?start_date&end_date, range-scoped and
   // role-scoped server-side. It replaced fetchAllCampaigns + a bulk-insights
@@ -173,7 +166,6 @@ export default function DailyReports() {
       setAdminClientQuery("");
       setAdminClientOpen(true);
       setProjects([]);
-      setProjectsSummary(null);
       setShowPreview(false);
     });
     loadedKey = null; // allow a fresh load when a client is re-picked
@@ -216,15 +208,11 @@ export default function DailyReports() {
         const res = await fetchProjects(page, "", 20, clientId);
         const apiData = res?.data || [];
         const meta = res?.meta?.pagination;
-        // The per-client service-charge / client-type live in the response's
-        // `meta.report_summary` block. Capture it once (page 1); it's identical
-        // across pages. `/projects/` is client-scoped (client_nomen for admins),
-        // so this is the SELECTED client's rate even in the admin/CM view. It's
-        // absent when not scoped to one client (admin viewing all) → null, and
-        // scPct()/iscplReport() fall back to the billing overview / role flag.
-        if (page === 1) {
-          setProjectsSummary(res?.meta?.report_summary ?? null);
-        }
+        // This call is for the project LIST — name, status, city — and nothing
+        // else. Its meta.report_summary used to be read here for the S.C rate;
+        // the ledger carries that block on every scoping param now, so the rate
+        // comes off the same response as the figures it multiplies and this
+        // endpoint has no say in any number on the page.
         const mapped = apiData.map((item) => ({
           id: item.id,
           name: item.name,
@@ -307,26 +295,31 @@ export default function DailyReports() {
   // meta.report_summary.service_charge — a percentage string like "10.00", or
   // null when the client has no service charge (CPL, by design).
   //
-  // The LEDGER's own summary is read first. It arrives on the same response as
-  // the figures the rate multiplies, for the same client over the same range,
-  // which is the only arrangement that can't drift.
+  // ONE source, with nothing behind it: the LEDGER's own summary. It arrives on
+  // the same response as the figures the rate multiplies, for the same client
+  // over the same range, which is the only arrangement that can't drift. All
+  // three scoping params return the block as of backend e5066e7 — client_id,
+  // client_nomen_id and as_client_id, which is the one the admin picker uses —
+  // so there is no path left that needs a fallback.
   //
-  // The projects-response summary stays as a fallback for exactly one path: the
-  // admin picker scopes the ledger with as_client_id, and the backend populates
-  // report_summary for client_id / client_nomen_id / client_nomen. If as_client_id
-  // joins that list this fallback can go, and with it the last rate source
-  // outside the ledger.
-  //
-  // What was removed, and why it mattered:
+  // Three fallbacks were removed getting here, and the shape they share is the
+  // point:
+  //   • the projects-response summary — the same field, but off a DIFFERENT
+  //     endpoint from the figures, so it could describe a different scope.
   //   • `Number(s.service_charge ?? 0)` — a summary with a null rate became a
-  //     confident 0% S.C. That is the same fabricated-rate bug the CM report
-  //     had, in a column headed "+ N% S.C" that would have read "+ 0% S.C".
+  //     confident 0% S.C, in a column headed "+ N% S.C" reading "+ 0% S.C".
   //   • the viewer's billing overview, for BOTH the S.C rate and the GST rate.
   //     That overview belongs to whoever is logged in. For an admin or a CM
   //     looking at a client it is not that client's rate at all, and it was
   //     wired in as the fallback for precisely the case where the viewer isn't
   //     the client. A wrong rate is worse than no rate: no rate shows a gap.
-  const reportSummary = () => ledger().summary ?? projectsSummary();
+  //
+  // The rate is per-client from the DB — hybrids and retainers run 10%, 13% and
+  // 15%, and a few clients are set to 0.00 DELIBERATELY. That last group is why
+  // this reads null and zero as different answers: "0.00" is a real rate and
+  // prints "+ 0% S.C", while a null prints "—". Collapsing them, which
+  // `?? 0` did, made a missing rate indistinguishable from a genuine zero.
+  const reportSummary = () => ledger().summary;
   const scPct = () => {
     const v = reportSummary()?.service_charge;
     if (v == null || v === "") return null;
@@ -1042,7 +1035,6 @@ export default function DailyReports() {
               setShowPreview(false);
               setProjects([]);
               setInsightsMap({});
-              setProjectsSummary(null);
               if (isAdmin()) {
                 setSelectedAdminClientId("");
                 setAdminClientQuery("");

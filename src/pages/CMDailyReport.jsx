@@ -212,6 +212,12 @@ export default function CMDailyReport() {
   //
   // Now: null means unknown, and unknown renders "—". A 0% fallback is the one
   // outcome worse than a gap, because nobody can see it.
+  //
+  // null and zero are DIFFERENT answers here, deliberately. The rate is
+  // per-client from the DB — hybrids and retainers run 10%, 13% and 15%, and a
+  // few clients are set to 0.00 on purpose. "0.00" is a real rate and prints
+  // "incl 0% S.C"; a null prints "—". Collapsing them is what the old `?? 0`
+  // fallback did, and it made a missing rate look exactly like a genuine zero.
   const scPct = () => {
     const v = reportSummary()?.service_charge;
     if (v == null || v === "") return null;
