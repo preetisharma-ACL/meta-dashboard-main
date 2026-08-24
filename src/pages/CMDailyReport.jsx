@@ -10,50 +10,35 @@ import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import * as XLSX from "xlsx";
 import { DateRangeFilter } from "../components/DateRangeFilter";
+import { fetchHierarchyClients } from "../services/cm";
 import {
-  fetchHierarchyClients,
-  fetchHierarchyProjects,
-  fetchAllCampaignsScoped,
-} from "../services/cm";
-import { fetchProjects } from "../services/dashboard";
+  fetchDashboardLedger,
+  readDashboardLedger,
+  EMPTY_LEDGER,
+} from "../services/dashboard";
 import {
-  fetchFedLeadBatches,
-  fedLeadsByProject,
-  fmtFed,
-} from "../services/fedLeads";
+  money,
+  count,
+  credit,
+  added,
+  exp,
+  makeLedgerCells,
+} from "../services/ledgerCells";
 import { scopeKey } from "../stores/cmScope";
 import { currentUser } from "../stores/currentUser";
 
 const logoUrl = "/logo.webp";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Helpers (mirror the client-facing DailyReports page)
+// Helpers
 // ─────────────────────────────────────────────────────────────────────────────
-const fmt = (val) =>
-  `₹${Number(val || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
-const num = (v) => (Number(v) || 0).toLocaleString("en-IN");
-
-// Premium CPL (marked-up) may be absent for a project → render an em dash
-// rather than "₹0.00" so it reads as "no premium attribution" not "free".
-const fmtPrem = (v) => (v == null ? "—" : fmt(v));
-
-// Whole-number read that keeps "absent" absent. A missing count must NOT
-// collapse to 0 — "the backend didn't send it" and "nothing was replaced" are
-// different facts, and only the second one is safe to print as a number.
-const intOrNull = (v) => {
-  if (v === undefined || v === null || v === "") return null;
-  const n = Number(v);
-  return Number.isFinite(n) ? Math.round(n) : null;
-};
-
-// Replaced count for display: em dash when absent, "−N" when there is one (it's
-// a deduction), plain "0" when the backend explicitly says none.
-const fmtReplaced = (v) =>
-  v == null ? "—" : v > 0 ? `−${Number(v).toLocaleString("en-IN")}` : "0";
-
-// Billable count for display: em dash when absent.
-const fmtCount = (v) => (v == null ? "—" : Number(v).toLocaleString("en-IN"));
+// Every figure on this page comes off ONE ledger row through the shared reader
+// in services/ledgerCells — the same reader /daily-reports uses, so the CM view
+// and the admin view of the same client and range agree cell for cell. What
+// this page used to do instead, and what it printed, is in that file's header.
+//
+// fetchHierarchyClients stays: it fills the client dropdown. That is a picker,
+// not a figure.
 
 const fmtDate = (dateStr) => {
   if (!dateStr) return "—";
@@ -71,14 +56,9 @@ const today = () => new Date().toISOString().split("T")[0];
 // not just ones active in the server's default 14-day window.
 const CLIENT_LOOKBACK = "2020-01-01";
 
-// Premium (marked-up) attribution only exists from this date on — the markup
-// config didn't exist before it, so premium_metrics is empty for earlier days.
-// We clamp the premium campaign fetch's start to this floor, exactly like the
-// ClientDashboard / ProjectDetails ledgers, so the numbers line up.
-const PREMIUM_FLOOR = "2026-04-01";
-
-// project nodes expose avg_cpl; campaign leaves expose cpl.
-const cplOf = (g) => (g?.cpl != null ? g.cpl : g?.avg_cpl);
+// The premium floor (2026-04-01) that used to be clamped here is the backend's
+// now — /dashboard/ledger/ floors and caps its own window — so there is nothing
+// left on this side to keep in step with it.
 
 const TYPE_CHIP = {
   hybrid:
@@ -169,147 +149,121 @@ export default function CMDailyReport() {
     });
   };
 
-  // ── Scoped campaigns (once per switch scope) ──────────────────────────────
-  // The hierarchy project node has no status, so we derive each project's
-  // active/paused state from the CM's campaigns (a project is "active" if it
-  // has ≥1 active campaign — same rule the client Daily Report uses). Fetched
-  // once and reused across generates; date-independent because status is a
-  // current attribute, not a per-day value.
-  const [campaignsRes] = createResource(scopeKey, async () => {
-    try {
-      const res = await fetchAllCampaignsScoped({});
-      return Array.isArray(res?.data) ? res.data : [];
-    } catch (err) {
-      console.error("[CMDailyReport] campaigns failed:", err);
-      return [];
-    }
-  });
-
-  // ── Fed (manually-uploaded) lead batches ──────────────────────────────────
-  // Fetched ONCE per switch scope and reused for every generate — the endpoint
-  // has no date filter, so the report's range is applied client-side. The
-  // backend auto-scopes it to the CM's visible clients; we then join by project
-  // id against the selected client's own hierarchy rows, so no other client's
-  // batch can reach this report. A failure degrades to "no fed leads".
-  const [fedBatchesRes] = createResource(scopeKey, async () => {
-    try {
-      return await fetchFedLeadBatches();
-    } catch (err) {
-      console.error("[CMDailyReport] fed lead batches failed:", err);
-      return [];
-    }
-  });
-
-  // { [projectId]: fedLeads } for the GENERATED report's range (not the live
-  // pickers) so the table can't drift from the range in its own header.
-  const fedByProject = createMemo(() => {
-    const r = report();
-    if (!r) return {};
-    return fedLeadsByProject(fedBatchesRes() ?? [], r.from, r.to);
-  });
-
-  // Per-project active/paused lookup for the currently-generated client. Keyed
-  // by project_id AND normalised project_name so it matches the hierarchy rows
-  // regardless of which key the campaign list carries.
-  const statusInfo = createMemo(() => {
-    const r = report();
-    const camps = campaignsRes();
-    if (!r || !camps) return null;
-    const cid = String(r.client.client_nomen_id);
-    const byId = {};
-    const byName = {};
-    for (const c of camps) {
-      if (String(c.client_nomen) !== cid) continue;
-      const idk = c.project_id != null ? String(c.project_id) : null;
-      const nk = (c.project_name || "").trim().toLowerCase();
-      const active = String(c.status).toLowerCase() === "active";
-      if (idk) {
-        if (!byId[idk]) byId[idk] = { active: 0, total: 0 };
-        byId[idk].total += 1;
-        if (active) byId[idk].active += 1;
-      }
-      if (nk) {
-        if (!byName[nk]) byName[nk] = { active: 0, total: 0 };
-        byName[nk].total += 1;
-        if (active) byName[nk].active += 1;
-      }
-    }
-    return { byId, byName };
-  });
-
-  // "active" | "paused" | null (null = no campaign data matched → not filtered).
-  const statusOfProject = (p) => {
-    const info = statusInfo();
-    if (!info) return null;
-    const e =
-      info.byId[String(p.project_id)] ||
-      info.byName[(p.project_name || "").trim().toLowerCase()];
-    if (!e) return null;
-    return e.active > 0 ? "active" : "paused";
-  };
-
-  // ── Per-project premium (marked-up) spend/leads lookup ──────────────────────
-  // Aggregated from the range-scoped premium campaigns captured at generate
-  // time. Keyed by project_id AND normalised project_name, mirroring statusInfo,
-  // so it matches the hierarchy rows regardless of which key the campaign carries.
-  const premiumInfo = createMemo(() => {
-    const r = report();
-    if (!r) return null;
-    const camps = r.premiumCampaigns || [];
-    const cid = String(r.client.client_nomen_id);
-    const byId = {};
-    const byName = {};
-    for (const c of camps) {
-      if (String(c.client_nomen) !== cid) continue;
-      const pm = c.premium_metrics;
-      if (!pm || pm.spend == null || pm.leads_count == null) continue;
-      const spend = Number(pm.spend) || 0;
-      const leads = Number(pm.leads_count) || 0;
-      const idk = c.project_id != null ? String(c.project_id) : null;
-      const nk = (c.project_name || "").trim().toLowerCase();
-      if (idk) {
-        if (!byId[idk]) byId[idk] = { spend: 0, leads: 0 };
-        byId[idk].spend += spend;
-        byId[idk].leads += leads;
-      }
-      if (nk) {
-        if (!byName[nk]) byName[nk] = { spend: 0, leads: 0 };
-        byName[nk].spend += spend;
-        byName[nk].leads += leads;
-      }
-    }
-    return { byId, byName };
-  });
-
-  // { spend, leads } of premium attribution for a project (zeros = none matched).
-  const premiumOfProject = (p) => {
-    const info = premiumInfo();
-    if (!info) return { spend: 0, leads: 0 };
-    return (
-      info.byId[String(p.project_id)] ||
-      info.byName[(p.project_name || "").trim().toLowerCase()] || {
-        spend: 0,
-        leads: 0,
-      }
-    );
-  };
-
+  // ── What used to live here, and why it doesn't ────────────────────────────
+  // Three resources and two lookup memos: a lifetime-scoped campaign sweep for
+  // project status, a second range-scoped campaign sweep for premium spend, and
+  // a fed-lead batch fetch reduced per project in the browser. All three are
+  // gone, replaced by the single ledger call in generate() below. Two of them
+  // were not merely redundant, they were wrong:
+  //
+  //   • fetchAllCampaignsScoped walks campaign-level data scoped by each
+  //     campaign's CURRENT client_nomen_id. Campaigns move between clients, and
+  //     the backend scopes raw insights by who owned the campaign ON EACH DAY.
+  //     So the sweep counted days belonging to a previous owner: 333 Meta leads
+  //     and ₹52,255.26 where the truth for that client and range was 104 and
+  //     ₹20,880.06.
+  //
+  //   • fedLeadsByProject summed ManualLeadBatch rows by project without
+  //     filtering target_client. Projects are shared between clients, so ten of
+  //     client 181's fed leads were printed on another client's report. That is
+  //     client data crossing between clients, not a rounding difference.
+  //
+  // Neither was fixable by patching the reduction, because the reduction was
+  // the bug: both figures are day-scoped ownership questions that only the
+  // server can answer. Project status now comes off the ledger row's own
+  // campaigns_active count, the same rule /daily-reports uses.
+  //
+  // fetchHierarchyClients above stays. It fills the dropdown, and a picker is
+  // not a figure.
   const canGenerate = () =>
     !!selectedClientId() && !!fromDate() && !!toDate() && !generating();
 
+  // ── The generated report's ledger ─────────────────────────────────────────
+  // One decoded payload — rows keyed by project, plus the response's own totals
+  // block. EMPTY_LEDGER until a report is generated, so nothing has to
+  // null-check its way through a render.
+  const ledger = () => report()?.ledger ?? EMPTY_LEDGER;
+
+  // The response's per-client summary — the same `meta.report_summary` block the
+  // admin Daily Report reads, carrying client_type and the service-charge rate.
+  const reportSummary = () => report()?.summary ?? null;
+
   // ── Client-type gate (drives which columns show, exactly like the client's
   //    own Daily Report where iscpl() hides the spend columns). Keyed to the
-  //    SELECTED client's type, not the logged-in user's. ─────────────────────
-  const clientType = () => (report()?.client?.client_type || "").toLowerCase();
+  //    SELECTED client's type, not the logged-in user's. The response's summary
+  //    wins; the picker row (which carries client_type from the hierarchy) is
+  //    the fallback, and is what the page used before the migration. ─────────
+  const clientType = () =>
+    String(
+      reportSummary()?.client_type ?? report()?.client?.client_type ?? "",
+    ).toLowerCase();
   const iscpl = () => clientType() === "cpl";
 
+  // ── Service charge ────────────────────────────────────────────────────────
+  // The rate is the VIEWED client's own, off meta.report_summary.service_charge
+  // — the same field and the same source as /daily-reports, which is what lets
+  // the two pages print the same number.
+  //
+  // It used to be scavenged: read the Client PK off a campaign row in the CM's
+  // whole scope, then GET /projects/?client_id=<PK> and hope for a summary. Both
+  // halves failed for a CM token — the PK is not exposed on those rows and the
+  // projects response carried no report_summary — so the page fell back to 0%
+  // and printed a confident wrong number in a column headed "incl S.C + GST".
+  //
+  // Now: null means unknown, and unknown renders "—". A 0% fallback is the one
+  // outcome worse than a gap, because nobody can see it.
+  const scPct = () => {
+    const v = reportSummary()?.service_charge;
+    if (v == null || v === "") return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  // GST is a flat 18% here, as it was before. The viewer's own billing overview
+  // (which /daily-reports falls back to for the rate) is the CM's, not the
+  // client's, so it is not a source this page may read.
+  const GST_PCT = 18;
+  const scMult = () => {
+    const p = scPct();
+    return p == null ? null : 1 + p / 100;
+  };
+  const gstMult = () => 1 + GST_PCT / 100;
+  const billedInclLabel = () => {
+    if (iscpl()) return `Client Billed (incl ${GST_PCT}% GST)`;
+    const p = scPct();
+    return p == null
+      ? `Client Billed (incl S.C + ${GST_PCT}% GST)`
+      : `Client Billed (incl ${p}% S.C + ${GST_PCT}% GST)`;
+  };
+  // True when the S.C column is showing a gap because the rate never resolved —
+  // drives the note under the table, so the "—" is explained rather than read
+  // as "this client is charged nothing".
+  const scUnresolved = () => !iscpl() && scPct() == null;
+
+  // ── Every cell on this page ───────────────────────────────────────────────
+  // The shared reader: one named payload key per column, no division, "—" for
+  // anything the payload didn't send. A CM is a privileged role, so the raw
+  // agency-cost keys are on their payload — whether the raw COLUMNS render is
+  // the toggle's business (showRaw), not the reader's.
+  //
+  // taxBase: the S.C / GST column on this page loads onto billed_amount, the
+  // client-facing spend after the replacement credit, because that is the
+  // figure those charges are quoted against here. On a row with no
+  // replacements it equals premium_spend, which is what /daily-reports loads.
+  const { rowOf } = makeLedgerCells({
+    hasRaw: () => true,
+    clientType,
+    scMult,
+    gstMult,
+    iscpl,
+  });
+  const rowCells = (w) => rowOf(w, { taxBase: "billedAmount" });
+
   // ── Lead replacement (Replaced / Billable) ────────────────────────────────
-  // The hierarchy projects endpoint now carries replaced_leads / billable_leads
-  // per project row. Replacements apply to CPL and hybrid clients only — a
-  // retainer row comes back 0/absent, so the columns stay off for them rather
-  // than printing a column of zeros that can never be anything else. We also
-  // require at least one row to actually carry the field, so a client whose
-  // rows predate the backend change doesn't get two empty columns.
+  // Replacements apply to CPL and hybrid clients only — a retainer row comes
+  // back 0/absent, so the columns stay off for them rather than printing a
+  // column of zeros that can never be anything else. We also require at least
+  // one row to actually carry the field, so a client whose rows predate the
+  // backend change doesn't get two empty columns.
   const isReplaceableType = () =>
     clientType() === "cpl" || clientType() === "hybrid";
   const showReplaced = () =>
@@ -319,16 +273,6 @@ export default function CMDailyReport() {
   // Raw (agency-cost) columns render — on-screen AND in every download — only
   // when the "Include raw" toggle is on. Off → client-facing report (no raw).
   const showRaw = () => includeRaw();
-
-  // Per-client service charge (fetched at generate → report.serviceCharge) drives
-  // the fully-loaded "Client Billed (incl S.C & GST)" column: Premium Spent ×
-  // (1 + S.C%) × 1.18. GST is a flat 18%. Never hardcoded — falls back to 0% S.C
-  // only if the rate couldn't be fetched (shows GST-only, not a fabricated rate).
-  const scRate = () => Number(report()?.serviceCharge ?? 0);
-  const billedInclLabel = () =>
-    `Client Billed (incl ${scRate()}% S.C + 18% GST)`;
-  const billedIncl = (billed) =>
-    parseFloat((billed * (1 + scRate() / 100) * 1.18).toFixed(2));
 
   // ── Quick-pick presets (same semantics as the CM dashboard pills) ─────────
   const setPreset = (value) => {
@@ -370,6 +314,20 @@ export default function CMDailyReport() {
   };
 
   // ── Generate ──────────────────────────────────────────────────────────────
+  // ONE request. GET /dashboard/ledger/?start_date&end_date&client_nomen_id —
+  // range-scoped and client-scoped server-side, returning the finished
+  // per-project ledger plus its own totals block. A CM token gets the
+  // privileged payload (raw AND premium keys), so every column this page shows
+  // is already in the response and nothing here reduces anything.
+  //
+  // It replaces four calls: a hierarchy projects fetch, two campaign sweeps
+  // (one lifetime for status, one range-scoped for premium), and a fed-lead
+  // batch fetch reduced in the browser — plus a fifth, /projects/?client_id=,
+  // that existed only to scavenge a service-charge rate it never returned.
+  //
+  // The summary rides on the same response, so the client's type and S.C rate
+  // can no longer disagree with the figures they qualify: they arrived
+  // together, for this client, for this range.
   const generate = async () => {
     if (!canGenerate()) return;
     const client = selectedClient();
@@ -379,78 +337,30 @@ export default function CMDailyReport() {
     setGenError(false);
     setShowPreview(false);
     try {
-      const res = await fetchHierarchyProjects(client.client_nomen_id, {
+      const res = await fetchDashboardLedger({
         startDate: from,
         endDate: to,
+        clientNomenId: client.client_nomen_id,
       });
-      const projects = Array.isArray(res?.data) ? res.data : [];
-
-      // ── Premium (marked-up) campaigns for the SAME range ──────────────────
-      // premium_metrics is server-computed per date window, so it must be
-      // fetched for the report's own range (NOT reused from campaignsRes, which
-      // is lifetime-scoped for status only). Start is clamped to PREMIUM_FLOOR;
-      // if the whole range predates the floor there's no premium to fetch.
-      // A premium failure must NOT sink the report — fall back to no premium.
-      let premiumCampaigns = [];
-      if (to >= PREMIUM_FLOOR) {
-        try {
-          const premRes = await fetchAllCampaignsScoped({
-            startDate: from > PREMIUM_FLOOR ? from : PREMIUM_FLOOR,
-            endDate: to,
-          });
-          premiumCampaigns = Array.isArray(premRes?.data) ? premRes.data : [];
-        } catch (err) {
-          console.error("[CMDailyReport] premium campaigns failed:", err);
-        }
-      }
-
-      // Per-client service charge for the "Client Billed (incl S.C & GST)"
-      // column. The hierarchy response carries no S.C rate, so fetch it the way
-      // the admin daily report does: /projects/?client_id=<Client PK> →
-      // meta.report_summary.service_charge. The Client PK isn't on report.client
-      // (only client_nomen_id) — it rides on the campaign rows.
-      //
-      // IMPORTANT: premiumCampaigns is the CM's WHOLE scope (every assigned
-      // client — fetchAllCampaignsScoped takes no client filter), so the PK MUST
-      // be scavenged from a campaign belonging to the SELECTED client. The old
-      // code took the first campaign with any client_id, which could hand back a
-      // DIFFERENT client's PK (→ wrong S.C) or, if that field is absent, null
-      // (→ silent 0% S.C). Match on client_nomen first, then read the PK from
-      // premium_metrics.client_id, falling back to a top-level client_id if the
-      // backend exposes it there instead.
-      let serviceCharge = null;
-      const cid = String(client.client_nomen_id);
-      const ownRows = premiumCampaigns.filter(
-        (c) => String(c.client_nomen) === cid,
-      );
-      const clientPK =
-        ownRows.find((c) => c?.premium_metrics?.client_id != null)
-          ?.premium_metrics?.client_id ??
-        ownRows.find((c) => c?.client_id != null)?.client_id ??
-        null;
-      if (clientPK != null) {
-        try {
-          const projRes = await fetchProjects(1, "", 20, clientPK);
-          serviceCharge = projRes?.meta?.report_summary?.service_charge ?? null;
-          if (serviceCharge == null) {
-            console.warn(
-              "[CMDailyReport] /projects/?client_id=%s returned no report_summary.service_charge (backend did not surface the S.C rate for this CM token).",
-              clientPK,
-            );
-          }
-        } catch (err) {
-          console.error("[CMDailyReport] service charge fetch failed:", err);
-        }
-      } else {
+      const summary = res?.meta?.report_summary ?? null;
+      if (summary?.service_charge == null) {
+        // Worth a line in the console, because the consequence is a visible gap
+        // in a money column and someone will ask why. The old code hit the same
+        // wall and answered it with 0%.
         console.warn(
-          "[CMDailyReport] could not resolve a Client PK for '%s' (client_nomen=%s): no campaign in the CM scope carries premium_metrics.client_id / client_id. Falling back to 0%% S.C.",
-          client.client_name,
-          cid,
+          "[CMDailyReport] /dashboard/ledger/ returned no meta.report_summary.service_charge for client_nomen_id=%s — the S.C/GST column will render '—' rather than assume 0%%.",
+          client.client_nomen_id,
         );
       }
-      setReport({ client, projects, from, to, premiumCampaigns, serviceCharge });
+      setReport({
+        client,
+        from,
+        to,
+        ledger: readDashboardLedger(res),
+        summary,
+      });
     } catch (err) {
-      console.error("[CMDailyReport] project report failed:", err);
+      console.error("[CMDailyReport] ledger failed:", err);
       setGenError(true);
       setReport(null);
     } finally {
@@ -473,138 +383,61 @@ export default function CMDailyReport() {
     });
   };
 
-  // ── Report rows ────────────────────────────────────────────────────────────
-  // Leads/CPL/Amount-Spent come from the raw (actual) figures, exactly like the
-  // client report. "Client Billed" is the client-facing total (spend + service
-  // charge + GST, applied server-side) — the equivalent of the client report's
-  // final "Amt Spent + S.C + GST" column.
+  // ── Report rows ───────────────────────────────────────────────────────────
+  // One row of the ledger → one row on screen, through the shared reader. The
+  // only thing this memo does besides read is decide which rows to SHOW; it
+  // computes no figure, and the two filters below deliberately test the
+  // normalised row rather than a rendered cell.
   const reportRows = createMemo(() => {
     const sf = statusFilter();
-    const fed = fedByProject();
-    return (report()?.projects ?? [])
-      .map((p) => {
-        const raw = p.raw ?? {};
-        const billed = p.client_facing ?? {};
-        const leads = Number(raw.leads) || 0;
-        // Fed leads for this project in the report's range. Kept in its own
-        // field and its own column: the client's dashboard counts Meta + fed,
-        // so a Meta-only report reads short — but folding fed into `leads`
-        // would hide where the difference came from (and would corrupt CPL,
-        // which is cost per Meta lead).
-        const fedLeads = fed[String(p.project_id)] || 0;
-        const spent = parseFloat(raw.spend) || 0;
-        const cpl = leads > 0 ? parseFloat((spent / leads).toFixed(2)) : 0;
-        const billedSpend = parseFloat(billed.spend) || 0;
-        // Premium CPL = Σ premium spend ÷ Σ premium leads for this project
-        // (aggregated, never an average of per-campaign CPLs). null when the
-        // project has no premium attribution in the range.
-        const prem = premiumOfProject(p);
-        const premiumCpl =
-          prem.leads > 0
-            ? parseFloat((prem.spend / prem.leads).toFixed(2))
-            : null;
-        // Lead replacement — served per project row. Read from the row itself
-        // first, then the raw / client_facing number sets, so a field that
-        // lands in a different block than expected still renders. Absent stays
-        // null (→ "—"), never 0: "no data" and "nothing replaced" are different
-        // statements and a 0 here would read as the latter.
-        const replacedLeads = intOrNull(
-          p.replaced_leads ?? raw.replaced_leads ?? billed.replaced_leads,
-        );
-        const billableLeads = intOrNull(
-          p.billable_leads ?? raw.billable_leads ?? billed.billable_leads,
-        );
-        return {
-          projectId: p.project_id,
-          projectName: p.project_name,
-          campaigns: Number(p.campaign_count) || 0,
-          leads,
-          fedLeads,
-          totalLeads: leads + fedLeads,
-          replacedLeads,
-          billableLeads,
-          cpl,
-          premiumCpl,
-          premiumSpend: prem.spend,
-          premiumLeads: prem.leads,
-          spent,
-          billed: billedSpend,
-          status: statusOfProject(p),
-        };
-      })
-      .filter((r) => {
-        // ── Date-range visibility (matches the client Daily Report) ──────────
-        // The hierarchy call is date-windowed server-side, so a project's
-        // figures already reflect ONLY the selected range. A project that
-        // wasn't running in the range therefore has zero leads AND zero spend —
-        // drop it so, e.g., "This Month" never shows last month's projects and
-        // "Last Month" shows only last-month activity. Fed leads count as
-        // activity too: a project whose only delivery in the range was a fed
-        // batch is on the client's dashboard, so it has to be on this report.
-        if (r.leads === 0 && r.spent === 0 && r.fedLeads === 0) return false;
+    const rows = [];
 
-        // ── Status filter (active / paused) ─────────────────────────────────
-        // Unknown status (no matched campaign data) is kept so we never hide
-        // real activity behind a missing-status gap.
-        if (sf !== "all" && r.status != null && r.status !== sf) return false;
+    for (const row of ledger().rows) {
+      // ── Status filter (active / paused) ─────────────────────────────────
+      // A campaign's active/paused state is NOT date-dependent, so the ledger
+      // row's own campaign counts drive it — the same rule /daily-reports uses,
+      // and the reason the lifetime campaign sweep is gone.
+      if (sf !== "all") {
+        const status = row.campaignsActive > 0 ? "active" : "paused";
+        if (sf !== status) continue;
+      }
 
-        return true;
+      // ── "Ran in this range" ─────────────────────────────────────────────
+      // The response is already windowed server-side, so a project that wasn't
+      // running in the range has nothing on its row. This is a presence test,
+      // not a date sweep.
+      const active =
+        row.totalLeads > 0 ||
+        row.spend > 0 ||
+        row.impressions > 0 ||
+        row.clicks > 0;
+      if (!active) continue;
+
+      rows.push({
+        projectId: row.projectId,
+        projectName: row.projectName,
+        ...rowCells(row.wire),
       });
+    }
+
+    return rows.sort((a, b) => a.projectName.localeCompare(b.projectName));
   });
 
-  const totals = createMemo(() => {
-    const rows = reportRows();
-    const totalLeads = rows.reduce((s, r) => s + r.leads, 0);
-    const totalFedLeads = rows.reduce((s, r) => s + r.fedLeads, 0);
-    const totalSpent = parseFloat(
-      rows.reduce((s, r) => s + r.spent, 0).toFixed(2),
-    );
-    const totalBilled = parseFloat(
-      rows.reduce((s, r) => s + r.billed, 0).toFixed(2),
-    );
-    // Fully-loaded total = Σ per-row (Premium Spent + S.C + GST), so it matches
-    // the sum of the displayed rows.
-    const totalBilledIncl = parseFloat(
-      rows.reduce((s, r) => s + billedIncl(r.billed), 0).toFixed(2),
-    );
-    const totalCampaigns = rows.reduce((s, r) => s + r.campaigns, 0);
-    const avgCPL =
-      totalLeads > 0 ? parseFloat((totalSpent / totalLeads).toFixed(2)) : 0;
-    // Premium CPL total: Σ premium spend ÷ Σ premium leads across all rows
-    // (aggregated, matching the per-row rule). null when nothing premium-matched.
-    const premiumSpend = rows.reduce((s, r) => s + (r.premiumSpend || 0), 0);
-    const premiumLeads = rows.reduce((s, r) => s + (r.premiumLeads || 0), 0);
-    const avgPremiumCPL =
-      premiumLeads > 0
-        ? parseFloat((premiumSpend / premiumLeads).toFixed(2))
-        : null;
-    // Replacement totals — summed only over the rows that actually carry the
-    // field, and null when none do, so a partial payload can't understate as a
-    // confident 0.
-    const replacedRows = rows.filter((r) => r.replacedLeads != null);
-    const totalReplaced = replacedRows.length
-      ? replacedRows.reduce((s, r) => s + r.replacedLeads, 0)
-      : null;
-    const billableRows = rows.filter((r) => r.billableLeads != null);
-    const totalBillable = billableRows.length
-      ? billableRows.reduce((s, r) => s + r.billableLeads, 0)
-      : null;
-    return {
-      totalLeads,
-      totalFedLeads,
-      // Total = Meta + fed. This is the figure that has to match what the
-      // client sees on their own dashboard for the same client and range.
-      totalAllLeads: totalLeads + totalFedLeads,
-      totalReplaced,
-      totalBillable,
-      totalSpent,
-      totalBilled,
-      totalBilledIncl,
-      totalCampaigns,
-      avgCPL,
-      avgPremiumCPL,
-    };
-  });
+  // ── TOTAL row ─────────────────────────────────────────────────────────────
+  // The response's own totals block, read through the SAME function the rows
+  // use. Never summed from the rows: that roll-up is where the second source
+  // got in on every other surface, and there is no version of it that survives
+  // a lead set and a spend figure disagreeing about whose days they count.
+  //
+  // Consequence, stated rather than papered over: `totals` describes the whole
+  // period the backend returned, so when a filter hides rows the footer is
+  // wider than the table above it. The note under the table says so.
+  const totals = createMemo(() => rowCells(ledger().totals?.wire));
+
+  // True when the rows on screen are the same set the totals block describes.
+  const totalsCoversAll = () => reportRows().length === ledger().rows.length;
+  const totalsProjectCount = () =>
+    ledger().totals?.projectCount ?? ledger().rows.length;
 
   // ── Labels ─────────────────────────────────────────────────────────────────
   const rangeLabel = () => {
@@ -641,49 +474,36 @@ export default function CMDailyReport() {
     cols.push("Total Leads");
     if (showReplaced()) cols.push("Replaced", "Billable");
     if (showRaw()) cols.push("Raw CPL");
-    cols.push("Premium CPL");
+    cols.push("CPL");
     if (!iscpl()) {
       if (showRaw()) cols.push("Raw Amount Spent");
-      if (showSpent()) cols.push("Premium Spent");
-      if (showBilled()) cols.push(billedInclLabel());
+      if (showSpent()) cols.push("Spent");
+      if (showBilled()) cols.push("Client Billed", billedInclLabel());
     }
     return cols;
   };
-  const exportRow = (r) => {
-    // Numeric in exports (not the "+N" display form) so the columns stay
-    // sum-able in Excel; Total is always Meta + Fed.
-    const base = [dateCellLabel(), r.projectName];
-    if (showRaw()) base.push(r.leads, r.fedLeads);
-    base.push(r.totalLeads);
-    // Positive integers here (not the "−N" display form) so the column stays
-    // sum-able in a spreadsheet; absent stays blank, never 0.
-    if (showReplaced())
-      base.push(r.replacedLeads ?? "", r.billableLeads ?? "");
-    if (showRaw()) base.push(r.cpl);
-    base.push(r.premiumCpl ?? "");
+  // Rows and the TOTAL row are the same shape, so ONE cell list serves both —
+  // which is what stops a downloaded sheet from carrying a total the screen
+  // never showed. exp() blanks a null so a spreadsheet can still sum a column,
+  // and the counts go out as plain integers rather than the "+N" / "−N" display
+  // forms so the columns stay sum-able.
+  const exportCells = (r) => {
+    const base = [];
+    if (showRaw()) base.push(exp(r.metaLeads), exp(r.fedLeads));
+    base.push(exp(r.leads));
+    if (showReplaced()) base.push(exp(r.replacedLeads), exp(r.billableLeads));
+    if (showRaw()) base.push(exp(r.rawCpl));
+    base.push(exp(r.cpl));
     if (!iscpl()) {
-      if (showRaw()) base.push(r.spent);
-      if (showSpent()) base.push(r.billed);
-      if (showBilled()) base.push(billedIncl(r.billed));
+      if (showRaw()) base.push(exp(r.rawSpent));
+      if (showSpent()) base.push(exp(r.spent));
+      if (showBilled())
+        base.push(exp(r.billedAmount), exp(r.spentwithservice_gst));
     }
     return base;
   };
-  const exportTotalsRow = () => {
-    const t = totals();
-    const base = ["TOTAL", ""];
-    if (showRaw()) base.push(t.totalLeads, t.totalFedLeads);
-    base.push(t.totalAllLeads);
-    if (showReplaced())
-      base.push(t.totalReplaced ?? "", t.totalBillable ?? "");
-    if (showRaw()) base.push(t.avgCPL);
-    base.push(t.avgPremiumCPL ?? "");
-    if (!iscpl()) {
-      if (showRaw()) base.push(t.totalSpent);
-      if (showSpent()) base.push(t.totalBilled);
-      if (showBilled()) base.push(t.totalBilledIncl);
-    }
-    return base;
-  };
+  const exportRow = (r) => [dateCellLabel(), r.projectName, ...exportCells(r)];
+  const exportTotalsRow = () => ["TOTAL", "", ...exportCells(totals())];
 
   const triggerDownload = (blob, filename) => {
     const url = URL.createObjectURL(blob);
@@ -739,8 +559,9 @@ export default function CMDailyReport() {
   // Hidden PDF template width. The template is captured as an image and scaled
   // to the page, so the box has to be wide enough for the columns actually
   // rendered — at 900px the two extra replacement columns squeezed the money
-  // headers into three-line wraps. Widen only when they're on.
-  const pdfWidth = () => (showReplaced() ? 1060 : 900);
+  // headers into three-line wraps. Scale off the real column count rather than
+  // a single flag, now that Client Billed and its loaded twin can also be on.
+  const pdfWidth = () => Math.max(900, 620 + colCount() * 80);
 
   const downloadPDF = async () => {
     const el = document.getElementById("cm-pdf-daily-report");
@@ -792,21 +613,10 @@ export default function CMDailyReport() {
     }, 80);
   };
 
-  // Column span for empty/placeholder table rows.
-  // Base: Date, Project, Total Leads, Premium CPL. Meta Leads / Fed Leads / Raw
-  // CPL (+ Raw Amount Spent when !cpl) ride showRaw(); Replaced + Billable ride
-  // showReplaced(); Spent and Client Billed ride their own per-column toggles.
-  const colCount = () => {
-    let n = 4;
-    if (showRaw()) n += 3;
-    if (showReplaced()) n += 2;
-    if (!iscpl()) {
-      if (showRaw()) n += 1;
-      if (showSpent()) n += 1;
-      if (showBilled()) n += 1;
-    }
-    return n;
-  };
+  // Column span for empty/placeholder table rows. It is the export's own column
+  // list, counted — one definition, so a column added to the table can't leave
+  // the empty state spanning the wrong width.
+  const colCount = () => exportColumns().length;
 
   // ══════════════════════════════════════════════════════════════════════════
   // RENDER
@@ -1123,7 +933,7 @@ export default function CMDailyReport() {
                   Include Client Billed
                   <span class="text-gray-400 dark:text-gray-500">
                     {" "}
-                    — incl {scRate()}% S.C + 18% GST
+                    — billed_amount, and the same figure loaded with S.C + GST
                   </span>
                 </span>
               </label>
@@ -1231,6 +1041,7 @@ export default function CMDailyReport() {
                     <th class="p-3">Spent</th>
                   </Show>
                   <Show when={showBilled()}>
+                    <th class="p-3">Client Billed</th>
                     <th class="p-3">{billedInclLabel()}</th>
                   </Show>
                 </Show>
@@ -1294,45 +1105,48 @@ export default function CMDailyReport() {
                       </td>
                       <Show when={showRaw()}>
                         <td class="p-3 font-bold text-gray-800 dark:text-gray-100">
-                          {row.leads}
+                          {count(row.metaLeads)}
                         </td>
                         <td class="p-3 font-medium text-green-700 dark:text-green-400">
-                          {fmtFed(row.fedLeads)}
+                          {added(row.fedLeads)}
                         </td>
                       </Show>
                       <td class="p-3 font-bold text-gray-900 dark:text-white">
-                        {row.totalLeads}
+                        {count(row.leads)}
                       </td>
                       <Show when={showReplaced()}>
                         <td class="p-3 font-semibold text-[#AC2334] dark:text-red-400">
-                          {fmtReplaced(row.replacedLeads)}
+                          {credit(row.replacedLeads)}
                         </td>
                         <td class="p-3 font-bold text-gray-900 dark:text-white">
-                          {fmtCount(row.billableLeads)}
+                          {count(row.billableLeads)}
                         </td>
                       </Show>
                       <Show when={showRaw()}>
                         <td class="p-3 text-purple-700 dark:text-purple-300">
-                          {fmt(row.cpl)}
+                          {money(row.rawCpl)}
                         </td>
                       </Show>
                       <td class="p-3 font-medium text-amber-700 dark:text-amber-400">
-                        {fmtPrem(row.premiumCpl)}
+                        {money(row.cpl)}
                       </td>
                       <Show when={!iscpl()}>
                         <Show when={showRaw()}>
                           <td class="p-3 text-green-700 dark:text-green-400">
-                            {fmt(row.spent)}
+                            {money(row.rawSpent)}
                           </td>
                         </Show>
                         <Show when={showSpent()}>
                           <td class="p-3 text-green-700 dark:text-green-400">
-                            {fmt(row.billed)}
+                            {money(row.spent)}
                           </td>
                         </Show>
                         <Show when={showBilled()}>
+                          <td class="p-3 text-green-700 dark:text-green-400">
+                            {money(row.billedAmount)}
+                          </td>
                           <td class="p-3 text-green-900 dark:text-green-400 font-semibold">
-                            {fmt(billedIncl(row.billed))}
+                            {money(row.spentwithservice_gst)}
                           </td>
                         </Show>
                       </Show>
@@ -1351,45 +1165,48 @@ export default function CMDailyReport() {
                   <td class="p-3" />
                   <Show when={showRaw()}>
                     <td class="p-3 text-green-700 dark:text-green-300 font-bold text-base">
-                      {totals().totalLeads}
+                      {count(totals().metaLeads)}
                     </td>
                     <td class="p-3 text-green-700 dark:text-green-400 font-bold">
-                      {fmtFed(totals().totalFedLeads)}
+                      {added(totals().fedLeads)}
                     </td>
                   </Show>
                   <td class="p-3 text-gray-900 dark:text-white font-bold text-base">
-                    {totals().totalAllLeads}
+                    {count(totals().leads)}
                   </td>
                   <Show when={showReplaced()}>
                     <td class="p-3 text-[#AC2334] dark:text-red-400 font-bold">
-                      {fmtReplaced(totals().totalReplaced)}
+                      {credit(totals().replacedLeads)}
                     </td>
                     <td class="p-3 text-gray-900 dark:text-white font-bold text-base">
-                      {fmtCount(totals().totalBillable)}
+                      {count(totals().billableLeads)}
                     </td>
                   </Show>
                   <Show when={showRaw()}>
                     <td class="p-3 text-purple-700 dark:text-purple-300 font-bold">
-                      {fmt(totals().avgCPL)}
+                      {money(totals().rawCpl)}
                     </td>
                   </Show>
                   <td class="p-3 text-amber-700 dark:text-amber-400 font-bold">
-                    {fmtPrem(totals().avgPremiumCPL)}
+                    {money(totals().cpl)}
                   </td>
                   <Show when={!iscpl()}>
                     <Show when={showRaw()}>
                       <td class="p-3 text-green-700 dark:text-green-300 font-bold">
-                        {fmt(totals().totalSpent)}
+                        {money(totals().rawSpent)}
                       </td>
                     </Show>
                     <Show when={showSpent()}>
                       <td class="p-3 text-green-700 dark:text-green-300 font-bold">
-                        {fmt(totals().totalBilled)}
+                        {money(totals().spent)}
                       </td>
                     </Show>
                     <Show when={showBilled()}>
+                      <td class="p-3 text-green-700 dark:text-green-300 font-bold">
+                        {money(totals().billedAmount)}
+                      </td>
                       <td class="p-3 text-green-900 dark:text-green-400 font-bold">
-                        {fmt(totals().totalBilledIncl)}
+                        {money(totals().spentwithservice_gst)}
                       </td>
                     </Show>
                   </Show>
@@ -1398,6 +1215,32 @@ export default function CMDailyReport() {
             </Show>
           </table>
         </div>
+
+        {/* What the TOTAL row is, when it isn't what's on screen. The footer
+            reads the payload's own totals block, so it covers every project in
+            the period — including any the status filter or the "ran in range"
+            test has hidden. Saying so is the price of not re-summing. */}
+        <Show when={reportRows().length > 0 && !totalsCoversAll()}>
+          <p class="mt-3 text-xs text-amber-700 dark:text-amber-500 leading-relaxed">
+            The <b class="font-semibold">TOTAL</b> row is the period total for
+            all {totalsProjectCount()} projects, as sent by the server — the
+            table above is filtered to {reportRows().length}. The two are not
+            meant to add up.
+          </p>
+        </Show>
+
+        {/* The S.C rate didn't resolve, so the loaded column is a gap. Better a
+            visible gap than 0%: the old code charged 0% silently, and a column
+            headed "incl S.C" reading exactly the un-loaded figure is the kind of
+            wrong that survives review. */}
+        <Show when={reportRows().length > 0 && scUnresolved()}>
+          <p class="mt-3 text-xs text-amber-700 dark:text-amber-500 leading-relaxed">
+            No service-charge rate came back for this client, so{" "}
+            <b class="font-semibold">{billedInclLabel()}</b> shows “—” rather
+            than assuming 0%. Client Billed beside it is the figure before
+            service charge and GST, and is unaffected.
+          </p>
+        </Show>
 
         {/* ── Action Buttons (Preview + Download PDF/CSV/Excel) ── */}
         <div class="flex items-center gap-3 mt-6 flex-wrap">
@@ -1631,6 +1474,9 @@ export default function CMDailyReport() {
                       </Show>
                       <Show when={showBilled()}>
                         <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
+                          Client Billed
+                        </th>
+                        <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
                           {billedInclLabel()}
                         </th>
                       </Show>
@@ -1657,45 +1503,48 @@ export default function CMDailyReport() {
                         </td>
                         <Show when={showRaw()}>
                           <td class="px-4 py-3 text-center font-bold text-[#7B1C1C] text-md border-r border-[rgba(123,28,28,0.1)]">
-                            {row.leads}
+                            {count(row.metaLeads)}
                           </td>
                           <td class="px-4 py-3 text-center font-semibold text-[#1D7044] text-md border-r border-[rgba(123,28,28,0.1)]">
-                            {fmtFed(row.fedLeads)}
+                            {added(row.fedLeads)}
                           </td>
                         </Show>
                         <td class="px-4 py-3 text-center font-bold text-[#1a1a1a] text-md border-r border-[rgba(123,28,28,0.1)]">
-                          {row.totalLeads}
+                          {count(row.leads)}
                         </td>
                         <Show when={showReplaced()}>
                           <td class="px-4 py-3 text-center font-semibold text-[#AC2334] text-md border-r border-[rgba(123,28,28,0.1)]">
-                            {fmtReplaced(row.replacedLeads)}
+                            {credit(row.replacedLeads)}
                           </td>
                           <td class="px-4 py-3 text-center font-bold text-[#1a1a1a] text-md border-r border-[rgba(123,28,28,0.1)]">
-                            {fmtCount(row.billableLeads)}
+                            {count(row.billableLeads)}
                           </td>
                         </Show>
                         <Show when={showRaw()}>
                           <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
-                            {fmt(row.cpl)}
+                            {money(row.rawCpl)}
                           </td>
                         </Show>
                         <td class="px-4 py-3 text-center text-[#8a5a00] font-semibold text-md border-r border-[rgba(123,28,28,0.1)]">
-                          {fmtPrem(row.premiumCpl)}
+                          {money(row.cpl)}
                         </td>
                         <Show when={!iscpl()}>
                           <Show when={showRaw()}>
                             <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
-                              {fmt(row.spent)}
+                              {money(row.rawSpent)}
                             </td>
                           </Show>
                           <Show when={showSpent()}>
                             <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
-                              {fmt(row.billed)}
+                              {money(row.spent)}
                             </td>
                           </Show>
                           <Show when={showBilled()}>
+                            <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
+                              {money(row.billedAmount)}
+                            </td>
                             <td class="px-4 py-3 text-center text-[#1a1a1a] font-semibold text-md border-r border-[rgba(123,28,28,0.1)]">
-                              {fmt(billedIncl(row.billed))}
+                              {money(row.spentwithservice_gst)}
                             </td>
                           </Show>
                         </Show>
@@ -1711,45 +1560,48 @@ export default function CMDailyReport() {
                     <td class="px-4 py-3 border-r border-white/10" />
                     <Show when={showRaw()}>
                       <td class="px-4 py-3 text-center text-white font-bold text-sm border-r border-white/10">
-                        {totals().totalLeads}
+                        {count(totals().metaLeads)}
                       </td>
                       <td class="px-4 py-3 text-center text-white font-bold text-sm border-r border-white/10">
-                        {fmtFed(totals().totalFedLeads)}
+                        {added(totals().fedLeads)}
                       </td>
                     </Show>
                     <td class="px-4 py-3 text-center text-white font-bold text-sm border-r border-white/10">
-                      {totals().totalAllLeads}
+                      {count(totals().leads)}
                     </td>
                     <Show when={showReplaced()}>
                       <td class="px-4 py-3 text-center text-white font-bold text-sm border-r border-white/10">
-                        {fmtReplaced(totals().totalReplaced)}
+                        {credit(totals().replacedLeads)}
                       </td>
                       <td class="px-4 py-3 text-center text-white font-bold text-sm border-r border-white/10">
-                        {fmtCount(totals().totalBillable)}
+                        {count(totals().billableLeads)}
                       </td>
                     </Show>
                     <Show when={showRaw()}>
                       <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
-                        {fmt(totals().avgCPL)}
+                        {money(totals().rawCpl)}
                       </td>
                     </Show>
                     <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
-                      {fmtPrem(totals().avgPremiumCPL)}
+                      {money(totals().cpl)}
                     </td>
                     <Show when={!iscpl()}>
                       <Show when={showRaw()}>
                         <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
-                          {fmt(totals().totalSpent)}
+                          {money(totals().rawSpent)}
                         </td>
                       </Show>
                       <Show when={showSpent()}>
                         <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
-                          {fmt(totals().totalBilled)}
+                          {money(totals().spent)}
                         </td>
                       </Show>
                       <Show when={showBilled()}>
                         <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
-                          {fmt(totals().totalBilledIncl)}
+                          {money(totals().billedAmount)}
+                        </td>
+                        <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
+                          {money(totals().spentwithservice_gst)}
                         </td>
                       </Show>
                     </Show>
@@ -1885,6 +1737,9 @@ export default function CMDailyReport() {
                           </th>
                         </Show>
                         <Show when={showBilled()}>
+                          <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
+                            Client Billed
+                          </th>
                           <th style="padding:11px 14px;text-align:center;color:#f5d9a0;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;">
                             {billedInclLabel()}
                           </th>
@@ -1908,45 +1763,48 @@ export default function CMDailyReport() {
                         </td>
                         <Show when={showRaw()}>
                           <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:700;color:#7B1C1C;border-right:1px solid rgba(123,28,28,0.1);">
-                            {row.leads}
+                            {count(row.metaLeads)}
                           </td>
                           <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:600;color:#1D7044;border-right:1px solid rgba(123,28,28,0.1);">
-                            {fmtFed(row.fedLeads)}
+                            {added(row.fedLeads)}
                           </td>
                         </Show>
                         <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:700;color:#1a1a1a;border-right:1px solid rgba(123,28,28,0.1);">
-                          {row.totalLeads}
+                          {count(row.leads)}
                         </td>
                         <Show when={showReplaced()}>
                           <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:600;color:#AC2334;border-right:1px solid rgba(123,28,28,0.1);">
-                            {fmtReplaced(row.replacedLeads)}
+                            {credit(row.replacedLeads)}
                           </td>
                           <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:700;color:#1a1a1a;border-right:1px solid rgba(123,28,28,0.1);">
-                            {fmtCount(row.billableLeads)}
+                            {count(row.billableLeads)}
                           </td>
                         </Show>
                         <Show when={showRaw()}>
                           <td style="padding:10px 14px;text-align:center;font-size:14px;color:#333;border-right:1px solid rgba(123,28,28,0.1);">
-                            {fmt(row.cpl)}
+                            {money(row.rawCpl)}
                           </td>
                         </Show>
                         <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:600;color:#8a5a00;border-right:1px solid rgba(123,28,28,0.1);">
-                          {fmtPrem(row.premiumCpl)}
+                          {money(row.cpl)}
                         </td>
                         <Show when={!iscpl()}>
                           <Show when={showRaw()}>
                             <td style="padding:10px 14px;text-align:center;font-size:14px;color:#333;border-right:1px solid rgba(123,28,28,0.1);">
-                              {fmt(row.spent)}
+                              {money(row.rawSpent)}
                             </td>
                           </Show>
                           <Show when={showSpent()}>
                             <td style="padding:10px 14px;text-align:center;font-size:14px;color:#333;border-right:1px solid rgba(123,28,28,0.1);">
-                              {fmt(row.billed)}
+                              {money(row.spent)}
                             </td>
                           </Show>
                           <Show when={showBilled()}>
+                            <td style="padding:10px 14px;text-align:center;font-size:14px;color:#333;border-right:1px solid rgba(123,28,28,0.1);">
+                              {money(row.billedAmount)}
+                            </td>
                             <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:600;color:#6b4c10;background:rgba(201,168,76,0.10);">
-                              {fmt(billedIncl(row.billed))}
+                              {money(row.spentwithservice_gst)}
                             </td>
                           </Show>
                         </Show>
@@ -1959,45 +1817,48 @@ export default function CMDailyReport() {
                       <td style="padding:11px 14px;border-right:1px solid rgba(255,255,255,0.12);" />
                       <Show when={showRaw()}>
                         <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
-                          {totals().totalLeads}
+                          {count(totals().metaLeads)}
                         </td>
                         <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
-                          {fmtFed(totals().totalFedLeads)}
+                          {added(totals().fedLeads)}
                         </td>
                       </Show>
                       <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
-                        {totals().totalAllLeads}
+                        {count(totals().leads)}
                       </td>
                       <Show when={showReplaced()}>
                         <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
-                          {fmtReplaced(totals().totalReplaced)}
+                          {credit(totals().replacedLeads)}
                         </td>
                         <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
-                          {fmtCount(totals().totalBillable)}
+                          {count(totals().billableLeads)}
                         </td>
                       </Show>
                       <Show when={showRaw()}>
                         <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
-                          {fmt(totals().avgCPL)}
+                          {money(totals().rawCpl)}
                         </td>
                       </Show>
                       <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
-                        {fmtPrem(totals().avgPremiumCPL)}
+                        {money(totals().cpl)}
                       </td>
                       <Show when={!iscpl()}>
                         <Show when={showRaw()}>
                           <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
-                            {fmt(totals().totalSpent)}
+                            {money(totals().rawSpent)}
                           </td>
                         </Show>
                         <Show when={showSpent()}>
                           <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
-                            {fmt(totals().totalBilled)}
+                            {money(totals().spent)}
                           </td>
                         </Show>
                         <Show when={showBilled()}>
+                          <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
+                            {money(totals().billedAmount)}
+                          </td>
                           <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;">
-                            {fmt(totals().totalBilledIncl)}
+                            {money(totals().spentwithservice_gst)}
                           </td>
                         </Show>
                       </Show>

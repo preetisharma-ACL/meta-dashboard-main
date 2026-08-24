@@ -111,10 +111,20 @@ export const fetchManualBatches = async () => {
 // It REPLACES client_nomen: the two scope by different keys, and the caller that
 // has a PK is the one being explicit. Omit it and the localStorage context is
 // used, which is what every other caller wants.
+// clientNomenId — the client's NOMEN id, for a surface whose picker is the CM
+// hierarchy (the CM Daily Report). The hierarchy hands out client_nomen_id and
+// nothing else — no Client PK, no nomen string — and the endpoint scopes on it
+// directly. Verified against a real CM token: the scoping is honoured, and it
+// can only NARROW, like the other two.
+//
+// The three are mutually exclusive and ordered most-explicit-first. A caller
+// that has an id is being deliberate; the localStorage context is the fallback
+// for everyone who isn't.
 export const fetchDashboardLedger = async ({
   startDate,
   endDate,
   asClientId = null,
+  clientNomenId = null,
 } = {}) => {
   let url = `/dashboard/ledger/?1=1`;
   if (startDate) url += `&start_date=${encodeURIComponent(startDate)}`;
@@ -122,6 +132,8 @@ export const fetchDashboardLedger = async ({
 
   if (asClientId != null && asClientId !== "") {
     url += `&as_client_id=${encodeURIComponent(asClientId)}`;
+  } else if (clientNomenId != null && clientNomenId !== "") {
+    url += `&client_nomen_id=${encodeURIComponent(clientNomenId)}`;
   } else {
     const nomen = getClientNomen();
     if (nomen) url += `&client_nomen=${encodeURIComponent(nomen)}`;

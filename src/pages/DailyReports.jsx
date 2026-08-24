@@ -14,55 +14,23 @@ import useRole, { clientRole } from "./../hooks/useRole";
 import { createResource } from "solid-js"; // add to existing solid-js import
 import { fetchBillingOverview } from "../services/billing-service";
 import { fetchAllAdminClients } from "./admin/services/fetchClients";
+import {
+  money,
+  count,
+  credit,
+  exp,
+  makeLedgerCells,
+} from "../services/ledgerCells";
 const logoUrl = "/logo.webp";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
-const fmt = (val) =>
-  `₹${Number(val).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
-// ── The only way a number reaches this table ─────────────────────────────────
-// readKey(source, key) is the single accessor. `source` is ONE payload object —
-// one ledger row, or the response's own `totals` block — and `key` is the wire
-// key as the backend sent it. It reads, it coerces, it returns null when the key
-// isn't there. It does not divide, sum, or reach into a second source.
-//
-// That is the whole rule, and it is a rule because the alternative already
-// shipped twice:
-//   • CPL printed premium_spend ÷ billable_leads. Both figures were correct and
-//     they were scoped differently — billable_leads counts every lead on the
-//     campaigns the client owns TODAY, premium_spend covers only the days they
-//     actually owned them. ₹66.16 on a contract billed at ₹188.00, and it looks
-//     cheap, so nobody queries it until the invoice lands.
-//   • The TOTAL row printed raw spend ÷ (meta_leads + fed_leads): ₹137.13 under
-//     a ₹147.05 project row, on a ONE-ROW table. Fed leads are hand-entered and
-//     were never paid for with ad spend, so they cannot sit in a raw-CPL
-//     denominator.
-// Neither was a wrong number arriving from the server. The server sent 188.00
-// and 147.05. Both were arithmetic performed on the way to the screen, on two
-// columns that had never agreed about what they were counting.
-//
-// So: a missing value is information and prints "—". A reconstructed one is a
-// guess wearing a currency symbol.
-const readKey = (source, key) => {
-  const v = source?.[key];
-  if (v == null || v === "") return null;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
-};
-
-// The three renderers every cell in this table goes through. Null → "—",
-// everywhere, with no computed fallback behind it.
-const DASH = "—";
-const money = (v) => (v == null ? DASH : fmt(v));
-const count = (v) => (v == null ? DASH : v.toLocaleString("en-IN"));
-// Replaced leads read as a credit: "−40" when there were any, "0" when the
-// backend counted none, "—" when it didn't say.
-const credit = (v) => (v == null ? DASH : v > 0 ? `−${v}` : "0");
-// Same three, for the export sheets: a blank cell rather than an em dash, so a
-// spreadsheet can still sum the column.
-const exp = (v) => (v == null ? "" : v);
+// The cell accessor and its renderers now live in services/ledgerCells, shared
+// with /cm-daily-report — the two pages draw the same table from the same
+// endpoint, and the guarantee only holds if they read it the same way. The
+// rationale (every column that was once computed here, and what it printed) is
+// in that file's header.
 
 const fmtDate = (dateStr) => {
   if (!dateStr) return "—";
@@ -478,109 +446,20 @@ export default function DailyReports() {
   };
 
   /* ── derived: ONE row per project (aggregated over selected date range) ── */
-  // The spend the CLIENT is charged, as opposed to what the ads cost us.
-  //
-  //   client login   the payload is already theirs — spend IS the billed figure
-  //   privileged     premium_spend, the marked-up / fixed-CPL number
-  //
-  // The retainer branch below is BELT AND BRACES, not load-bearing. A retainer
-  // client pays a flat fee, so raw IS their billed figure — and the backend
-  // already substitutes it on the privileged payload, not just the client one
-  // (verified: SunilTrinetraRealty / TheOryza returns spend and premium_spend
-  // both 4,906.45). The real rule lives in build_premium_by_project, in the
-  // backend's apps/insights/ledger.py; this is a safety net for the day a
-  // retainer row comes back with a null premium, nothing more. Removing it
-  // should change nothing — that is the point of saying so here, because dead
-  // code that LOOKS load-bearing is worse than no code at all.
-  //
-  // It does NOT fall back for anyone else. A missing display config on a
-  // hybrid/CPL row means the billed figure is genuinely unknown, and printing
-  // raw there would show agency cost — ~23% under the truth — under a column
-  // headed "Client Billed". Unknown renders "—".
-  //
-  // One key, both roles: premium_spend is on the CLIENT payload too (it is the
-  // only spend key they get), so there is no role branch here any more — the
-  // decoder's role split still governs which keys exist, and this reads the one
-  // that means "the client's money" on either payload.
-  const billedSpendOf = (w) => {
-    const premium = readKey(w, "premium_spend");
-    if (premium != null) return premium;
-    // Same row, no arithmetic — a source choice, not a reconstruction.
-    return reportClientType() === "retainer" ? readKey(w, "spend") : null;
-  };
-
-  // ── One row of the payload → the cells of one row on screen ───────────────
-  // Every column is one named key. The TOTAL row runs through this SAME
-  // function against the response's `totals` block, which is what makes the
-  // footer structurally incapable of disagreeing with the rows above it: they
-  // are read the same way, from the same key names, at two levels of the same
-  // payload.
-  //
-  // totals carries every key below EXCEPT campaigns_total / campaigns_paused /
-  // campaigns_completed — so those come back null there and print "—". They are
-  // deliberately not summed from the rows to fill the gap: a total the payload
-  // didn't send is a total we don't know.
-  //
-  // Fields nothing currently renders (meta_leads, premium_leads, impressions,
-  // clicks, the campaign counts) are mapped anyway, so that adding a column is
-  // picking a name off this list — never writing an expression at a render site.
-  const cellsOf = (w) => ({
-    // Leads
-    leads: readKey(w, "total_leads"),
-    metaLeads: readKey(w, "meta_leads"),
-    fedLeads: readKey(w, "fed_leads"),
-    replacedLeads: readKey(w, "replaced_leads"),
-    billableLeads: readKey(w, "billable_leads"),
-    // meta_leads and premium_leads are computed on different ownership models
-    // in the backend and do NOT reconcile today (318 beside 120 on the same
-    // row). That is a server-side bug being fixed there. Both are printed as
-    // sent; making them agree here would only hide it, and would have to be
-    // unwound when the fix lands.
-    premiumLeads: readKey(w, "premium_leads"),
-    // Money. CPL is premium_cpl — the client-facing one, the figure the
-    // contract is written against. Raw CPL is cpl, the agency's own cost.
-    // Neither is ever divided out of the columns beside it.
-    cpl: readKey(w, "premium_cpl"),
-    rawCpl: hasRawSpend() ? readKey(w, "cpl") : null,
-    rawSpent: hasRawSpend() ? readKey(w, "spend") : null,
-    spent: billedSpendOf(w),
-    billedAmount: readKey(w, "billed_amount"),
-    // Reach
-    impressions: readKey(w, "impressions"),
-    clicks: readKey(w, "clicks"),
-    campaignsTotal: readKey(w, "campaigns_total"),
-    campaignsActive: readKey(w, "campaigns_active"),
-    campaignsPaused: readKey(w, "campaigns_paused"),
-    campaignsCompleted: readKey(w, "campaigns_completed"),
+  // Every cell on this page — rows AND the TOTAL row — comes out of the shared
+  // reader in services/ledgerCells: one named payload key per column, no
+  // division, "—" for anything the payload didn't send. The three inputs below
+  // are the only things about this table that are page-specific.
+  const { rowOf } = makeLedgerCells({
+    // A client's own login never receives raw agency cost.
+    hasRaw: hasRawSpend,
+    clientType: reportClientType,
+    // The SELECTED client's own rate, from the report's meta.report_summary,
+    // falling back to the viewer's billing overview until that lands.
+    scMult,
+    gstMult,
+    iscpl: iscplReport,
   });
-
-  // The S.C and GST columns are the one place a figure is computed, and they
-  // are not the banned shape: no division, and no second column involved. Each
-  // is ONE row's own billed figure times that client's own rate, off
-  // meta.report_summary. Null in → null out → "—", so an unknown billed figure
-  // can't surface as a confident ₹0.00 with tax on top.
-  const withSc = (spent) =>
-    spent == null ? null : parseFloat((spent * scMult()).toFixed(2));
-  const withScGst = (spent) =>
-    spent == null
-      ? null
-      : parseFloat(
-          (iscplReport()
-            ? spent * gstMult()
-            : spent * scMult() * gstMult()
-          ).toFixed(2),
-        );
-
-  // Rows and the TOTAL row are the same shape, so a cell written once reads
-  // correctly at either level.
-  const rowOf = (w) => {
-    const cells = cellsOf(w);
-    return {
-      ...cells,
-      spentwithServiceCharge: withSc(cells.spent),
-      spentwithservice_gst: withScGst(cells.spent),
-    };
-  };
 
   const reportRows = createMemo(() => {
     const led = ledger();
