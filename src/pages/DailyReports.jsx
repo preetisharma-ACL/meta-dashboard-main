@@ -22,6 +22,48 @@ const logoUrl = "/logo.webp";
 const fmt = (val) =>
   `₹${Number(val).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+// ── The only way a number reaches this table ─────────────────────────────────
+// readKey(source, key) is the single accessor. `source` is ONE payload object —
+// one ledger row, or the response's own `totals` block — and `key` is the wire
+// key as the backend sent it. It reads, it coerces, it returns null when the key
+// isn't there. It does not divide, sum, or reach into a second source.
+//
+// That is the whole rule, and it is a rule because the alternative already
+// shipped twice:
+//   • CPL printed premium_spend ÷ billable_leads. Both figures were correct and
+//     they were scoped differently — billable_leads counts every lead on the
+//     campaigns the client owns TODAY, premium_spend covers only the days they
+//     actually owned them. ₹66.16 on a contract billed at ₹188.00, and it looks
+//     cheap, so nobody queries it until the invoice lands.
+//   • The TOTAL row printed raw spend ÷ (meta_leads + fed_leads): ₹137.13 under
+//     a ₹147.05 project row, on a ONE-ROW table. Fed leads are hand-entered and
+//     were never paid for with ad spend, so they cannot sit in a raw-CPL
+//     denominator.
+// Neither was a wrong number arriving from the server. The server sent 188.00
+// and 147.05. Both were arithmetic performed on the way to the screen, on two
+// columns that had never agreed about what they were counting.
+//
+// So: a missing value is information and prints "—". A reconstructed one is a
+// guess wearing a currency symbol.
+const readKey = (source, key) => {
+  const v = source?.[key];
+  if (v == null || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+// The three renderers every cell in this table goes through. Null → "—",
+// everywhere, with no computed fallback behind it.
+const DASH = "—";
+const money = (v) => (v == null ? DASH : fmt(v));
+const count = (v) => (v == null ? DASH : v.toLocaleString("en-IN"));
+// Replaced leads read as a credit: "−40" when there were any, "0" when the
+// backend counted none, "—" when it didn't say.
+const credit = (v) => (v == null ? DASH : v > 0 ? `−${v}` : "0");
+// Same three, for the export sheets: a blank cell rather than an em dash, so a
+// spreadsheet can still sum the column.
+const exp = (v) => (v == null ? "" : v);
+
 const fmtDate = (dateStr) => {
   if (!dateStr) return "—";
   const d = new Date(dateStr.includes("T") ? dateStr : dateStr + "T00:00:00");
@@ -455,11 +497,89 @@ export default function DailyReports() {
   // hybrid/CPL row means the billed figure is genuinely unknown, and printing
   // raw there would show agency cost — ~23% under the truth — under a column
   // headed "Client Billed". Unknown renders "—".
-  const billedSpendOf = (row) => {
-    if (!row) return null;
-    if (isClientViewer()) return row.spend;
-    if (row.premiumSpend != null) return row.premiumSpend;
-    return reportClientType() === "retainer" ? row.spend : null;
+  //
+  // One key, both roles: premium_spend is on the CLIENT payload too (it is the
+  // only spend key they get), so there is no role branch here any more — the
+  // decoder's role split still governs which keys exist, and this reads the one
+  // that means "the client's money" on either payload.
+  const billedSpendOf = (w) => {
+    const premium = readKey(w, "premium_spend");
+    if (premium != null) return premium;
+    // Same row, no arithmetic — a source choice, not a reconstruction.
+    return reportClientType() === "retainer" ? readKey(w, "spend") : null;
+  };
+
+  // ── One row of the payload → the cells of one row on screen ───────────────
+  // Every column is one named key. The TOTAL row runs through this SAME
+  // function against the response's `totals` block, which is what makes the
+  // footer structurally incapable of disagreeing with the rows above it: they
+  // are read the same way, from the same key names, at two levels of the same
+  // payload.
+  //
+  // totals carries every key below EXCEPT campaigns_total / campaigns_paused /
+  // campaigns_completed — so those come back null there and print "—". They are
+  // deliberately not summed from the rows to fill the gap: a total the payload
+  // didn't send is a total we don't know.
+  //
+  // Fields nothing currently renders (meta_leads, premium_leads, impressions,
+  // clicks, the campaign counts) are mapped anyway, so that adding a column is
+  // picking a name off this list — never writing an expression at a render site.
+  const cellsOf = (w) => ({
+    // Leads
+    leads: readKey(w, "total_leads"),
+    metaLeads: readKey(w, "meta_leads"),
+    fedLeads: readKey(w, "fed_leads"),
+    replacedLeads: readKey(w, "replaced_leads"),
+    billableLeads: readKey(w, "billable_leads"),
+    // meta_leads and premium_leads are computed on different ownership models
+    // in the backend and do NOT reconcile today (318 beside 120 on the same
+    // row). That is a server-side bug being fixed there. Both are printed as
+    // sent; making them agree here would only hide it, and would have to be
+    // unwound when the fix lands.
+    premiumLeads: readKey(w, "premium_leads"),
+    // Money. CPL is premium_cpl — the client-facing one, the figure the
+    // contract is written against. Raw CPL is cpl, the agency's own cost.
+    // Neither is ever divided out of the columns beside it.
+    cpl: readKey(w, "premium_cpl"),
+    rawCpl: hasRawSpend() ? readKey(w, "cpl") : null,
+    rawSpent: hasRawSpend() ? readKey(w, "spend") : null,
+    spent: billedSpendOf(w),
+    billedAmount: readKey(w, "billed_amount"),
+    // Reach
+    impressions: readKey(w, "impressions"),
+    clicks: readKey(w, "clicks"),
+    campaignsTotal: readKey(w, "campaigns_total"),
+    campaignsActive: readKey(w, "campaigns_active"),
+    campaignsPaused: readKey(w, "campaigns_paused"),
+    campaignsCompleted: readKey(w, "campaigns_completed"),
+  });
+
+  // The S.C and GST columns are the one place a figure is computed, and they
+  // are not the banned shape: no division, and no second column involved. Each
+  // is ONE row's own billed figure times that client's own rate, off
+  // meta.report_summary. Null in → null out → "—", so an unknown billed figure
+  // can't surface as a confident ₹0.00 with tax on top.
+  const withSc = (spent) =>
+    spent == null ? null : parseFloat((spent * scMult()).toFixed(2));
+  const withScGst = (spent) =>
+    spent == null
+      ? null
+      : parseFloat(
+          (iscplReport()
+            ? spent * gstMult()
+            : spent * scMult() * gstMult()
+          ).toFixed(2),
+        );
+
+  // Rows and the TOTAL row are the same shape, so a cell written once reads
+  // correctly at either level.
+  const rowOf = (w) => {
+    const cells = cellsOf(w);
+    return {
+      ...cells,
+      spentwithServiceCharge: withSc(cells.spent),
+      spentwithservice_gst: withScGst(cells.spent),
+    };
   };
 
   const reportRows = createMemo(() => {
@@ -495,9 +615,11 @@ export default function DailyReports() {
           row.clicks > 0);
       if (!active) continue;
 
-      // ── The lead trio, TAKEN from the payload ──────────────────────────
+      // ── Every figure on this row, TAKEN from that one payload row ───────
       // Generated, Replaced and Billable are three fields of ONE row, so the
-      // subtraction shown on screen holds by construction.
+      // subtraction shown on screen holds by construction. The money columns
+      // beside them are now read the same way, which leaves no division on this
+      // path to be wrong about.
       //
       // How it used to fail is worth knowing, because the shape of the bug was
       // not "a wrong number" but "two sources, one of them invisible": the row
@@ -506,48 +628,12 @@ export default function DailyReports() {
       // rendered it. It printed the bulk-insights lead count beside them
       // instead, from a different endpoint over a different window. So the two
       // numbers a reader subtracted had never met, and 621 − 40 showed 381.
-      // Anything that reintroduces a second lead source here reintroduces that.
-      const leads = row.totalLeads; // meta + fed, additive
-      const replacedLeads = row.replacedLeads;
-      const billableLeads = row.billableLeads;
-
-      // Raw = what the ads cost us. Internal, admin/CM only.
-      const rawSpent = hasRawSpend() ? row.spend : null;
-      const rawCpl = hasRawSpend() ? row.cpl : null;
-
-      // Billed = what the client is charged. null when genuinely unknown.
-      const billed = billedSpendOf(row);
-      const spentKnown = billed != null;
-      const spent = spentKnown ? billed : 0;
-      const cpl = spentKnown && leads > 0
-        ? parseFloat((spent / leads).toFixed(2))
-        : 0;
-
-      const spentwithServiceCharge = parseFloat((spent * scMult()).toFixed(2));
-      const spentwithservice_gst = parseFloat(
-        (iscplReport() ? spent * gstMult() : spent * scMult() * gstMult()).toFixed(2),
-      );
-
+      // Anything that reintroduces a second source here reintroduces that.
       rows.push({
         projectId: project.id,
         projectName: project.name,
         projectStatus: project.status,
-        leads,
-        cpl,
-        spent,
-        spentKnown,
-        spentwithServiceCharge,
-        spentwithservice_gst,
-        rawSpent,
-        rawCpl,
-        // Generated is the same figure as `leads` now — one lead set, not two.
-        generatedLeads: leads,
-        replacedLeads,
-        billableLeads,
-        // Spend less the replacement credit, as the backend computed it —
-        // never re-derived here. null where there is no premium figure to
-        // deduct from, and the cell renders "—" rather than a zero.
-        billedAmount: row.billedAmount,
+        ...rowOf(row.wire),
       });
     }
 
@@ -556,69 +642,29 @@ export default function DailyReports() {
   });
 
   /* ── footer totals ── */
-  const totals = createMemo(() => {
-    const rows = reportRows();
-    const totalLeads = rows.reduce((s, r) => s + r.leads, 0);
-    // Only rows whose CLIENT-BILLED figure is known — a project with no display
-    // config has no billed number, and counting it as 0 would understate the
-    // total as a confident fact. Same convention as the replacement totals
-    // below. The Raw totals are unaffected: raw exists on every privileged row.
-    const priced = rows.filter((r) => r.spentKnown);
-    const totalSpent = parseFloat(
-      priced.reduce((s, r) => s + r.spent, 0).toFixed(2),
-    );
-    const totalspentwithServiceCharge = parseFloat(
-      priced.reduce((s, r) => s + r.spentwithServiceCharge, 0).toFixed(2),
-    );
-    const totalspentwithservice_gst = parseFloat(
-      priced.reduce((s, r) => s + r.spentwithservice_gst, 0).toFixed(2),
-    );
-    // How many rows the money totals actually describe, so a partial figure can
-    // say so rather than looking complete.
-    const pricedRows = priced.length;
-    const totalRows = rows.length;
-    const avgCPL =
-      totalLeads > 0 ? parseFloat((totalSpent / totalLeads).toFixed(2)) : 0;
-    // Raw (agency-cost) totals — internal only; null unless the rows carried
-    // spend_raw (admin/CM). Same per-row rule: Σ raw spend ÷ total leads.
-    const totalRawSpent = hasRawSpend()
-      ? parseFloat(rows.reduce((s, r) => s + (r.rawSpent || 0), 0).toFixed(2))
-      : null;
-    const avgRawCPL =
-      hasRawSpend() && totalLeads > 0
-        ? parseFloat((totalRawSpent / totalLeads).toFixed(2))
-        : null;
-    // Lead-replacement totals — summed only over the rows that actually carry a
-    // billing block, so a partial sweep doesn't understate as a confident 0.
-    const billed = rows.filter((r) => r.replacedLeads != null);
-    const totalReplaced = billed.length
-      ? billed.reduce((s, r) => s + (r.replacedLeads || 0), 0)
-      : null;
-    const totalBillable = billed.length
-      ? billed.reduce((s, r) => s + (r.billableLeads || 0), 0)
-      : null;
-    const withAmount = rows.filter((r) => r.billedAmount != null);
-    const totalBilledAmount = withAmount.length
-      ? parseFloat(
-          withAmount.reduce((s, r) => s + r.billedAmount, 0).toFixed(2),
-        )
-      : null;
+  // The TOTAL row is the response's own `totals` block, read through the SAME
+  // cellsOf() the rows use. It is not a roll-up of what is on screen, and that
+  // is the point: the roll-up is where the second source got in. The footer's
+  // raw CPL used to be Σ raw spend ÷ (meta + fed leads) and printed ₹137.13
+  // beneath a single project row reading ₹147.05 — a one-row table whose total
+  // disagreed with its only row, because fed leads are hand-entered and were
+  // never bought with ad spend.
+  //
+  // Consequence worth stating: `totals` describes the whole period the backend
+  // returned, so when a filter hides rows the footer is wider than the table
+  // above it. That is disclosed under the table (see totalsCoversAll) rather
+  // than papered over by re-summing — a footer that silently follows the
+  // filters is exactly how the previous version justified computing its own.
+  const totals = createMemo(() => rowOf(ledger().totals?.wire));
 
-    return {
-      totalLeads,
-      totalSpent,
-      avgCPL,
-      totalspentwithServiceCharge,
-      totalspentwithservice_gst,
-      totalRawSpent,
-      avgRawCPL,
-      totalReplaced,
-      totalBillable,
-      totalBilledAmount,
-      pricedRows,
-      totalRows,
-    };
-  });
+  // True when the rows on screen are the same set the totals block describes.
+  // False whenever the status filter or the "ran in this range" test has
+  // dropped a project the backend counted.
+  const totalsCoversAll = () =>
+    reportRows().length === ledger().rows.length;
+  // How many projects the TOTAL row covers, straight off the payload.
+  const totalsProjectCount = () =>
+    ledger().totals?.projectCount ?? ledger().rows.length;
 
   /* ── range label ── */
   const rangeLabel = createMemo(() => {
@@ -766,31 +812,26 @@ export default function DailyReports() {
     if (showGst()) cols.push(finalColLabel());
     return cols;
   };
-  const exportRow = (r) => {
-    const base = [exportDateLabel(), r.projectName, r.leads];
-    if (showReplacement())
-      base.push(r.replacedLeads ?? "", r.billableLeads ?? "");
-    base.push(r.cpl);
-    if (showRaw()) base.push(r.rawCpl ?? "", r.rawSpent ?? "");
-    if (showBilled()) base.push(r.spentKnown ? r.spent : "");
-    if (showBilledAmount()) base.push(r.billedAmount ?? "");
-    if (showSc()) base.push(r.spentKnown ? r.spentwithServiceCharge : "");
-    if (showGst()) base.push(r.spentKnown ? r.spentwithservice_gst : "");
+  // Rows and the TOTAL row are the same shape, so ONE cell list serves both —
+  // which is what stops a downloaded sheet from carrying a total the screen
+  // never showed. exp() blanks a null so a spreadsheet can still sum a column.
+  const exportCells = (r) => {
+    const base = [exp(r.leads)];
+    if (showReplacement()) base.push(exp(r.replacedLeads), exp(r.billableLeads));
+    base.push(exp(r.cpl));
+    if (showRaw()) base.push(exp(r.rawCpl), exp(r.rawSpent));
+    if (showBilled()) base.push(exp(r.spent));
+    if (showBilledAmount()) base.push(exp(r.billedAmount));
+    if (showSc()) base.push(exp(r.spentwithServiceCharge));
+    if (showGst()) base.push(exp(r.spentwithservice_gst));
     return base;
   };
-  const exportTotalsRow = () => {
-    const t = totals();
-    const base = ["TOTAL", "", t.totalLeads];
-    if (showReplacement())
-      base.push(t.totalReplaced ?? "", t.totalBillable ?? "");
-    base.push(t.avgCPL);
-    if (showRaw()) base.push(t.avgRawCPL ?? "", t.totalRawSpent ?? "");
-    if (showBilled()) base.push(t.totalSpent);
-    if (showBilledAmount()) base.push(t.totalBilledAmount ?? "");
-    if (showSc()) base.push(t.totalspentwithServiceCharge);
-    if (showGst()) base.push(t.totalspentwithservice_gst);
-    return base;
-  };
+  const exportRow = (r) => [
+    exportDateLabel(),
+    r.projectName,
+    ...exportCells(r),
+  ];
+  const exportTotalsRow = () => ["TOTAL", "", ...exportCells(totals())];
   const exportFileDate = () => new Date().toISOString().split("T")[0];
   const triggerDownload = (blob, filename) => {
     const url = URL.createObjectURL(blob);
@@ -1315,57 +1356,53 @@ export default function DailyReports() {
 
                         {/* Leads generated */}
                         <td class="p-3 font-bold text-gray-800 dark:text-gray-100">
-                          {row.leads}
+                          {count(row.leads)}
                         </td>
 
                         {/* Replaced → Billable */}
                         <Show when={showReplacement()}>
                           <td class="p-3 font-semibold text-[#AC2334] dark:text-red-400">
-                            {row.replacedLeads == null
-                              ? "—"
-                              : row.replacedLeads > 0
-                                ? `−${row.replacedLeads}`
-                                : "0"}
+                            {credit(row.replacedLeads)}
                           </td>
                           <td class="p-3 font-bold text-gray-800 dark:text-gray-100">
-                            {row.billableLeads ?? "—"}
+                            {count(row.billableLeads)}
                           </td>
                         </Show>
 
-                        {/* CPL */}
+                        {/* CPL — premium_cpl, the client-facing figure */}
                         <td class="p-3 text-purple-700 dark:text-purple-300">
-                          {fmt(row.cpl)}
+                          {money(row.cpl)}
                         </td>
 
                         {/* Spent */}
                         {/* Raw (agency cost) — admin/CM, toggle on */}
                         <Show when={showRaw()}>
                           <td class="p-3 text-amber-700 dark:text-amber-400">
-                            {fmt(row.rawCpl ?? 0)}
+                            {money(row.rawCpl)}
                           </td>
                           <td class="p-3 text-amber-700 dark:text-amber-400">
-                            {fmt(row.rawSpent ?? 0)}
+                            {money(row.rawSpent)}
                           </td>
                         </Show>
                         <Show when={showBilled()}>
                           <td class="p-3 text-green-700 dark:text-green-400">
-                            {row.spentKnown ? fmt(row.spent) : "—"}
+                            {money(row.spent)}
                           </td>
                         </Show>
                         <Show when={showBilledAmount()}>
                           <td class="p-3 font-semibold text-green-800 dark:text-green-300">
-                            {row.billedAmount == null ? "—" : fmt(row.billedAmount)}
+                            {money(row.billedAmount)}
                           </td>
                         </Show>
                         <Show when={showSc()}>
                           <td class="p-3 text-green-700 dark:text-green-400">
-                            {row.spentKnown ? fmt(row.spentwithServiceCharge) : "—"}
+                            {money(row.spentwithServiceCharge)}
                           </td>
                         </Show>
                         {/* spent + service charge + GST  */}
                         <Show when={showGst()}>
                           <td class="p-3 text-green-900 dark:text-green-400">
-                            {row.spentKnown ? fmt(row.spentwithservice_gst) : "—"}
+                            {money(row.spentwithservice_gst)}
                           </td>
                         </Show>
                       </tr>
@@ -1383,51 +1420,45 @@ export default function DailyReports() {
                     </td>
                     <td class="p-3" />
                     <td class="p-3 text-green-700 dark:text-green-300 font-bold text-base">
-                      {totals().totalLeads}
+                      {count(totals().leads)}
                     </td>
                     <Show when={showReplacement()}>
                       <td class="p-3 text-[#AC2334] dark:text-red-400 font-bold">
-                        {totals().totalReplaced == null
-                          ? "—"
-                          : totals().totalReplaced > 0
-                            ? `−${totals().totalReplaced}`
-                            : "0"}
+                        {credit(totals().replacedLeads)}
                       </td>
                       <td class="p-3 text-green-700 dark:text-green-300 font-bold text-base">
-                        {totals().totalBillable ?? "—"}
+                        {count(totals().billableLeads)}
                       </td>
                     </Show>
                     <td class="p-3 text-purple-700 dark:text-purple-300 font-bold">
-                      {fmt(totals().avgCPL)}
+                      {money(totals().cpl)}
                     </td>
                     <Show when={showRaw()}>
                       <td class="p-3 text-amber-700 dark:text-amber-400 font-bold">
-                        {fmt(totals().avgRawCPL ?? 0)}
+                        {money(totals().rawCpl)}
                       </td>
                       <td class="p-3 text-amber-700 dark:text-amber-400 font-bold">
-                        {fmt(totals().totalRawSpent ?? 0)}
+                        {money(totals().rawSpent)}
                       </td>
                     </Show>
                     <Show when={showBilled()}>
                       <td class="p-3 text-green-700 dark:text-green-300 font-bold">
-                        {fmt(totals().totalSpent)}
+                        {money(totals().spent)}
                       </td>
                     </Show>
                     <Show when={showBilledAmount()}>
                       <td class="p-3 text-green-800 dark:text-green-300 font-bold">
-                        {totals().totalBilledAmount == null
-                          ? "—"
-                          : fmt(totals().totalBilledAmount)}
+                        {money(totals().billedAmount)}
                       </td>
                     </Show>
                     <Show when={showSc()}>
                       <td class="p-3 text-green-700 dark:text-green-300 font-bold">
-                        {fmt(totals().totalspentwithServiceCharge)}
+                        {money(totals().spentwithServiceCharge)}
                       </td>
                     </Show>
                     <Show when={showGst()}>
                       <td class="p-3 text-green-900 dark:text-green-400 font-bold">
-                        {fmt(totals().totalspentwithservice_gst)}
+                        {money(totals().spentwithservice_gst)}
                       </td>
                     </Show>
                   </tr>
@@ -1436,6 +1467,22 @@ export default function DailyReports() {
             </Show>
           </table>
         </div>
+        </Show>
+
+        {/* What the TOTAL row is, when it isn't what's on screen. The footer
+            reads the payload's own totals block, so it covers every project in
+            the period — including any the status filter or the "ran in range"
+            test has hidden. Saying so is the price of not re-summing: a footer
+            that quietly followed the filters is what made computing one look
+            reasonable, and computing one is what printed ₹137.13 under a
+            ₹147.05 row. */}
+        <Show when={reportRows().length > 0 && !totalsCoversAll()}>
+          <p class="mt-3 text-xs text-amber-700 dark:text-amber-500 leading-relaxed">
+            The <b class="font-semibold">TOTAL</b> row is the period total for
+            all {totalsProjectCount()} projects, as sent by the server — the
+            table above is filtered to {reportRows().length}. The two are not
+            meant to add up.
+          </p>
         </Show>
 
         {/* Lead-replacement footnote — what the three columns mean. Every
@@ -1743,50 +1790,46 @@ export default function DailyReports() {
                       </td>
                       {/* Leads — maroon accent */}
                       <td class="px-4 py-3 text-center font-bold text-[#7B1C1C] text-md border-r border-[rgba(123,28,28,0.1)]">
-                        {row.leads}
+                        {count(row.leads)}
                       </td>
                       <Show when={showReplacement()}>
                         <td class="px-4 py-3 text-center font-semibold text-[#AC2334] text-md border-r border-[rgba(123,28,28,0.1)]">
-                          {row.replacedLeads == null
-                            ? "—"
-                            : row.replacedLeads > 0
-                              ? `−${row.replacedLeads}`
-                              : "0"}
+                          {credit(row.replacedLeads)}
                         </td>
                         <td class="px-4 py-3 text-center font-bold text-[#1a1a1a] text-md border-r border-[rgba(123,28,28,0.1)]">
-                          {row.billableLeads ?? "—"}
+                          {count(row.billableLeads)}
                         </td>
                       </Show>
                       <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
-                        {fmt(row.cpl)}
+                        {money(row.cpl)}
                       </td>
                       <Show when={showRaw()}>
                         <td class="px-4 py-3 text-center text-[#8a5a00] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
-                          {fmt(row.rawCpl ?? 0)}
+                          {money(row.rawCpl)}
                         </td>
                         <td class="px-4 py-3 text-center text-[#8a5a00] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
-                          {fmt(row.rawSpent ?? 0)}
+                          {money(row.rawSpent)}
                         </td>
                       </Show>
                       <Show when={showBilled()}>
                         <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
-                          {row.spentKnown ? fmt(row.spent) : "—"}
+                          {money(row.spent)}
                         </td>
                       </Show>
                       <Show when={showBilledAmount()}>
                         <td class="px-4 py-3 text-center text-[#1a1a1a] font-semibold text-md border-r border-[rgba(123,28,28,0.1)]">
-                          {row.billedAmount == null ? "—" : fmt(row.billedAmount)}
+                          {money(row.billedAmount)}
                         </td>
                       </Show>
                       <Show when={showSc()}>
                         <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
-                          {row.spentKnown ? fmt(row.spentwithServiceCharge) : "—"}
+                          {money(row.spentwithServiceCharge)}
                         </td>
                       </Show>
                       {/* GST — warm gold tint */}
                       <Show when={showGst()}>
                         <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
-                          {row.spentKnown ? fmt(row.spentwithservice_gst) : "—"}
+                          {money(row.spentwithservice_gst)}
                         </td>
                       </Show>
                     </tr>
@@ -1801,51 +1844,45 @@ export default function DailyReports() {
                   </td>
                   <td class="px-4 py-3 border-r border-white/10" />
                   <td class="px-4 py-3 text-center text-white font-bold text-sm border-r border-white/10">
-                    {totals().totalLeads}
+                    {count(totals().leads)}
                   </td>
                   <Show when={showReplacement()}>
                     <td class="px-4 py-3 text-center text-white font-bold text-sm border-r border-white/10">
-                      {totals().totalReplaced == null
-                        ? "—"
-                        : totals().totalReplaced > 0
-                          ? `−${totals().totalReplaced}`
-                          : "0"}
+                      {credit(totals().replacedLeads)}
                     </td>
                     <td class="px-4 py-3 text-center text-white font-bold text-sm border-r border-white/10">
-                      {totals().totalBillable ?? "—"}
+                      {count(totals().billableLeads)}
                     </td>
                   </Show>
                   <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
-                    {fmt(totals().avgCPL)}
+                    {money(totals().cpl)}
                   </td>
                   <Show when={showRaw()}>
                     <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
-                      {fmt(totals().avgRawCPL ?? 0)}
+                      {money(totals().rawCpl)}
                     </td>
                     <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
-                      {fmt(totals().totalRawSpent ?? 0)}
+                      {money(totals().rawSpent)}
                     </td>
                   </Show>
                   <Show when={showBilled()}>
                     <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
-                      {fmt(totals().totalSpent)}
+                      {money(totals().spent)}
                     </td>
                   </Show>
                   <Show when={showBilledAmount()}>
                     <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
-                      {totals().totalBilledAmount == null
-                        ? "—"
-                        : fmt(totals().totalBilledAmount)}
+                      {money(totals().billedAmount)}
                     </td>
                   </Show>
                   <Show when={showSc()}>
                     <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
-                      {fmt(totals().totalspentwithServiceCharge)}
+                      {money(totals().spentwithServiceCharge)}
                     </td>
                   </Show>
                   <Show when={showGst()}>
                     <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
-                      {fmt(totals().totalspentwithservice_gst)}
+                      {money(totals().spentwithservice_gst)}
                     </td>
                   </Show>
                 </tr>
@@ -2007,49 +2044,45 @@ export default function DailyReports() {
                         {row.projectName}
                       </td>
                       <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:700;color:#7B1C1C;border-right:1px solid rgba(123,28,28,0.1);">
-                        {row.leads}
+                        {count(row.leads)}
                       </td>
                       <Show when={showReplacement()}>
                         <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:600;color:#AC2334;border-right:1px solid rgba(123,28,28,0.1);">
-                          {row.replacedLeads == null
-                            ? "—"
-                            : row.replacedLeads > 0
-                              ? `−${row.replacedLeads}`
-                              : "0"}
+                          {credit(row.replacedLeads)}
                         </td>
                         <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:700;color:#1a1a1a;border-right:1px solid rgba(123,28,28,0.1);">
-                          {row.billableLeads ?? "—"}
+                          {count(row.billableLeads)}
                         </td>
                       </Show>
                       <td style="padding:10px 14px;text-align:center;font-size:14px;color:#333;border-right:1px solid rgba(123,28,28,0.1);">
-                        {fmt(row.cpl)}
+                        {money(row.cpl)}
                       </td>
                       <Show when={showRaw()}>
                         <td style="padding:10px 14px;text-align:center;font-size:14px;color:#8a5a00;font-weight:600;border-right:1px solid rgba(123,28,28,0.1);">
-                          {fmt(row.rawCpl ?? 0)}
+                          {money(row.rawCpl)}
                         </td>
                         <td style="padding:10px 14px;text-align:center;font-size:14px;color:#8a5a00;font-weight:600;border-right:1px solid rgba(123,28,28,0.1);">
-                          {fmt(row.rawSpent ?? 0)}
+                          {money(row.rawSpent)}
                         </td>
                       </Show>
                       <Show when={showBilled()}>
                         <td style="padding:10px 14px;text-align:center;font-size:14px;color:#333;border-right:1px solid rgba(123,28,28,0.1);">
-                          {row.spentKnown ? fmt(row.spent) : "—"}
+                          {money(row.spent)}
                         </td>
                       </Show>
                       <Show when={showBilledAmount()}>
                         <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:600;color:#1a1a1a;border-right:1px solid rgba(123,28,28,0.1);">
-                          {row.billedAmount == null ? "—" : fmt(row.billedAmount)}
+                          {money(row.billedAmount)}
                         </td>
                       </Show>
                       <Show when={showSc()}>
                         <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:600;color:#6b4c10;background:rgba(201,168,76,0.10);">
-                          {row.spentKnown ? fmt(row.spentwithServiceCharge) : "—"}
+                          {money(row.spentwithServiceCharge)}
                         </td>
                       </Show>
                       <Show when={showGst()}>
                         <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:600;color:#6b4c10;background:rgba(201,168,76,0.10);">
-                          {row.spentKnown ? fmt(row.spentwithservice_gst) : "—"}
+                          {money(row.spentwithservice_gst)}
                         </td>
                       </Show>
                     </tr>
@@ -2061,51 +2094,45 @@ export default function DailyReports() {
                     </td>
                     <td style="padding:11px 14px;border-right:1px solid rgba(255,255,255,0.12);" />
                     <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
-                      {totals().totalLeads}
+                      {count(totals().leads)}
                     </td>
                     <Show when={showReplacement()}>
                       <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
-                        {totals().totalReplaced == null
-                          ? "—"
-                          : totals().totalReplaced > 0
-                            ? `−${totals().totalReplaced}`
-                            : "0"}
+                        {credit(totals().replacedLeads)}
                       </td>
                       <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
-                        {totals().totalBillable ?? "—"}
+                        {count(totals().billableLeads)}
                       </td>
                     </Show>
                     <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
-                      {fmt(totals().avgCPL)}
+                      {money(totals().cpl)}
                     </td>
                     <Show when={showRaw()}>
                       <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
-                        {fmt(totals().avgRawCPL ?? 0)}
+                        {money(totals().rawCpl)}
                       </td>
                       <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
-                        {fmt(totals().totalRawSpent ?? 0)}
+                        {money(totals().rawSpent)}
                       </td>
                     </Show>
                     <Show when={showBilled()}>
                       <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
-                        {fmt(totals().totalSpent)}
+                        {money(totals().spent)}
                       </td>
                     </Show>
                     <Show when={showBilledAmount()}>
                       <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
-                        {totals().totalBilledAmount == null
-                          ? "—"
-                          : fmt(totals().totalBilledAmount)}
+                        {money(totals().billedAmount)}
                       </td>
                     </Show>
                     <Show when={showSc()}>
                       <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;">
-                        {fmt(totals().totalspentwithServiceCharge)}
+                        {money(totals().spentwithServiceCharge)}
                       </td>
                     </Show>
                     <Show when={showGst()}>
                       <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
-                        {fmt(totals().totalspentwithservice_gst)}
+                        {money(totals().spentwithservice_gst)}
                       </td>
                     </Show>
                   </tr>

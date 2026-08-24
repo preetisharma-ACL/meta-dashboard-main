@@ -155,6 +155,12 @@ const num = (v) => {
 // no GST — and the Billing page stays the authoritative figure. null (never 0)
 // where there is no premium figure to deduct from, so callers render a gap.
 const commonRow = (r) => ({
+  // The WIRE row, kept verbatim alongside the normalised fields. A surface that
+  // must print each cell from a named payload key — rather than from a field
+  // this decoder has already chosen a meaning for — reads it off here; see
+  // cellsOf() in DailyReports, which names one key per column and never
+  // combines two. Adding it is additive: nothing below changes.
+  wire: r ?? {},
   projectId: r?.project_id ?? null,
   projectName: r?.project_name ?? "",
   metaLeads: num(r?.meta_leads),
