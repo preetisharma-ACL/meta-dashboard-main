@@ -17,6 +17,7 @@ import {
   money,
   count,
   credit,
+  added,
   exp,
   makeLedgerCells,
 } from "../services/ledgerCells";
@@ -91,10 +92,11 @@ export default function DailyReports() {
   // billable_leads = total_leads − replaced_leads.
   // (the loading flag is the resource's own — see ledgerLoading below)
 
-  // Include raw (agency-cost) columns — Raw Spend + Raw CPL — in the on-screen
-  // table AND all downloads. ON by default = internal report (shows the agency's
-  // cost/margin); untick for a client-facing report (safe to share). Admin/CM
-  // only (there's no raw data for a client's own login).
+  // Include raw / internal columns — Meta Leads, Fed Leads, Raw CPL, Raw Spend
+  // — in the on-screen table AND all downloads. ON by default = internal report
+  // (shows the agency's cost/margin and the lead composition); untick for a
+  // client-facing report (safe to share). Admin/CM only (there's no raw data
+  // for a client's own login).
   const [includeRaw, setIncludeRaw] = createSignal(true);
 
   // Per-column show/hide for the three money columns (Client Billed, + S.C,
@@ -386,10 +388,23 @@ export default function DailyReports() {
   // renders the internal Raw columns.
   const hasRawSpend = () => !isClientViewer();
 
-  // Raw columns (Raw Spend + Raw CPL) render — on-screen AND in every download —
-  // only when raw data exists (admin/CM) AND the user opted in via the toggle.
-  // OFF → client-facing report (no raw anywhere, safe to share).
+  // Raw / internal columns — Meta Leads, Fed Leads, Raw CPL, Raw Spend — render
+  // on-screen AND in every download only when raw data exists (admin/CM) AND
+  // the user opted in via the toggle. OFF → client-facing report (nothing
+  // internal anywhere, safe to share).
+  //
+  // The lead SPLIT rides this same gate rather than a gate of its own. It is
+  // not secret — a client's own dashboard counts both — but the decomposition
+  // is internal framing, and the audience that wants it is the audience already
+  // looking at agency cost. A client login can never reach it: hasRawSpend() is
+  // false for them regardless of the checkbox.
   const showRaw = () => hasRawSpend() && includeRaw();
+
+  // "Total Leads" once the Meta / Fed split is beside it — the three read as a
+  // composition. Without the split there is nothing to total, so it keeps the
+  // name it had.
+  const leadsColLabel = () =>
+    showRaw() ? "Total Leads" : showReplacement() ? "Leads Generated" : "Leads";
 
   // The Amount Spent / Client Billed column (the spend the client is charged)
   // is AVAILABLE for admin/CM (raw data present → any client type, incl. CPL)
@@ -652,7 +667,7 @@ export default function DailyReports() {
   const pdfWidth = () => {
     let w = 155 + 180 + 80 + 110; // Date, Project, Leads, CPL — always present
     if (showReplacement()) w += 100 + 100; // Replaced + Billable
-    if (showRaw()) w += 110 + 130; // Raw CPL + Raw Spend
+    if (showRaw()) w += 100 + 90 + 110 + 130; // Meta + Fed + Raw CPL + Raw Spend
     if (showBilled()) w += 140;
     if (showBilledAmount()) w += 140;
     if (showSc()) w += 175;
@@ -717,14 +732,13 @@ export default function DailyReports() {
       ? `${new Date(fromDate()).toLocaleDateString("en-IN", { day: "numeric", month: "short" })} - ${new Date(toDate()).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}`
       : "All Dates";
   const exportColumns = () => {
-    const cols = [
-      "Date",
-      "Project",
-      showReplacement() ? "Leads Generated" : "Leads",
-    ];
+    const cols = ["Date", "Project"];
+    if (showRaw()) cols.push("Meta Leads", "Fed Leads");
+    cols.push(leadsColLabel());
     if (showReplacement()) cols.push("Replaced", "Billable");
+    if (showRaw()) cols.push("Raw CPL");
     cols.push("CPL");
-    if (showRaw()) cols.push("Raw CPL", "Raw Spend");
+    if (showRaw()) cols.push("Raw Spend");
     if (showBilled()) cols.push(showRaw() ? "Client Billed" : "Amount Spent");
     if (showBilledAmount()) cols.push("Billed");
     if (showSc()) cols.push(scColLabel());
@@ -733,12 +747,17 @@ export default function DailyReports() {
   };
   // Rows and the TOTAL row are the same shape, so ONE cell list serves both —
   // which is what stops a downloaded sheet from carrying a total the screen
-  // never showed. exp() blanks a null so a spreadsheet can still sum a column.
+  // never showed. exp() blanks a null so a spreadsheet can still sum a column,
+  // and the counts go out as plain integers rather than the "+N" / "−N" display
+  // forms so the columns stay sum-able.
   const exportCells = (r) => {
-    const base = [exp(r.leads)];
+    const base = [];
+    if (showRaw()) base.push(exp(r.metaLeads), exp(r.fedLeads));
+    base.push(exp(r.leads));
     if (showReplacement()) base.push(exp(r.replacedLeads), exp(r.billableLeads));
+    if (showRaw()) base.push(exp(r.rawCpl));
     base.push(exp(r.cpl));
-    if (showRaw()) base.push(exp(r.rawCpl), exp(r.rawSpent));
+    if (showRaw()) base.push(exp(r.rawSpent));
     if (showBilled()) base.push(exp(r.spent));
     if (showBilledAmount()) base.push(exp(r.billedAmount));
     if (showSc()) base.push(exp(r.spentwithServiceCharge));
@@ -751,6 +770,10 @@ export default function DailyReports() {
     ...exportCells(r),
   ];
   const exportTotalsRow = () => ["TOTAL", "", ...exportCells(totals())];
+  // Column span for the empty-state row: the export's own column list, counted.
+  // One definition, so a column added to the table can't leave the empty state
+  // spanning the wrong width — it was hardcoded at 6 and already stale.
+  const colCount = () => exportColumns().length;
   const exportFileDate = () => new Date().toISOString().split("T")[0];
   const triggerDownload = (blob, filename) => {
     const url = URL.createObjectURL(blob);
@@ -1080,7 +1103,8 @@ export default function DailyReports() {
                   Include raw spend / CPL
                   <span class="text-gray-400 dark:text-gray-500">
                     {" "}
-                    — internal (off = client-facing)
+                    — internal, with the Meta / Fed lead split (off =
+                    client-facing)
                   </span>
                 </span>
               </label>
@@ -1166,16 +1190,23 @@ export default function DailyReports() {
               <tr class="[&_th]:text-center [&_th:first-child]:text-left text-gray-700 dark:text-gray-200 [&_th]:whitespace-nowrap [&_th]:font-semibold">
                 <th class="p-3 pl-4">Date</th>
                 <th class="p-3">Project</th>
-                <th class="p-3">{showReplacement() ? "Leads Generated" : "Leads"}</th>
-                {/* Generated → Replaced → Billable reads left to right */}
+                {/* Meta / Fed split — internal, same gate as raw CPL / spend */}
+                <Show when={showRaw()}>
+                  <th class="p-3">Meta Leads</th>
+                  <th class="p-3">Fed Leads</th>
+                </Show>
+                <th class="p-3">{leadsColLabel()}</th>
+                {/* Total → Replaced → Billable reads left to right */}
                 <Show when={showReplacement()}>
                   <th class="p-3 text-[#AC2334] dark:text-red-400">Replaced</th>
                   <th class="p-3">Billable</th>
                 </Show>
-                <th class="p-3">CPL</th>
                 {/* Raw (agency cost) — admin/CM, toggle on; all client types */}
                 <Show when={showRaw()}>
                   <th class="p-3">Raw CPL</th>
+                </Show>
+                <th class="p-3">CPL</th>
+                <Show when={showRaw()}>
                   <th class="p-3">Raw Spend</th>
                 </Show>
                 <Show when={showBilled()}>
@@ -1205,7 +1236,7 @@ export default function DailyReports() {
                 fallback={
                   <tbody>
                     <tr>
-                      <td colspan="6" class="py-20 text-center">
+                      <td colspan={colCount()} class="py-20 text-center">
                         <div class="flex flex-col items-center gap-2">
                           <svg
                             class="w-12 h-12 text-gray-300 dark:text-gray-600"
@@ -1272,7 +1303,17 @@ export default function DailyReports() {
                           </span>
                         </td>
 
-                        {/* Leads generated */}
+                        {/* Meta / Fed split — internal */}
+                        <Show when={showRaw()}>
+                          <td class="p-3 font-bold text-gray-800 dark:text-gray-100">
+                            {count(row.metaLeads)}
+                          </td>
+                          <td class="p-3 font-medium text-green-700 dark:text-green-400">
+                            {added(row.fedLeads)}
+                          </td>
+                        </Show>
+
+                        {/* Total leads */}
                         <td class="p-3 font-bold text-gray-800 dark:text-gray-100">
                           {count(row.leads)}
                         </td>
@@ -1287,17 +1328,19 @@ export default function DailyReports() {
                           </td>
                         </Show>
 
-                        {/* CPL — premium_cpl, the client-facing figure */}
-                        <td class="p-3 text-purple-700 dark:text-purple-300">
-                          {money(row.cpl)}
-                        </td>
-
-                        {/* Spent */}
                         {/* Raw (agency cost) — admin/CM, toggle on */}
                         <Show when={showRaw()}>
                           <td class="p-3 text-amber-700 dark:text-amber-400">
                             {money(row.rawCpl)}
                           </td>
+                        </Show>
+
+                        {/* CPL — premium_cpl, the client-facing figure */}
+                        <td class="p-3 text-purple-700 dark:text-purple-300">
+                          {money(row.cpl)}
+                        </td>
+
+                        <Show when={showRaw()}>
                           <td class="p-3 text-amber-700 dark:text-amber-400">
                             {money(row.rawSpent)}
                           </td>
@@ -1337,6 +1380,14 @@ export default function DailyReports() {
                       </span>
                     </td>
                     <td class="p-3" />
+                    <Show when={showRaw()}>
+                      <td class="p-3 text-green-700 dark:text-green-300 font-bold text-base">
+                        {count(totals().metaLeads)}
+                      </td>
+                      <td class="p-3 text-green-700 dark:text-green-400 font-bold">
+                        {added(totals().fedLeads)}
+                      </td>
+                    </Show>
                     <td class="p-3 text-green-700 dark:text-green-300 font-bold text-base">
                       {count(totals().leads)}
                     </td>
@@ -1348,13 +1399,15 @@ export default function DailyReports() {
                         {count(totals().billableLeads)}
                       </td>
                     </Show>
-                    <td class="p-3 text-purple-700 dark:text-purple-300 font-bold">
-                      {money(totals().cpl)}
-                    </td>
                     <Show when={showRaw()}>
                       <td class="p-3 text-amber-700 dark:text-amber-400 font-bold">
                         {money(totals().rawCpl)}
                       </td>
+                    </Show>
+                    <td class="p-3 text-purple-700 dark:text-purple-300 font-bold">
+                      {money(totals().cpl)}
+                    </td>
+                    <Show when={showRaw()}>
                       <td class="p-3 text-amber-700 dark:text-amber-400 font-bold">
                         {money(totals().rawSpent)}
                       </td>
@@ -1665,8 +1718,16 @@ export default function DailyReports() {
                   <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
                     Project
                   </th>
+                  <Show when={showRaw()}>
+                    <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
+                      Meta Leads
+                    </th>
+                    <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
+                      Fed Leads
+                    </th>
+                  </Show>
                   <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
-                    {showReplacement() ? "Leads Generated" : "Leads"}
+                    {leadsColLabel()}
                   </th>
                   <Show when={showReplacement()}>
                     <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
@@ -1676,13 +1737,15 @@ export default function DailyReports() {
                       Billable
                     </th>
                   </Show>
-                  <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
-                    CPL
-                  </th>
                   <Show when={showRaw()}>
                     <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
                       Raw CPL
                     </th>
+                  </Show>
+                  <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
+                    CPL
+                  </th>
+                  <Show when={showRaw()}>
                     <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
                       Raw Spend
                     </th>
@@ -1732,6 +1795,14 @@ export default function DailyReports() {
                         {row.projectName}
                       </td>
                       {/* Leads — maroon accent */}
+                      <Show when={showRaw()}>
+                        <td class="px-4 py-3 text-center font-bold text-[#7B1C1C] text-md border-r border-[rgba(123,28,28,0.1)]">
+                          {count(row.metaLeads)}
+                        </td>
+                        <td class="px-4 py-3 text-center font-semibold text-[#1D7044] text-md border-r border-[rgba(123,28,28,0.1)]">
+                          {added(row.fedLeads)}
+                        </td>
+                      </Show>
                       <td class="px-4 py-3 text-center font-bold text-[#7B1C1C] text-md border-r border-[rgba(123,28,28,0.1)]">
                         {count(row.leads)}
                       </td>
@@ -1743,13 +1814,15 @@ export default function DailyReports() {
                           {count(row.billableLeads)}
                         </td>
                       </Show>
-                      <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
-                        {money(row.cpl)}
-                      </td>
                       <Show when={showRaw()}>
                         <td class="px-4 py-3 text-center text-[#8a5a00] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
                           {money(row.rawCpl)}
                         </td>
+                      </Show>
+                      <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
+                        {money(row.cpl)}
+                      </td>
+                      <Show when={showRaw()}>
                         <td class="px-4 py-3 text-center text-[#8a5a00] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
                           {money(row.rawSpent)}
                         </td>
@@ -1786,6 +1859,14 @@ export default function DailyReports() {
                     Total
                   </td>
                   <td class="px-4 py-3 border-r border-white/10" />
+                  <Show when={showRaw()}>
+                    <td class="px-4 py-3 text-center text-white font-bold text-sm border-r border-white/10">
+                      {count(totals().metaLeads)}
+                    </td>
+                    <td class="px-4 py-3 text-center text-white font-bold text-sm border-r border-white/10">
+                      {added(totals().fedLeads)}
+                    </td>
+                  </Show>
                   <td class="px-4 py-3 text-center text-white font-bold text-sm border-r border-white/10">
                     {count(totals().leads)}
                   </td>
@@ -1797,13 +1878,15 @@ export default function DailyReports() {
                       {count(totals().billableLeads)}
                     </td>
                   </Show>
-                  <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
-                    {money(totals().cpl)}
-                  </td>
                   <Show when={showRaw()}>
                     <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
                       {money(totals().rawCpl)}
                     </td>
+                  </Show>
+                  <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
+                    {money(totals().cpl)}
+                  </td>
+                  <Show when={showRaw()}>
                     <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
                       {money(totals().rawSpent)}
                     </td>
@@ -1926,8 +2009,20 @@ export default function DailyReports() {
                     <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
                       Project
                     </th>
+                    <Show when={showRaw()}>
+                      <th style="padding:11px 14px;text-align:center;color:#f5d9a0;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
+                        Meta Leads
+                      </th>
+                      <th style="padding:11px 14px;text-align:center;color:#f5d9a0;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
+                        Fed Leads
+                      </th>
+                    </Show>
                     <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
-                      {showReplacement() ? "Leads Gen." : "Leads"}
+                      {showRaw()
+                        ? "Total Leads"
+                        : showReplacement()
+                          ? "Leads Gen."
+                          : "Leads"}
                     </th>
                     <Show when={showReplacement()}>
                       <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
@@ -1937,13 +2032,15 @@ export default function DailyReports() {
                         Billable
                       </th>
                     </Show>
-                    <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
-                      CPL
-                    </th>
                     <Show when={showRaw()}>
                       <th style="padding:11px 14px;text-align:center;color:#f5d9a0;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
                         Raw CPL
                       </th>
+                    </Show>
+                    <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
+                      CPL
+                    </th>
+                    <Show when={showRaw()}>
                       <th style="padding:11px 14px;text-align:center;color:#f5d9a0;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
                         Raw Spend
                       </th>
@@ -1986,6 +2083,14 @@ export default function DailyReports() {
                       <td style="padding:10px 14px;text-align:center;font-size:14px;color:#333;font-weight:500;border-right:1px solid rgba(123,28,28,0.1);">
                         {row.projectName}
                       </td>
+                      <Show when={showRaw()}>
+                        <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:700;color:#7B1C1C;border-right:1px solid rgba(123,28,28,0.1);">
+                          {count(row.metaLeads)}
+                        </td>
+                        <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:600;color:#1D7044;border-right:1px solid rgba(123,28,28,0.1);">
+                          {added(row.fedLeads)}
+                        </td>
+                      </Show>
                       <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:700;color:#7B1C1C;border-right:1px solid rgba(123,28,28,0.1);">
                         {count(row.leads)}
                       </td>
@@ -1997,13 +2102,15 @@ export default function DailyReports() {
                           {count(row.billableLeads)}
                         </td>
                       </Show>
-                      <td style="padding:10px 14px;text-align:center;font-size:14px;color:#333;border-right:1px solid rgba(123,28,28,0.1);">
-                        {money(row.cpl)}
-                      </td>
                       <Show when={showRaw()}>
                         <td style="padding:10px 14px;text-align:center;font-size:14px;color:#8a5a00;font-weight:600;border-right:1px solid rgba(123,28,28,0.1);">
                           {money(row.rawCpl)}
                         </td>
+                      </Show>
+                      <td style="padding:10px 14px;text-align:center;font-size:14px;color:#333;border-right:1px solid rgba(123,28,28,0.1);">
+                        {money(row.cpl)}
+                      </td>
+                      <Show when={showRaw()}>
                         <td style="padding:10px 14px;text-align:center;font-size:14px;color:#8a5a00;font-weight:600;border-right:1px solid rgba(123,28,28,0.1);">
                           {money(row.rawSpent)}
                         </td>
@@ -2036,6 +2143,14 @@ export default function DailyReports() {
                       Total
                     </td>
                     <td style="padding:11px 14px;border-right:1px solid rgba(255,255,255,0.12);" />
+                    <Show when={showRaw()}>
+                      <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
+                        {count(totals().metaLeads)}
+                      </td>
+                      <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
+                        {added(totals().fedLeads)}
+                      </td>
+                    </Show>
                     <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
                       {count(totals().leads)}
                     </td>
@@ -2047,13 +2162,15 @@ export default function DailyReports() {
                         {count(totals().billableLeads)}
                       </td>
                     </Show>
-                    <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
-                      {money(totals().cpl)}
-                    </td>
                     <Show when={showRaw()}>
                       <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
                         {money(totals().rawCpl)}
                       </td>
+                    </Show>
+                    <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
+                      {money(totals().cpl)}
+                    </td>
+                    <Show when={showRaw()}>
                       <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
                         {money(totals().rawSpent)}
                       </td>
