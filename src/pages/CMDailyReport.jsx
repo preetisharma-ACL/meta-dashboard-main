@@ -218,9 +218,11 @@ export default function CMDailyReport() {
     const n = Number(v);
     return Number.isFinite(n) ? n : null;
   };
-  // GST is a flat 18% here, as it was before. The viewer's own billing overview
-  // (which /daily-reports falls back to for the rate) is the CM's, not the
-  // client's, so it is not a source this page may read.
+  // GST is a flat 18% platform-wide — a policy constant, not a per-client rate,
+  // so there is nothing to resolve and nothing that can come back missing. Note
+  // it is deliberately NOT read from the viewer's billing overview the way
+  // /daily-reports reads it: that overview belongs to the CM, not to the client
+  // this report is about.
   const GST_PCT = 18;
   const scMult = () => {
     const p = scPct();
@@ -234,10 +236,32 @@ export default function CMDailyReport() {
       ? `Client Billed (incl S.C + ${GST_PCT}% GST)`
       : `Client Billed (incl ${p}% S.C + ${GST_PCT}% GST)`;
   };
-  // True when the S.C column is showing a gap because the rate never resolved —
-  // drives the note under the table, so the "—" is explained rather than read
-  // as "this client is charged nothing".
-  const scUnresolved = () => !iscpl() && scPct() == null;
+  // ── Why the S.C column is a gap, when it is ───────────────────────────────
+  // A null rate has three meanings and only one of them is a bug, so the note
+  // under the table has to say which:
+  //
+  //   "ok"       a rate came back. Nothing to explain.
+  //   "n/a"      the client is CPL. service_charge is null BY DESIGN — the rate
+  //              is only set for hybrid/retainer at onboarding — so a CPL client
+  //              having none is correct, not missing. This page hides the spend
+  //              and billed columns for CPL anyway; the note says why.
+  //   "missing"  a summary came back for a HYBRID or RETAINER client with no
+  //              rate on it. That is a bug: the rate should have been set at
+  //              onboarding, and someone needs to go set it.
+  //   "unknown"  no summary block at all, so we cannot tell "n/a" from
+  //              "missing". This is the state until the backend adds
+  //              report_summary to /dashboard/ledger/ — meta comes back null
+  //              there today for every role, which is what the old Client PK
+  //              scavenging was working around, and answering with 0%.
+  //
+  // The distinction matters because "normal" and "go fix your data" look
+  // identical on screen: both are an em dash.
+  const scState = () => {
+    if (scPct() != null) return "ok";
+    if (!reportSummary()) return "unknown";
+    if (iscpl()) return "n/a";
+    return "missing";
+  };
 
   // ── Every cell on this page ───────────────────────────────────────────────
   // The shared reader: one named payload key per column, no division, "—" for
@@ -245,18 +269,18 @@ export default function CMDailyReport() {
   // agency-cost keys are on their payload — whether the raw COLUMNS render is
   // the toggle's business (showRaw), not the reader's.
   //
-  // taxBase: the S.C / GST column on this page loads onto billed_amount, the
-  // client-facing spend after the replacement credit, because that is the
-  // figure those charges are quoted against here. On a row with no
-  // replacements it equals premium_spend, which is what /daily-reports loads.
-  const { rowOf } = makeLedgerCells({
+  // The S.C / GST column loads onto premium_spend — the "Spent" column, before
+  // the replacement credit — which is what /daily-reports loads onto too. This
+  // page briefly loaded onto billed_amount instead; the two agree only where
+  // replaced_leads is 0, so that was the same disagreement this migration
+  // exists to remove, in a column nobody would have thought to compare.
+  const { rowOf: rowCells } = makeLedgerCells({
     hasRaw: () => true,
     clientType,
     scMult,
     gstMult,
     iscpl,
   });
-  const rowCells = (w) => rowOf(w, { taxBase: "billedAmount" });
 
   // ── Lead replacement (Replaced / Billable) ────────────────────────────────
   // Replacements apply to CPL and hybrid clients only — a retainer row comes
@@ -343,13 +367,22 @@ export default function CMDailyReport() {
         clientNomenId: client.client_nomen_id,
       });
       const summary = res?.meta?.report_summary ?? null;
-      if (summary?.service_charge == null) {
-        // Worth a line in the console, because the consequence is a visible gap
-        // in a money column and someone will ask why. The old code hit the same
-        // wall and answered it with 0%.
+      // Only the states that are actually wrong get a console line. A CPL
+      // client with no service_charge is correct by design, and warning about
+      // it would train everyone to ignore the warning that matters.
+      if (!summary) {
         console.warn(
-          "[CMDailyReport] /dashboard/ledger/ returned no meta.report_summary.service_charge for client_nomen_id=%s — the S.C/GST column will render '—' rather than assume 0%%.",
+          "[CMDailyReport] /dashboard/ledger/ returned no meta.report_summary for client_nomen_id=%s — the S.C/GST column will render '—' rather than assume 0%%.",
           client.client_nomen_id,
+        );
+      } else if (
+        summary.service_charge == null &&
+        String(summary.client_type || "").toLowerCase() !== "cpl"
+      ) {
+        console.warn(
+          "[CMDailyReport] client_nomen_id=%s is '%s' but carries no service_charge — a rate should be set on the client record. Rendering '—' rather than assuming 0%%.",
+          client.client_nomen_id,
+          summary.client_type,
         );
       }
       setReport({
@@ -1229,17 +1262,45 @@ export default function CMDailyReport() {
           </p>
         </Show>
 
-        {/* The S.C rate didn't resolve, so the loaded column is a gap. Better a
-            visible gap than 0%: the old code charged 0% silently, and a column
-            headed "incl S.C" reading exactly the un-loaded figure is the kind of
-            wrong that survives review. */}
-        <Show when={reportRows().length > 0 && scUnresolved()}>
-          <p class="mt-3 text-xs text-amber-700 dark:text-amber-500 leading-relaxed">
-            No service-charge rate came back for this client, so{" "}
-            <b class="font-semibold">{billedInclLabel()}</b> shows “—” rather
-            than assuming 0%. Client Billed beside it is the figure before
-            service charge and GST, and is unaffected.
-          </p>
+        {/* Why the loaded column is a gap — three states, one note each, and
+            only "missing" is a problem. Better a visible gap than 0%: the old
+            code charged 0% silently, and a column headed "incl S.C" reading
+            exactly the un-loaded figure is the kind of wrong that survives
+            review. */}
+        <Show when={reportRows().length > 0}>
+          {/* Normal: CPL clients are billed per lead and have no S.C rate. */}
+          <Show when={scState() === "n/a"}>
+            <p class="mt-3 text-xs text-gray-400 dark:text-gray-500 leading-relaxed">
+              This client is billed per lead (CPL), so no service charge applies
+              — the rate is set only for hybrid and retainer clients at
+              onboarding. The spend and billed columns don't apply to a CPL
+              contract and aren't shown.
+            </p>
+          </Show>
+
+          {/* A bug in the client's own record: this type should carry a rate. */}
+          <Show when={scState() === "missing"}>
+            <p class="mt-3 text-xs text-amber-700 dark:text-amber-500 leading-relaxed">
+              This client is <b class="font-semibold">{clientType()}</b>, so a
+              service-charge rate should be set against it — none came back with
+              this report. <b class="font-semibold">{billedInclLabel()}</b>{" "}
+              shows “—” rather than assuming 0%; the rate needs setting on the
+              client record. Spent and Client Billed beside it are the figures
+              before service charge and GST, and are unaffected.
+            </p>
+          </Show>
+
+          {/* Can't tell the two apart — no summary came back at all. */}
+          <Show when={scState() === "unknown"}>
+            <p class="mt-3 text-xs text-amber-700 dark:text-amber-500 leading-relaxed">
+              No client summary came back with this report, so the
+              service-charge rate is unknown — it may be genuinely absent (a CPL
+              client) or simply not surfaced.{" "}
+              <b class="font-semibold">{billedInclLabel()}</b> shows “—” rather
+              than assuming 0%. Spent and Client Billed beside it are the
+              figures before service charge and GST, and are unaffected.
+            </p>
+          </Show>
         </Show>
 
         {/* ── Action Buttons (Preview + Download PDF/CSV/Excel) ── */}

@@ -180,18 +180,18 @@ export const makeLedgerCells = ({
   // Rows and the TOTAL row are the same shape, so a cell written once reads
   // correctly at either level.
   //
-  // taxBase names which of this row's OWN figures the S.C / GST columns load
-  // onto — "spent" (premium spend) on the client/admin report, "billedAmount"
-  // (spend less the replacement credit) on the CM report, where that is the
-  // column those charges are quoted against. Naming it here means the choice is
-  // made once per page instead of at each of the four render paths.
-  const rowOf = (w, { taxBase = "spent" } = {}) => {
+  // The S.C and GST columns load onto `spent` — premium_spend, the pre-credit
+  // figure — on every surface. This was briefly configurable per page, with the
+  // CM report loading onto billed_amount instead. It isn't any more: the two
+  // bases agree only where replaced_leads is 0, so a knob here is a knob for
+  // making two reports of the same client disagree, and the whole point of this
+  // module is that they can't.
+  const rowOf = (w) => {
     const cells = cellsOf(w);
-    const base = cells[taxBase];
     return {
       ...cells,
-      spentwithServiceCharge: withSc(base),
-      spentwithservice_gst: withScGst(base),
+      spentwithServiceCharge: withSc(cells.spent),
+      spentwithservice_gst: withScGst(cells.spent),
     };
   };
 
