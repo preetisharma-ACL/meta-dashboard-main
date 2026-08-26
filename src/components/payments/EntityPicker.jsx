@@ -52,8 +52,31 @@ import { fieldClass, labelClass } from "./paymentsFormat";
 //   focusToken   changing this to a new value opens the list and focuses the
 //                input. Used to hand the operator straight to the client picker
 //                when an org turns out to have several.
+//
+//   freeText     opt-in: text that was typed but never committed to a pick is
+//                MEANINGFUL and must survive closing the list. The payments
+//                ledger uses it because its two org params are different
+//                searches — ?organization=<id> for a picked row,
+//                ?organization_name=<text> for a substring — so an operator who
+//                types "godrej" and clicks away has still expressed a filter.
+//                Everywhere else the typed query is scratch: a form field holds
+//                an id, and half-typed text that looked committed but wasn't
+//                would be worse than losing it.
+//                In this mode the input is CONTROLLED by the caller —
+//                `text` is the field's value and `onTextChange` every
+//                keystroke — because the caller has to be able to clear it
+//                (Clear filters) and to fill it in on a pick.
+//   text / onTextChange   only read when freeText is on.
 export default function EntityPicker(props) {
-  const [query, setQuery] = createSignal("");
+  // Uncommitted text lives here normally, and in the CALLER in freeText mode.
+  // Everything below reads query()/setQuery() and doesn't care which it is.
+  const [localQuery, setLocalQuery] = createSignal("");
+  const freeText = () => !!props.freeText;
+  const query = () => (freeText() ? (props.text ?? "") : localQuery());
+  const setQuery = (v) => {
+    if (freeText()) props.onTextChange?.(v);
+    else setLocalQuery(v);
+  };
   const [open, setOpen] = createSignal(false);
   // Keyboard cursor into filtered(). -1 = nothing highlighted, so a blind Enter
   // never commits a client the operator hasn't actually looked at.
@@ -138,7 +161,9 @@ export default function EntityPicker(props) {
 
   const close = () => {
     setOpen(false);
-    setQuery("");
+    // In freeText mode the query IS the filter — dropping it on blur would
+    // silently undo a search the operator had just typed.
+    if (!freeText()) setQuery("");
     setActive(-1);
   };
 
@@ -155,6 +180,10 @@ export default function EntityPicker(props) {
   // the second arg. Clearing passes (null, null).
   const choose = (id, option = null) => {
     props.onChange?.(id, option);
+    // Clearing in freeText mode has to empty the box as well — the caller owns
+    // the text, and an onChange(null) that left "godrej" on screen would show a
+    // search that is no longer being applied.
+    if (freeText() && id === null) setQuery("");
     close();
   };
 
@@ -214,11 +243,16 @@ export default function EntityPicker(props) {
 
   // Closed → the field IS the selection. Open → the field is the search box,
   // and the selection moves to the placeholder so it isn't lost from sight.
-  const inputValue = () => (open() ? query() : selectionLabel());
+  //
+  // freeText mode collapses the two: the field is always the text, and the
+  // caller writes the picked name into it on commit, so a pick and a typed
+  // search read identically once made.
+  const inputValue = () => (freeText() ? query() : open() ? query() : selectionLabel());
 
   const inputPlaceholder = () => {
     if (items.loading) return "Loading…";
     if (loadError()) return "Unavailable";
+    if (freeText()) return props.placeholder ?? "Type to search…";
     if (open() && hasSelection())
       return `Search… (current: ${selectionLabel()})`;
     if (open()) return "Type to search…";
@@ -266,7 +300,13 @@ export default function EntityPicker(props) {
         <div class="absolute inset-y-0 right-2 flex items-center gap-1">
           {/* Clearing an optional field shouldn't mean hunting for a row in a
               700-item list. */}
-          <Show when={props.allowClear && hasSelection() && !props.disabled}>
+          <Show
+            when={
+              props.allowClear &&
+              (hasSelection() || (freeText() && query() !== "")) &&
+              !props.disabled
+            }
+          >
             <button
               type="button"
               onClick={() => choose(null)}

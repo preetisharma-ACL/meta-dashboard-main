@@ -203,9 +203,17 @@ const readPagination = (res, rowCount) => {
 // their own visible set (same call, server narrows it).
 //
 // filters: { docsStatus, status, method, project, dateFrom, dateTo, client,
-//            clientType, page, pageSize }
+//            organization, organizationName, clientType, page, pageSize }
 //   docsStatus  "pending" → the needs-paperwork queue.
 //   client      case-insensitive client-NAME match (server-side ?client=).
+//   organization      organization id → ?organization=, an EXACT match. What
+//               the org picker sends once a company has been chosen.
+//   organizationName  free text → ?organization_name=, a case-insensitive
+//               SUBSTRING match. Deliberately a different param, not a fallback:
+//               it can match several companies at once ("NA" returns 48 rows
+//               where organization=87 returns 36), so a caller that shows a
+//               count must describe it as "matching that text", never as one
+//               organization's payments. Send one or the other, never both.
 //   clientType  "cpl" | "hybrid" | "retainer".
 //   Anything falsy is dropped rather than sent as an empty param.
 //
@@ -223,6 +231,8 @@ export const fetchPayments = async (filters = {}) => {
       method: filters.method,
       project: filters.project,
       client: filters.client,
+      organization: filters.organization,
+      organization_name: filters.organizationName ?? filters.organization_name,
       client_type: filters.clientType ?? filters.client_type,
       date_from: filters.dateFrom ?? filters.date_from,
       date_to: filters.dateTo ?? filters.date_to,

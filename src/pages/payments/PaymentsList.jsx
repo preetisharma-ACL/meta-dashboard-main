@@ -14,9 +14,11 @@ import { A } from "@solidjs/router";
 import {
   fetchPayments,
   fetchPaymentsCount,
+  fetchPaymentOrganizations,
   deletePayment,
 } from "../../services/payments";
 import PaymentsTable from "../../components/payments/PaymentsTable";
+import EntityPicker from "../../components/payments/EntityPicker";
 import EditPaymentModal from "../../components/payments/EditPaymentModal";
 import MonthPicker from "../../components/sales/MonthPicker";
 import {
@@ -35,10 +37,18 @@ import { sumMoney } from "../../components/sales/salesFormat";
 // page.
 //
 // EVERYTHING IS SERVER-SIDE: pagination, month, client type, docs status,
-// method, and the client search. Under pagination a client-side filter would
-// narrow only the 20-50 rows currently in hand while the tiles claimed to
-// describe all 264 — so narrowing happens where the total is computed, and the
-// tiles read meta.pagination.total.
+// method, the client search and the organization picker. Under pagination a
+// client-side filter would narrow only the 20-50 rows currently in hand while
+// the tiles claimed to describe all 264 — so narrowing happens where the total
+// is computed, and the tiles read meta.pagination.total.
+//
+// The organization field is TWO server filters behind one box, because accounts
+// know the invoice company but not the internal nomen:
+//   picked from the list → ?organization=<id>       exact
+//   typed and left as text → ?organization_name=<t> case-insensitive SUBSTRING
+// Only ever one of them, and a substring can span several companies — so the
+// count tile below stays worded as "matching the current filters" and never
+// claims to be one organization's payments.
 //
 // props: lockDocsStatus?  pins docs_status and hides the control (queue mode)
 //        title / kicker / blurb / emptyHint  page copy
@@ -88,6 +98,16 @@ export default function PaymentsList(props) {
   const [method, setMethod] = createSignal("");
   const [query, setQuery] = createSignal(""); // what's in the box
   const [search, setSearch] = createSignal(""); // debounced → sent as ?client=
+  // Organization ("client company"), three signals for one field:
+  //   orgText   what's in the box — the picker is controlled, so Clear filters
+  //             can empty it and a commit can write the picked name into it
+  //   organization  a COMMITTED pick → ?organization=<id>
+  //   orgSearch     debounced free text → ?organization_name=<text>
+  // The last two are mutually exclusive; whichever the operator did most
+  // recently wins, and the other is cleared in the same batch.
+  const [orgText, setOrgText] = createSignal("");
+  const [organization, setOrganization] = createSignal(null);
+  const [orgSearch, setOrgSearch] = createSignal("");
 
   // ── Pagination ────────────────────────────────────────────────────────────
   // 50 by default: 264 payments over 20-row pages is 14 pages of clicking.
@@ -108,6 +128,39 @@ export default function PaymentsList(props) {
   };
   onCleanup(() => clearTimeout(searchTimer));
 
+  // Same debounce for the organization box, and for the same reason. Typing
+  // supersedes a committed pick: the id no longer describes what's on screen,
+  // so it's dropped rather than left to AND with the text and match nothing.
+  let orgTimer;
+  const onOrgInput = (v) => {
+    // The picker echoes an empty string back after a clear, which the clear
+    // itself has already handled. Without this the echo would schedule a
+    // no-op filter write 350ms later — a second identical request, and a
+    // second flash of the loading state.
+    if (v === orgText()) return;
+    setOrgText(v);
+    clearTimeout(orgTimer);
+    orgTimer = setTimeout(() => {
+      applyFilter(() => {
+        setOrganization(null);
+        setOrgSearch(v.trim());
+      });
+    }, 350);
+  };
+  onCleanup(() => clearTimeout(orgTimer));
+
+  // Committing a pick beats any keystroke still sitting in the debounce — an
+  // exact id is strictly better than the substring that was being typed towards
+  // it, and letting the timer fire afterwards would downgrade it back.
+  const onOrgPick = (id, opt) => {
+    clearTimeout(orgTimer);
+    applyFilter(() => {
+      setOrganization(id ?? null);
+      setOrgText(opt?.name ?? "");
+      setOrgSearch("");
+    });
+  };
+
   // Filters WITHOUT page/pageSize — shared by the list fetch and the count
   // probe, so the count tile describes the same set the table is showing.
   const baseFilters = createMemo(() => {
@@ -118,6 +171,10 @@ export default function PaymentsList(props) {
       dateTo: to,
       method: method(),
       client: search(),
+      // One or the other, never both — an exact id and a substring ANDed
+      // together would quietly exclude rows that satisfy only the id.
+      organization: organization() ?? "",
+      organizationName: organization() != null ? "" : orgSearch(),
       clientType: clientType(),
     };
   });
@@ -234,6 +291,7 @@ export default function PaymentsList(props) {
 
   const hasFilters = () =>
     query().trim() !== "" ||
+    orgText().trim() !== "" ||
     month() !== "" ||
     clientType() !== "" ||
     method() !== "" ||
@@ -243,6 +301,10 @@ export default function PaymentsList(props) {
     applyFilter(() => {
       setQuery("");
       setSearch("");
+      clearTimeout(orgTimer);
+      setOrgText("");
+      setOrganization(null);
+      setOrgSearch("");
       setMonth("");
       setClientType("");
       setMethod("");
@@ -605,7 +667,7 @@ export default function PaymentsList(props) {
 
       {/* ════════ FILTERS ════════ */}
       <div class="bg-white dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-xl p-4 mb-4">
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div>
             <label class={labelClass}>Client search</label>
             <input
@@ -614,6 +676,37 @@ export default function PaymentsList(props) {
               onInput={(e) => onSearchInput(e.currentTarget.value)}
               placeholder="Client name…"
               class={fieldClass}
+            />
+          </div>
+
+          {/* Organization = the client's company: the way in for accounts, who
+              know the invoice company but not the client's nomen. Same roster
+              (/payments/organizations/, ~140 of which appear in payments) that
+              feeds the Record Payment picker — one source, not a second list.
+              Too many for a <select>, hence the searchable combobox.
+
+              freeText because BOTH halves are real filters here: pick a company
+              and it sends the exact id, or just type and it sends the substring.
+              Typed text therefore has to survive clicking away. */}
+          <div>
+            <EntityPicker
+              label="Organization"
+              fetcher={fetchPaymentOrganizations}
+              freeText
+              text={orgText()}
+              onTextChange={onOrgInput}
+              value={organization()}
+              onChange={onOrgPick}
+              allowClear
+              clearLabel="Clear organization"
+              placeholder="Company name…"
+              hint={
+                orgSearch()
+                  ? "Matching any company containing that text."
+                  : undefined
+              }
+              forbiddenMsg="You don't have access to the organization list."
+              errorMsg="Could not load organizations. Please retry."
             />
           </div>
 

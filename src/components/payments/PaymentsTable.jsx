@@ -280,9 +280,18 @@ export default function PaymentsTable(props) {
                           >
                             {clientLabel ?? "—"}
                           </span>
-                          <Show when={p.project}>
-                            <span class="block text-xs text-[#8593A8] dark:text-gray-500 truncate max-w-[200px]">
-                              {p.project}
+                          <Show when={p.organizationName || p.project}>
+                            <span
+                              class="block text-xs text-[#8593A8] dark:text-gray-500 truncate max-w-[200px]"
+                              title={
+                                [p.organizationName, p.project]
+                                  .filter(Boolean)
+                                  .join(" · ") || undefined
+                              }
+                            >
+                              {[p.organizationName, p.project]
+                                .filter(Boolean)
+                                .join(" · ")}
                             </span>
                           </Show>
                         </div>
