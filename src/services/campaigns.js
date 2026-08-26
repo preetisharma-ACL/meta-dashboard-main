@@ -22,6 +22,25 @@ const getClientNomen = () => {
   return auth?.clientNomen || null;
 };
 
+// Nomen ID of the client an internal viewer (admin / campaign manager / sales)
+// is currently previewing — the id form of getClientNomen's name.
+// /campaigns/ and /campaigns/insights/bulk/ filter on client_nomen_id; the
+// name-based client_nomen is not what those two match on, so an internal viewer
+// sending only the name comes back UNSCOPED — every client on the project.
+// Returns null for a real client login: their token is already scoped
+// server-side to their own nomen, so nothing needs to be sent.
+export const getSelectedClientNomenId = () => {
+  const auth = JSON.parse(localStorage.getItem("auth") || "{}");
+  if (
+    auth?.role === "admin" ||
+    auth?.role === "campaign_manager" ||
+    auth?.role === "sales"
+  ) {
+    return localStorage.getItem("selectedClientNomenId") || null;
+  }
+  return null;
+};
+
 // campaigns.js — fetchCampaigns (replace the role-check block)
 export const fetchCampaigns = async (
   page = 1,
@@ -30,6 +49,7 @@ export const fetchCampaigns = async (
   pageSize = 1000,
   fromDate = "2020-01-01",
   toDate,
+  { clientNomenId } = {},
 ) => {
   const today = new Date().toISOString().split("T")[0];
   const startDate = fromDate || "2020-01-01";
@@ -44,9 +64,18 @@ export const fetchCampaigns = async (
   if (projectId) url += `&project=${projectId}`;
   if (search) url += `&search=${encodeURIComponent(search)}`;
 
+  // Client scope. Callers showing ONE client's campaigns pass clientNomenId:
+  // an admin/CM token carries no implicit nomen, so without it the endpoint
+  // returns every client's campaigns on the project (project 405: 135 rows
+  // across 3 clients, instead of that client's 12). The id is what this
+  // endpoint filters on, so it REPLACES the name — never send both.
   // ✅ FIX: applies for both admin (selectedClientNomen) and client (own nomen)
   const clientNomen = getClientNomen();
-  if (clientNomen) url += `&client_nomen=${clientNomen}`;
+  if (clientNomenId) {
+    url += `&client_nomen_id=${encodeURIComponent(clientNomenId)}`;
+  } else if (clientNomen) {
+    url += `&client_nomen=${clientNomen}`;
+  }
 
   return await api(url, { method: "GET" });
 };
@@ -113,7 +142,14 @@ export const fetchCampaignInsights = async (campaignId, pageSize = 1000) => {
 //   • scoping identical to single endpoint (client_nomen)
 export const fetchBulkCampaignInsights = async (
   campaignIds,
-  { startDate, endDate, pageSize = 10000, clientNomen, asClientId } = {},
+  {
+    startDate,
+    endDate,
+    pageSize = 10000,
+    clientNomen,
+    clientNomenId,
+    asClientId,
+  } = {},
 ) => {
   const ids = [...new Set((campaignIds || []).filter((id) => id != null))];
   if (ids.length === 0) return { data: [] };
@@ -143,9 +179,16 @@ export const fetchBulkCampaignInsights = async (
       // here; sending both together returns no rows. Without as_client_id we fall
       // back to the normal client_nomen scoping (a client's own login, `spend`
       // already marked-up for them).
+      // With no as_client_id an internal viewer still needs an explicit scope,
+      // or the rows span every client among the campaign_ids asked for — which
+      // is what put a project-wide spend total under a client-scoped table.
+      // client_nomen_id is the id form the endpoint filters on; the three are
+      // mutually exclusive.
       const previewAs = asClientId != null && asClientId !== "";
       if (previewAs) {
         url += `&as_client_id=${encodeURIComponent(asClientId)}`;
+      } else if (clientNomenId) {
+        url += `&client_nomen_id=${encodeURIComponent(clientNomenId)}`;
       } else if (nomen) {
         url += `&client_nomen=${nomen}`;
       }

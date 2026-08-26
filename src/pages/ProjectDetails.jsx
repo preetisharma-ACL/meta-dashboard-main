@@ -25,6 +25,7 @@ import {
   fetchCampaigns,
   fetchBulkCampaignInsights,
   fetchProjectById,
+  getSelectedClientNomenId,
 } from "../services/campaigns";
 import useColumnSort from "../components/Columnsorting";
 import {
@@ -293,6 +294,29 @@ export default function ProjectDetails() {
   const previewClientId = () =>
     userRole() === "admin" ? localStorage.getItem("selectedClientId") : null;
 
+  // ── Client scope for internal viewers ──────────────────────────────────────
+  // A client's token is scoped server-side to their own nomen, so their calls
+  // need nothing. Admin/CM/sales have no implicit nomen — by design, they can
+  // see every client — so an unscoped /campaigns/ or /campaigns/insights/bulk/
+  // returns EVERY client's campaigns on the project and the page totals the
+  // lot. This is the nomen id behind the "Viewing Client" badge; it is what
+  // both endpoints filter on (client_nomen_id), and it is the same selection
+  // the badge, ClientDashboard and DailyReports read.
+  const needsClientScope = () =>
+    userRole() === "admin" ||
+    userRole() === "campaign_manager" ||
+    userRole() === "sales";
+
+  const viewerNomenId = () => {
+    location.pathname; // track route changes, like the badge below
+    return getSelectedClientNomenId();
+  };
+
+  // Internal viewer with no client selected: the list can span several clients,
+  // so a footer sum would be a project-wide figure under a client-scoped table
+  // (that is what produced the ₹380.60 "This Month Avg CPL"). Render "—".
+  const scopeUnresolved = () => needsClientScope() && !viewerNomenId();
+
   // Name of the client an admin/CM/sales user is currently previewing, for the
   // "Viewing Client" badge. Mirrors the ClientDashboard ledger badge so the
   // context stays visible after drilling into a project. Tracks route changes so
@@ -419,6 +443,7 @@ export default function ProjectDetails() {
         rowsPerPage(),
         rangeStart(),
         rangeEnd(),
+        { clientNomenId: viewerNomenId() },
       );
       const apiData = res.data.results || res.data || [];
 
@@ -433,7 +458,7 @@ export default function ProjectDetails() {
       try {
         const bulk = await fetchBulkCampaignInsights(
           apiData.map((item) => item.id),
-          { asClientId: previewClientId() },
+          { asClientId: previewClientId(), clientNomenId: viewerNomenId() },
         );
         for (const row of bulk.data || []) {
           if (row.is_manual && isAdmin()) continue; // see keepManualRow note
@@ -521,6 +546,7 @@ export default function ProjectDetails() {
           1000,
           rangeStart(),
           rangeEnd(),
+          { clientNomenId: viewerNomenId() },
         );
         const apiData = res.data.results || res.data || [];
 
@@ -532,7 +558,10 @@ export default function ProjectDetails() {
         try {
           const bulk = await fetchBulkCampaignInsights(
             apiData.map((item) => item.id),
-            { asClientId: previewClientId() },
+            {
+              asClientId: previewClientId(),
+              clientNomenId: viewerNomenId(),
+            },
           );
           for (const row of bulk.data || []) {
             if (row.is_manual && isAdmin()) continue; // see keepManualRow note
@@ -889,6 +918,14 @@ export default function ProjectDetails() {
   }
   /* ================= UI ================= */
 
+  // footerTotals returns nulls when the client scope is unresolved; every
+  // total below renders "—" rather than a project-wide number.
+  const showTotal = (v) => (v == null ? "—" : v);
+  const showRupees = (v) =>
+    v == null ? "—" : `₹${Number(v).toLocaleString("en-IN")}`;
+  // avgCPL is already a fixed-2 string — print it as-is, don't re-format.
+  const showAmount = (v) => (v == null ? "—" : `₹${v}`);
+
   const leadSummary = {
     totalLeads: 120,
     deliveredLeads: 100,
@@ -906,6 +943,19 @@ export default function ProjectDetails() {
 
   // Replace your existing footerTotals createMemo with this
   const footerTotals = createMemo(() => {
+    // See scopeUnresolved: totalling an unscoped, multi-client list under a
+    // client-scoped table is the shape that produced the ₹380.60 Avg CPL.
+    if (scopeUnresolved()) {
+      return {
+        totalLeads: null,
+        totalClicks: null,
+        totalReach: null,
+        totalSpent: null,
+        avgCPL: null,
+        premiumCPL: null,
+      };
+    }
+
     const source = allCampaignsLoaded() ? allCampaigns() : sortedCampaigns();
     const acc = adAccountFilter();
 
@@ -1491,33 +1541,33 @@ export default function ProjectDetails() {
 
               {/* Leads */}
               <td class="text-green-700 dark:text-green-300 font-bold">
-                {footerTotals().totalLeads}
+                {showTotal(footerTotals().totalLeads)}
               </td>
 
               {/* Clicks */}
               {userRole() === "client" && (
                 <td class="text-blue-700 dark:text-blue-300 font-bold">
-                  {footerTotals().totalClicks}
+                  {showTotal(footerTotals().totalClicks)}
                 </td>
               )}
 
               {/* Reach */}
               {userRole() === "client" && (
                 <td class="text-indigo-700 dark:text-indigo-300 font-bold">
-                  {footerTotals().totalReach}
+                  {showTotal(footerTotals().totalReach)}
                 </td>
               )}
 
               {/* Spend */}
               <Show when={!iscpl()}>
                 <td class="text-red-700 dark:text-red-300 font-bold">
-                  ₹{footerTotals().totalSpent.toLocaleString("en-IN")}
+                  {showRupees(footerTotals().totalSpent)}
                 </td>
               </Show>
 
               {/* CPL */}
               <td class="text-purple-700 dark:text-purple-300 font-bold">
-                ₹{footerTotals().avgCPL}
+                {showAmount(footerTotals().avgCPL)}
               </td>
 
               {userRole() === "admin" && (
@@ -1720,7 +1770,7 @@ export default function ProjectDetails() {
               Total leads
             </p>
             <p class="text-xl font-semibold text-violet-600 dark:text-violet-300">
-              {footerTotals().totalLeads}
+              {showTotal(footerTotals().totalLeads)}
             </p>
           </div>
 
@@ -1735,7 +1785,7 @@ export default function ProjectDetails() {
                 Total spent
               </p>
               <p class="text-xl font-semibold text-orange-500 dark:text-orange-300">
-                ₹{footerTotals().totalSpent.toLocaleString("en-IN")}
+                {showRupees(footerTotals().totalSpent)}
               </p>
             </div>
           </Show>
