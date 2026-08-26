@@ -103,6 +103,17 @@ const orgId = (r) => {
 };
 
 const orgName = (r) => {
+  // organization_name is the serializer's own answer, and NULL IS PART OF THAT
+  // ANSWER: the backend deliberately returns None for the placeholder orgs —
+  // "NA" (36 rows) and "Aajneeti_Meta" (6 rows, our own org, picked up as a
+  // fallback when the client's user has none) — instead of their literal names.
+  // So when the key is present it decides, and null means "no company": the
+  // column prints "—" rather than a placeholder leaking in from one of the
+  // secondary keys below (first() skips nulls, so without this it would).
+  // Only a payload that omits the key entirely falls through to the older
+  // shapes.
+  if (r && "organization_name" in r) return r.organization_name || null;
+
   const nested = orgObject(r);
   const nestedName = nested
     ? first(nested, ["name", "organization_name", "org_name", "title"])
@@ -179,9 +190,9 @@ export const normalizePayment = (r = {}) => ({
   // edit form round-trips and what recordPayment posts back. A nested object
   // left as-is would post "[object Object]".
   organization: orgId(r),
-  // …and the name, from whichever key the serializer used. Null when the row
-  // carries no organization at all, or serves only the id — the table falls
-  // back to "Organization #<id>" rather than inventing a name.
+  // …and the name. The serializer now sends organization_name, so this is
+  // normally a straight read; null is a real answer (see orgName) and the
+  // table prints "—" for it.
   organizationName: orgName(r),
 
   project: first(r, ["project_name", "project_nomen_name", "project"]),

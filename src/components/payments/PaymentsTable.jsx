@@ -52,13 +52,14 @@ const TONE_GREEN = "text-[#15966A] dark:text-green-300";
 // MUST match the order of the <td>s in the row.
 //
 // `num`/`date` columns open largest/newest-first; `str` columns A→Z.
-// The company the payment is booked under. A row that HAS an organization but
-// whose payload didn't carry its name still gets an identity — same convention
-// as "Client #123" — so the column reads "—" only when there genuinely is no
-// organization on the row.
-const orgLabel = (p) =>
-  p.organizationName ??
-  (p.organization != null ? `Organization #${p.organization}` : null);
+// The company the payment is booked under — the serializer's organization_name,
+// nothing else. It deliberately sends null for clients with no real company
+// (the "NA" and "Aajneeti_Meta" placeholder orgs), and the column prints "—"
+// for those. No synthetic "Organization #<id>": the row can carry an org id
+// whose name was nulled on purpose, and labelling it by id would put a company
+// back on a row the backend just said has none. Nor a fall back to the client
+// name — the dash is the intended output.
+const orgLabel = (p) => p.organizationName ?? null;
 
 const COLUMNS = [
   {
