@@ -275,8 +275,10 @@ export default function SalesLeaderboard() {
             <circle cx="11" cy="11" r="7" />
             <path d="M20 20l-3.5-3.5" />
           </svg>
+          {/* type="text", not "search": the native search input paints its own
+              clear button next to ours, so the field showed two crosses. */}
           <input
-            type="search"
+            type="text"
             value={query()}
             onInput={(e) => setQuery(e.currentTarget.value)}
             placeholder="Search manager, email or role…"
