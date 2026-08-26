@@ -53,6 +53,16 @@ const personName = (v) => {
   return String(v);
 };
 
+// The organization id, whether the row carries it flat or nested. Kept separate
+// from first() because a nested {id, name} is a truthy value that first() would
+// happily return whole.
+const orgId = (r) => {
+  const o = r?.organization;
+  if (o && typeof o === "object")
+    return first(o, ["id", "organization_id", "org_id"]);
+  return first(r ?? {}, ["organization", "organization_id", "org_id"]);
+};
+
 // ── Normalizers (server snake_case → UI camelCase) ────────────────────────────
 
 // One payment row. `raw` is kept so a screen can surface a field this
@@ -97,8 +107,22 @@ export const normalizePayment = (r = {}) => ({
   docsStatus: first(r, ["docs_status"]),
   docsStatusLabel: first(r, ["docs_status_label"]),
 
-  organization: first(r, ["organization", "organization_id", "org_id"]),
-  organizationName: first(r, ["organization_name", "org_name"]),
+  // The company the payment is booked under — now a ledger COLUMN and a filter,
+  // not just a form field, so both halves have to survive every shape the
+  // endpoint might use. `organization` can arrive as a bare id or as a nested
+  // {id, name}: normalize it to the ID either way, because that is what the
+  // edit form round-trips and what recordPayment posts back. A nested object
+  // left as-is would post "[object Object]".
+  organization: orgId(r),
+  // …and the name can then live on `organization.name` rather than a flat
+  // organization_name. Read both. Null when the row genuinely carries no
+  // organization, or when the list endpoint serves only the id — the table
+  // falls back to "Organization #<id>" rather than inventing a name.
+  organizationName:
+    first(r, ["organization_name", "org_name"]) ??
+    (r?.organization && typeof r.organization === "object"
+      ? first(r.organization, ["name", "organization_name", "org_name", "title"])
+      : null),
 
   project: first(r, ["project_name", "project_nomen_name", "project"]),
   referenceId: first(r, ["reference_id", "reference"]),

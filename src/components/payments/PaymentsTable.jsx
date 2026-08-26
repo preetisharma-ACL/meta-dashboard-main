@@ -52,6 +52,14 @@ const TONE_GREEN = "text-[#15966A] dark:text-green-300";
 // MUST match the order of the <td>s in the row.
 //
 // `num`/`date` columns open largest/newest-first; `str` columns A→Z.
+// The company the payment is booked under. A row that HAS an organization but
+// whose payload didn't carry its name still gets an identity — same convention
+// as "Client #123" — so the column reads "—" only when there genuinely is no
+// organization on the row.
+const orgLabel = (p) =>
+  p.organizationName ??
+  (p.organization != null ? `Organization #${p.organization}` : null);
+
 const COLUMNS = [
   {
     key: "client",
@@ -59,6 +67,13 @@ const COLUMNS = [
     align: "left",
     type: "str",
     get: (p) => p.clientName ?? (p.clientNomen != null ? `Client #${p.clientNomen}` : null),
+  },
+  {
+    key: "organization",
+    label: "Organization",
+    align: "left",
+    type: "str",
+    get: orgLabel,
   },
   { key: "base", label: "Base", align: "right", type: "num", get: (p) => p.baseAmount },
   { key: "gst", label: "GST", align: "right", type: "num", get: (p) => p.gstAmount },
@@ -119,7 +134,9 @@ export default function PaymentsTable(props) {
     rows().length === 0 ? 0 : (page() - 1) * pageSize() + 1;
   const rangeEnd = () => rangeStart() === 0 ? 0 : rangeStart() + rows().length - 1;
 
-  const colCount = () => (props.canManage ? 9 : 8);
+  // Derived, not counted by hand — the skeleton and the empty-state colSpan
+  // silently went wrong every time a column was added.
+  const colCount = () => COLUMNS.length + (props.canManage ? 1 : 0);
 
   // ── Sorting ───────────────────────────────────────────────────────────────
   // SCOPE: this reorders THE CURRENT PAGE ONLY. `rows()` is one server slice —
@@ -172,7 +189,7 @@ export default function PaymentsTable(props) {
   return (
     <div>
       <div class="overflow-x-auto rounded-2xl border border-[#E2E8F1] dark:border-gray-700 bg-white dark:bg-gray-800 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)]">
-        <table class="w-full min-w-[960px]">
+        <table class="w-full min-w-[1100px]">
           <thead class="bg-[#E8EEF6] dark:bg-gray-900/80 border-b border-[#D3DDEA] dark:border-gray-700">
             <tr>
               <For each={COLUMNS}>
@@ -280,22 +297,32 @@ export default function PaymentsTable(props) {
                           >
                             {clientLabel ?? "—"}
                           </span>
-                          <Show when={p.organizationName || p.project}>
-                            <span
-                              class="block text-xs text-[#8593A8] dark:text-gray-500 truncate max-w-[200px]"
-                              title={
-                                [p.organizationName, p.project]
-                                  .filter(Boolean)
-                                  .join(" · ") || undefined
-                              }
-                            >
-                              {[p.organizationName, p.project]
-                                .filter(Boolean)
-                                .join(" · ")}
+                          {/* The organization moved out to its own column —
+                              printing it here too would just be the same string
+                              twice on one row. */}
+                          <Show when={p.project}>
+                            <span class="block text-xs text-[#8593A8] dark:text-gray-500 truncate max-w-[200px]">
+                              {p.project}
                             </span>
                           </Show>
                         </div>
                       </div>
+                    </td>
+
+                    <td class={TD}>
+                      <Show
+                        when={orgLabel(p)}
+                        fallback={
+                          <span class="text-[#8593A8] dark:text-gray-500">—</span>
+                        }
+                      >
+                        <span
+                          class="block truncate max-w-[180px]"
+                          title={orgLabel(p)}
+                        >
+                          {orgLabel(p)}
+                        </span>
+                      </Show>
                     </td>
 
                     <td class={TD_MONEY + " " + moneyTone(p.baseAmount, TONE_NAVY)}>
