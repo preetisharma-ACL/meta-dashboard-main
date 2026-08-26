@@ -707,18 +707,37 @@ function InvoiceModal(props) {
 function CplProjectTable(props) {
   const rows = () => props.projects || [];
   const num = (n) => Number(n || 0).toLocaleString("en-IN");
-  // A project with leads but no contracted rate isn't billed at all — the API
-  // sends charge "0.00" and missing_rate true, and also lists it in
-  // month_spend.missing_cpl_rate. Either source raises the banner.
+
+  // "No contracted rate set" is a statement about the agency's own setup, so
+  // whether the viewer is told it is the server's call, not ours. It stopped
+  // sending the signal to clients — admin and CM still get missing_rate on the
+  // row and the month_spend.missing_cpl_rate list, and still get both when
+  // previewing a client with as_client_id, because they are the ones who act
+  // on it.
+  //
+  // For a client the key is now ABSENT rather than false — deliberately, the
+  // same way raw spend is absent on the ledger — so this tests === true and
+  // never defaults it. An absent key is not a confident "the rate IS set"
+  // either; it means the question isn't ours to answer, so nothing about it
+  // is rendered. Nothing here may infer the state from a null rate: a null
+  // fixed_cpl is an absent number and says only that.
+  const missingRate = (p) => p.missing_rate === true;
+
   const missingCount = () =>
-    Math.max(
-      props.missing?.length || 0,
-      rows().filter((p) => p.missing_rate).length,
-    );
+    Math.max(props.missing?.length || 0, rows().filter(missingRate).length);
   const totalQualified = () =>
     rows().reduce((s, p) => s + Number(p.qualified || 0), 0);
-  const totalCharge = () =>
-    rows().reduce((s, p) => s + Number(p.charge || 0), 0);
+
+  // A null charge is "not billed yet", not zero — it contributes nothing, and
+  // a table where every row is null totals to "—" rather than ₹0.00, which
+  // would read as "free". charge was always a string before and is now
+  // sometimes null, so it never reaches Number()/fmt() unchecked.
+  const billedCharges = () => rows().map((p) => p.charge).filter((c) => c != null);
+  const totalCharge = () => billedCharges().reduce((s, c) => s + Number(c || 0), 0);
+
+  const Dash = () => (
+    <span class="font-medium text-gray-400 dark:text-gray-500">—</span>
+  );
 
   const numCell =
     "px-3 py-3 text-right tabular-nums text-gray-500 dark:text-gray-400";
@@ -777,27 +796,29 @@ function CplProjectTable(props) {
                     {num(p.qualified)}
                   </td>
                   <td class="px-3 py-3 text-right tabular-nums">
+                    {/* Only the server's flag produces "rate not set". A null
+                        rate on its own renders "—" and nothing else. */}
                     <Show
-                      when={!p.missing_rate && p.fixed_cpl != null}
+                      when={missingRate(p)}
                       fallback={
-                        <span class="text-amber-600 dark:text-amber-400">
-                          — rate not set
-                        </span>
+                        <Show when={p.fixed_cpl != null} fallback={<Dash />}>
+                          <span class="text-gray-600 dark:text-gray-300">
+                            {fmt(p.fixed_cpl)}
+                          </span>
+                        </Show>
                       }
                     >
-                      <span class="text-gray-600 dark:text-gray-300">
-                        {fmt(p.fixed_cpl)}
+                      <span class="text-amber-600 dark:text-amber-400">
+                        — rate not set
                       </span>
                     </Show>
                   </td>
                   <td class="px-6 py-3 text-right tabular-nums font-semibold text-gray-900 dark:text-gray-100">
+                    {/* Keyed off the charge itself: null is not billed yet,
+                        which is "—" rather than ₹0.00 ("free"). */}
                     <Show
-                      when={!p.missing_rate && p.fixed_cpl != null}
-                      fallback={
-                        <span class="font-medium text-gray-400 dark:text-gray-500">
-                          —
-                        </span>
-                      }
+                      when={!missingRate(p) && p.charge != null}
+                      fallback={<Dash />}
                     >
                       {fmt(p.charge)}
                     </Show>
@@ -817,7 +838,9 @@ function CplProjectTable(props) {
               </td>
               <td />
               <td class="px-6 py-3 text-right tabular-nums font-bold text-gray-900 dark:text-gray-100">
-                {fmt(totalCharge())}
+                <Show when={billedCharges().length > 0} fallback={<Dash />}>
+                  {fmt(totalCharge())}
+                </Show>
               </td>
             </tr>
           </tbody>
