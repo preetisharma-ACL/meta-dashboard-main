@@ -141,15 +141,14 @@ export default function ProjectDisplayConfig() {
   //   • cpl — the CPL billing path reads fixed_cpl ONLY. A CPL client given
   //     target_cpl / cpl_markup_pct / cpl_markup_flat bills ₹0 and lands in the
   //     missing-rate list, which reads as "no rate set" rather than "wrong rate
-  //     type set". One live row violates this (config 313,
-  //     RishabhYadavHomeVisionContinuous, target_cpl, project 341) and is being
-  //     corrected separately — this gate is against future rows.
-  //   • hybrid — all four are real; pct is what the team uses (412 of 502
-  //     hybrid configs are pct, 88 target, 2 flat), so it stays the default.
+  //     type set". No live row violates this — the gate is against future ones.
+  //   • hybrid — the three markup rules. fixed_cpl is CPL-only, and no hybrid
+  //     config carries it. pct is what the team uses (412 of 502 hybrid configs
+  //     are pct, 88 target, 2 flat), so it stays the default.
   //   • retainer — flat-fee passthrough, deliberately no display config at all.
   const ALLOWED_RULE_TYPES = {
     cpl: ["fixed_cpl"],
-    hybrid: ALL_RULE_TYPES,
+    hybrid: ["cpl_markup_pct", "cpl_markup_flat", "target_cpl"],
     retainer: [],
   };
 
@@ -170,9 +169,10 @@ export default function ProjectDisplayConfig() {
     return t && ALLOWED_RULE_TYPES[t] ? ALLOWED_RULE_TYPES[t] : ALL_RULE_TYPES;
   });
 
-  // An existing config whose rule type its client type does not permit — e.g.
-  // config 313's target_cpl on a CPL client. It stays viewable and editable and
-  // is never rewritten behind the user's back; it is flagged instead, so a wrong
+  // An existing config whose rule type its client type does not permit. No live
+  // row is currently in that state, so this is a safety net rather than a fix
+  // for something on screen today: such a row stays viewable and editable and is
+  // never rewritten behind the user's back — it is flagged instead, so a wrong
   // type reads as wrong rather than as missing.
   const ruleTypeFlagged = createMemo(() => {
     const rt = formData().rule_type;
@@ -517,7 +517,7 @@ export default function ProjectDisplayConfig() {
     setResolvedClientType(cfg.client_type ?? null);
     // The list row doesn't carry a unit — derive it from the rule type. The
     // type itself is loaded exactly as saved, even when this client type no
-    // longer permits it (config 313): the form flags it rather than rewriting.
+    // longer permits it: the form flags it rather than rewriting.
     setResolvedUnit(unitForRuleType(cfg.rule_type));
 
     // Pre-load the projects for this client so the dropdown works immediately
