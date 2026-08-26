@@ -53,14 +53,79 @@ const personName = (v) => {
   return String(v);
 };
 
-// The organization id, whether the row carries it flat or nested. Kept separate
-// from first() because a nested {id, name} is a truthy value that first() would
-// happily return whole.
+// ── Reading the organization off a payment row ────────────────────────────────
+// Wider than the usual first(row, [...]) discipline, deliberately, and ONLY
+// here. The ledger's Organization column came up empty on every row, so the
+// list serializer either omits the field or names it something these two didn't
+// try. The keys below cover both spellings, the nested {id, name} form, and the
+// "company" wording the invoice side uses.
+//
+// The relaxed matching is safe BECAUSE this is a label, not money: the worst a
+// wrong key can do is print the wrong company name, which is visible and
+// self-correcting. The FIELD-NAME DISCIPLINE note at the top of this file — a
+// money field read from a wrong key becomes a confident ₹0 — still binds every
+// amount here, and none of this goes anywhere near one.
+//
+// It never falls back to the CLIENT's organization. /payments/clients/ carries
+// organization_id, so joining it in would fill the column — with a campaign-
+// derived guess, printed beside a client name that came off the payment row
+// itself. Two sources, one row: the column would look authoritative and
+// disagree with the payment's own booking. An empty column is the honest
+// answer; the fix belongs in the serializer.
+const ORG_OBJECT_KEYS = [
+  "organization",
+  "organisation",
+  "organization_detail",
+  "organisation_detail",
+  "organization_details",
+  "org",
+];
+
+// The nested {id, name} object, if the row carries one.
+const orgObject = (r) => {
+  for (const k of ORG_OBJECT_KEYS) {
+    const v = r?.[k];
+    if (v && typeof v === "object" && !Array.isArray(v)) return v;
+  }
+  return null;
+};
+
 const orgId = (r) => {
-  const o = r?.organization;
-  if (o && typeof o === "object")
-    return first(o, ["id", "organization_id", "org_id"]);
-  return first(r ?? {}, ["organization", "organization_id", "org_id"]);
+  const nested = orgObject(r);
+  if (nested) return first(nested, ["id", "organization_id", "org_id"]);
+  return first(r ?? {}, [
+    "organization",
+    "organization_id",
+    "organisation",
+    "organisation_id",
+    "org_id",
+  ]);
+};
+
+const orgName = (r) => {
+  const nested = orgObject(r);
+  const nestedName = nested
+    ? first(nested, ["name", "organization_name", "org_name", "title"])
+    : null;
+  if (nestedName) return nestedName;
+  const flat = first(r ?? {}, [
+    "organization_name",
+    "organisation_name",
+    "org_name",
+    "organization_title",
+    "client_organization_name",
+    "company_name",
+    "company",
+  ]);
+  if (flat) return flat;
+  // Last resort: a differently-named string field that is plainly the company.
+  // Scoped to keys that say so, and to string values, so it can't pick up an id
+  // or an unrelated column.
+  for (const [k, v] of Object.entries(r ?? {})) {
+    if (typeof v !== "string" || v === "") continue;
+    if (/^organi[sz]ation/.test(k) || /^company/.test(k)) return v;
+  }
+  return null;
 };
 
 // ── Normalizers (server snake_case → UI camelCase) ────────────────────────────
@@ -114,15 +179,10 @@ export const normalizePayment = (r = {}) => ({
   // edit form round-trips and what recordPayment posts back. A nested object
   // left as-is would post "[object Object]".
   organization: orgId(r),
-  // …and the name can then live on `organization.name` rather than a flat
-  // organization_name. Read both. Null when the row genuinely carries no
-  // organization, or when the list endpoint serves only the id — the table
-  // falls back to "Organization #<id>" rather than inventing a name.
-  organizationName:
-    first(r, ["organization_name", "org_name"]) ??
-    (r?.organization && typeof r.organization === "object"
-      ? first(r.organization, ["name", "organization_name", "org_name", "title"])
-      : null),
+  // …and the name, from whichever key the serializer used. Null when the row
+  // carries no organization at all, or serves only the id — the table falls
+  // back to "Organization #<id>" rather than inventing a name.
+  organizationName: orgName(r),
 
   project: first(r, ["project_name", "project_nomen_name", "project"]),
   referenceId: first(r, ["reference_id", "reference"]),
