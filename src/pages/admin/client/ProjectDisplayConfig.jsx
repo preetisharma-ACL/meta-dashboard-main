@@ -127,17 +127,76 @@ export default function ProjectDisplayConfig() {
   const [resolvedUnit, setResolvedUnit] = createSignal(null);
   const [ruleResolving, setRuleResolving] = createSignal(false);
 
-  const HYBRID_RULE_OPTIONS = [
+  const RULE_TYPE_OPTIONS = [
     { value: "cpl_markup_pct", label: "cpl_markup_pct (% markup)" },
     { value: "cpl_markup_flat", label: "cpl_markup_flat (₹ flat markup)" },
     { value: "target_cpl", label: "target_cpl (flat ₹, ignores raw)" },
     { value: "fixed_cpl", label: "fixed_cpl (fixed ₹, ignores raw)" },
   ];
+  const ruleTypeLabel = (value) =>
+    RULE_TYPE_OPTIONS.find((o) => o.value === value)?.label ?? value ?? "—";
+  const ALL_RULE_TYPES = RULE_TYPE_OPTIONS.map((o) => o.value);
+
+  // Which rule types actually BILL, per client type.
+  //   • cpl — the CPL billing path reads fixed_cpl ONLY. A CPL client given
+  //     target_cpl / cpl_markup_pct / cpl_markup_flat bills ₹0 and lands in the
+  //     missing-rate list, which reads as "no rate set" rather than "wrong rate
+  //     type set". One live row violates this (config 313,
+  //     RishabhYadavHomeVisionContinuous, target_cpl, project 341) and is being
+  //     corrected separately — this gate is against future rows.
+  //   • hybrid — all four are real; pct is what the team uses (412 of 502
+  //     hybrid configs are pct, 88 target, 2 flat), so it stays the default.
+  //   • retainer — flat-fee passthrough, deliberately no display config at all.
+  const ALLOWED_RULE_TYPES = {
+    cpl: ["fixed_cpl"],
+    hybrid: ALL_RULE_TYPES,
+    retainer: [],
+  };
+
+  // Unit is a property of the rule type, not of the client.
+  const unitForRuleType = (rt) => (rt === "cpl_markup_pct" ? "percent" : "amount");
+  const defaultRuleTypeFor = (clientType) =>
+    clientType === "cpl" ? "fixed_cpl" : "cpl_markup_pct";
 
   // Retainer clients bill on raw passthrough — no per-lead display rule applies,
   // and the backend rejects a config for them. Used to disable the rule section
   // and block the save.
   const isRetainer = createMemo(() => resolvedClientType() === "retainer");
+
+  // An UNRESOLVED client type restricts nothing — all four stay on offer rather
+  // than guessing a restriction from a type we could not read.
+  const allowedRuleTypes = createMemo(() => {
+    const t = resolvedClientType();
+    return t && ALLOWED_RULE_TYPES[t] ? ALLOWED_RULE_TYPES[t] : ALL_RULE_TYPES;
+  });
+
+  // An existing config whose rule type its client type does not permit — e.g.
+  // config 313's target_cpl on a CPL client. It stays viewable and editable and
+  // is never rewritten behind the user's back; it is flagged instead, so a wrong
+  // type reads as wrong rather than as missing.
+  const ruleTypeFlagged = createMemo(() => {
+    const rt = formData().rule_type;
+    return (
+      !!rt && !isRetainer() && !!resolvedClientType() && !allowedRuleTypes().includes(rt)
+    );
+  });
+
+  // Options actually offered: what the client type permits, plus the current
+  // value when it is a flagged leftover (so the field can display it, and can
+  // be switched off it).
+  const ruleTypeChoices = createMemo(() => {
+    const allowed = allowedRuleTypes();
+    const current = formData().rule_type;
+    const values =
+      current && !allowed.includes(current) ? [...allowed, current] : allowed;
+    return RULE_TYPE_OPTIONS.filter((o) => values.includes(o.value));
+  });
+
+  // Exactly one permitted type and nothing flagged → there is no choice to make,
+  // so the type renders as a fixed label with the amount beside it.
+  const ruleTypeIsFixed = createMemo(
+    () => !isRetainer() && ruleTypeChoices().length === 1,
+  );
 
   // Only admins and Tier-1 CMs may pick a custom validity window. Tier-2 CMs
   // keep the existing behavior (no date fields → backend auto-stamps "starts
@@ -290,12 +349,29 @@ export default function ProjectDisplayConfig() {
       const resolved = await resolveConfigRule(clientId, projectId);
       if (!resolved) return;
 
+      const clientType = resolved.client_type ?? null;
+      const allowed =
+        (clientType && ALLOWED_RULE_TYPES[clientType]) || ALL_RULE_TYPES;
+
+      // The pre-filled type. Two ways it can end up not being what the server
+      // handed back:
+      //   • nothing resolved → fall back to this client type's default
+      //     (cpl → fixed_cpl, hybrid → cpl_markup_pct).
+      //   • an INHERITED or DEFAULT type the client type doesn't permit → use
+      //     the default instead of seeding a new config with a rule that bills
+      //     ₹0. An "existing" type is left exactly as saved and flagged in the
+      //     form instead — an existing row is never silently rewritten.
+      let ruleType = resolved.rule_type ?? "";
+      if (!ruleType) {
+        ruleType = clientType === "retainer" ? "" : defaultRuleTypeFor(clientType);
+      } else if (resolved.source !== "existing" && !allowed.includes(ruleType)) {
+        ruleType = defaultRuleTypeFor(clientType);
+      }
+
       setFormData((prev) => ({
         ...prev,
         project_id: projectId,
-        // Fall back to the hybrid default only when the server returns null
-        // (retainer → null; UI disables the rule section anyway).
-        rule_type: resolved.rule_type ?? "",
+        rule_type: ruleType,
         // Value is only pre-filled for an existing exact-pair config; inherited
         // and default sources leave it blank for a fresh entry.
         rule_value:
@@ -304,8 +380,14 @@ export default function ProjectDisplayConfig() {
             : "",
       }));
       setRuleSource(resolved.source ?? null);
-      setResolvedClientType(resolved.client_type ?? null);
-      setResolvedUnit(resolved.rule_value_unit ?? null);
+      setResolvedClientType(clientType);
+      // Unit follows the type we actually pre-filled, not the one the server
+      // described — they differ whenever the type above was substituted.
+      setResolvedUnit(
+        ruleType
+          ? unitForRuleType(ruleType)
+          : (resolved.rule_value_unit ?? null),
+      );
     } catch (err) {
       console.error("Failed to resolve config rule:", err);
     } finally {
@@ -433,8 +515,10 @@ export default function ProjectDisplayConfig() {
     setProjectSearch(cfg.project_name ?? "");
     setRuleSource("existing");
     setResolvedClientType(cfg.client_type ?? null);
-    // The list row doesn't carry a unit — derive it from the rule type.
-    setResolvedUnit(cfg.rule_type === "cpl_markup_pct" ? "percent" : "amount");
+    // The list row doesn't carry a unit — derive it from the rule type. The
+    // type itself is loaded exactly as saved, even when this client type no
+    // longer permits it (config 313): the form flags it rather than rewriting.
+    setResolvedUnit(unitForRuleType(cfg.rule_type));
 
     // Pre-load the projects for this client so the dropdown works immediately
     setProjectsLoading(true);
@@ -1225,98 +1309,128 @@ export default function ProjectDisplayConfig() {
                 </div>
               </div>
 
-              {/* Rule Type — read-only for CPL, dropdown for Hybrid, N/A for Retainer */}
-              <div>
-                <label class="block text-sm font-medium mb-1.5">
-                  Rule Type
-                  <Show when={ruleResolving()}>
-                    <span class="ml-2 text-xs text-purple-500 font-normal animate-pulse">
-                      Resolving…
-                    </span>
-                  </Show>
-                </label>
+              {/* Rule Type + Rule Value. A CPL client has exactly one billable
+                  type, so the type becomes a fixed label with the amount field
+                  beside it — nothing to get wrong. Every other case keeps the
+                  stacked layout. */}
+              <div
+                class={
+                  ruleTypeIsFixed()
+                    ? "grid grid-cols-2 gap-4 items-start"
+                    : "space-y-5"
+                }
+              >
+                <div>
+                  <label class="block text-sm font-medium mb-1.5">
+                    Rule Type
+                    <Show when={ruleResolving()}>
+                      <span class="ml-2 text-xs text-purple-500 font-normal animate-pulse">
+                        Resolving…
+                      </span>
+                    </Show>
+                  </label>
 
-                <Show
-                  when={resolvedClientType() === "hybrid"}
-                  fallback={
-                    <input
-                      type="text"
-                      value={
-                        isRetainer()
-                          ? "N/A — retainer (raw passthrough)"
-                          : formData().rule_type || "—"
-                      }
-                      readonly
-                      class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 cursor-not-allowed outline-none"
-                    />
-                  }
-                >
-                  <select
-                    value={formData().rule_type}
-                    onChange={(e) => {
-                      handleInputChange("rule_type", e.target.value);
-                      setResolvedUnit(
-                        e.target.value === "cpl_markup_pct" ? "percent" : "amount",
-                      );
-                    }}
-                    class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-purple-500 outline-none"
+                  {/* Retainer → no rule on offer at all. One permitted type →
+                      a fixed label. Otherwise the dropdown, carrying only the
+                      types this client type actually bills on (plus a flagged
+                      leftover, so it stays selectable and correctable). */}
+                  <Show
+                    when={!isRetainer() && !ruleTypeIsFixed()}
+                    fallback={
+                      <input
+                        type="text"
+                        value={
+                          isRetainer()
+                            ? "N/A — retainer (raw passthrough)"
+                            : ruleTypeLabel(formData().rule_type)
+                        }
+                        readonly
+                        class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 cursor-not-allowed outline-none"
+                      />
+                    }
                   >
-                    <For each={HYBRID_RULE_OPTIONS}>
-                      {(opt) => <option value={opt.value}>{opt.label}</option>}
-                    </For>
-                  </select>
-                </Show>
-
-                <Show when={isRetainer()}>
-                  <p class="mt-1 text-xs text-amber-600 dark:text-amber-400">
-                    Retainer clients use raw passthrough — no display rule needed.
-                  </p>
-                </Show>
-                <Show when={!isRetainer() && ruleSource() === "existing"}>
-                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    From this project's existing configuration.
-                  </p>
-                </Show>
-                <Show when={!isRetainer() && ruleSource() === "inherited_from_client"}>
-                  <p class="mt-1 text-xs text-blue-600 dark:text-blue-400">
-                    New project — inherited from this client's other projects.
-                  </p>
-                </Show>
-                <Show when={!isRetainer() && ruleSource() === "default_by_client_type"}>
-                  <p class="mt-1 text-xs text-amber-600 dark:text-amber-400">
-                    No existing rule for this client — using the default for this
-                    client type.
-                  </p>
-                </Show>
-              </div>
-
-              {/* Rule Value — unit-aware label; disabled for retainer */}
-              <div>
-                <label class="block text-sm font-medium mb-1.5">
-                  Rule Value
-                  <Show when={resolvedUnit() === "percent"}>
-                    <span class="text-gray-400 font-normal"> (%)</span>
+                    <select
+                      value={formData().rule_type}
+                      onChange={(e) => {
+                        handleInputChange("rule_type", e.target.value);
+                        setResolvedUnit(unitForRuleType(e.target.value));
+                      }}
+                      class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-purple-500 outline-none"
+                    >
+                      <For each={ruleTypeChoices()}>
+                        {(opt) => <option value={opt.value}>{opt.label}</option>}
+                      </For>
+                    </select>
                   </Show>
-                  <Show when={resolvedUnit() === "amount"}>
-                    <span class="text-gray-400 font-normal"> (₹)</span>
+
+                  <Show when={isRetainer()}>
+                    <p class="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                      Retainer clients are flat-fee passthrough — they have no
+                      display config, so there is no rule to set.
+                    </p>
                   </Show>
-                </label>
-                <input
-                  type="number"
-                  value={formData().rule_value}
-                  disabled={isRetainer()}
-                  onInput={(e) =>
-                    handleInputChange("rule_value", e.target.value)
-                  }
-                  placeholder={
-                    isRetainer()
-                      ? "Not applicable for retainer"
-                      : resolvedUnit() === "amount"
-                        ? "Enter amount (₹)"
-                        : "Enter markup %"
-                  }
-                  class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-purple-500 outline-none disabled:opacity-50 disabled:cursor-not-allowed"
-                />
+                  {/* The wrong-type warning. Saved as-is; the form never swaps it
+                      out from under the user. */}
+                  <Show when={ruleTypeFlagged()}>
+                    <p class="mt-1 text-xs text-red-600 dark:text-red-400">
+                      Flagged: {resolvedClientType()} clients bill on{" "}
+                      {allowedRuleTypes().join(" / ") || "no rule type"} only, so{" "}
+                      {formData().rule_type} bills ₹0 and shows up as a missing
+                      rate. Left exactly as saved — change it here to fix it.
+                    </p>
+                  </Show>
+                  <Show when={ruleTypeIsFixed()}>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      {resolvedClientType()?.toUpperCase()} clients bill on{" "}
+                      {formData().rule_type} only.
+                    </p>
+                  </Show>
+                  <Show when={!isRetainer() && ruleSource() === "existing"}>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      From this project's existing configuration.
+                    </p>
+                  </Show>
+                  <Show when={!isRetainer() && ruleSource() === "inherited_from_client"}>
+                    <p class="mt-1 text-xs text-blue-600 dark:text-blue-400">
+                      New project — inherited from this client's other projects.
+                    </p>
+                  </Show>
+                  <Show when={!isRetainer() && ruleSource() === "default_by_client_type"}>
+                    <p class="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                      No existing rule for this client — using the default for this
+                      client type.
+                    </p>
+                  </Show>
+                </div>
+
+                {/* Rule Value — unit-aware label; disabled for retainer */}
+                <div>
+                  <label class="block text-sm font-medium mb-1.5">
+                    Rule Value
+                    <Show when={resolvedUnit() === "percent"}>
+                      <span class="text-gray-400 font-normal"> (%)</span>
+                    </Show>
+                    <Show when={resolvedUnit() === "amount"}>
+                      <span class="text-gray-400 font-normal"> (₹)</span>
+                    </Show>
+                  </label>
+                  <input
+                    type="number"
+                    value={formData().rule_value}
+                    disabled={isRetainer()}
+                    onInput={(e) =>
+                      handleInputChange("rule_value", e.target.value)
+                    }
+                    placeholder={
+                      isRetainer()
+                        ? "Not applicable for retainer"
+                        : resolvedUnit() === "amount"
+                          ? "Enter amount (₹)"
+                          : "Enter markup %"
+                    }
+                    class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-purple-500 outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                </div>
               </div>
 
               {/* ── NEW: Preview client CPL ── */}
