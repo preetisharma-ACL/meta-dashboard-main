@@ -73,26 +73,6 @@ const waLink = (raw) => {
 // actually reach out on, with the desk phone as the fallback.
 const directNumber = (c) => clean(c?.whatsapp) || clean(c?.phone);
 
-// The description under each name is what makes the ladder legible — it says
-// what this person is FOR, which is the whole argument for contacting them
-// rather than the tier below. The API's `intro` is used whenever it is set;
-// these are the per-tier fallbacks so a blank field never leaves a bare card.
-const BLURB = {
-  manager:
-    "Owns your lead flow, budgets and creative approvals. Ask about lead quality, CPL, or anything running live this week.",
-  ops:
-    "Reach out if a request has been open more than 24 hours, or for anything commercial. Any decision above can be overridden here.",
-};
-
-// The coordination desk holds two roles, and giving both cards the same
-// sentence made the pair read as a copy-paste error rather than a team. The
-// desk's head gets the supervisory line; everyone else gets the delivery one.
-const coordinationBlurb = (c) =>
-  clean(c?.intro) ||
-  (/\bhead\b|\blead\b|\bmanager\b/i.test(clean(c?.designation))
-    ? "Oversees the coordination desk. Ask here if a request is stuck."
-    : "Lead delivery, daily reports and data corrections.");
-
 // ── Avatar ──────────────────────────────────────────────────────────────────
 // A real headshot when photo_url is set, otherwise a monogram on a brand
 // gradient disc — the same fallback Slack, Notion and Linear use. A broken or
@@ -154,7 +134,7 @@ function Avatar(props) {
         when={photo() && !broken()}
         fallback={
           <span
-            class="cm-serif leading-none select-none"
+            class="font-bold leading-none select-none"
             style={{
               color: tone().letter,
               // One letter can sit large; two need to come down or they touch
@@ -359,10 +339,6 @@ function FeaturedCard(props) {
             </p>
           </Show>
 
-          <p class="text-[13.5px] leading-relaxed text-gray-500 dark:text-gray-400 mb-5 max-w-[46ch]">
-            {clean(c().intro) || BLURB.manager}
-          </p>
-
           <div class="flex flex-wrap items-center gap-2.5">
             <Show when={wa()}>
               <LinkBtn
@@ -400,14 +376,20 @@ function FeaturedCard(props) {
             what gets copied into a phone. Hidden below sm, where the WhatsApp
             button is a tap away and the column would stack into dead space. */}
         <Show when={number()}>
-          <div class="hidden sm:block sm:w-[164px] sm:text-right sm:border-l sm:pl-6 border-gray-200 dark:border-gray-700 flex-shrink-0 pt-1">
+          <div class="hidden sm:block sm:w-[188px] sm:text-right sm:border-l sm:pl-6 border-gray-200 dark:border-gray-700 flex-shrink-0 pt-1">
             <p class={`${EYEBROW} text-gray-400 dark:text-gray-500 mb-2`}>
               Direct line
             </p>
             <CopyNumber
               value={fmtIntl(number())}
-              class="text-[13.5px] font-semibold text-gray-700 dark:text-gray-200 hover:text-blue-900 dark:hover:text-blue-300"
+              class="inline-flex items-center gap-2 text-[15px] font-bold text-gray-900 dark:text-gray-50 hover:text-blue-900 dark:hover:text-blue-300"
             >
+              <span
+                class="w-6 h-6 grid place-items-center rounded-full flex-shrink-0"
+                style={{ "background-color": `${NAVY}16`, color: NAVY }}
+              >
+                <Phone size={13} />
+              </span>
               {fmtIntl(number())}
             </CopyNumber>
             <p class="text-[12px] text-gray-400 dark:text-gray-500 mt-3 leading-relaxed">
@@ -452,16 +434,18 @@ function CoordinationCard(props) {
         </div>
       </div>
 
-      <p class="text-[13px] leading-relaxed text-gray-500 dark:text-gray-400 mb-4">
-        {coordinationBlurb(c())}
-      </p>
-
       <div class="mt-auto flex items-center justify-between gap-2 pt-3.5 border-t border-gray-200 dark:border-gray-700">
         <Show when={number()} fallback={<span />}>
           <CopyNumber
             value={fmtIntl(number())}
-            class="text-[12.5px] font-semibold text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100"
+            class="inline-flex items-center gap-2 pl-1 pr-3 py-1 rounded-full border border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-white/5 text-[13px] font-bold text-gray-800 dark:text-gray-100 hover:border-blue-900/35 dark:hover:border-blue-400/35 hover:text-blue-900 dark:hover:text-blue-300"
           >
+            <span
+              class="w-6 h-6 grid place-items-center rounded-full flex-shrink-0"
+              style={{ "background-color": `${NAVY}16`, color: NAVY }}
+            >
+              <Phone size={13} />
+            </span>
             {fmtLocal(number())}
           </CopyNumber>
         </Show>
@@ -526,14 +510,10 @@ function HeadOfOpsCard(props) {
           </div>
 
           <Show when={clean(c().designation)}>
-            <p class="text-[13.5px] text-gray-500 dark:text-gray-400 mb-1.5">
+            <p class="text-[13.5px] text-gray-500 dark:text-gray-400">
               {clean(c().designation)}
             </p>
           </Show>
-
-          <p class="text-[13px] leading-relaxed text-gray-500 dark:text-gray-400 max-w-[48ch]">
-            {clean(c().intro) || BLURB.ops}
-          </p>
         </div>
 
         <div class="flex sm:flex-col gap-2 flex-shrink-0">
@@ -593,7 +573,7 @@ export default function MyTeam() {
           <p class={`${EYEBROW} mb-3`} style={{ color: RED }}>
             AAJneeti Connect · Account team
           </p>
-          <h1 class="cm-serif text-[38px] sm:text-[44px] leading-[1.05] text-gray-900 dark:text-gray-50">
+          <h1 class="text-2xl sm:text-3xl font-bold tracking-tight leading-tight text-gray-900 dark:text-gray-50">
             Meet your team
           </h1>
           <p class="mt-3 text-[15px] leading-relaxed text-gray-500 dark:text-gray-400 max-w-[52ch]">
