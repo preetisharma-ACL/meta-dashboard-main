@@ -1,5 +1,5 @@
 import { createResource, createSignal, For, Show } from "solid-js";
-import { Phone, Mail, Users } from "lucide-solid";
+import { Phone, Mail, Users, UserRound } from "lucide-solid";
 import { getMyTeam } from "../services/clientType-service";
 
 // ── Brand tokens ────────────────────────────────────────────────────────────
@@ -74,49 +74,35 @@ const waLink = (raw) => {
 const directNumber = (c) => clean(c?.whatsapp) || clean(c?.phone);
 
 // ── Avatar ──────────────────────────────────────────────────────────────────
-// A real headshot when photo_url is set, otherwise a monogram on a brand
-// gradient disc — the same fallback Slack, Notion and Linear use. A broken or
-// expired photo URL falls through to the monogram rather than leaving a hole in
-// the card.
+// A real headshot when photo_url is set, otherwise a person glyph on a brand
+// gradient disc. A broken or expired photo URL falls through to the glyph
+// rather than leaving a hole in the card.
 //
-// Nothing about the person is drawn from their name beyond the initial: the
-// roster is different for every client and grows over time, so anything the page
-// had to infer or keep a list of would be wrong for someone eventually. The
-// monogram is the one fallback that never is.
+// Nothing about the person is drawn from their name: the roster is different
+// for every client and grows over time, so anything the page had to infer or
+// keep a list of would be wrong for someone eventually.
 
 // Deep navy for the routine contacts, crimson for the escalation tier. Both
-// carry a gold letter — the third colour of the app's ramp — and both are two
+// carry a gold glyph — the third colour of the app's ramp — and both are two
 // stops of ONE hue rather than a hue-to-hue blend, which is what keeps the disc
 // reading as a solid object with light falling on it.
 const AV_TONES = {
   navy: {
     fill: "linear-gradient(140deg, #24407F 0%, #1E3A8A 42%, #14233A 100%)",
-    letter: "#E8C27E",
+    glyph: "#E8C27E",
     ring: "rgba(20, 35, 58, 0.16)",
   },
   red: {
     fill: "linear-gradient(140deg, #C2394B 0%, #AC2334 46%, #7A1723 100%)",
-    letter: "#F2D7A6",
+    glyph: "#F2D7A6",
     ring: "rgba(122, 23, 35, 0.18)",
   },
-};
-
-// "Shresth" → S. "Ram Kumar" → RK. Two letters at most: three is a filing code,
-// not a monogram. Middle names are skipped — first and last are what people
-// recognise themselves by.
-const initialsOf = (contact) => {
-  const parts = clean(contact?.name).split(/\s+/).filter(Boolean);
-  if (!parts.length) return "?";
-  const first = parts[0][0];
-  const last = parts.length > 1 ? parts[parts.length - 1][0] : "";
-  return (first + last).toUpperCase();
 };
 
 function Avatar(props) {
   const [broken, setBroken] = createSignal(false);
   const photo = () => clean(props.contact.photo_url);
   const tone = () => AV_TONES[props.tone || "navy"];
-  const initials = () => initialsOf(props.contact);
 
   return (
     <div
@@ -133,22 +119,19 @@ function Avatar(props) {
       <Show
         when={photo() && !broken()}
         fallback={
-          <span
-            class="font-bold leading-none select-none"
+          // A person glyph rather than a monogram: every name is already set
+          // beside its disc, so the initial was repeating what the card says a
+          // line to the right. Sized off the disc so the 68px featured avatar
+          // and the 48px coordination ones read as the same object.
+          <UserRound
+            size={Math.round(props.size * 0.46)}
+            stroke-width={1.6}
             style={{
-              color: tone().letter,
-              // One letter can sit large; two need to come down or they touch
-              // the rim on the 46px coordination disc.
-              "font-size": `${Math.round(
-                props.size * (initials().length > 1 ? 0.34 : 0.42)
-              )}px`,
-              "letter-spacing": initials().length > 1 ? "0.02em" : "0",
-              "text-shadow": "0 1px 2px rgba(0, 0, 0, 0.22)",
+              color: tone().glyph,
+              filter: "drop-shadow(0 1px 2px rgba(0, 0, 0, 0.22))",
             }}
             aria-hidden="true"
-          >
-            {initials()}
-          </span>
+          />
         }
       >
         <img
