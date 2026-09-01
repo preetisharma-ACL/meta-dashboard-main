@@ -2,6 +2,7 @@ import {
   createSignal,
   createMemo,
   createResource,
+  createEffect,
   onCleanup,
   For,
   Show,
@@ -1151,6 +1152,45 @@ function NewOperation(props) {
 function ClientQuickSelect(props) {
   const [open, setOpen] = createSignal(false);
   const [q, setQ] = createSignal("");
+  // Same clipping problem as the ad-account menu: the card around this button
+  // is overflow-hidden, so an absolutely-positioned panel gets cut off — and on
+  // a narrow viewport a right-aligned 280px panel runs off the left edge once
+  // the toolbar wraps. Position the menu with FIXED viewport coordinates taken
+  // from the button, with its width and height clamped to the screen.
+  let btnRef;
+  const [menu, setMenu] = createSignal({ left: 0, top: 0, width: 280, maxH: 280 });
+
+  const placeMenu = () => {
+    const r = btnRef?.getBoundingClientRect();
+    if (!r) return;
+    const m = 8;
+    const width = Math.min(280, window.innerWidth - m * 2);
+    // Prefer opening leftward from the button's right edge (the wide-screen
+    // look), then clamp so neither edge leaves the viewport.
+    let left = Math.min(r.right - width, window.innerWidth - width - m);
+    left = Math.max(left, m);
+    const top = r.bottom + 6;
+    // Header search box is ~52px; give the list whatever is left below it.
+    const maxH = Math.min(280, Math.max(140, window.innerHeight - top - m - 52));
+    setMenu({ left, top, width, maxH });
+  };
+
+  const openMenu = () => {
+    placeMenu();
+    setOpen(true);
+  };
+
+  // Keep the panel anchored to the button while open (resize, rotate, scroll).
+  createEffect(() => {
+    if (!open()) return;
+    const onMove = () => placeMenu();
+    window.addEventListener("resize", onMove);
+    window.addEventListener("scroll", onMove, true);
+    onCleanup(() => {
+      window.removeEventListener("resize", onMove);
+      window.removeEventListener("scroll", onMove, true);
+    });
+  });
 
   const filtered = createMemo(() => {
     const needle = q().trim().toLowerCase();
@@ -1169,20 +1209,29 @@ function ClientQuickSelect(props) {
     <div class="relative">
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        ref={btnRef}
+        onClick={() => (open() ? setOpen(false) : openMenu())}
         disabled={(props.clients ?? []).length === 0}
         aria-expanded={open()}
         class="inline-flex items-center gap-1.5 h-[35px] px-3 rounded-[9px] border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-[12px] font-semibold text-gray-600 dark:text-gray-300 hover:border-[#14233A]/40 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
       >
-        <Users class="w-3.5 h-3.5" />
+        <Users class="w-3.5 h-3.5 flex-shrink-0" />
         Select client
-        <ChevronDown class={`w-3.5 h-3.5 transition-transform ${open() ? "rotate-180" : ""}`} />
+        <ChevronDown class={`w-3.5 h-3.5 flex-shrink-0 transition-transform ${open() ? "rotate-180" : ""}`} />
       </button>
 
       <Show when={open()}>
         {/* Click-away backdrop */}
         <div class="fixed inset-0 z-[40]" onClick={() => setOpen(false)} />
-        <div class="absolute right-0 mt-1.5 w-[280px] z-[50] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl overflow-hidden">
+        {/* Fixed to the viewport (escapes the card's overflow-hidden clip). */}
+        <div
+          style={{
+            position: "fixed",
+            left: `${menu().left}px`,
+            top: `${menu().top}px`,
+            width: `${menu().width}px`,
+          }}
+          class="z-[50] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl overflow-hidden">
           <div class="p-2 border-b border-gray-100 dark:border-gray-800">
             <div class="relative">
               <Search class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
@@ -1196,7 +1245,7 @@ function ClientQuickSelect(props) {
               />
             </div>
           </div>
-          <div class="max-h-[280px] overflow-y-auto py-1">
+          <div class="overflow-y-auto py-1" style={{ "max-height": `${menu().maxH}px` }}>
             <Show
               when={filtered().length > 0}
               fallback={
