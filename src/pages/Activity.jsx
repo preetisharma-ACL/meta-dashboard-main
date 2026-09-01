@@ -1307,8 +1307,8 @@ export default function Activity() {
             {/* One panel, divided columns — the same summary shape the funding
                 and payments pages use, so this reads as part of the app. */}
             <div class="bg-white dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-2xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] px-5 sm:px-7 py-6">
-              <div class="flex flex-wrap items-stretch gap-y-5">
-                <div class="px-0 sm:pr-7 flex-1 min-w-[190px]">
+              <div class="grid grid-cols-1 sm:grid-cols-3">
+                <div class="min-w-0 sm:pr-7">
                   <div class="flex items-start justify-between gap-3">
                     <div class="min-w-0">
                       <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
@@ -1329,7 +1329,7 @@ export default function Activity() {
                   </div>
                 </div>
 
-                <div class="px-5 sm:px-7 flex-1 min-w-[190px] border-l border-[#E2E8F1] dark:border-gray-700">
+                <div class="min-w-0 pt-5 mt-5 border-t sm:pt-0 sm:mt-0 sm:border-t-0 sm:border-l sm:px-7 border-[#E2E8F1] dark:border-gray-700">
                   <div class="flex items-start justify-between gap-3">
                     <div class="min-w-0">
                       <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
@@ -1354,7 +1354,7 @@ export default function Activity() {
 
                 {/* Failed logins earns the alert tone only when there ARE any —
                     a permanent red 0 trains the eye to ignore it. */}
-                <div class="px-5 sm:pl-7 flex-1 min-w-[190px] border-l border-[#E2E8F1] dark:border-gray-700">
+                <div class="min-w-0 pt-5 mt-5 border-t sm:pt-0 sm:mt-0 sm:border-t-0 sm:border-l sm:pl-7 border-[#E2E8F1] dark:border-gray-700">
                   <div class="flex items-start justify-between gap-3">
                     <div class="min-w-0">
                       <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
