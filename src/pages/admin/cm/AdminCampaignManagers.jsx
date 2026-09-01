@@ -314,7 +314,7 @@ export default function AdminCampaignManagers() {
               <span class="text-gray-300 dark:text-gray-600">·</span>
               <span class="text-gray-400 dark:text-gray-500">Team</span>
             </p>
-            <h1 class="cm-serif text-4xl md:text-5xl text-gray-900 dark:text-white leading-[1.04]">
+            <h1 class="text-xl md:text-2xl font-bold tracking-tight text-gray-900 dark:text-white leading-[1.06]">
               Campaign Managers
             </h1>
             <p class="text-sm text-gray-500 dark:text-gray-400 mt-3 max-w-xl leading-relaxed">
