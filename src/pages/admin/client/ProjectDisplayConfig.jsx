@@ -3,7 +3,7 @@ import {
   fetchProjectDisplayConfig,
   createProjectDisplayConfig,
   updateProjectDisplayConfig,
-  closeProjectDisplayConfig, // ← NEW: close the row a config_overlap 422 names
+  supersedeProjectDisplayConfig, // ← NEW: resolve a config_overlap 422
   fetchClients,
   previewClientCpl, // ← NEW: CPL preview
   resolveConfigRule, // ← NEW: server-side rule resolution
@@ -684,38 +684,44 @@ export default function ProjectDisplayConfig() {
     return payload;
   };
 
-  // Save, refresh the list, close the sidebar, toast. Throws on failure so both
-  // callers (plain save, and the retry after closing a blocking config) route
-  // into the same error handling.
-  const persistConfig = async (extraToastLine = "") => {
-    // Capture for the toast before the sidebar reset wipes them. Show the
-    // value with the correct unit (₹ for amount rules, % for markup pct).
-    const ruleValue = formData().rule_value;
-    const ruleValueLabel =
-      resolvedUnit() === "amount" ? `₹${ruleValue}` : `${ruleValue}%`;
-    const projectName =
-      projects().find((p) => p.id === Number(formData().project_id))?.name ||
-      projectSearch();
+  // Save, then hand off to afterSave. Throws on failure so the caller routes
+  // into handleSaveError.
+  const persistConfig = async () => {
     const wasEdit = isEditMode();
     const payload = buildConfigPayload();
+    // afterSave reads the form for its toast, so build the labels before the
+    // write — closeSidebar() clears the form on the way out.
+    const done = afterSaveMessage(wasEdit);
 
     if (wasEdit) {
       await updateProjectDisplayConfig(editingConfig().id, payload);
     } else {
       await createProjectDisplayConfig(payload);
     }
+    await afterSave(done);
+  };
 
+  // The success sentence, built from the form as it stands (the sidebar reset
+  // wipes these). Shows the value with the correct unit — ₹ for amount rules,
+  // % for markup pct.
+  const afterSaveMessage = (wasEdit) => {
+    const ruleValue = formData().rule_value;
+    const ruleValueLabel =
+      resolvedUnit() === "amount" ? `₹${ruleValue}` : `${ruleValue}%`;
+    const projectName =
+      projects().find((p) => p.id === Number(formData().project_id))?.name ||
+      projectSearch();
+    return wasEdit
+      ? `Successfully updated "${ruleValueLabel}" configuration for the "${projectName}" project.`
+      : `Successfully added "${ruleValueLabel}" configuration to the "${projectName}" project.`;
+  };
+
+  // Refresh the list, close the sidebar, toast.
+  const afterSave = async (message) => {
     const res = await fetchProjectDisplayConfig();
     setConfigs(res.data ?? []);
     closeSidebar();
-
-    showToast(
-      (wasEdit
-        ? `Successfully updated "${ruleValueLabel}" configuration for the "${projectName}" project.`
-        : `Successfully added "${ruleValueLabel}" configuration to the "${projectName}" project.`) +
-        extraToastLine,
-      "Configuration saved",
-    );
+    showToast(message, "Configuration saved");
   };
 
   // A config_overlap 422 is not a dead end: the payload names the row that
@@ -753,30 +759,47 @@ export default function ProjectDisplayConfig() {
   // The moment the new rate takes over: the start date the user picked, or
   // "now" for a Tier-2 CM who never sees the date fields (the backend stamps
   // those at save time).
-  const overlapCloseAtIso = () =>
-    canSetValidity() ? localInputToIso(formData().valid_from) : null;
   const overlapCloseAtLabel = () =>
     canSetValidity() && formData().valid_from
       ? formatDate(formData().valid_from)
       : "now";
 
-  // Close the blocking config at the new rate's start date, then re-send the
-  // save that was refused. DELETE is a close, not a delete — the row keeps its
-  // history and simply gains a valid_to, so the two never overlap.
+  // Only an OPEN config can be superseded — PATCH 422s on one that already has
+  // a valid_to. A blocking row is always open (that is why it blocked), so this
+  // is a guard against a payload that says otherwise, not an expected state.
+  const canSupersedeOverlap = createMemo(() => {
+    const existing = overlapConflict()?.existing;
+    return !!existing?.id && !existing.valid_to;
+  });
+
+  // Supersede the blocking config: PATCH closes it at the new rate's valid_from
+  // and creates the replacement in one call. Naming the row being superseded is
+  // the intent the overlap guard exists to ask for, so PATCH skips that guard —
+  // where re-sending the refused POST would just be refused again.
   const handleCloseOverlap = async () => {
     const conflict = overlapConflict();
-    if (!conflict?.existing?.id) return;
+    if (!canSupersedeOverlap()) return;
     try {
       setClosingOverlap(true);
       setSubmitError("");
-      await closeProjectDisplayConfig(
-        conflict.existing.id,
-        overlapCloseAtIso(),
-      );
+      // Same body as the create, minus the pair — the id supplies it.
+      const payload = {
+        rule_type: formData().rule_type,
+        rule_value: formData().rule_value,
+        notes: formData().notes,
+      };
+      // Tier-2 CMs send no date; the backend stamps the close and the new start
+      // at save time.
+      if (canSetValidity()) {
+        payload.valid_from = localInputToIso(formData().valid_from);
+      }
+      const message =
+        afterSaveMessage(false) +
+        ` Config #${conflict.existing.id} (${describeRule(conflict.existing)}) was closed on ${overlapCloseAtLabel()}.`;
+
+      await supersedeProjectDisplayConfig(conflict.existing.id, payload);
       setOverlapConflict(null);
-      await persistConfig(
-        ` Config #${conflict.existing.id} (${describeRule(conflict.existing)}) was closed on ${overlapCloseAtLabel()}.`,
-      );
+      await afterSave(message);
     } catch (err) {
       handleSaveError(err);
     } finally {
@@ -1763,21 +1786,36 @@ export default function ProjectDisplayConfig() {
                         </p>
                       </div>
 
-                      <button
-                        onClick={handleCloseOverlap}
-                        disabled={closingOverlap() || submitting()}
-                        class="mt-2.5 w-full px-3 py-2 rounded-lg bg-amber-600 text-white text-sm font-medium hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                      {/* Superseding is a PATCH on the blocking row, which the
+                          backend refuses once that row has a valid_to. A
+                          blocking row is always open, so the fallback copy is
+                          a guard, not an expected state. */}
+                      <Show
+                        when={canSupersedeOverlap()}
+                        fallback={
+                          <p class="mt-2.5 text-xs text-amber-700/80 dark:text-amber-400/80">
+                            That config is already closed, so it can't be
+                            superseded from here — pick a start date after{" "}
+                            {formatDate(conflict().existing.valid_to)} instead.
+                          </p>
+                        }
                       >
-                        {closingOverlap()
-                          ? "Closing…"
-                          : `Close config #${conflict().existing.id} on ${overlapCloseAtLabel()} and save`}
-                      </button>
-                      <p class="mt-1.5 text-xs text-amber-700/80 dark:text-amber-400/80">
-                        The old rate keeps every lead billed before{" "}
-                        {overlapCloseAtLabel()}; the new one takes over from
-                        then. Or pick a later start date above to leave it
-                        running until that day.
-                      </p>
+                        <button
+                          onClick={handleCloseOverlap}
+                          disabled={closingOverlap() || submitting()}
+                          class="mt-2.5 w-full px-3 py-2 rounded-lg bg-amber-600 text-white text-sm font-medium hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                        >
+                          {closingOverlap()
+                            ? "Closing…"
+                            : `Close config #${conflict().existing.id} on ${overlapCloseAtLabel()} and save`}
+                        </button>
+                        <p class="mt-1.5 text-xs text-amber-700/80 dark:text-amber-400/80">
+                          The old rate keeps every lead billed before{" "}
+                          {overlapCloseAtLabel()}; the new one takes over from
+                          then. Or pick a later start date above to leave it
+                          running until that day.
+                        </p>
+                      </Show>
                     </div>
                   </div>
                 </div>

@@ -132,16 +132,23 @@ export const fetchConfigHistory = async (clientId, projectId) => {
     { method: "GET" }
   );
 };
+
 /**
- * Close an existing config — DELETE is a close, not a hard delete: the row
- * stays and gets a valid_to. Used to clear the blocking row a `config_overlap`
- * 422 names, so the new rate can start on the date the user picked.
+ * Supersede an existing config: closes the named row AND creates the
+ * replacement in one call. This is the resolution for a `config_overlap` 422 —
+ * naming the config you are superseding is the explicit intent the overlap
+ * guard exists to ask for, so this endpoint deliberately skips that guard.
+ *
+ * Body is the same shape POST takes, minus the client/project pair (the id
+ * supplies it). Refuses (422) a config whose valid_to is already set — only an
+ * open row can be superseded, which a blocking row always is.
  *
  * @param {number|string} id - existing_config.id from the 422 payload
- * @param {string|null} validTo - ISO datetime to close at (the new config's
- *   valid_from). Omitted → the backend closes it at the moment of the call.
+ * @param {object} payload - { rule_type, rule_value, valid_from?, notes? }
  */
-export const closeProjectDisplayConfig = async (id, validTo = null) => {
-  const qs = validTo ? `?valid_to=${encodeURIComponent(validTo)}` : "";
-  return await api(`/clients/admin/configs/${id}/${qs}`, { method: "DELETE" });
+export const supersedeProjectDisplayConfig = async (id, payload) => {
+  return await api(`/clients/admin/configs/${id}/`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
 };
