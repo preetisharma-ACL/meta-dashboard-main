@@ -3,6 +3,7 @@ import {
   fetchProjectDisplayConfig,
   createProjectDisplayConfig,
   updateProjectDisplayConfig,
+  closeProjectDisplayConfig, // ← NEW: close the row a config_overlap 422 names
   fetchClients,
   previewClientCpl, // ← NEW: CPL preview
   resolveConfigRule, // ← NEW: server-side rule resolution
@@ -31,6 +32,35 @@ const formatDate = (iso) => {
     month: "short",
     day: "numeric",
   });
+};
+
+// ── config_overlap helpers ────────────────────────────────────────────────────
+// The blocking row a config_overlap 422 returns carries all four rule columns,
+// only one of which holds the rate. Read it back into the same wording the
+// list uses, so the conflict names a rate the user recognises.
+const RULE_LABELERS = [
+  ["cpl_markup_pct", (v) => `+${v}%`],
+  ["cpl_markup_flat", (v) => `+₹${v}`],
+  ["target_cpl", (v) => `₹${v} target CPL`],
+  ["fixed_cpl", (v) => `₹${v} fixed CPL`],
+];
+
+// "120.00" → "120", but a non-numeric value is passed through untouched.
+const trimNumber = (v) => {
+  const n = parseFloat(v);
+  return Number.isNaN(n) ? String(v) : String(n);
+};
+
+// Prefer a set, non-zero column — some payloads null the unused rules, others
+// zero them, and a row of zeroes would otherwise report the first column as
+// the rate. A genuinely zero rate still falls through to the second pass.
+const describeRule = (row) => {
+  if (!row) return "—";
+  const present = RULE_LABELERS.filter(
+    ([key]) => row[key] != null && row[key] !== "",
+  );
+  const chosen = present.find(([key]) => parseFloat(row[key]) !== 0) ?? present[0];
+  return chosen ? chosen[1](trimNumber(row[chosen[0]])) : "—";
 };
 
 // ── Validity-window datetime helpers ──────────────────────────────────────────
@@ -96,6 +126,13 @@ export default function ProjectDisplayConfig() {
   // Save-time error (e.g. a scoped-out CM hitting a 403 with
   // "This client is not in your scope."). Rendered as a red box in the modal.
   const [submitError, setSubmitError] = createSignal("");
+  // A `config_overlap` 422: the create was refused because an existing config
+  // already covers the start date. Held separately from submitError because it
+  // is an actionable state, not a dead end — the blocking row is named and can
+  // be closed from here. Shape: { message, existing } where `existing` is the
+  // 422's error.fields.existing_config.
+  const [overlapConflict, setOverlapConflict] = createSignal(null);
+  const [closingOverlap, setClosingOverlap] = createSignal(false);
   const [clients, setClients] = createSignal([]);
   const [projects, setProjects] = createSignal([]);
   const [projectsLoading, setProjectsLoading] = createSignal(false); // ← NEW
@@ -554,6 +591,8 @@ export default function ProjectDisplayConfig() {
     clearPreview(); // ← NEW: drop any stale CPL preview
     setPreviewLoading(false);
     setSubmitError(""); // drop any stale save error
+    setOverlapConflict(null); // …and any stale overlap conflict
+    setClosingOverlap(false);
 
     setTimeout(() => {
       setSidebarMounted(false);
@@ -577,6 +616,9 @@ export default function ProjectDisplayConfig() {
     }
     // Editing the form clears a prior save error — the user is retrying.
     if (submitError()) setSubmitError("");
+    // Same for an overlap conflict: it names a blocking row for the dates that
+    // were submitted, so any edit (a later start date included) makes it stale.
+    if (overlapConflict()) setOverlapConflict(null);
   };
 
   const handleSubmitConfig = async () => {
@@ -609,59 +651,136 @@ export default function ProjectDisplayConfig() {
     try {
       setSubmitting(true);
       setSubmitError("");
-      const payload = {
-        client_id: Number(formData().client_id),
-        project_id: Number(formData().project_id),
-        rule_type: formData().rule_type,
-        rule_value: formData().rule_value,
-        notes: formData().notes,
-      };
-
-      // Attach the validity window for privileged users. valid_from is required
-      // (validated above) and sent as an ISO datetime carrying the local offset
-      // so the exact time chosen is preserved. valid_to is optional; omit it →
-      // open-ended. Tier-2 CMs send no dates → backend auto-stamps.
-      if (canSetValidity()) {
-        payload.valid_from = localInputToIso(formData().valid_from);
-        if (formData().valid_to)
-          payload.valid_to = localInputToIso(formData().valid_to);
-      }
-
-      // Capture for the toast before the sidebar reset wipes them. Show the
-      // value with the correct unit (₹ for amount rules, % for markup pct).
-      const ruleValue = formData().rule_value;
-      const ruleValueLabel =
-        resolvedUnit() === "amount" ? `₹${ruleValue}` : `${ruleValue}%`;
-      const projectName =
-        projects().find((p) => p.id === Number(formData().project_id))?.name ||
-        projectSearch();
-      const wasEdit = isEditMode();
-
-      if (wasEdit) {
-        await updateProjectDisplayConfig(editingConfig().id, payload);
-      } else {
-        await createProjectDisplayConfig(payload);
-      }
-
-      const res = await fetchProjectDisplayConfig();
-      setConfigs(res.data ?? []);
-      closeSidebar();
-
-      showToast(
-        wasEdit
-          ? `Successfully updated "${ruleValueLabel}" configuration for the "${projectName}" project.`
-          : `Successfully added "${ruleValueLabel}" configuration to the "${projectName}" project.`,
-        "Configuration saved",
-      );
+      setOverlapConflict(null);
+      await persistConfig();
     } catch (err) {
-      console.error("Failed to save config:", err);
-      // Surface the backend message (e.g. a CM's out-of-scope 403) instead of
-      // failing silently. Falls back to a generic line if none was provided.
-      setSubmitError(
-        err?.message || "Failed to save configuration. Please try again.",
-      );
+      handleSaveError(err);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // The create/update payload, built from the form as it stands. Split out so
+  // the overlap retry sends byte-for-byte what the refused save sent.
+  const buildConfigPayload = () => {
+    const payload = {
+      client_id: Number(formData().client_id),
+      project_id: Number(formData().project_id),
+      rule_type: formData().rule_type,
+      rule_value: formData().rule_value,
+      notes: formData().notes,
+    };
+
+    // Attach the validity window for privileged users. valid_from is required
+    // (validated in handleSubmitConfig) and sent as an ISO datetime carrying
+    // the local offset so the exact time chosen is preserved. valid_to is
+    // optional; omit it → open-ended. Tier-2 CMs send no dates → backend
+    // auto-stamps.
+    if (canSetValidity()) {
+      payload.valid_from = localInputToIso(formData().valid_from);
+      if (formData().valid_to)
+        payload.valid_to = localInputToIso(formData().valid_to);
+    }
+    return payload;
+  };
+
+  // Save, refresh the list, close the sidebar, toast. Throws on failure so both
+  // callers (plain save, and the retry after closing a blocking config) route
+  // into the same error handling.
+  const persistConfig = async (extraToastLine = "") => {
+    // Capture for the toast before the sidebar reset wipes them. Show the
+    // value with the correct unit (₹ for amount rules, % for markup pct).
+    const ruleValue = formData().rule_value;
+    const ruleValueLabel =
+      resolvedUnit() === "amount" ? `₹${ruleValue}` : `${ruleValue}%`;
+    const projectName =
+      projects().find((p) => p.id === Number(formData().project_id))?.name ||
+      projectSearch();
+    const wasEdit = isEditMode();
+    const payload = buildConfigPayload();
+
+    if (wasEdit) {
+      await updateProjectDisplayConfig(editingConfig().id, payload);
+    } else {
+      await createProjectDisplayConfig(payload);
+    }
+
+    const res = await fetchProjectDisplayConfig();
+    setConfigs(res.data ?? []);
+    closeSidebar();
+
+    showToast(
+      (wasEdit
+        ? `Successfully updated "${ruleValueLabel}" configuration for the "${projectName}" project.`
+        : `Successfully added "${ruleValueLabel}" configuration to the "${projectName}" project.`) +
+        extraToastLine,
+      "Configuration saved",
+    );
+  };
+
+  // A config_overlap 422 is not a dead end: the payload names the row that
+  // blocks the save, so it renders as its own panel with the blocking rate,
+  // its effective date, and a one-click close. Everything else (a CM's
+  // out-of-scope 403, a validation 400) stays a plain red line.
+  const handleSaveError = (err) => {
+    console.error("Failed to save config:", err);
+    const existing =
+      err?.code === "config_overlap"
+        ? (err?.fields?.existing_config ??
+          err?.data?.error?.fields?.existing_config ??
+          null)
+        : null;
+
+    if (existing) {
+      setOverlapConflict({
+        message:
+          err?.message ||
+          "A config already in effect covers this start date.",
+        existing,
+      });
+      setSubmitError("");
+      return;
+    }
+
+    // Surface the backend message (e.g. a CM's out-of-scope 403) instead of
+    // failing silently. Falls back to a generic line if none was provided.
+    setOverlapConflict(null);
+    setSubmitError(
+      err?.message || "Failed to save configuration. Please try again.",
+    );
+  };
+
+  // The moment the new rate takes over: the start date the user picked, or
+  // "now" for a Tier-2 CM who never sees the date fields (the backend stamps
+  // those at save time).
+  const overlapCloseAtIso = () =>
+    canSetValidity() ? localInputToIso(formData().valid_from) : null;
+  const overlapCloseAtLabel = () =>
+    canSetValidity() && formData().valid_from
+      ? formatDate(formData().valid_from)
+      : "now";
+
+  // Close the blocking config at the new rate's start date, then re-send the
+  // save that was refused. DELETE is a close, not a delete — the row keeps its
+  // history and simply gains a valid_to, so the two never overlap.
+  const handleCloseOverlap = async () => {
+    const conflict = overlapConflict();
+    if (!conflict?.existing?.id) return;
+    try {
+      setClosingOverlap(true);
+      setSubmitError("");
+      await closeProjectDisplayConfig(
+        conflict.existing.id,
+        overlapCloseAtIso(),
+      );
+      setOverlapConflict(null);
+      await persistConfig(
+        ` Config #${conflict.existing.id} (${describeRule(conflict.existing)}) was closed on ${overlapCloseAtLabel()}.`,
+      );
+    } catch (err) {
+      handleSaveError(err);
+    } finally {
+      setClosingOverlap(false);
     }
   };
 
@@ -1595,6 +1714,76 @@ export default function ProjectDisplayConfig() {
               </div>
             </div>
 
+            {/* Overlap conflict (422 config_overlap) — the save was refused
+                because the row named here already covers the start date.
+                Actionable: close that row on the day the new rate starts, and
+                the refused save goes through. */}
+            <Show when={overlapConflict()}>
+              {(conflict) => (
+                <div class="mx-6 mb-1 mt-3 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-700/70 px-3 py-3">
+                  <div class="flex items-start gap-2">
+                    <svg
+                      class="w-4 h-4 mt-0.5 flex-shrink-0 text-amber-600 dark:text-amber-400"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"
+                      />
+                    </svg>
+                    <div class="min-w-0 flex-1">
+                      <p class="text-sm font-semibold text-amber-800 dark:text-amber-300">
+                        This project already has a rate covering that date
+                      </p>
+                      <p class="mt-0.5 text-sm text-amber-700 dark:text-amber-400">
+                        {conflict().message}
+                      </p>
+
+                      {/* The blocking row, named: its rate and the window it
+                          holds. */}
+                      <div class="mt-2 rounded border border-amber-200 dark:border-amber-800 bg-white/70 dark:bg-gray-900/40 px-3 py-2">
+                        <div class="flex items-baseline gap-2">
+                          <span class="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                            {describeRule(conflict().existing)}
+                          </span>
+                          <span class="text-xs text-gray-500 dark:text-gray-400">
+                            config #{conflict().existing.id}
+                          </span>
+                        </div>
+                        <p class="mt-0.5 text-xs text-gray-600 dark:text-gray-400">
+                          Effective {formatDate(conflict().existing.valid_from)}{" "}
+                          →{" "}
+                          {conflict().existing.valid_to
+                            ? formatDate(conflict().existing.valid_to)
+                            : "open-ended"}
+                        </p>
+                      </div>
+
+                      <button
+                        onClick={handleCloseOverlap}
+                        disabled={closingOverlap() || submitting()}
+                        class="mt-2.5 w-full px-3 py-2 rounded-lg bg-amber-600 text-white text-sm font-medium hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                      >
+                        {closingOverlap()
+                          ? "Closing…"
+                          : `Close config #${conflict().existing.id} on ${overlapCloseAtLabel()} and save`}
+                      </button>
+                      <p class="mt-1.5 text-xs text-amber-700/80 dark:text-amber-400/80">
+                        The old rate keeps every lead billed before{" "}
+                        {overlapCloseAtLabel()}; the new one takes over from
+                        then. Or pick a later start date above to leave it
+                        running until that day.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </Show>
+
             {/* Save error (e.g. a CM's out-of-scope 403) */}
             <Show when={submitError()}>
               <div class="mx-6 mb-1 mt-3 rounded-md border border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-800 px-3 py-2 text-sm text-red-600 dark:text-red-400">
@@ -1612,7 +1801,12 @@ export default function ProjectDisplayConfig() {
               </button>
               <button
                 onClick={handleSubmitConfig}
-                disabled={submitting() || isRetainer() || ruleResolving()}
+                disabled={
+                  submitting() ||
+                  closingOverlap() ||
+                  isRetainer() ||
+                  ruleResolving()
+                }
                 class="flex-1 px-4 py-2.5 rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
               >
                 {submitting()

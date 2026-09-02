@@ -132,3 +132,16 @@ export const fetchConfigHistory = async (clientId, projectId) => {
     { method: "GET" }
   );
 };
+/**
+ * Close an existing config — DELETE is a close, not a hard delete: the row
+ * stays and gets a valid_to. Used to clear the blocking row a `config_overlap`
+ * 422 names, so the new rate can start on the date the user picked.
+ *
+ * @param {number|string} id - existing_config.id from the 422 payload
+ * @param {string|null} validTo - ISO datetime to close at (the new config's
+ *   valid_from). Omitted → the backend closes it at the moment of the call.
+ */
+export const closeProjectDisplayConfig = async (id, validTo = null) => {
+  const qs = validTo ? `?valid_to=${encodeURIComponent(validTo)}` : "";
+  return await api(`/clients/admin/configs/${id}/${qs}`, { method: "DELETE" });
+};

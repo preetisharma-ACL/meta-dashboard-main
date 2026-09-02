@@ -157,12 +157,22 @@ export async function api(endpoint, options = {}) {
         try { data = await res.json(); } catch {}
 
         if (!res.ok) {
-            const err = new Error(data?.message || data?.detail || "API Error");
+            // The human sentence can sit at error.message (coded errors, e.g.
+            // config_overlap), at the top level, or at detail.
+            const err = new Error(
+                data?.error?.message || data?.message || data?.detail || "API Error",
+            );
             err.status = res.status;
             // Code can live at error.code (envelope) or top-level code (e.g. the
             // write endpoints return { code: "write_failed" }). Prefer the
             // nested one, fall back to the flat one.
             err.code = data?.error?.code ?? data?.code;
+            // Structured detail that rides along with a coded error, e.g. the
+            // 422 { code:"config_overlap", fields:{ existing_config:{…} } } the
+            // display-config create returns. Previously only the 200-envelope
+            // path set this, so an HTTP-error body's fields were unreachable
+            // except by digging into err.data.
+            err.fields = data?.error?.fields ?? data?.fields;
             // Attach the full parsed body so callers can read structured detail
             // (e.g. { detail: { error: "<meta error message>" } } on a failed
             // campaign write). Existing callers only read message/status/code,
