@@ -6,6 +6,7 @@ import {
   rejectSentence,
   guardEventSentence,
   untouchedBudgetLine,
+  detailText,
   triggerLabel,
   triggerChip,
   involvesBudgetChange,
@@ -179,6 +180,20 @@ export default function BudgetGuardDecisionModal(props) {
                 <Show when={untouchedBudgetLine(row())}>
                   <p class="mt-1.5 text-sm text-[#54657E] dark:text-gray-300">
                     {untouchedBudgetLine(row())}
+                  </p>
+                </Show>
+                {/* The guard's own words, verbatim, carried into the confirm
+                    step with everything else — the decision is taken against
+                    the same facts the card stated, including the ones this
+                    screen only relays. */}
+                <Show when={detailText(row()) && !involvesBudgetChange(row())}>
+                  <p class="mt-2 text-xs text-[#54657E] dark:text-gray-400 break-words">
+                    <span class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
+                      From the guard
+                    </span>{" "}
+                    <span class="font-mono text-[#14233A] dark:text-gray-200">
+                      {detailText(row())}
+                    </span>
                   </p>
                 </Show>
               </div>

@@ -85,6 +85,29 @@ function IdentityLine(props) {
   );
 }
 
+// The guard's own words for this row, printed EXACTLY as the server sent them.
+// The sentence above is built by reading this string, so this is the line that
+// still says what happened if the backend ever rewords `detail` and the readers
+// stop matching it: a raw line stays readable where a regex quietly finds
+// nothing. It is never parsed, trimmed of its own punctuation, or reformatted —
+// "Rs" stays "Rs" here even though the sentence above prints "₹".
+//
+// NON-BUDGET ROWS ONLY. A budget row's specifics are the figures in its own
+// sentence, off dedicated numeric fields; `detail` is where the other two rules
+// keep theirs, and it is all they have.
+function GuardDetail(props) {
+  return (
+    <Show when={detailText(props.row) && !involvesBudgetChange(props.row)}>
+      <p class="mt-2 text-xs text-[#54657E] dark:text-gray-400 break-words">
+        <span class={META_LABEL}>From the guard</span>{" "}
+        <span class="font-mono text-[#14233A] dark:text-gray-200">
+          {detailText(props.row)}
+        </span>
+      </p>
+    </Show>
+  );
+}
+
 // What the guard actually managed to apply. Rendered only when something is
 // MISSING: a full green checklist on every card would train the eye to skip the
 // one card where it matters. A partially applied guard is not a guard.
@@ -373,14 +396,8 @@ export default function BudgetGuard() {
                     </p>
                   </Show>
 
-                  {/* The guard's own words for this row, printed verbatim —
-                      the sentence above is built from it, and if it ever stops
-                      parsing, everything the server said is still on screen. */}
-                  <Show when={detailText(row) && !involvesBudgetChange(row)}>
-                    <p class="mt-2 text-xs text-[#8593A8] dark:text-gray-400 font-mono break-words">
-                      {detailText(row)}
-                    </p>
-                  </Show>
+                  {/* The guard's own words, verbatim. */}
+                  <GuardDetail row={row} />
 
                   <MetaErrorNotice row={row} />
                   <PartialGuardNotice row={row} />
@@ -457,6 +474,12 @@ export default function BudgetGuard() {
                 <p class="mt-2 text-sm text-[#54657E] dark:text-gray-300 leading-relaxed">
                   {guardEventSentence(row)}
                 </p>
+
+                {/* And the raw `detail` behind that sentence. A decision taken
+                    on a wrong-objective row and one taken on an overdelivery
+                    row are different decisions; read back weeks later, the
+                    server's own specifics are what tell them apart. */}
+                <GuardDetail row={row} />
 
                 <div class="mt-3 grid gap-3 sm:grid-cols-3">
                   <div>
