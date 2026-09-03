@@ -152,6 +152,43 @@ const STATUS_META = {
 };
 const STATUS_ORDER = ["over", "near", "healthy", "uncapped"];
 
+// ─── Column sorting (DISPLAY-ONLY) ───────────────────────────────────────────
+// One accessor per sortable column header. Numeric accessors return null when
+// the figure isn't set so the comparator can park those rows last in BOTH
+// directions — an unset ceiling is not "₹0" and must never sort as if it were.
+const toNum = (v) => { if (v == null) return null; const n = parseFloat(v); return isFinite(n) ? n : null; };
+const SORTERS = {
+  name:       { get: (c) => (c.name ?? "").toLowerCase(), text: true },
+  type:       { get: (c) => (TYPE_LABELS[c.client_type] ?? c.client_type ?? "").toLowerCase(), text: true },
+  status:     { get: (c) => STATUS_ORDER.indexOf(clientStatus(c)) },
+  dPct:       { get: (c) => legPct(c.allowed_daily_budget, c.daily_allocated) },
+  dAllowed:   { get: (c) => toNum(c.allowed_daily_budget) },
+  dAllocated: { get: (c) => toNum(c.daily_allocated) },
+  dHeadroom:  { get: (c) => toNum(c.daily_headroom) },
+  mPct:       { get: (c) => legPct(c.allowed_monthly_budget, c.monthly_spent) },
+  mAllowed:   { get: (c) => toNum(c.allowed_monthly_budget) },
+  mSpent:     { get: (c) => toNum(c.monthly_spent) },
+  mHeadroom:  { get: (c) => toNum(c.monthly_headroom) },
+};
+// Stable, null-last comparator. `rows` keeps its API order for ties.
+const sortRows = (rows, key, dir) => {
+  const s = SORTERS[key];
+  if (!s) return rows;
+  const sign = dir === "desc" ? -1 : 1;
+  return rows
+    .map((c, i) => ({ c, i, v: s.get(c) }))
+    .sort((a, b) => {
+      const an = a.v == null || a.v === "";
+      const bn = b.v == null || b.v === "";
+      if (an && bn) return a.i - b.i;
+      if (an) return 1;          // blanks last, whichever way we're sorting
+      if (bn) return -1;
+      const d = s.text ? String(a.v).localeCompare(String(b.v)) : a.v - b.v;
+      return d !== 0 ? d * sign : a.i - b.i;
+    })
+    .map((x) => x.c);
+};
+
 // Client avatars use the shared <Avatar> from ClientDashboard (same as funding).
 
 // ─── A grouped daily/monthly meter cell (Allowed | Used | Headroom) ───────────
@@ -165,8 +202,9 @@ function BudgetMeter(props) {
   const pct = () => legPct(allowed(), used());
 
   return (
-    <div class="min-w-[210px]">
-      <p class="text-[10px] font-bold uppercase tracking-wide text-[#8593A8] dark:text-gray-500 mb-1.5">
+    <div class="min-w-[210px] xl:w-[240px] xl:flex-none">
+      {/* Inline caption for the stacked (sub-xl) layout; at xl the table header carries it. */}
+      <p class="xl:hidden text-[10px] font-bold uppercase tracking-wide text-[#8593A8] dark:text-gray-500 mb-1.5">
         {props.label} · {props.usedLabel} vs budget
       </p>
 
@@ -188,15 +226,15 @@ function BudgetMeter(props) {
         {/* Three explicit figures: Allowed · Allocated/Spent · Headroom */}
         <div class="grid grid-cols-3 gap-2 mb-1.5">
           <div>
-            <p class="text-[9px] font-bold uppercase tracking-wide text-[#8593A8] dark:text-gray-500">Allowed</p>
+            <p class="xl:hidden text-[9px] font-bold uppercase tracking-wide text-[#8593A8] dark:text-gray-500">Allowed</p>
             <p class="text-[12.5px] font-bold text-[#14233A] dark:text-gray-100 tabular-nums truncate" title={money2(allowed()) ?? undefined}>{moneyWhole(allowed()) ?? "—"}</p>
           </div>
           <div>
-            <p class="text-[9px] font-bold uppercase tracking-wide text-[#8593A8] dark:text-gray-500">{props.usedLabel}</p>
+            <p class="xl:hidden text-[9px] font-bold uppercase tracking-wide text-[#8593A8] dark:text-gray-500">{props.usedLabel}</p>
             <p class="text-[12.5px] font-bold text-[#14233A] dark:text-gray-100 tabular-nums truncate" title={money2(used()) ?? undefined}>{moneyWhole(used()) ?? "—"}</p>
           </div>
           <div>
-            <p class="text-[9px] font-bold uppercase tracking-wide text-[#8593A8] dark:text-gray-500">Headroom</p>
+            <p class="xl:hidden text-[9px] font-bold uppercase tracking-wide text-[#8593A8] dark:text-gray-500">Headroom</p>
             <p class={`text-[12.5px] font-bold tabular-nums truncate ${headroomTone(headroom(), allowed())}`} title={money2(headroom()) ?? undefined}>{moneyWhole(headroom()) ?? "—"}</p>
           </div>
         </div>
@@ -533,6 +571,43 @@ export default function AllowedBudget() {
   const [statusFilter, setStatusFilter] = createSignal("all"); // all | over | near | capped | uncapped
   const [clientTypes, setClientTypes] = createSignal(DEFAULT_CLIENT_TYPES); // multi-select
   const [exportOpen, setExportOpen] = createSignal(false); // download-report format menu
+  // Column sort — null key means "API order", the original default.
+  const [sortKey, setSortKey] = createSignal(null);
+  const [sortDir, setSortDir] = createSignal("asc");
+  // Same behaviour as every other sortable table in the app (Clients,
+  // Projects, Ad Accounts): re-clicking the active column flips direction, a
+  // new column starts descending.
+  const toggleSort = (key) => {
+    if (sortKey() === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else {
+      setSortKey(key);
+      setSortDir("desc");
+    }
+  };
+  // The shared sort affordance: idle "⇅", active "↑/↓" in purple.
+  const sortIcon = (key) => {
+    if (sortKey() !== key) return <span class="ml-1 text-[#9DAEC4] dark:text-gray-600">⇅</span>;
+    return <span class="ml-1 text-purple-600 dark:text-purple-300">{sortDir() === "asc" ? "↑" : "↓"}</span>;
+  };
+  // A sortable header cell. Same affordance as the <th>s on the other pages; a
+  // <div> rather than a <th> because these rows are cards, not a <table>. The
+  // active column gets a filled chip so the sort is readable at a glance
+  // instead of hanging on the arrow alone.
+  const SortTh = (p) => (
+    <div
+      onClick={() => toggleSort(p.k)}
+      title={`Sort by ${p.label}`}
+      class={`inline-flex items-center cursor-pointer whitespace-nowrap select-none rounded-md px-1.5 py-0.5 -mx-1.5 transition-colors ${
+        sortKey() === p.k
+          ? "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-200"
+          : "hover:bg-white/70 hover:text-purple-700 dark:hover:bg-gray-700/50 dark:hover:text-purple-300"
+      } ${p.class ?? ""}`}
+    >
+      {p.label} {sortIcon(p.k)}
+    </div>
+  );
+  // Actions column keeps a fixed width at xl so the header and every row line up.
+  const actionsW = () => (admin() ? "xl:w-[296px]" : "xl:w-[160px]");
 
   const toggleClientType = (key) => {
     setClientTypes((prev) => {
@@ -635,12 +710,13 @@ export default function AllowedBudget() {
     return STATUS_ORDER.map((k) => ({ key: k, count: c[k], color: STATUS_META[k].color, label: STATUS_META[k].label }));
   });
 
-  // Filtered client list (display only; preserves API order). Type scoping is
-  // already applied via scopedClients(); search + status filter on top.
+  // Filtered client list (display only; preserves API order unless a column
+  // sort is active). Type scoping is already applied via scopedClients();
+  // search + status filter on top, then the header sort last.
   const visibleClients = createMemo(() => {
     const q = search().trim().toLowerCase();
     const sf = statusFilter();
-    return scopedClients().filter((c) => {
+    const rows = scopedClients().filter((c) => {
       if (q && !c.name?.toLowerCase().includes(q)) return false;
       if (sf === "all") return true;
       if (sf === "set") return isBudgetSet(c);
@@ -648,6 +724,7 @@ export default function AllowedBudget() {
       if (sf === "capped") return clientStatus(c) !== "uncapped";
       return clientStatus(c) === sf;
     });
+    return sortKey() ? sortRows(rows, sortKey(), sortDir()) : rows;
   });
   const anyFilter = () => search().trim() || statusFilter() !== "all" || !typesAreDefault();
 
@@ -1121,6 +1198,41 @@ export default function AllowedBudget() {
 
         {/* Client list */}
         <div class="bg-gray-50 dark:bg-gray-900 rounded-2xl border border-[#E2E8F1] dark:border-gray-700 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] divide-y divide-[#E2E8F1] dark:divide-gray-800 overflow-hidden">
+          {/* Column header — mirrors the row grid exactly. Hidden below xl,
+              where rows stack and each cell carries its own inline label. */}
+          <Show when={!clients.loading && visibleClients().length > 0}>
+            <div class="hidden xl:flex xl:items-stretch gap-3 px-4 border-b-2 border-[#C9D6E5] dark:border-gray-700 bg-[#F1F6FC] dark:bg-gray-800/70 text-[#14233A] dark:text-gray-200 font-bold uppercase text-xs tracking-wider">
+              {/* Identity column — name, type chip and cap pill each get their own sort. */}
+              <div class="flex-1 min-w-0 flex items-center gap-5 py-3">
+                <SortTh k="name" label="Client" />
+                <SortTh k="type" label="Type" />
+                <SortTh k="status" label="Status" />
+              </div>
+
+              <div class="flex gap-5 xl:gap-7">
+                {/* Group caption sorts by utilisation — the % the meter draws. */}
+                <div class="w-[240px] flex-none py-3">
+                  <SortTh k="dPct" label="Daily · allocated vs budget" class="mb-1.5" />
+                  <div class="grid grid-cols-3 gap-2 text-[10px] tracking-normal text-[#54657E] dark:text-gray-400">
+                    <SortTh k="dAllowed" label="Allowed" />
+                    <SortTh k="dAllocated" label="Allocated" />
+                    <SortTh k="dHeadroom" label="Headroom" />
+                  </div>
+                </div>
+                <div class="w-[240px] flex-none py-3">
+                  <SortTh k="mPct" label="Monthly · spent vs budget" class="mb-1.5" />
+                  <div class="grid grid-cols-3 gap-2 text-[10px] tracking-normal text-[#54657E] dark:text-gray-400">
+                    <SortTh k="mAllowed" label="Allowed" />
+                    <SortTh k="mSpent" label="Spent" />
+                    <SortTh k="mHeadroom" label="Headroom" />
+                  </div>
+                </div>
+              </div>
+
+              <div class={`flex-shrink-0 ${actionsW()} py-3 text-right whitespace-nowrap`}>Actions</div>
+            </div>
+          </Show>
+
           <Show when={clients.loading}>
             <For each={Array(5).fill(0)}>{() => <div class="h-24 animate-pulse bg-[#FAFBFD] dark:bg-gray-800/40" />}</For>
           </Show>
@@ -1173,7 +1285,7 @@ export default function AllowedBudget() {
                   </div>
 
                   {/* actions */}
-                  <div class="flex-shrink-0 flex gap-2">
+                  <div class={`flex-shrink-0 flex gap-2 xl:justify-end ${actionsW()}`}>
                     <Show when={admin()}>
                       <button onClick={() => setEditClient(c)} title="Edit budget"
                         class="inline-flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border border-[#D4DDE9] dark:border-gray-600 text-[#14233A] dark:text-gray-300 hover:bg-[#F8FAFC] dark:hover:bg-gray-800 hover:border-[#14233A] whitespace-nowrap font-semibold">
