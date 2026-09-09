@@ -112,8 +112,9 @@ const FIELD_META = {
   },
   is_active: {
     label: "Login active",
-    hint: "The account's live/disabled flag.",
-    note: "NOT the engagement status (active / hold / completed), which is set on the Client Status screen.",
+    // No hint: "the account's live/disabled flag" is the label said twice. The
+    // note below is the only thing here a reader does not already know.
+    note: "Not the engagement status (active / hold / completed) — that lives on the Client Status screen.",
   },
   engagement_status: {
     note: "Changing this here skips the mandatory reason the Client Status screen records. Prefer that screen.",

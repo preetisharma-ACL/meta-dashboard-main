@@ -8,6 +8,8 @@ import {
   errorBanner,
 } from "../../services/clientEdit";
 import { fetchOnboardingOptions } from "../../services/onboarding";
+import { X } from "lucide-solid";
+import Avatar from "../common/Avatar";
 import {
   fieldsFromSchema,
   fieldsFromRecord,
@@ -42,7 +44,14 @@ const FIELD_BAD =
 const LABEL =
   "block text-sm font-semibold text-[#14233A] dark:text-gray-200 mb-1.5";
 
-const HINT = "text-xs text-[#8593A8] mt-1";
+const HINT = "text-xs leading-relaxed text-[#8593A8] mt-1.5";
+
+// A cross-screen pointer, or a value this save is about to clear. Both say
+// something the operator cannot see anywhere else on the form, so neither is
+// left looking like one more line of grey help text.
+const CALLOUT =
+  "mt-2 flex items-start gap-2 rounded-md px-2.5 py-1.5 text-xs leading-relaxed " +
+  "bg-amber-50 text-amber-800 dark:bg-amber-900/20 dark:text-amber-200";
 
 const ERR_TEXT = "mt-1.5 text-sm font-medium text-[#AC2334] dark:text-red-400";
 
@@ -572,23 +581,34 @@ export default function EditClientDrawer(props) {
           aria-label="Edit client"
           class="fixed inset-y-0 right-0 z-50 w-full max-w-xl bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-700 shadow-2xl flex flex-col"
         >
-          {/* Header */}
-          <div class="flex items-start justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
-            <div class="min-w-0">
-              <h2 class="text-lg font-bold text-[#14233A] dark:text-white truncate">
+          {/* Header — the client's name is the heading and "Edit client" the
+              eyebrow above it, not the other way round. Which client this drawer
+              is pointed at is the thing worth reading at a glance; that it edits
+              one is obvious from everything below. The avatar is the same one
+              its row in the table carries, so opening a row is continuous. */}
+          <div class="flex items-start gap-3 px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+            <Avatar
+              name={props.clientLabel}
+              size="w-10 h-10"
+              textSize="text-sm"
+            />
+            <div class="min-w-0 flex-1">
+              <p class="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                 Edit client
-              </h2>
-              <p class="text-sm text-gray-500 dark:text-gray-400 truncate">
-                {props.clientLabel || "—"}
               </p>
+              <h2 class="text-lg font-bold text-[#14233A] dark:text-white truncate leading-tight">
+                {props.clientLabel || "—"}
+              </h2>
             </div>
             <button
               type="button"
               onClick={close}
               aria-label="Close"
-              class="w-8 h-8 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 transition"
+              class="w-8 h-8 -mr-1 rounded-full flex items-center justify-center flex-shrink-0
+                     text-gray-500 hover:bg-gray-200 hover:text-gray-700
+                     dark:hover:bg-gray-700 dark:hover:text-gray-200 transition"
             >
-              ✕
+              <X size={16} />
             </button>
           </div>
 
@@ -674,6 +694,19 @@ export default function EditClientDrawer(props) {
               </div>
             </Show>
 
+            {/* The writable block gets the same eyebrow as the two panels it sits
+                between ("This client" above, the history below). Without one the
+                inputs read as loose fields dropped between two labelled cards
+                rather than as the part of the drawer that actually saves. */}
+            <Show when={editable().length}>
+              <div class="flex items-center gap-3 pt-1 -mb-1">
+                <p class="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 flex-shrink-0">
+                  What you can change
+                </p>
+                <span class="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
+              </div>
+            </Show>
+
             <For each={editable()}>
               {(f) => (
                 <div>
@@ -684,8 +717,17 @@ export default function EditClientDrawer(props) {
                     </Show>
                   </label>
 
+                  {/* Boxed to the same height and border as every input above
+                      it. A bare checkbox under a full-width label read as a
+                      stray tick mark rather than as this field's control. */}
                   <Show when={f.widget === "boolean"}>
-                    <label class="flex items-center gap-2.5 cursor-pointer select-none">
+                    <label
+                      class={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg border cursor-pointer select-none transition ${
+                        values()[f.name]
+                          ? "border-[#AC2334]/40 bg-[#AC2334]/5"
+                          : "border-[#E2E8F1] dark:border-gray-600 bg-white dark:bg-gray-800"
+                      } ${saving() ? "opacity-50 cursor-default" : ""}`}
+                    >
                       <input
                         id={`ec-${f.name}`}
                         type="checkbox"
@@ -815,39 +857,56 @@ export default function EditClientDrawer(props) {
                       lose — "cleared automatically" over an empty box would only
                       raise a question about a change that isn't happening. */}
                   <Show when={serverClears(f)}>
-                    <p class={HINT}>
-                      {String(record()?.[f.name] ?? "") !== ""
-                        ? f.name === "service_charge"
-                          ? "CPL clients carry no rate — this one is cleared automatically when the switch saves."
-                          : "Only retainers have a reporting start date — this one is cleared automatically when the switch saves."
-                        : f.name === "service_charge"
-                          ? "CPL clients carry no rate."
-                          : "Retainer clients only."}
-                    </p>
+                    <Show
+                      when={String(record()?.[f.name] ?? "") !== ""}
+                      fallback={
+                        <p class={HINT}>
+                          {f.name === "service_charge"
+                            ? "CPL clients carry no rate."
+                            : "Retainer clients only."}
+                        </p>
+                      }
+                    >
+                      <p class={CALLOUT}>
+                        <span aria-hidden="true">⚠</span>
+                        <span>
+                          {f.name === "service_charge"
+                            ? "This rate is cleared automatically when the switch saves."
+                            : "This reporting start date is cleared automatically when the switch saves."}
+                        </span>
+                      </p>
+                    </Show>
                   </Show>
 
                   {/* The serializer's own help_text where it has one, ours
                       where it doesn't — see FIELD_META for why it settled that
-                      way round. `note` is separate and unconditional: it carries
-                      the cross-screen context no help_text can. */}
-                  <Show when={f.help || f.hint}>
+                      way round.
+
+                      Suppressed while the field is being cleared: each of these
+                      help texts describes which client types carry the value,
+                      which is the sentence the line above just said about THIS
+                      client. Two paragraphs both saying "CPL carries no rate"
+                      is how this form became a wall of grey. */}
+                  <Show when={(f.help || f.hint) && !serverClears(f)}>
                     <p class={HINT}>{f.help || f.hint}</p>
                   </Show>
 
+                  {/* `note` carries the cross-screen context no help_text can,
+                      so it is set apart rather than stacked as more grey. */}
                   <Show when={f.note}>
-                    <p class={HINT}>{f.note}</p>
-                  </Show>
-
-                  {/* Where the options came from, when it wasn't this endpoint.
-                      The backend still validates the id, so a name this list
-                      offers but the client serializer rejects comes back as its
-                      own error rather than as a silent no-op. */}
-                  <Show when={f.suppliedChoices}>
-                    <p class={HINT}>
-                      Listed from the onboarding options endpoint — the same
-                      people offered when a client is first created.
+                    <p class={CALLOUT}>
+                      <span aria-hidden="true">↗</span>
+                      <span>{f.note}</span>
                     </p>
                   </Show>
+
+                  {/* The options-provenance line ("listed from the onboarding
+                      options endpoint") stood here. Removed: where a picker
+                      sourced its names is our plumbing, not something the
+                      operator can act on, and it was a second grey paragraph
+                      under the one field that already had one. The backend
+                      still validates the id, so a name this list offers but the
+                      serializer rejects surfaces as its own error. */}
 
                   <Show when={isSalesField(f.name) && sales.loading}>
                     <p class={HINT}>Loading the sales roster…</p>
@@ -1169,11 +1228,22 @@ export default function EditClientDrawer(props) {
 
           {/* Footer */}
           <div class="flex items-center justify-between gap-3 px-6 py-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
-            <span class="text-xs text-gray-500 dark:text-gray-400">
-              {changed().length
-                ? `${changed().length} field${changed().length === 1 ? "" : "s"} changed`
-                : "No changes yet"}
-            </span>
+            {/* Pill only once something has moved: "No changes yet" is the
+                resting state and should stay quiet, while a pending edit is the
+                one thing worth catching on the way to Save. */}
+            <Show
+              when={changed().length}
+              fallback={
+                <span class="text-xs text-gray-500 dark:text-gray-400">
+                  No changes yet
+                </span>
+              }
+            >
+              <span class="inline-flex items-center rounded-full bg-[#AC2334]/10 px-2.5 py-1 text-xs font-semibold text-[#AC2334] dark:bg-[#AC2334]/20 dark:text-red-300">
+                {changed().length} field
+                {changed().length === 1 ? "" : "s"} changed
+              </span>
+            </Show>
             <div class="flex items-center gap-2">
               <button
                 type="button"
