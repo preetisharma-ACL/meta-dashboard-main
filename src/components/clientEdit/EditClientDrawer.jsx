@@ -296,19 +296,26 @@ export default function EditClientDrawer(props) {
   // The current value of a select when no option carries it — see the synthetic
   // <option> below. Null means "nothing to reconcile".
   //
-  // The label prefers whatever the record itself said: an expanded relation
-  // carries the email/name, and showing that beats showing a bare PK the
-  // operator has no way to resolve.
+  // Now a routine case rather than a defensive one: the roster is bounded to
+  // ACTIVE sales and admin users (f74a8ad), so any client still owned by someone
+  // since deactivated has a value the picker cannot list. Rendering that as
+  // "#12" would tell the operator nothing about whose book it sits in, so the
+  // label is looked for in three places — the read serializer's companion field
+  // (`onboarded_by_email`, added in fa8dcc4), an expanded relation object, or
+  // the id as a last resort.
   const orphan = (f) => {
     const v = values()[f.name];
     if (v === "" || v == null) return null;
     if ((f.choices || []).some((c) => String(c.value) === String(v))) return null;
 
-    const raw = record()?.[f.name];
+    const r = record();
+    const raw = r?.[f.name];
     const named =
-      raw && typeof raw === "object"
+      r?.[`${f.name}_email`] ||
+      r?.[`${f.name}_name`] ||
+      (raw && typeof raw === "object"
         ? raw.email || raw.name || raw.display_name || null
-        : null;
+        : null);
     return { value: String(v), label: named || `#${v}` };
   };
 
@@ -429,13 +436,19 @@ export default function EditClientDrawer(props) {
 
   // Who gains and who loses the client. Names, not ids — "12 → 31" tells the
   // operator nothing about whose dashboard just changed.
+  //
+  // The OUTGOING owner is the one the roster may not list, since it holds only
+  // active users: a client owned by someone since deactivated, or one of the 79
+  // owned by nobody at all, both land here. So the label falls back to the
+  // read serializer's `onboarded_by_email` before it falls back to an id.
   const ownerChange = createMemo(() => {
     const f = changed().find((x) => isSalesField(x.name));
     if (!f) return null;
     const nameFor = (v) => {
-      if (v === "" || v == null) return "nobody";
+      if (v === "" || v == null) return null;
       const hit = (f.choices || []).find((c) => String(c.value) === String(v));
-      return hit ? choiceLabel(hit) : `#${v}`;
+      if (hit) return choiceLabel(hit);
+      return record()?.[`${f.name}_email`] || `#${v}`;
     };
     return {
       from: nameFor(toFormValue(f, record()?.[f.name])),
@@ -962,9 +975,36 @@ export default function EditClientDrawer(props) {
                 <Show when={ownerChange()}>
                   {(oc) => (
                     <div class="space-y-2">
+                      {/* A null on either side is a real state, not a missing
+                          value: 79 clients are owned by nobody, and clearing an
+                          owner puts one back there. "nobody loses this client"
+                          reads as a bug, so each direction gets its own
+                          sentence. */}
                       <p class="text-sm text-[#14233A] dark:text-gray-200">
-                        <strong>{oc().from}</strong> loses this client and{" "}
-                        <strong>{oc().to}</strong> gains it.
+                        <Show
+                          when={oc().from}
+                          fallback={
+                            <>
+                              Nobody owns this client today — it is invisible to
+                              every sales dashboard. <strong>{oc().to}</strong>{" "}
+                              gains it.
+                            </>
+                          }
+                        >
+                          <Show
+                            when={oc().to}
+                            fallback={
+                              <>
+                                <strong>{oc().from}</strong> loses this client
+                                and nobody gains it — it disappears from every
+                                sales dashboard.
+                              </>
+                            }
+                          >
+                            <strong>{oc().from}</strong> loses this client and{" "}
+                            <strong>{oc().to}</strong> gains it.
+                          </Show>
+                        </Show>
                       </p>
                       <p class="text-sm text-[#14233A] dark:text-gray-200">
                         The sales owner is a live filter, not a label — it scopes

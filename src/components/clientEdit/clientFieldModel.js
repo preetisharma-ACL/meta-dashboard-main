@@ -73,9 +73,17 @@ const FIELD_ORDER = [
 //
 //   label  used only when the serializer supplied none.
 //   hint   a FALLBACK, shown when the serializer says nothing about the field.
-//   note   ALWAYS shown, alongside any help_text — reserved for what a
-//          serializer structurally cannot know, which here is "this belongs on a
-//          different screen".
+//   note   ALWAYS shown, alongside any help_text — and therefore reserved
+//          STRICTLY for what a serializer structurally cannot know, which is
+//          only ever "this belongs on a different screen".
+//
+// That last rule was written and then immediately broken: notes went onto
+// client_type, data_visible_from and onboarded_by describing what those fields
+// DO, which is exactly what help_text describes. Once R2 published the help_text
+// the drawer rendered both, one under the other, and it read as a bug because it
+// was one. A note that restates the serializer is not additive, it is a
+// duplicate waiting for the serializer to catch up. If the backend can say it,
+// it is a hint at most.
 //
 // The hint/help_text precedence went back and forth once and it is worth saying
 // why it landed here. `service_charge` carried a help_text describing a one-time
@@ -86,10 +94,13 @@ const FIELD_ORDER = [
 // until R2 lands. What stays unconditional is only the cross-screen pointers: no
 // help_text will ever mention the Client Status screen.
 const FIELD_META = {
+  // No notes on these three. What they do is the serializer's to say, and it
+  // says it well since f7f0773; the consequences of CHANGING them are said in
+  // the confirmation panel, where they are actually relevant, and the clearing
+  // rules are said next to the disabled input at the moment they apply.
   client_type: {
     label: "Client type",
     hint: "Decides which billing branch computes this client's invoices — for every month, not just future ones.",
-    note: "Figures are computed on read, so a change lands the next time anyone opens the page.",
   },
   service_charge: {
     label: "Service charge (%)",
@@ -97,8 +108,7 @@ const FIELD_META = {
   },
   data_visible_from: {
     label: "Data visible from",
-    hint: "Retainer clients only: the date this client's reporting starts.",
-    note: "Cleared automatically if the client stops being a retainer. It only delays the client's own view — it bills nothing, which is why it needs no reason.",
+    hint: "Retainer clients only: the date this client's reporting starts. It only delays the client's own view and bills nothing, which is why it needs no reason.",
   },
   is_active: {
     label: "Login active",
@@ -114,7 +124,6 @@ const FIELD_META = {
   onboarded_by: {
     label: "Sales person",
     hint: "The sales person this client is attributed to. Admins appear alongside sales users because some of them own client accounts.",
-    note: "A live scoping filter, not a label — reassigning moves the client between dashboards for all history.",
   },
 };
 FIELD_META.onboarded_by_id = FIELD_META.onboarded_by;
