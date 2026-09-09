@@ -54,6 +54,8 @@ export default function EditClients() {
   const [search, setSearch] = createSignal("");
   const [typeFilter, setTypeFilter] = createSignal("all");
   const [activeFilter, setActiveFilter] = createSignal("all");
+  // "all" | "none" | "<user id>"
+  const [ownerFilter, setOwnerFilter] = createSignal("all");
 
   const [page, setPage] = createSignal(1);
   const [pageSize, setPageSize] = createSignal(
@@ -76,21 +78,63 @@ export default function EditClients() {
 
   const [editing, setEditing] = createSignal(null);
 
+  // ── Sales owner ────────────────────────────────────────────────────────────
+  // The rows carry `onboarded_by` (id) and `onboarded_by_email` since fa8dcc4 —
+  // the list and the detail route share a serializer, so the column and this
+  // filter cost no extra request.
+  //
+  // Filtered here rather than through the endpoint's ?onboarded_by=, which was
+  // added for this. The page already sweeps EVERY client into memory for the
+  // search, so the rows are in hand: filtering locally is instant and composes
+  // with the type and login filters, where a server round trip per change would
+  // re-sweep to answer a question the data already answers. The param is the
+  // right tool for a paginated screen; this one isn't.
+  const ownerEmail = (c) => c?.onboarded_by_email || null;
+  const ownerId = (c) => c?.onboarded_by ?? null;
+
+  // Every owner actually present in the data, so the dropdown can only offer a
+  // filter that matches something. Sorted by name; the count rides along because
+  // "who holds the biggest book" is the question people bring to this list.
+  const owners = createMemo(() => {
+    const seen = new Map();
+    for (const c of clients() ?? []) {
+      const id = ownerId(c);
+      if (id == null) continue;
+      const key = String(id);
+      const row = seen.get(key) ?? { id: key, email: ownerEmail(c) || `#${id}`, count: 0 };
+      row.count += 1;
+      seen.set(key, row);
+    }
+    return [...seen.values()].sort((a, b) => a.email.localeCompare(b.email));
+  });
+
+  const unattributedCount = createMemo(
+    () => (clients() ?? []).filter((c) => ownerId(c) == null).length,
+  );
+
   const filtered = createMemo(() => {
     const q = search().trim().toLowerCase();
     const type = typeFilter();
     const active = activeFilter();
+    const owner = ownerFilter();
 
     return (clients() ?? []).filter((c) => {
       if (type !== "all" && String(c.client_type ?? "") !== type) return false;
       if (active === "active" && !c.is_active) return false;
       if (active === "inactive" && c.is_active) return false;
+      // "none" is a real bucket, not the absence of a filter — a client owned by
+      // nobody is invisible to every sales dashboard, which is the whole reason
+      // this control exists.
+      if (owner === "none" && ownerId(c) != null) return false;
+      if (owner !== "all" && owner !== "none" && String(ownerId(c) ?? "") !== owner)
+        return false;
       if (!q) return true;
       return [
         c.client_nomen_name,
         c.email,
         c.organization_name,
         c.client_nomen,
+        ownerEmail(c),
         c.id,
       ]
         .filter((v) => v != null && v !== "")
@@ -228,11 +272,38 @@ export default function EditClients() {
           <option value="inactive">Disabled</option>
         </select>
 
+        {/* Unattributed is first and counted, because it is the reason this
+            control exists rather than one option among many: a client with no
+            sales person is invisible to every sales dashboard. */}
+        <select
+          value={ownerFilter()}
+          onChange={(e) => {
+            setOwnerFilter(e.target.value);
+            setPage(1);
+          }}
+          class="px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700
+                 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300
+                 focus:outline-none focus:ring-1 focus:ring-purple-400 cursor-pointer max-w-[16rem]"
+        >
+          <option value="all">All Sales People</option>
+          <option value="none">
+            No sales person{unattributedCount() ? ` (${unattributedCount()})` : ""}
+          </option>
+          <For each={owners()}>
+            {(o) => (
+              <option value={o.id}>
+                {o.email} ({o.count})
+              </option>
+            )}
+          </For>
+        </select>
+
         <button
           onClick={() => {
             setSearch("");
             setTypeFilter("all");
             setActiveFilter("all");
+            setOwnerFilter("all");
             setPage(1);
           }}
           class="px-3 py-2 text-sm rounded-lg
@@ -257,6 +328,7 @@ export default function EditClients() {
               <th class="px-4 py-3">Client</th>
               <th class="px-4 py-3">Email</th>
               <th class="px-4 py-3">Organisation</th>
+              <th class="px-4 py-3">Sales person</th>
               <th class="px-4 py-3">Type</th>
               <th class="px-4 py-3">Login</th>
               <th class="px-4 py-3">Onboarded</th>
@@ -266,14 +338,14 @@ export default function EditClients() {
           <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
             <Show when={!clients.loading} fallback={
               <tr>
-                <td colspan="7" class="px-4 py-10 text-center text-gray-400">
+                <td colspan="8" class="px-4 py-10 text-center text-gray-400">
                   Loading clients…
                 </td>
               </tr>
             }>
               <Show when={clients.error}>
                 <tr>
-                  <td colspan="7" class="px-4 py-10 text-center text-[#AC2334]">
+                  <td colspan="8" class="px-4 py-10 text-center text-[#AC2334]">
                     {clients.error?.message || "Could not load clients."}
                   </td>
                 </tr>
@@ -283,7 +355,7 @@ export default function EditClients() {
                 fallback={
                   <Show when={!clients.error}>
                     <tr>
-                      <td colspan="7" class="px-4 py-10 text-center text-gray-400">
+                      <td colspan="8" class="px-4 py-10 text-center text-gray-400">
                         No clients match these filters.
                       </td>
                     </tr>
@@ -298,6 +370,24 @@ export default function EditClients() {
                     </td>
                     <td class="px-4 py-3 text-gray-600 dark:text-gray-300">
                       {c.organization_name || "—"}
+                    </td>
+                    {/* Not an em-dash like the other empty cells: an unowned
+                        client is not a blank field, it is a client missing from
+                        every sales dashboard, and it should look different from
+                        an organisation nobody filled in. */}
+                    <td class="px-4 py-3">
+                      <Show
+                        when={ownerEmail(c)}
+                        fallback={
+                          <span class="px-2 py-[2px] rounded-full text-[11px] font-semibold whitespace-nowrap bg-amber-50 text-amber-700 ring-1 ring-amber-300 dark:bg-amber-900/20 dark:text-amber-300 dark:ring-amber-800">
+                            Unattributed
+                          </span>
+                        }
+                      >
+                        <span class="text-gray-600 dark:text-gray-300">
+                          {ownerEmail(c)}
+                        </span>
+                      </Show>
                     </td>
                     <td class="px-4 py-3">
                       <Show when={c.client_type} fallback={<span class="text-gray-400">—</span>}>
