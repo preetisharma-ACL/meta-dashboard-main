@@ -30,6 +30,7 @@ import Clients from "./pages/admin/client/Clients";
 import ImpersonationBanner from "./pages/admin/component/ImpersonationBanner";
 import ProjectDisplayConfig from "./pages/admin/client/ProjectDisplayConfig";
 import ClientNomen from "./pages/admin/client/ClientNomen";
+import EditClients from "./pages/admin/client/EditClients";
 import ClientStatusBoard from "./pages/clients/ClientStatusBoard";
 import ValueTierBoard from "./pages/clients/ValueTierBoard";
 import Campaigns from "./pages/admin/campaigns/Campaigns";
@@ -420,6 +421,20 @@ function App() {
               component={() => (
                 <AdminRoute roles={["admin", "campaign_manager"]}>
                   <ClientNomen />
+                </AdminRoute>
+              )}
+            />
+            {/* Editing an already-onboarded client. Admin + coordination, the
+                same gate as Onboarding — correcting a client is the same job as
+                creating one, and the backend widened the endpoint to match
+                (68ed57d). A CM is 403ed there and bounced here: before that
+                deploy any CM whose team held the nomen could PATCH a client,
+                client_type included. */}
+            <Route
+              path="/edit-clients"
+              component={() => (
+                <AdminRoute roles={["admin", "coordination"]}>
+                  <EditClients />
                 </AdminRoute>
               )}
             />
