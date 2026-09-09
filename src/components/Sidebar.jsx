@@ -267,6 +267,23 @@ export default function Sidebar() {
             ),
           },
           {
+            // Directly under Onboarding: it is the same job done later. The wizard
+            // creates a client and then has no way to change it — its endpoint
+            // answers `Allow: POST, OPTIONS` and has no detail route — so a typo in
+            // a client type or service charge had nowhere to be fixed.
+            //
+            // Same audience as Onboarding, admin + coordination: the backend
+            // widened the endpoint to match (68ed57d), so the pair of rows now
+            // belongs to the same people. CMs are 403ed at the endpoint and so are
+            // not listed.
+            name: "Edit Clients",
+            roles: ["admin", "coordination"],
+            icon: () => (
+              <Icon d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            ),
+            path: "/edit-clients",
+          },
+          {
             // Engagement status (active / hold / completed) — the manual label
             // the team sets, not the account's is_active flag.
             name: "Client Status",
@@ -284,7 +301,7 @@ export default function Sidebar() {
               <SmallIcon d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
             ),
           },
-           {
+          {
             // Admin-only inside an otherwise admin+CM group, same as the
             // top-level row it replaces.
             name: "Campaigns",
@@ -333,7 +350,7 @@ export default function Sidebar() {
               <SmallIcon d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
             ),
           },
-         
+
           {
             // Moved in from a top-level row. Coordination shares this screen
             // but not the Clients group, so it still has its own entry below.
@@ -359,23 +376,7 @@ export default function Sidebar() {
         ),
         path: "/onboarding",
       },
-      {
-        // Directly under Onboarding: it is the same job done later. The wizard
-        // creates a client and then has no way to change it — its endpoint
-        // answers `Allow: POST, OPTIONS` and has no detail route — so a typo in
-        // a client type or service charge had nowhere to be fixed.
-        //
-        // Same audience as Onboarding, admin + coordination: the backend
-        // widened the endpoint to match (68ed57d), so the pair of rows now
-        // belongs to the same people. CMs are 403ed at the endpoint and so are
-        // not listed.
-        name: "Edit Clients",
-        roles: ["admin", "coordination"],
-        icon: () => (
-          <Icon d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-        ),
-        path: "/edit-clients",
-      },
+
       {
         // Top-level for the same reason as Onboarding: coordination doesn't get
         // the "Clients" group (admin+CM), and coordination is half this screen's

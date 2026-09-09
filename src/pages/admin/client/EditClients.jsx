@@ -1,8 +1,10 @@
 import { createSignal, createMemo, createResource, For, Show } from "solid-js";
+import { SquarePen } from "lucide-solid";
 import RowsPerPageSelect from "../../../components/common/RowsPerPageSelect";
 import SuccessToast, {
   showToast,
 } from "../../../components/common/SuccessToast";
+import Avatar from "../../../components/common/Avatar";
 import EditClientDrawer from "../../../components/clientEdit/EditClientDrawer";
 import { fetchAllAdminClients } from "../services/fetchClients";
 
@@ -112,13 +114,51 @@ export default function EditClients() {
     () => (clients() ?? []).filter((c) => ownerId(c) == null).length,
   );
 
+  // ── sort ───────────────────────────────────────────────────────────────────
+  // Half these columns are derived rather than raw fields — the client label
+  // falls back nomen → email, the sales owner is an email hung off an id — so
+  // sorting reads through the same accessors the cells render instead of
+  // indexing the row by column name.
+  const SORT_VALUES = {
+    client: (c) => clientLabel(c).toLowerCase(),
+    email: (c) => String(c.email ?? "").toLowerCase(),
+    organization_name: (c) => String(c.organization_name ?? "").toLowerCase(),
+    owner: (c) => String(ownerEmail(c) ?? "").toLowerCase(),
+    client_type: (c) => String(c.client_type ?? "").toLowerCase(),
+    is_active: (c) => (c.is_active ? 1 : 0),
+    created_at: (c) => new Date(c.created_at ?? 0).getTime() || 0,
+  };
+
+  const [sortKey, setSortKey] = createSignal("created_at");
+  const [sortDir, setSortDir] = createSignal("desc");
+
+  const toggleSort = (key) => {
+    if (sortKey() === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else {
+      setSortKey(key);
+      setSortDir("desc");
+    }
+    // Unlike the filters, a re-sort reshuffles which rows land on which page —
+    // staying on page 3 of a list that just reordered shows nothing asked for.
+    setPage(1);
+  };
+
+  const sortIcon = (key) => {
+    if (sortKey() !== key) return <span class="text-gray-300 ml-1">⇅</span>;
+    return (
+      <span class="ml-1 text-purple-600">
+        {sortDir() === "asc" ? "↑" : "↓"}
+      </span>
+    );
+  };
+
   const filtered = createMemo(() => {
     const q = search().trim().toLowerCase();
     const type = typeFilter();
     const active = activeFilter();
     const owner = ownerFilter();
 
-    return (clients() ?? []).filter((c) => {
+    const data = (clients() ?? []).filter((c) => {
       if (type !== "all" && String(c.client_type ?? "") !== type) return false;
       if (active === "active" && !c.is_active) return false;
       if (active === "inactive" && c.is_active) return false;
@@ -140,6 +180,17 @@ export default function EditClients() {
         .filter((v) => v != null && v !== "")
         .some((v) => String(v).toLowerCase().includes(q));
     });
+
+    const value = SORT_VALUES[sortKey()] ?? SORT_VALUES.created_at;
+    data.sort((a, b) => {
+      const va = value(a);
+      const vb = value(b);
+      if (va < vb) return sortDir() === "asc" ? -1 : 1;
+      if (va > vb) return sortDir() === "asc" ? 1 : -1;
+      return 0;
+    });
+
+    return data;
   });
 
   const total = () => filtered().length;
@@ -304,6 +355,10 @@ export default function EditClients() {
             setTypeFilter("all");
             setActiveFilter("all");
             setOwnerFilter("all");
+            // The sort is part of "how this list is currently arranged", so
+            // Clear All puts it back to newest-first with everything else.
+            setSortKey("created_at");
+            setSortDir("desc");
             setPage(1);
           }}
           class="px-3 py-2 text-sm rounded-lg
@@ -315,9 +370,6 @@ export default function EditClients() {
           Clear All
         </button>
 
-        <div class="ml-auto">
-          <RowsPerPageSelect value={pageSize()} onChange={changePageSize} />
-        </div>
       </div>
 
       {/* Table */}
@@ -325,13 +377,48 @@ export default function EditClients() {
         <table class="min-w-full text-sm">
           <thead>
             <tr class="bg-gray-50 dark:bg-gray-800 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-              <th class="px-4 py-3">Client</th>
-              <th class="px-4 py-3">Email</th>
-              <th class="px-4 py-3">Organisation</th>
-              <th class="px-4 py-3">Sales person</th>
-              <th class="px-4 py-3">Type</th>
-              <th class="px-4 py-3">Login</th>
-              <th class="px-4 py-3">Onboarded</th>
+              <th
+                class="px-4 py-3 cursor-pointer select-none whitespace-nowrap hover:text-blue-900 dark:hover:text-gray-200"
+                onClick={() => toggleSort("client")}
+              >
+                Client {sortIcon("client")}
+              </th>
+              <th
+                class="px-4 py-3 cursor-pointer select-none whitespace-nowrap hover:text-blue-900 dark:hover:text-gray-200"
+                onClick={() => toggleSort("email")}
+              >
+                Email {sortIcon("email")}
+              </th>
+              <th
+                class="px-4 py-3 cursor-pointer select-none whitespace-nowrap hover:text-blue-900 dark:hover:text-gray-200"
+                onClick={() => toggleSort("organization_name")}
+              >
+                Organisation {sortIcon("organization_name")}
+              </th>
+              <th
+                class="px-4 py-3 cursor-pointer select-none whitespace-nowrap hover:text-blue-900 dark:hover:text-gray-200"
+                onClick={() => toggleSort("owner")}
+              >
+                Sales person {sortIcon("owner")}
+              </th>
+              <th
+                class="px-4 py-3 cursor-pointer select-none whitespace-nowrap hover:text-blue-900 dark:hover:text-gray-200"
+                onClick={() => toggleSort("client_type")}
+              >
+                Type {sortIcon("client_type")}
+              </th>
+              <th
+                class="px-4 py-3 cursor-pointer select-none whitespace-nowrap hover:text-blue-900 dark:hover:text-gray-200"
+                onClick={() => toggleSort("is_active")}
+              >
+                Login {sortIcon("is_active")}
+              </th>
+              <th
+                class="px-4 py-3 cursor-pointer select-none whitespace-nowrap hover:text-blue-900 dark:hover:text-gray-200"
+                onClick={() => toggleSort("created_at")}
+              >
+                Onboarded {sortIcon("created_at")}
+              </th>
               <th class="px-4 py-3 text-right">Action</th>
             </tr>
           </thead>
@@ -364,7 +451,12 @@ export default function EditClients() {
               >
                 {(c) => (
                   <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors">
-                    <td class="px-4 py-3 font-medium">{clientLabel(c)}</td>
+                    <td class="px-4 py-3">
+                      <div class="flex items-center gap-2.5">
+                        <Avatar name={clientLabel(c)} />
+                        <span class="font-medium">{clientLabel(c)}</span>
+                      </div>
+                    </td>
                     <td class="px-4 py-3 text-gray-600 dark:text-gray-300">
                       {c.email || "—"}
                     </td>
@@ -418,11 +510,13 @@ export default function EditClients() {
                     <td class="px-4 py-3 text-right">
                       <button
                         onClick={() => setEditing(c)}
-                        class="px-3 h-8 text-sm font-medium rounded-lg
+                        title="Edit client"
+                        aria-label={`Edit ${clientLabel(c)}`}
+                        class="inline-flex items-center justify-center w-8 h-8 rounded-lg
                                bg-red-800 border border-red-800 text-white
                                hover:bg-red-700 transition-colors"
                       >
-                        Edit
+                        <SquarePen size={16} />
                       </button>
                     </td>
                   </tr>
@@ -433,34 +527,70 @@ export default function EditClients() {
         </table>
       </div>
 
-      {/* Pagination */}
-      <Show when={totalPages() > 1}>
-        <div class="flex items-center justify-between mt-4 text-sm">
-          <span class="text-gray-500 dark:text-gray-400">
+      {/* Pagination — client-side over the whole swept roster */}
+      <div class="flex items-center justify-between mt-5 flex-wrap gap-3">
+        <div class="flex items-center gap-3">
+          <span class="text-sm text-gray-500 dark:text-gray-400">
+            {total() === 0
+              ? "No results"
+              : `Showing ${(safePage() - 1) * pageSize() + 1}–${Math.min(
+                  safePage() * pageSize(),
+                  total(),
+                )} of ${total()} clients${
+                  total() === (clients()?.length ?? 0)
+                    ? ""
+                    : ` (filtered from ${clients()?.length ?? 0})`
+                }`}
+          </span>
+
+          <RowsPerPageSelect value={pageSize()} onChange={changePageSize} />
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button
+            onClick={() => setPage(Math.max(1, safePage() - 1))}
+            disabled={safePage() <= 1 || clients.loading}
+            class="flex items-center gap-1.5 px-4 h-9 text-sm rounded-lg border
+                   border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900
+                   text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800
+                   disabled:opacity-35 disabled:cursor-default transition-colors"
+          >
+            <svg
+              class="w-3.5 h-3.5"
+              fill="none"
+              viewBox="0 0 16 16"
+              stroke="currentColor"
+              stroke-width="1.8"
+            >
+              <path d="M10 12L6 8l4-4" />
+            </svg>
+            Prev
+          </button>
+
+          <span class="text-sm text-gray-500 dark:text-gray-400 px-1">
             Page {safePage()} of {totalPages()}
           </span>
-          <div class="flex items-center gap-2">
-            <button
-              onClick={() => setPage(Math.max(1, safePage() - 1))}
-              disabled={safePage() <= 1}
-              class="px-3 h-8 rounded-lg border border-gray-300 dark:border-gray-600
-                     text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700
-                     transition disabled:opacity-40"
+
+          <button
+            onClick={() => setPage(Math.min(totalPages(), safePage() + 1))}
+            disabled={safePage() >= totalPages() || clients.loading}
+            class="flex items-center gap-1.5 px-4 h-9 text-sm rounded-lg
+                   bg-red-800 border border-red-800 text-white
+                   hover:bg-red-700 disabled:opacity-35 disabled:cursor-default transition-colors"
+          >
+            Next
+            <svg
+              class="w-3.5 h-3.5"
+              fill="none"
+              viewBox="0 0 16 16"
+              stroke="currentColor"
+              stroke-width="1.8"
             >
-              Previous
-            </button>
-            <button
-              onClick={() => setPage(Math.min(totalPages(), safePage() + 1))}
-              disabled={safePage() >= totalPages()}
-              class="px-3 h-8 rounded-lg border border-gray-300 dark:border-gray-600
-                     text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700
-                     transition disabled:opacity-40"
-            >
-              Next
-            </button>
-          </div>
+              <path d="M6 4l4 4-4 4" />
+            </svg>
+          </button>
         </div>
-      </Show>
+      </div>
 
       <EditClientDrawer
         open={!!editing()}
