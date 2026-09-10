@@ -25,6 +25,15 @@ const formatCost = (val) => {
   return `₹${parseFloat(val).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`;
 };
 
+// Today as a local "YYYY-MM-DD" string — the same format <input type="date">
+// reads and writes. Built from the local calendar fields (not toISOString(),
+// which shifts to UTC and can hand back yesterday for IST users after 05:30).
+const todayISO = () => {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function ManualBatches() {
@@ -288,6 +297,13 @@ export default function ManualBatches() {
     if (!q) return projects();
 
     return projects().filter((p) => p.name?.toLowerCase().includes(q));
+  });
+
+  // A typed-in date bypasses the picker's max= clamp, so the value is checked
+  // here too and gates both the inline warning and the submit button.
+  const receivedDateInFuture = createMemo(() => {
+    const v = formData().received_date?.trim();
+    return !!v && v > todayISO();
   });
 
   const handleSubmit = async () => {
@@ -981,6 +997,7 @@ export default function ManualBatches() {
                 <input
                   type="date"
                   value={formData().received_date}
+                  max={todayISO()}
                   onInput={(e) =>
                     handleInputChange("received_date", e.target.value)
                   }
@@ -991,9 +1008,18 @@ export default function ManualBatches() {
                    outline-none"
                 />
 
-                <p class="text-xs text-gray-400 mt-1">
-                  Leave blank to use today's upload date.
-                </p>
+                <Show
+                  when={receivedDateInFuture()}
+                  fallback={
+                    <p class="text-xs text-gray-400 mt-1">
+                      Leave blank to use today's upload date.
+                    </p>
+                  }
+                >
+                  <p class="text-xs text-red-600 mt-1">
+                    Received date cannot be in the future.
+                  </p>
+                </Show>
               </div>
 
               {/* Notes */}
@@ -1035,7 +1061,8 @@ export default function ManualBatches() {
                   !formData().target_client_id ||
                   !formData().project_id ||
                   !formData().synthetic_lead_count ||
-                  !formData().total_cost
+                  !formData().total_cost ||
+                  receivedDateInFuture()
                 }
                 class="flex-1 px-4 py-2.5 rounded-lg
                  bg-purple-600 text-white
