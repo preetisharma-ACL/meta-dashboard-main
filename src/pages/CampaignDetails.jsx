@@ -28,6 +28,7 @@ import useRole from "../hooks/useRole";
 import AIInsightButton from "../components/AIInsightButton";
 import CampaignStatusControl from "../components/CampaignStatusControl";
 import CampaignBudgetControl from "../components/CampaignBudgetControl";
+import CampaignOwnershipControl from "../components/campaignOwnership/CampaignOwnershipControl";
 import { DateRangeFilter } from "../components/DateRangeFilter";
 export default function CampaignDetails() {
   const { userRole, isAdmin, isClient } = useRole();
@@ -179,6 +180,34 @@ export default function CampaignDetails() {
               onChanged={(b) =>
                 setCampaignCache({
                   data: { ...campaign(), daily_budget: b, budget: b },
+                })
+              }
+            />
+            {/* Ownership. The control carries its own gates — clients and
+                tier-2 CMs never see "Move"; any CM can open the History.
+                `client_nomen` (the id) and `client_nomen_name` are verified on
+                this detail payload, same spellings as the list. The
+                `client_nomen_id` fallback is belt-and-braces and costs nothing;
+                a miss would degrade to "Owned by —" in the modal, never to a
+                wrong move, since the id sent is the one picked from the target
+                list. */}
+            <CampaignOwnershipControl
+              campaign={{
+                id: campaignId,
+                name: campaign()?.name,
+                clientNomenId:
+                  campaign()?.client_nomen ?? campaign()?.client_nomen_id,
+                clientNomenName: campaign()?.client_nomen_name,
+              }}
+              onReassigned={({ clientNomenId, clientNomenName, newName }) =>
+                setCampaignCache({
+                  data: {
+                    ...campaign(),
+                    client_nomen: clientNomenId,
+                    client_nomen_name: clientNomenName,
+                    // Only when Meta accepted the rename — see the modal.
+                    ...(newName ? { name: newName } : {}),
+                  },
                 })
               }
             />

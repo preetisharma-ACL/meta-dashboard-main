@@ -3,7 +3,33 @@ import { fetchCampaigns, resolveDateRange } from "../services/campaigns";
 import Avatar from "../../../components/common/Avatar";
 import RowsPerPageSelect from "../../../components/common/RowsPerPageSelect";
 import CampaignStatusControl from "../../../components/CampaignStatusControl";
-import { canWriteCampaigns } from "../../../stores/currentUser";
+import CampaignOwnershipControl from "../../../components/campaignOwnership/CampaignOwnershipControl";
+import {
+  canWriteCampaigns,
+  canReassignCampaigns,
+  canSeeOwnershipHistory,
+} from "../../../stores/currentUser";
+
+// The Actions column appears for anyone who has SOMETHING to do in it, which is
+// no single one of the three gates inside it — they genuinely differ:
+//
+//   pause/resume  admin, COORDINATION, tier-1 CM   (canWriteCampaigns — which
+//                 deliberately drops ACCOUNTS, whom the backend would allow)
+//   Move          admin, tier-1 CM                 (no coordination: no CM profile)
+//   History       admin, ANY CM incl. tier-2       (information, not an action)
+//
+// So the column is the union. Gating it on the write gate alone hid the ownership
+// trail from the tier-2 managers most likely to be asking why a month's leads
+// moved; gating it on the ownership gates alone would have taken pause/resume
+// away from coordination, who may still use it. Each control keeps its own gate,
+// so a reader sees History by itself and coordination sees no Move.
+const showActions = () =>
+  canWriteCampaigns() || canReassignCampaigns() || canSeeOwnershipHistory();
+
+// 14 data columns, plus Actions when it's shown. Kept in one place so the
+// skeleton rows, the empty state and the footer can't drift apart from the
+// header.
+const COL_COUNT = () => (showActions() ? 15 : 14);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const formatDate = (iso) => {
@@ -261,6 +287,34 @@ export default function Campaigns() {
           : c,
       ),
     );
+
+  // Reflect a confirmed reassignment on the row without a full refetch — the
+  // load here is a multi-page sweep, so re-running it to change one cell would
+  // blank a table the operator is reading.
+  //
+  // The NAME is only adopted when Meta actually accepted the rename (the modal
+  // passes null when it refused). Writing the intended name onto the row after a
+  // refused rename would show a label that exists neither on Meta nor in the
+  // next sync — and the stale label is precisely the thing the operator has just
+  // been warned to go and fix.
+  //
+  // The client-nomen dropdown options are rebuilt too: the row has moved, so the
+  // old owner may no longer have any campaign left to keep it in the filter list.
+  const applyReassign = (id, { clientNomenId, clientNomenName, newName }) =>
+    setAllCampaigns((rows) => {
+      const next = rows.map((c) =>
+        c.id === id
+          ? {
+              ...c,
+              client_nomen: clientNomenId,
+              client_nomen_name: clientNomenName,
+              ...(newName ? { name: newName } : {}),
+            }
+          : c,
+      );
+      rebuildOptions(next);
+      return next;
+    });
 
   // ── Filter helpers (client-side; just set the signal + reset to page 1) ────
   const applyFilter = (setter, value) => {
@@ -617,7 +671,7 @@ export default function Campaigns() {
               >
                 Leads {sortIcon("leads_count")}
               </th>
-              <Show when={canWriteCampaigns()}>
+              <Show when={showActions()}>
                 <th
                   class="p-3 text-center whitespace-nowrap sticky right-0 z-20
                          bg-gray-50 dark:bg-gray-800
@@ -636,11 +690,11 @@ export default function Campaigns() {
                 <For each={Array(8).fill(0)}>
                   {() => (
                     <tr class="border-b border-gray-100 dark:border-gray-800 animate-pulse bg-white dark:bg-gray-900">
-                      {Array(canWriteCampaigns() ? 15 : 14)
+                      {Array(COL_COUNT())
                         .fill(0)
                         .map((_, idx, arr) => {
                           const isActions =
-                            canWriteCampaigns() && idx === arr.length - 1;
+                            showActions() && idx === arr.length - 1;
                           return (
                             <td
                               class={`p-3 ${isActions ? "sticky right-0 z-10 bg-white dark:bg-gray-900 shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.18)]" : ""}`}
@@ -742,19 +796,38 @@ export default function Campaigns() {
                       <td class="p-3 text-right text-gray-700 dark:text-gray-300 whitespace-nowrap">
                         {c.leads_count ?? 0}
                       </td>
-                      <Show when={canWriteCampaigns()}>
+                      <Show when={showActions()}>
                         <td
                           class={`p-3 text-center whitespace-nowrap sticky right-0 z-10
                                   shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.18)]
                                   ${i() % 2 === 0 ? "bg-white dark:bg-gray-900" : "bg-gray-50 dark:bg-gray-800"}`}
                         >
-                          <CampaignStatusControl
-                            campaignId={c.id}
-                            campaignName={c.name}
-                            status={c.status}
-                            size="sm"
-                            onChanged={(s) => applyStatusChange(c.id, s)}
-                          />
+                          <div class="inline-flex items-center gap-1.5">
+                            <CampaignStatusControl
+                              campaignId={c.id}
+                              campaignName={c.name}
+                              status={c.status}
+                              size="sm"
+                              onChanged={(s) => applyStatusChange(c.id, s)}
+                            />
+                            {/* The client nomen id is carried on the row as
+                                `client_nomen` (the NAME is client_nomen_name) —
+                                hierarchy's client_nomen_id and admin's
+                                client_nomen are the same id, and the reassign
+                                endpoint keys on it. */}
+                            <CampaignOwnershipControl
+                              size="sm"
+                              campaign={{
+                                id: c.id,
+                                name: c.name,
+                                clientNomenId: c.client_nomen,
+                                clientNomenName: c.client_nomen_name,
+                              }}
+                              onReassigned={(change) =>
+                                applyReassign(c.id, change)
+                              }
+                            />
+                          </div>
                         </td>
                       </Show>
                     </tr>
@@ -765,7 +838,7 @@ export default function Campaigns() {
               <Show when={campaigns().length === 0}>
                 <tr>
                   <td
-                    colspan={canWriteCampaigns() ? 15 : 14}
+                    colspan={COL_COUNT()}
                     class="py-16 text-center text-gray-400 dark:text-gray-500"
                   >
                     <svg
@@ -797,7 +870,7 @@ export default function Campaigns() {
           <tfoot>
             <tr class="border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60">
               <td
-                colspan={canWriteCampaigns() ? 15 : 14}
+                colspan={COL_COUNT()}
                 class="px-4 py-2.5 text-xs text-gray-500 dark:text-gray-400"
               >
                 {campaigns().length} campaign

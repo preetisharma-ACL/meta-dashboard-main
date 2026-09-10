@@ -137,6 +137,40 @@ export const canRevokeReplacement = () => {
   return role === "admin";
 };
 
+// ─── Campaign ownership gates (reassign + history) ────────────────────────────
+// Reassigning a campaign moves its leads and spend between two clients' ledgers
+// for the whole period from the effective date on — the same weight of change as
+// client_type or onboarded_by.
+//
+// The backend's rule is: not admin → must hold a CampaignManagerProfile at TIER 1.
+// So this is deliberately NOT canWriteCampaigns(), which the pause/resume path
+// uses. That set includes COORDINATION, and a coordination user has no CM profile
+// at all — they would be handed a Move button that 403s every single time. The
+// shape here is canRecordReplacement()'s, for exactly the same reason.
+//
+// One rule this gate CANNOT evaluate: a tier-1 CM may move a campaign only when
+// BOTH the current and the target client are in their team. The target picker is
+// sourced from the CM hierarchy, which already narrows the target side; the
+// current side is the backend's call, and its 403 is routed to a plain sentence
+// rather than treated as a bug.
+export const canReassignCampaigns = () => {
+  const role = currentUser.loaded ? currentUser.role : readAuth()?.role;
+  if (role === "admin") return true;
+  return isTier1CM();
+};
+
+// Reading the ownership trail is information rather than an action, so the gate
+// is wider on the CM side — a TIER-2 CM cannot move a campaign but can still ask
+// who owned it when. It is NOT wider on the ROLE side: both ownership routes sit
+// behind IsCampaignManagerOrAdmin, so coordination, accounts and sales 403 on the
+// history exactly as they do on the reassign. Clients never see it, and an
+// unresolved role fails closed.
+const OWNERSHIP_HISTORY_ROLES = new Set(["admin", "campaign_manager"]);
+export const canSeeOwnershipHistory = () => {
+  const role = currentUser.loaded ? currentUser.role : readAuth()?.role;
+  return OWNERSHIP_HISTORY_ROLES.has(role);
+};
+
 // ─── Value tier gate (internal commercial classification) ─────────────────────
 // Admin + coordination ONLY. Deliberately NOT the GLOBAL_READ set: accounts reads
 // money across every client but does not classify them, and a campaign manager

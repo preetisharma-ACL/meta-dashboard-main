@@ -352,10 +352,15 @@ const normaliseHierarchyClient = (c) => ({
 
 // Roster for a lead-action client picker, A→Z, restricted to `allowedTypes`.
 // Shared with the disqualification picker (see services/leadDisqualification.js)
-// so the admin→hierarchy fallback and the PK-vs-nomen normalisation above exist
-// in exactly one place — those are the parts that have been got wrong before.
+// and the campaign-reassignment picker (services/campaignReassign.js) so the
+// admin→hierarchy fallback and the PK-vs-nomen normalisation above exist in
+// exactly one place — those are the parts that have been got wrong before.
 // Clients whose type the roster doesn't report are kept (the backend remains
 // the authority) so a missing field can't empty the picker.
+//
+// `allowedTypes` may be null/omitted for callers where every client type is
+// valid (campaign ownership is one — any type can own a campaign). A null set is
+// NOT the same as an empty one: empty would filter the roster down to nothing.
 export const fetchClientsForLeadAction = async (allowedTypes) => {
   let rows = [];
   try {
@@ -373,7 +378,7 @@ export const fetchClientsForLeadAction = async (allowedTypes) => {
 
   return rows
     .filter((c) => c.id != null)
-    .filter((c) => !c.clientType || allowedTypes.has(c.clientType))
+    .filter((c) => !allowedTypes || !c.clientType || allowedTypes.has(c.clientType))
     .sort((a, b) =>
       a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
     );
