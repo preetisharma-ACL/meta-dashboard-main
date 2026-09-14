@@ -85,6 +85,10 @@ const startOfDay = (t) => {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 };
 const dayLabel = (iso) => {
+  // !isFinite catches undefined (NaN) but NOT null: new Date(null).getTime() is
+  // 0, and 0 is finite — so a null walked straight past the guard written for
+  // exactly this case and grouped the entry under 1 January 1970.
+  if (!iso) return ["Undated", ""];
   const t = new Date(iso).getTime();
   if (!isFinite(t)) return ["Undated", ""];
   const day = startOfDay(t);

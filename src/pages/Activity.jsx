@@ -121,6 +121,12 @@ const changeSummary = (a) => {
 };
 
 const fmtTime = (iso) => {
+  // Guarded like fmtDay and fmtClock below. new Date(null) is the EPOCH, not an
+  // invalid date, so a null would render "01 Jan 1970, 05:30 am" — and the
+  // try/catch is no help: toLocaleString on the epoch returns a string rather
+  // than throwing. The last-login column happens to be shielded by its own
+  // <Show … fallback="Never">, but the audit-row callers are not.
+  if (!iso) return null;
   try {
     return new Date(iso).toLocaleString("en-IN", {
       day: "2-digit",
