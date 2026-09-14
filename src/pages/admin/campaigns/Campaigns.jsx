@@ -107,9 +107,9 @@ function SearchableSelect(props) {
       </button>
 
       <Show when={open()}>
-        <div class="fixed inset-0 z-10" onClick={close} />
+        <div class="fixed inset-0 z-40" onClick={close} />
         <div
-          class="absolute z-20 mt-1 w-full min-w-[220px] bg-white dark:bg-gray-800
+          class="absolute z-50 mt-1 w-full min-w-[260px] max-w-[22rem] bg-white dark:bg-gray-800
                     rounded-xl border border-gray-200 dark:border-gray-700 shadow-xl overflow-hidden"
         >
           <div class="p-2 border-b border-gray-100 dark:border-gray-700">
@@ -130,7 +130,7 @@ function SearchableSelect(props) {
                 props.onChange("all");
                 close();
               }}
-              class={`px-3 py-2 text-sm cursor-pointer hover:bg-purple-50 dark:hover:bg-purple-900/20
+              class={`px-3 py-2 text-sm cursor-pointer truncate hover:bg-purple-50 dark:hover:bg-purple-900/20
                       ${props.value === "all" ? "text-purple-600 font-semibold bg-purple-50 dark:bg-purple-900/20" : "text-gray-700 dark:text-gray-300"}`}
             >
               {props.placeholder}
@@ -138,11 +138,12 @@ function SearchableSelect(props) {
             <For each={visible()}>
               {(opt) => (
                 <li
+                  title={opt.name}
                   onClick={() => {
                     props.onChange(opt.id);
                     close();
                   }}
-                  class={`px-3 py-2 text-sm cursor-pointer hover:bg-purple-50 dark:hover:bg-purple-900/20
+                  class={`px-3 py-2 text-sm cursor-pointer truncate hover:bg-purple-50 dark:hover:bg-purple-900/20
                           ${props.value === opt.id ? "text-purple-600 font-semibold bg-purple-50 dark:bg-purple-900/20" : "text-gray-700 dark:text-gray-300"}`}
                 >
                   {opt.name}
@@ -803,7 +804,7 @@ export default function Campaigns() {
                                   shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.18)]
                                   ${i() % 2 === 0 ? "bg-white dark:bg-gray-900" : "bg-gray-50 dark:bg-gray-800"}`}
                         >
-                          <div class="inline-flex items-center gap-1.5">
+                          <div class="inline-flex items-center justify-center gap-2">
                             <CampaignStatusControl
                               campaignId={c.id}
                               campaignName={c.name}

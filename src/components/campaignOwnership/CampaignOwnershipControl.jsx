@@ -40,15 +40,19 @@ export default function CampaignOwnershipControl(props) {
   const allowWrite = () => props.canWrite ?? canReassignCampaigns();
   const sm = () => props.size === "sm";
 
+  // Sizing is shared with CampaignStatusControl so Pause/Move/History line up
+  // as one control group: same height, padding, radius and ring.
   const BTN =
-    "inline-flex items-center gap-1.5 rounded-lg font-semibold border transition-colors " +
-    "disabled:opacity-50 disabled:cursor-default";
-  const pad = () => (sm() ? "px-2.5 py-1 text-xs " : "px-3 py-1.5 text-sm ");
+    "inline-flex items-center justify-center rounded-md font-medium leading-none " +
+    "whitespace-nowrap ring-1 ring-inset transition-colors " +
+    "focus-visible:outline-none focus-visible:ring-2 " +
+    "disabled:opacity-50 disabled:cursor-default ";
+  const pad = () => (sm() ? "h-7 px-2.5 gap-1.5 text-xs " : "h-9 px-3.5 gap-2 text-sm ");
   const icon = () => (sm() ? "w-3.5 h-3.5" : "w-4 h-4");
 
   return (
     <>
-      <div class="inline-flex items-center gap-1.5">
+      <div class="inline-flex items-center gap-2">
         <Show when={allowWrite()}>
           <button
             type="button"
@@ -61,8 +65,8 @@ export default function CampaignOwnershipControl(props) {
             class={
               BTN +
               pad() +
-              "border-purple-300 text-purple-700 hover:bg-purple-50 " +
-              "dark:border-purple-700/60 dark:text-purple-300 dark:hover:bg-purple-900/20"
+              "bg-purple-50 text-purple-700 ring-purple-200 hover:bg-purple-100 " +
+              "dark:bg-purple-500/10 dark:text-purple-300 dark:ring-purple-500/30 dark:hover:bg-purple-500/20"
             }
           >
             <ArrowLeftRight class={icon()} />
@@ -82,8 +86,8 @@ export default function CampaignOwnershipControl(props) {
             class={
               BTN +
               pad() +
-              "border-gray-300 text-gray-600 hover:bg-gray-50 " +
-              "dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
+              "bg-white text-gray-600 ring-gray-200 hover:bg-gray-100 hover:text-gray-800 " +
+              "dark:bg-gray-800 dark:text-gray-300 dark:ring-gray-600 dark:hover:bg-gray-700"
             }
           >
             <History class={icon()} />

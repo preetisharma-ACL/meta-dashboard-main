@@ -186,13 +186,20 @@ export default function CampaignStatusControl(props) {
         disabled={busy()}
         title={action() === "pause" ? "Pause this campaign" : "Resume this campaign"}
         class={
-          "inline-flex items-center gap-1.5 rounded-lg font-semibold border transition-colors disabled:opacity-50 disabled:cursor-default " +
+          // Sizing is shared with CampaignOwnershipControl so Pause/Move/History
+          // line up as one control group: same height, padding, radius and ring.
+          "inline-flex items-center justify-center rounded-md font-medium leading-none " +
+          "whitespace-nowrap ring-1 ring-inset transition-colors " +
+          "focus-visible:outline-none focus-visible:ring-2 " +
+          "disabled:opacity-50 disabled:cursor-default " +
           (props.size === "sm"
-            ? "px-2.5 py-1 text-xs "
-            : "px-3 py-1.5 text-sm ") +
+            ? "h-7 px-2.5 gap-1.5 text-xs "
+            : "h-9 px-3.5 gap-2 text-sm ") +
           (action() === "pause"
-            ? "border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-700/60 dark:text-amber-300 dark:hover:bg-amber-900/20"
-            : "border-green-300 text-green-700 hover:bg-green-50 dark:border-green-700/60 dark:text-green-300 dark:hover:bg-green-900/20")
+            ? "bg-amber-50 text-amber-700 ring-amber-200 hover:bg-amber-100 " +
+              "dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/30 dark:hover:bg-amber-500/20"
+            : "bg-emerald-50 text-emerald-700 ring-emerald-200 hover:bg-emerald-100 " +
+              "dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/30 dark:hover:bg-emerald-500/20")
         }
       >
         <Show
