@@ -878,11 +878,16 @@ export default function Billing() {
       // Explicit backend flag: an opening-balance carry-in, not money received
       // this period — badged as such and excluded from "Total Received".
       isOpeningBalance: !!item.is_opening_balance,
-      date: new Date(item.paid_at).toLocaleDateString("en-IN", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-      }),
+      // Guarded: paid_at is nullable, and new Date(null) is the EPOCH, not an
+      // invalid date — an unguarded null printed "01 Jan 1970" on the client's
+      // own statement. Missing reads "—", the same as every other date surface.
+      date: item.paid_at
+        ? new Date(item.paid_at).toLocaleDateString("en-IN", {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+          })
+        : "—",
       amount: parseFloat(item.final_amount || 0),
       baseAmount: parseFloat(item.base_amount || 0),
       gstPct: item.gst_pct,

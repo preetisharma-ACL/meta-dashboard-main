@@ -83,7 +83,15 @@ export default function PaymentForm(props) {
     existing()?.referenceId ?? "",
   );
   const [invoiceUrl, setInvoiceUrl] = createSignal(existing()?.invoiceUrl ?? "");
-  const [paidAt, setPaidAt] = createSignal(toDateTimeInput(existing()?.paidAt));
+  // Create starts at NOW; edit keeps the row's own value (blank when the row
+  // genuinely has none). The backend does NOT default paid_at — a payment saved
+  // with the box empty is stored null, and the model then derives its period
+  // from created_at instead. That only reads right when the money arrived the
+  // same month it was recorded. Prefilling makes the instant explicit and gives
+  // the operator something to correct when they're filing it a few days late.
+  const [paidAt, setPaidAt] = createSignal(
+    isEdit() ? toDateTimeInput(existing()?.paidAt) : toDateTimeInput(new Date()),
+  );
 
   const [touched, setTouched] = createSignal(false);
   // Tracks whether the org currently in the box came from the client rather
@@ -327,7 +335,8 @@ export default function PaymentForm(props) {
       setNotes("");
       setReferenceId("");
       setInvoiceUrl("");
-      setPaidAt("");
+      // Back to now, not blank — the next entry must carry a date too.
+      setPaidAt(toDateTimeInput(new Date()));
       setTouched(false);
     });
   };
@@ -639,7 +648,7 @@ export default function PaymentForm(props) {
               <p class="mt-1 text-xs text-[#54657E] dark:text-gray-400">
                 <Show
                   when={isEdit()}
-                  fallback="All optional — fill what you have now, or add it later from the ledger. Leaving the date blank records the payment as of now."
+                  fallback="Reference and invoice are optional — fill what you have now, or add them later from the ledger. The date defaults to now: set it to when the money actually arrived, or the payment books in the month you recorded it."
                 >
                   Editable at any time; an amount change is recomputed by the
                   server.

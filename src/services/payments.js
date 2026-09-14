@@ -200,7 +200,12 @@ export const normalizePayment = (r = {}) => ({
   invoiceUrl: first(r, ["invoice_url", "invoice"]),
   notes: first(r, ["notes", "note", "remarks"]),
 
-  paidAt: first(r, ["paid_at", "payment_date", "date", "created_at"]),
+  // NO created_at fallback. paid_at null is a real answer — the server stores
+  // it that way when a payment was recorded without a date — and it must read
+  // as "—", not as a creation timestamp wearing a payment date's label. The
+  // fallback also made the null unfixable: the edit form prefilled the box with
+  // created_at, so an untouched save compared equal and sent nothing back.
+  paidAt: first(r, ["paid_at", "payment_date", "date"]),
   createdAt: first(r, ["created_at"]),
 
   // "Recorded by" reads created_by_name ONLY. created_by is a user id, so
@@ -401,8 +406,11 @@ export const fetchPaymentOrganizations = async () => {
 // (The endpoint used to drop them, which is why the record form omitted them;
 // it accepts them as of the 655cc1e backend, so accounts can file the reference
 // at record-time rather than only through Edit afterwards.) Omitting an empty
-// one matters: posting "" would overwrite a server-side default such as
-// paid_at=now with a blank.
+// one matters: "" is not a value DRF will take for a DateTimeField.
+//
+// There is NO server-side paid_at=now default — an add-funds call without the
+// key stores null, and the model then derives the payment's period from
+// created_at. The form prefills the date rather than relying on one.
 //
 // Returns the created row, normalized.
 export const recordPayment = async (input) => {
