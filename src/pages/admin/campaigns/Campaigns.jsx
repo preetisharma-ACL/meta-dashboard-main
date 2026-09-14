@@ -58,6 +58,7 @@ const DATE_OPTIONS = [
   { label: "Yesterday", value: "yesterday" },
   { label: "Last 3 Days", value: "last3days" },
   { label: "Last 7 Days", value: "last7days" },
+  { label: "This Month", value: "thisMonth" },
   { label: "Last Month", value: "lastMonth" },
 ];
 

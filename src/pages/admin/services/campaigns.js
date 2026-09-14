@@ -34,6 +34,11 @@ export const resolveDateRange = (key) => {
     return { from: toLocalYMD(d), to: today };
   }
 
+  if (key === "thisMonth") {
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    return { from: toLocalYMD(start), to: today };
+  }
+
   if (key === "lastMonth") {
     const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const end = new Date(now.getFullYear(), now.getMonth(), 0);
