@@ -49,9 +49,42 @@ const rawSpendOf = (row) =>
 
 export default function ProjectDetails() {
   const location = useLocation();
-  const project = location.state?.project;
   const params = useParams();
   const projectId = params.id;
+
+  // The ledger a viewer drills in from passes the row it already holds as route
+  // state. That row is not always a full project (the CM ledger is built from
+  // campaigns, so it knows the name and nothing else), and a refresh or a pasted
+  // URL carries no state at all — loadProject() fills the gaps from
+  // /projects/{id}/, with anything the ledger passed taking precedence.
+  const [project, setProject] = createSignal(location.state?.project ?? null);
+
+  // ── Drill-in client scope ──────────────────────────────────────────────────
+  // The CM dashboard is not client-scoped — a CM never picks a "Viewing Client"
+  // — so a CM arriving from its project ledger has nothing in localStorage to
+  // scope this page by, and every footer total would print "—". The ledger row
+  // knows which client the project's campaigns sit under and passes it here, so
+  // it is read AHEAD of the global selection: the client just clicked beats a
+  // leftover pick from some earlier page. Stashed per project id so a refresh on
+  // this URL keeps the scope. It only ever narrows — the backend still
+  // intersects with what the caller may see.
+  const scopeStoreKey = `projectClientScope:${projectId}`;
+  const stateScope = location.state?.clientScope ?? null;
+  if (stateScope?.nomenId) {
+    try {
+      sessionStorage.setItem(scopeStoreKey, JSON.stringify(stateScope));
+    } catch {
+      /* private mode / quota — the scope just won't survive a refresh */
+    }
+  }
+  const drillScope = () => {
+    if (stateScope?.nomenId) return stateScope;
+    try {
+      return JSON.parse(sessionStorage.getItem(scopeStoreKey) || "null");
+    } catch {
+      return null;
+    }
+  };
 
   // ── Drive the analytics chart from the same filtered data ──────────────────────
   createEffect(() => {
@@ -309,7 +342,7 @@ export default function ProjectDetails() {
 
   const viewerNomenId = () => {
     location.pathname; // track route changes, like the badge below
-    return getSelectedClientNomenId();
+    return drillScope()?.nomenId ?? getSelectedClientNomenId();
   };
 
   // Internal viewer with no client selected: the list can span several clients,
@@ -325,11 +358,10 @@ export default function ProjectDetails() {
   // never sets it.
   const selectedClientNomen = () => {
     location.pathname; // track route changes
-    return userRole() === "admin" ||
-      userRole() === "campaign_manager" ||
-      userRole() === "sales"
-      ? localStorage.getItem("selectedClientNomen")
-      : null;
+    if (!needsClientScope()) return null;
+    // Same precedence as viewerNomenId, so the badge always names the client the
+    // numbers under it were actually fetched for.
+    return drillScope()?.nomenName ?? localStorage.getItem("selectedClientNomen");
   };
 
   // ── keepManualRow / extraLeadsOf — synthetic (fed) leads, exactly once ──────
@@ -400,6 +432,10 @@ export default function ProjectDetails() {
   });
 
   onMount(() => {
+    // Fill in (or complete) the project behind this URL — the ledger row in
+    // route state can be partial, and a refresh has none at all.
+    loadProject();
+
     const handleClickOutside = (e) => {
       if (!e.target.closest(".notification-wrapper")) {
         setShowNotifications(false);
@@ -425,8 +461,22 @@ export default function ProjectDetails() {
   const loadProject = async () => {
     try {
       const res = await fetchProjectById(projectId);
+      const item = res?.data ?? res;
+      if (!item?.id) return;
+      // Same mapping the project ledgers use (city → location, property_type →
+      // type), so the overview panel reads identically whichever page opened it.
+      const fetched = {
+        id: item.id,
+        name: item.name,
+        location: item.city,
+        type: item.property_type
+          ? item.property_type.charAt(0).toUpperCase() +
+            item.property_type.slice(1).toLowerCase()
+          : "N/A",
+      };
+      setProject((prev) => ({ ...fetched, ...(prev ?? {}) }));
     } catch (err) {
-      console.error(err);
+      console.error("[ProjectDetails] failed to load project:", err);
     }
   };
 
@@ -1070,7 +1120,7 @@ export default function ProjectDetails() {
         </nav>
       </div>
       <Show
-        when={project}
+        when={project()}
         fallback={
           <p class="text-sm text-gray-400 border border-dashed rounded-xl p-8 text-center">
             No project selected
@@ -1082,17 +1132,17 @@ export default function ProjectDetails() {
             Project overview
           </h2>
           <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
-            <Info label="Project name" value={project?.name} />
-            <Info label="Location" value={project?.location} />
-            <Info label="Property type" value={project?.type} />
-            {/* <Info label="Priority" value={project?.priority} badge />
-            <Info label="Project control" value={project?.projectControl} />
-            <Info label="Pricing & typology" value={project?.summary} /> */}
+            <Info label="Project name" value={project()?.name} />
+            <Info label="Location" value={project()?.location} />
+            <Info label="Property type" value={project()?.type} />
+            {/* <Info label="Priority" value={project()?.priority} badge />
+            <Info label="Project control" value={project()?.projectControl} />
+            <Info label="Pricing & typology" value={project()?.summary} /> */}
           </div>
         </section>
       </Show>
       <div class="hidden">
-        <Show when={project}>
+        <Show when={project()}>
           <div class="mt-8 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm">
             {/* Header */}
             <div class="flex items-center justify-between mb-6">

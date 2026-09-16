@@ -2,8 +2,6 @@ import {
   createSignal,
   createMemo,
   createEffect,
-  createResource,
-  For,
   Show,
   onCleanup,
 } from "solid-js";
@@ -15,6 +13,7 @@ import {
   isFutureDate,
 } from "../../services/campaignReassign";
 import { errorMessage } from "../../utils/apiErrors";
+import EntityPicker from "../payments/EntityPicker";
 import {
   FIELD,
   FIELD_BAD,
@@ -70,16 +69,21 @@ export default function CampaignReassignModal(props) {
   const [error, setError] = createSignal(null);
   const [result, setResult] = createSignal(null);
 
-  const [targets] = createResource(
-    () => (props.campaign ? props.campaign.id : null),
-    async () => {
-      try {
-        return await fetchReassignTargets();
-      } catch {
-        return [];
-      }
-    },
-  );
+  // The list is fetched by the picker (one combobox, one fetch) and handed back
+  // here through onOptions, because this form also needs it: to resolve the
+  // picked id to a client, and to say "no other client is available" rather than
+  // leaving an empty box to be interpreted. targetsLoaded is what separates
+  // that sentence from "still loading".
+  const [targetList, setTargetList] = createSignal([]);
+  const [targetsLoaded, setTargetsLoaded] = createSignal(false);
+
+  const loadTargets = async () =>
+    (await fetchReassignTargets()).map((c) => ({
+      ...c,
+      // EntityPicker keys on {id, name}; nomenId stays on the option because the
+      // move itself is sent with it.
+      id: c.nomenId,
+    }));
 
   // A fresh campaign means a fresh form. A reason or a confirmation typed for
   // one campaign must never be filed against a different one.
@@ -102,11 +106,9 @@ export default function CampaignReassignModal(props) {
   // Clients this campaign can actually go to. Its CURRENT owner is dropped from
   // the list: "move it to where it already is" is not an available action, and
   // offering it produces a no-op the operator has to reason about.
-  const options = createMemo(() =>
-    (targets() ?? []).filter(
-      (c) => String(c.nomenId) !== String(currentId() ?? ""),
-    ),
-  );
+  const isTarget = (c) => String(c.nomenId) !== String(currentId() ?? "");
+
+  const options = createMemo(() => targetList().filter(isTarget));
 
   const target = createMemo(() => {
     const v = String(targetId() || "");
@@ -347,39 +349,42 @@ export default function CampaignReassignModal(props) {
                   </span>
                 </div>
 
+                {/* A searchable combobox, not a <select>: the list runs to
+                  ~170 clients with names like "KamleshKumarMeenaPropertyStation
+                  RealEstateLlp", and finding one by scrolling is a worse guard
+                  than typing three letters of it. The field IS the search box —
+                  type to filter, pick to commit. */}
                 <div>
-                  <label class={LABEL} for="cr-target">
-                    Move to
-                  </label>
-                  <select
-                    id="cr-target"
-                    value={targetId()}
-                    disabled={busy() || targets.loading}
-                    onChange={(e) => {
-                      setTargetId(e.currentTarget.value);
+                  <EntityPicker
+                    label="Move to"
+                    fieldClass={FIELD}
+                    labelClass={LABEL}
+                    fetcher={loadTargets}
+                    onOptions={(list) => {
+                      setTargetList(list);
+                      setTargetsLoaded(true);
+                    }}
+                    filter={isTarget}
+                    value={targetId() || null}
+                    onChange={(id) => {
+                      setTargetId(id == null ? "" : String(id));
                       resetConfirm();
                     }}
-                    class={FIELD}
-                  >
-                    <option value="">
-                      {targets.loading
-                        ? "Loading clients…"
-                        : "Select the client that gains it…"}
-                    </option>
-                    <For each={options()}>
-                      {(c) => (
-                        <option value={String(c.nomenId)}>{c.name}</option>
-                      )}
-                    </For>
-                  </select>
-                  <Show
-                    when={!targets.loading && options().length === 0}
-                    fallback={
-                      <p class={HINT}>
-                        The clients you can move this campaign to.
-                      </p>
+                    disabled={busy()}
+                    placeholder="Select the client that gains it…"
+                    hint={
+                      targetsLoaded() && options().length === 0
+                        ? null
+                        : "The clients you can move this campaign to. Type to search."
                     }
-                  >
+                    emptyMsg="No other client is available to move this campaign to."
+                    emptyFilteredMsg="No other client is available to move this campaign to."
+                    forbiddenMsg="You don't have access to move campaigns between clients."
+                    errorMsg="Couldn't load the client list — reopen this dialog to retry."
+                  />
+                  {/* Said again outside the dropdown: with nothing to pick, the
+                    operator has no reason to open it. */}
+                  <Show when={targetsLoaded() && options().length === 0}>
                     <p class="text-xs text-[#AC2334] dark:text-red-400 mt-1.5">
                       No other client is available to move this campaign to.
                     </p>

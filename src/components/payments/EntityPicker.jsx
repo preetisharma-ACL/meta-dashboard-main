@@ -67,7 +67,15 @@ import { fieldClass, labelClass } from "./paymentsFormat";
 //                keystroke — because the caller has to be able to clear it
 //                (Clear filters) and to fill it in on a pick.
 //   text / onTextChange   only read when freeText is on.
+//
+//   fieldClass / labelClass  override the payments field + label tokens. The
+//                campaign-reassign modal styles its form from its own set
+//                (ownershipFormat), and without this the one searchable control
+//                would be the only field in that dialog that didn't match its
+//                neighbours. Everything else here is house palette either way.
 export default function EntityPicker(props) {
+  const fieldCls = () => props.fieldClass ?? fieldClass;
+  const labelCls = () => props.labelClass ?? labelClass;
   // Uncommitted text lives here normally, and in the CALLER in freeText mode.
   // Everything below reads query()/setQuery() and doesn't care which it is.
   const [localQuery, setLocalQuery] = createSignal("");
@@ -262,7 +270,7 @@ export default function EntityPicker(props) {
   return (
     <div class="relative">
       <Show when={props.label}>
-        <label class={labelClass}>
+        <label class={labelCls()}>
           {props.label}
           <Show when={props.required}>
             {" "}
@@ -291,7 +299,7 @@ export default function EntityPicker(props) {
           }}
           onKeyDown={onKeyDown}
           class={
-            fieldClass +
+            fieldCls() +
             " pr-16 " +
             (props.error ? " border-[#AC2334] focus:ring-[#AC2334]/25" : "")
           }

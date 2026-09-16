@@ -121,7 +121,7 @@ export default function CMDashboard() {
   const [search, setSearch] = createSignal("");
   // Separate from `search`: the campaign ledger's box filters campaign rows, and
   // typing a project name there shouldn't silently reshape the project ledger's
-  // totals above it. Two ledgers, two filters.
+  // totals. Two ledgers, two filters.
   const [projectSearch, setProjectSearch] = createSignal("");
   const [view, setView] = createSignal("list"); // "list" | "hierarchy"
   // UI-only highlight for the quick-pick pills. Does not drive any fetch; the
@@ -381,6 +381,11 @@ export default function CMDashboard() {
           projectId: pid,
           name: c.project_name || "Unassigned",
           client: c.client_nomen_name || "",
+          // Client scope for the drill-in link (see ProjectDetails). Read off the
+          // SAME campaign row as `client`, so the id and the name can never
+          // describe two different clients.
+          clientNomen: c.client_nomen != null ? String(c.client_nomen) : null,
+          clientNomenMixed: false,
           metaLeads: 0,
           spend: 0,
           budget: 0,
@@ -389,6 +394,11 @@ export default function CMDashboard() {
         };
         byKey.set(key, row);
       }
+      // Campaigns get reassigned between clients, so one project can hold rows
+      // from more than one. A mixed group hands the details page NO scope rather
+      // than scoping it to whichever campaign happened to land in the row first.
+      if ((c.client_nomen != null ? String(c.client_nomen) : null) !== row.clientNomen)
+        row.clientNomenMixed = true;
       row.metaLeads += Number(c.leads_count) || 0;
       row.spend += parseFloat(c.spend) || 0;
       row.budget += parseFloat(c.budget) || 0;
@@ -406,6 +416,8 @@ export default function CMDashboard() {
       const replacedLeads = r.projectId ? replaced[r.projectId] || 0 : 0;
       return {
         ...r,
+        // Only a single-client project passes a scope hint down the link.
+        clientNomenId: r.clientNomenMixed ? null : r.clientNomen,
         fedLeads,
         totalLeads: total,
         replacedLeads,
@@ -1028,236 +1040,6 @@ export default function CMDashboard() {
 
       {/* ── Flat campaigns list view ── */}
       <Show when={view() === "list"}>
-        {/* ════════ PROJECT LEDGER (Meta vs fed leads) ════════
-            The client's own dashboard counts Meta + fed leads; a CM reporting
-            Meta alone sends a smaller number for the same day. This is the
-            level fed leads are attributed at, so it's the level that
-            reconciles. Both figures stay visible — never merged.            */}
-        <Eyebrow label="Project ledger" soft="meta vs fed leads" />
-
-        {/* Project-ledger search — matches project OR client name. */}
-        <div class="flex flex-wrap items-center gap-3 mb-4">
-          <div class="relative flex-1 max-w-[400px] min-w-[220px]">
-            <svg
-              class="w-4 h-4 text-[#8593A8] absolute left-3 top-1/2 -translate-y-1/2"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <circle cx="11" cy="11" r="8" />
-              <path d="M21 21l-4.35-4.35" />
-            </svg>
-            <input
-              type="text"
-              placeholder="Search by project or client…"
-              value={projectSearch()}
-              onInput={(e) => setProjectSearch(e.target.value)}
-              class="w-full pl-9 pr-9 py-2 text-sm rounded-lg border border-[#E2E8F1] dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-[#1A2B45] dark:text-gray-200 placeholder:text-[#8593A8] focus:outline-none focus:ring-2 focus:ring-[#AC2334]/25 focus:border-[#AC2334]"
-            />
-            <Show when={projectSearch()}>
-              <button
-                type="button"
-                onClick={() => setProjectSearch("")}
-                aria-label="Clear search"
-                class="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-[#8593A8] hover:text-[#14233A] dark:hover:text-gray-200"
-              >
-                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </Show>
-          </div>
-
-          {/* Says what the totals below are actually summing once filtered. */}
-          <Show when={projectSearch()}>
-            <span class="text-xs font-semibold text-[#54657E] dark:text-gray-400 whitespace-nowrap">
-              {visibleProjectLedger().length} of {projectLedger().length} projects
-            </span>
-          </Show>
-        </div>
-
-        <div class="overflow-auto max-h-[60vh] bg-gray-50 dark:bg-gray-800 rounded-xl border border-[#E2E8F1] dark:border-gray-700 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] mb-8">
-          <table class="w-full text-sm table-auto">
-            <thead class="bg-[#F8FAFC] dark:bg-gray-800">
-              <tr class="text-[#54657E] dark:text-gray-300 border-b border-[#D4DDE9] dark:border-gray-700 [&_th]:text-xs [&_th]:uppercase [&_th]:tracking-wider [&_th]:font-bold [&_th]:whitespace-nowrap [&_th]:sticky [&_th]:top-0 [&_th]:bg-[#F8FAFC] dark:[&_th]:bg-gray-800">
-                <th class="p-3 w-12 text-center">S.No</th>
-                <th class="p-3 text-left min-w-[220px]">Project</th>
-                <th class="p-3 text-left">Client</th>
-                <th class="p-3 text-center">Campaigns</th>
-                <th class="p-3 text-right">Meta Leads</th>
-                <th class="p-3 text-right">Fed Leads</th>
-                <th class="p-3 text-right">Total (incl. fed)</th>
-                {/* Total → Replaced → Billable reads as one progression */}
-                <Show when={showReplaced()}>
-                  <th class="p-3 text-right text-[#AC2334] dark:text-red-400">
-                    Replaced
-                  </th>
-                  <th class="p-3 text-right">Billable</th>
-                </Show>
-                <th class="p-3 text-right">Spend</th>
-                <th class="p-3 text-right">CPL</th>
-              </tr>
-            </thead>
-
-            <Show
-              when={!firstLoad()}
-              fallback={
-                <tbody>
-                  <For each={Array(5).fill(0)}>
-                    {() => (
-                      <tr class="border-t border-[#E2E8F1] dark:border-gray-700 animate-pulse">
-                        <For each={Array(ledgerColCount()).fill(0)}>
-                          {() => (
-                            <td class="p-3">
-                              <div class="h-4 w-20 bg-gray-200 dark:bg-gray-700 rounded"></div>
-                            </td>
-                          )}
-                        </For>
-                      </tr>
-                    )}
-                  </For>
-                </tbody>
-              }
-            >
-              <tbody>
-                <For each={visibleProjectLedger()}>
-                  {(p, i) => (
-                    <tr
-                      class={
-                        "border-t border-[#E2E8F1] dark:border-gray-700 transition-colors " +
-                        (i() % 2 === 0
-                          ? "bg-gray-50 dark:bg-gray-800"
-                          : "bg-[#FAFBFD] dark:bg-gray-800")
-                      }
-                    >
-                      {/* S.No — same badge as the campaign ledger. The ledger is
-                          sorted by spend, so this is a position in that ranking,
-                          not a stable id. */}
-                      <td class="px-1 py-2 w-12 text-center">
-                        <span class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-[#FBEEF0] dark:bg-red-900/30 text-[#AC2334] dark:text-red-300 text-xs font-bold">
-                          {i() + 1}
-                        </span>
-                      </td>
-                      <td class="px-3 py-2.5 text-left">
-                        <div class="flex items-center gap-2.5">
-                          <Avatar
-                            name={p.name}
-                            size="w-7 h-7"
-                            textSize="text-[10px]"
-                          />
-                          <span
-                            class="font-semibold text-[#14233A] dark:text-gray-100"
-                            title={p.name}
-                          >
-                            {p.name}
-                          </span>
-                        </div>
-                      </td>
-                      <td class="px-3 py-2.5 text-left text-[#54657E] dark:text-gray-400 whitespace-nowrap">
-                        {p.client || "—"}
-                      </td>
-                      <td class="px-3 py-2.5 text-center text-[#54657E] dark:text-gray-400">
-                        {p.campaigns}
-                      </td>
-                      {/* Meta Leads — raw Meta only, never includes fed */}
-                      <td class="px-3 py-2.5 text-right font-medium text-gray-700 dark:text-gray-100 whitespace-nowrap">
-                        {fmtNum(p.metaLeads)}
-                      </td>
-                      {/* Fed Leads — "+N", em dash when none */}
-                      <td class="px-3 py-2.5 text-right font-medium text-[#15966A] dark:text-green-300 whitespace-nowrap">
-                        {fmtFed(p.fedLeads)}
-                      </td>
-                      {/* Total = Meta + fed — the figure the client sees */}
-                      <td class="px-3 py-2.5 text-right font-bold text-[#14233A] dark:text-white whitespace-nowrap">
-                        {fmtNum(p.totalLeads)}
-                      </td>
-                      {/* Replaced → Billable — credited back, then charged */}
-                      <Show when={showReplaced()}>
-                        <td class="px-3 py-2.5 text-right font-semibold text-[#AC2334] dark:text-red-400 whitespace-nowrap">
-                          {fmtReplaced(p.replacedLeads)}
-                        </td>
-                        <td class="px-3 py-2.5 text-right font-bold text-[#14233A] dark:text-white whitespace-nowrap">
-                          {fmtNum(p.billableLeads)}
-                        </td>
-                      </Show>
-                      <td class="px-3 py-2.5 text-right text-[#54657E] dark:text-gray-300 whitespace-nowrap">
-                        {fmtMoney(p.spend)}
-                      </td>
-                      <td class="px-3 py-2.5 text-right text-[#54657E] dark:text-gray-300 whitespace-nowrap">
-                        {p.cpl != null ? fmtCPL(p.cpl) : "—"}
-                      </td>
-                    </tr>
-                  )}
-                </For>
-
-                <Show when={visibleProjectLedger().length === 0}>
-                  <tr>
-                    <td
-                      colspan={ledgerColCount()}
-                      class="py-12 text-center text-[#8593A8] dark:text-gray-500"
-                    >
-                      <Show
-                        when={projectSearch()}
-                        fallback="No projects to show."
-                      >
-                        No project or client matches “{projectSearch()}”.
-                      </Show>
-                    </td>
-                  </tr>
-                </Show>
-              </tbody>
-
-              <Show when={visibleProjectLedger().length > 0}>
-                <tfoot class="bg-[#F8FAFC] dark:bg-gray-800 font-semibold text-gray-700 dark:text-white border-t-2 border-[#D4DDE9] dark:border-gray-600">
-                  <tr>
-                    {/* Spans # + Project so the label still sits at the far
-                        left now that the serial column exists. */}
-                    <td
-                      colspan="2"
-                      class="px-3 py-3 text-left text-xs uppercase tracking-wider text-[#54657E] dark:text-gray-300"
-                    >
-                      Total
-                    </td>
-                    <td></td>
-                    <td></td>
-                    <td class="px-3 py-3 text-right">
-                      {fmtNum(projectTotals().metaLeads)}
-                    </td>
-                    <td class="px-3 py-3 text-right text-[#15966A] dark:text-green-300">
-                      {fmtFed(projectTotals().fedLeads)}
-                    </td>
-                    <td class="px-3 py-3 text-right">
-                      {fmtNum(projectTotals().totalLeads)}
-                    </td>
-                    <Show when={showReplaced()}>
-                      <td class="px-3 py-3 text-right text-[#AC2334] dark:text-red-400">
-                        {fmtReplaced(projectTotals().replacedLeads)}
-                      </td>
-                      <td class="px-3 py-3 text-right">
-                        {fmtNum(projectTotals().billableLeads)}
-                      </td>
-                    </Show>
-                    <td class="px-3 py-3 text-right">
-                      {fmtMoney(projectTotals().spend)}
-                    </td>
-                    <td class="px-3 py-3 text-right">
-                      {projectTotals().cpl != null
-                        ? fmtCPL(projectTotals().cpl)
-                        : "—"}
-                    </td>
-                  </tr>
-                </tfoot>
-              </Show>
-            </Show>
-          </table>
-        </div>
-        <p class="-mt-6 mb-8 text-xs text-[#8593A8] dark:text-gray-500">
-          Fed leads are uploaded manually and attributed to the day they were
-          received, so they land on a project rather than a campaign. CPL is cost
-          per Meta lead.
-        </p>
-
         {/* ════════ CAMPAIGN LEDGER ════════ */}
         <Eyebrow label="Campaign ledger" soft="meta leads only · full reference" />
 
@@ -1324,8 +1106,10 @@ export default function CMDashboard() {
           </div>
         </Show>
 
-        {/* Campaigns table */}
-        <div class="overflow-auto max-h-[70vh] bg-gray-50 dark:bg-gray-800 rounded-xl border border-[#E2E8F1] dark:border-gray-700 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)]">
+        {/* Campaigns table. mb-8 because the project ledger now follows it —
+            it used to be the last block before a section that brought its own
+            top margin. */}
+        <div class="overflow-auto max-h-[70vh] bg-gray-50 dark:bg-gray-800 rounded-xl border border-[#E2E8F1] dark:border-gray-700 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] mb-8">
           <table class="w-full text-sm table-auto">
             <thead class="bg-[#F8FAFC] dark:bg-gray-800">
               <tr class="text-[#54657E] dark:text-gray-300 border-b border-[#D4DDE9] dark:border-gray-700 [&_th]:text-xs [&_th]:uppercase [&_th]:tracking-wider [&_th]:font-bold [&_th]:whitespace-nowrap [&_th]:sticky [&_th]:top-0 [&_th]:bg-[#F8FAFC] dark:[&_th]:bg-gray-800">
@@ -1528,6 +1312,259 @@ export default function CMDashboard() {
             </Show>
           </table>
         </div>
+
+        {/* ════════ PROJECT LEDGER (Meta vs fed leads) ════════
+            The client's own dashboard counts Meta + fed leads; a CM reporting
+            Meta alone sends a smaller number for the same day. This is the
+            level fed leads are attributed at, so it's the level that
+            reconciles. Both figures stay visible — never merged.            */}
+        <Eyebrow label="Project ledger" soft="meta vs fed leads" />
+
+        {/* Project-ledger search — matches project OR client name. */}
+        <div class="flex flex-wrap items-center gap-3 mb-4">
+          <div class="relative flex-1 max-w-[400px] min-w-[220px]">
+            <svg
+              class="w-4 h-4 text-[#8593A8] absolute left-3 top-1/2 -translate-y-1/2"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="11" cy="11" r="8" />
+              <path d="M21 21l-4.35-4.35" />
+            </svg>
+            <input
+              type="text"
+              placeholder="Search by project or client…"
+              value={projectSearch()}
+              onInput={(e) => setProjectSearch(e.target.value)}
+              class="w-full pl-9 pr-9 py-2 text-sm rounded-lg border border-[#E2E8F1] dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-[#1A2B45] dark:text-gray-200 placeholder:text-[#8593A8] focus:outline-none focus:ring-2 focus:ring-[#AC2334]/25 focus:border-[#AC2334]"
+            />
+            <Show when={projectSearch()}>
+              <button
+                type="button"
+                onClick={() => setProjectSearch("")}
+                aria-label="Clear search"
+                class="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-[#8593A8] hover:text-[#14233A] dark:hover:text-gray-200"
+              >
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </Show>
+          </div>
+
+          {/* Says what the totals below are actually summing once filtered. */}
+          <Show when={projectSearch()}>
+            <span class="text-xs font-semibold text-[#54657E] dark:text-gray-400 whitespace-nowrap">
+              {visibleProjectLedger().length} of {projectLedger().length} projects
+            </span>
+          </Show>
+        </div>
+
+        <div class="overflow-auto max-h-[60vh] bg-gray-50 dark:bg-gray-800 rounded-xl border border-[#E2E8F1] dark:border-gray-700 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] mb-8">
+          <table class="w-full text-sm table-auto">
+            <thead class="bg-[#F8FAFC] dark:bg-gray-800">
+              <tr class="text-[#54657E] dark:text-gray-300 border-b border-[#D4DDE9] dark:border-gray-700 [&_th]:text-xs [&_th]:uppercase [&_th]:tracking-wider [&_th]:font-bold [&_th]:whitespace-nowrap [&_th]:sticky [&_th]:top-0 [&_th]:bg-[#F8FAFC] dark:[&_th]:bg-gray-800">
+                <th class="p-3 w-12 text-center">S.No</th>
+                <th class="p-3 text-left min-w-[220px]">Project</th>
+                <th class="p-3 text-left">Client</th>
+                <th class="p-3 text-center">Campaigns</th>
+                <th class="p-3 text-right">Meta Leads</th>
+                <th class="p-3 text-right">Fed Leads</th>
+                <th class="p-3 text-right">Total (incl. fed)</th>
+                {/* Total → Replaced → Billable reads as one progression */}
+                <Show when={showReplaced()}>
+                  <th class="p-3 text-right text-[#AC2334] dark:text-red-400">
+                    Replaced
+                  </th>
+                  <th class="p-3 text-right">Billable</th>
+                </Show>
+                <th class="p-3 text-right">Spend</th>
+                <th class="p-3 text-right">CPL</th>
+              </tr>
+            </thead>
+
+            <Show
+              when={!firstLoad()}
+              fallback={
+                <tbody>
+                  <For each={Array(5).fill(0)}>
+                    {() => (
+                      <tr class="border-t border-[#E2E8F1] dark:border-gray-700 animate-pulse">
+                        <For each={Array(ledgerColCount()).fill(0)}>
+                          {() => (
+                            <td class="p-3">
+                              <div class="h-4 w-20 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                            </td>
+                          )}
+                        </For>
+                      </tr>
+                    )}
+                  </For>
+                </tbody>
+              }
+            >
+              <tbody>
+                <For each={visibleProjectLedger()}>
+                  {(p, i) => (
+                    <tr
+                      class={
+                        "border-t border-[#E2E8F1] dark:border-gray-700 transition-colors " +
+                        (i() % 2 === 0
+                          ? "bg-gray-50 dark:bg-gray-800"
+                          : "bg-[#FAFBFD] dark:bg-gray-800")
+                      }
+                    >
+                      {/* S.No — same badge as the campaign ledger. The ledger is
+                          sorted by spend, so this is a position in that ranking,
+                          not a stable id. */}
+                      <td class="px-1 py-2 w-12 text-center">
+                        <span class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-[#FBEEF0] dark:bg-red-900/30 text-[#AC2334] dark:text-red-300 text-xs font-bold">
+                          {i() + 1}
+                        </span>
+                      </td>
+                      <td class="px-3 py-2.5 text-left">
+                        <div class="flex items-center gap-2.5">
+                          <Avatar
+                            name={p.name}
+                            size="w-7 h-7"
+                            textSize="text-[10px]"
+                          />
+                          {/* Drill into the project details page, the same page
+                              the admin ledger opens. A name-keyed fallback row
+                              (campaign carried no project_id) has nothing to
+                              link to, so it stays plain text. */}
+                          <Show
+                            when={p.projectId}
+                            fallback={
+                              <span
+                                class="font-semibold text-[#14233A] dark:text-gray-100"
+                                title={p.name}
+                              >
+                                {p.name}
+                              </span>
+                            }
+                          >
+                            <A
+                              href={`/project/${p.projectId}`}
+                              state={{
+                                project: { id: p.projectId, name: p.name },
+                                clientScope: p.clientNomenId
+                                  ? { nomenId: p.clientNomenId, nomenName: p.client }
+                                  : null,
+                              }}
+                              class="font-semibold text-blue-900 dark:text-gray-100 hover:text-[#AC2334] dark:hover:text-red-300 transition"
+                              title={p.name}
+                            >
+                              {p.name}
+                            </A>
+                          </Show>
+                        </div>
+                      </td>
+                      <td class="px-3 py-2.5 text-left text-[#54657E] dark:text-gray-400 whitespace-nowrap">
+                        {p.client || "—"}
+                      </td>
+                      <td class="px-3 py-2.5 text-center text-[#54657E] dark:text-gray-400">
+                        {p.campaigns}
+                      </td>
+                      {/* Meta Leads — raw Meta only, never includes fed */}
+                      <td class="px-3 py-2.5 text-right font-medium text-gray-700 dark:text-gray-100 whitespace-nowrap">
+                        {fmtNum(p.metaLeads)}
+                      </td>
+                      {/* Fed Leads — "+N", em dash when none */}
+                      <td class="px-3 py-2.5 text-right font-medium text-[#15966A] dark:text-green-300 whitespace-nowrap">
+                        {fmtFed(p.fedLeads)}
+                      </td>
+                      {/* Total = Meta + fed — the figure the client sees */}
+                      <td class="px-3 py-2.5 text-right font-bold text-[#14233A] dark:text-white whitespace-nowrap">
+                        {fmtNum(p.totalLeads)}
+                      </td>
+                      {/* Replaced → Billable — credited back, then charged */}
+                      <Show when={showReplaced()}>
+                        <td class="px-3 py-2.5 text-right font-semibold text-[#AC2334] dark:text-red-400 whitespace-nowrap">
+                          {fmtReplaced(p.replacedLeads)}
+                        </td>
+                        <td class="px-3 py-2.5 text-right font-bold text-[#14233A] dark:text-white whitespace-nowrap">
+                          {fmtNum(p.billableLeads)}
+                        </td>
+                      </Show>
+                      <td class="px-3 py-2.5 text-right text-[#54657E] dark:text-gray-300 whitespace-nowrap">
+                        {fmtMoney(p.spend)}
+                      </td>
+                      <td class="px-3 py-2.5 text-right text-[#54657E] dark:text-gray-300 whitespace-nowrap">
+                        {p.cpl != null ? fmtCPL(p.cpl) : "—"}
+                      </td>
+                    </tr>
+                  )}
+                </For>
+
+                <Show when={visibleProjectLedger().length === 0}>
+                  <tr>
+                    <td
+                      colspan={ledgerColCount()}
+                      class="py-12 text-center text-[#8593A8] dark:text-gray-500"
+                    >
+                      <Show
+                        when={projectSearch()}
+                        fallback="No projects to show."
+                      >
+                        No project or client matches “{projectSearch()}”.
+                      </Show>
+                    </td>
+                  </tr>
+                </Show>
+              </tbody>
+
+              <Show when={visibleProjectLedger().length > 0}>
+                <tfoot class="bg-[#F8FAFC] dark:bg-gray-800 font-semibold text-gray-700 dark:text-white border-t-2 border-[#D4DDE9] dark:border-gray-600">
+                  <tr>
+                    {/* Spans # + Project so the label still sits at the far
+                        left now that the serial column exists. */}
+                    <td
+                      colspan="2"
+                      class="px-3 py-3 text-left text-xs uppercase tracking-wider text-[#54657E] dark:text-gray-300"
+                    >
+                      Total
+                    </td>
+                    <td></td>
+                    <td></td>
+                    <td class="px-3 py-3 text-right">
+                      {fmtNum(projectTotals().metaLeads)}
+                    </td>
+                    <td class="px-3 py-3 text-right text-[#15966A] dark:text-green-300">
+                      {fmtFed(projectTotals().fedLeads)}
+                    </td>
+                    <td class="px-3 py-3 text-right">
+                      {fmtNum(projectTotals().totalLeads)}
+                    </td>
+                    <Show when={showReplaced()}>
+                      <td class="px-3 py-3 text-right text-[#AC2334] dark:text-red-400">
+                        {fmtReplaced(projectTotals().replacedLeads)}
+                      </td>
+                      <td class="px-3 py-3 text-right">
+                        {fmtNum(projectTotals().billableLeads)}
+                      </td>
+                    </Show>
+                    <td class="px-3 py-3 text-right">
+                      {fmtMoney(projectTotals().spend)}
+                    </td>
+                    <td class="px-3 py-3 text-right">
+                      {projectTotals().cpl != null
+                        ? fmtCPL(projectTotals().cpl)
+                        : "—"}
+                    </td>
+                  </tr>
+                </tfoot>
+              </Show>
+            </Show>
+          </table>
+        </div>
+        <p class="-mt-6 mb-8 text-xs text-[#8593A8] dark:text-gray-500">
+          Fed leads are uploaded manually and attributed to the day they were
+          received, so they land on a project rather than a campaign. CPL is cost
+          per Meta lead.
+        </p>
 
         {/* ════════ NEEDS ATTENTION (derived from live data) ════════ */}
         <Show when={signals().length > 0}>
