@@ -10,11 +10,20 @@ import { fetchHierarchyClients } from "./cm";
 //
 // The backend surfaces the resulting breakdown in three places — the dashboard
 // summary, the monthly billing overview, and the per-project billing block —
-// always as the same trio of fields:
+// always as the same set of fields:
 //
 //     generated_leads  → what Meta (+ fed) actually delivered
 //     replaced_leads   → what we agreed to replace
-//     billable_leads   → generated − replaced, i.e. what the client pays for
+//     uncovered_leads  → delivered on days no contracted rate covered, so never
+//                        billed at all. NOT a replacement and not a credit —
+//                        nothing was agreed and nothing is owed back.
+//     billable_leads   → generated − replaced − uncovered, i.e. what the client
+//                        pays for
+//
+// The uncovered term is new: billing used to charge a project's latest known
+// rate whatever day a lead arrived, and now a lead bills at the rate in force
+// on its own day or not at all. Anything deriving one leg from the others has
+// to carry all four, or it hands the uncovered leads to the wrong column.
 //
 // Every read here goes through readLeadBreakdown(), which returns `null` when
 // the block is genuinely absent (retainer clients have no replacement concept)
@@ -47,18 +56,39 @@ export const readLeadBreakdown = (block) => {
   const generated = int(block.generated_leads);
   const replaced = int(block.replaced_leads);
   const billable = int(block.billable_leads);
+  // The FOURTH leg: leads delivered on days no rate covered. Not billed, and
+  // neither a replacement nor a disqualification — a lead bills at the rate in
+  // force on the day it arrived, and on those days there wasn't one. Same field
+  // name as the per-project row on the billing table, because it is the same
+  // concept counted at two levels.
+  //
+  // Zero for a client, whose generated_leads is already the covered count, so
+  // their progression still closes on its own.
+  const uncovered = int(block.uncovered_leads);
 
   if (generated == null && replaced == null && billable == null) return null;
 
-  // Derive whichever leg the payload omitted — the identity is fixed
-  // (generated − replaced = billable), so a partial block is still usable.
-  const g = generated ?? (billable != null && replaced != null ? billable + replaced : null);
-  const r = replaced ?? (generated != null && billable != null ? generated - billable : 0);
-  const b = billable ?? (generated != null ? generated - (r ?? 0) : null);
+  // The identity is generated − replaced − uncovered = billable. It gained the
+  // uncovered term when billing started gating leads by config coverage, and
+  // every derivation below uses the WHOLE of it — a derivation on the old
+  // three-term identity now attributes uncovered leads to whichever leg it was
+  // solving for.
+  const u = uncovered ?? 0;
+  const g =
+    generated ?? (billable != null && replaced != null ? billable + replaced + u : null);
+  // REPLACED IS NEVER DERIVED. It was previously solved as generated − billable,
+  // which is now the uncovered gap: Gaurav's August would have rendered 86
+  // replaced leads in credit crimson on a client-facing statement, a refund
+  // nobody agreed to. The field is present on every month_spend payload, so this
+  // fallback never fired in practice — and the one case where it would is
+  // exactly the case where it invents money. A genuinely absent value reads "—".
+  const r = replaced;
+  const b = billable ?? (generated != null && r != null ? generated - r - u : null);
 
   return {
     generated: g,
-    replaced: r ?? 0,
+    replaced: r,
+    uncovered: uncovered,
     billable: b,
     // The credited amount actually billed to the client. Distinct from
     // total_spent (true ad spend) — utilization % and CPL stay on total_spent.

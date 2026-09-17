@@ -6,8 +6,18 @@ import { Show } from "solid-js";
 //
 // It is a PROGRESSION, not three unrelated stats: what Meta delivered, what we
 // credited back, and what the client actually pays for. The arrows between the
-// columns carry that meaning, and "Replaced" is the only one tinted (crimson —
-// it's the deduction) so the eye lands on the change rather than the totals.
+// columns carry that meaning, so every term that moves the number has to be on
+// screen — an arrow between 86 and 0 with nothing between them reads as a bug.
+//
+// UNCOVERED is the fourth leg, and it is deliberately NOT crimson. Crimson means
+// a credit: leads we agreed to replace and owe back. Uncovered leads were
+// delivered on days no contracted rate covered them, so they are simply never
+// billed — nothing was agreed and nothing is owed. Amber says "unbilled,
+// someone should look at this", which is what it is.
+//
+// The leg only renders when there ARE uncovered leads. A client's generated
+// count is already the covered one, so their progression closes at 0 → 0 → 0 on
+// its own, and a fourth zero would introduce a concept they never encounter.
 //
 // AAJneeti brand: navy #14233A · crimson #AC2334 · line #E2E8F1 · muted #54657E
 // · faint #8593A8 · green #15966A.
@@ -41,12 +51,18 @@ function Leg(props) {
         class={`font-bold tabular-nums mt-1 ${props.size || "text-2xl"} ${
           props.tone === "credit"
             ? "text-[#AC2334] dark:text-red-400"
-            : props.tone === "final"
-              ? "text-[#14233A] dark:text-white"
-              : "text-[#54657E] dark:text-gray-300"
+            : props.tone === "unbilled"
+              ? "text-[#B0740F] dark:text-amber-400"
+              : props.tone === "final"
+                ? "text-[#14233A] dark:text-white"
+                : "text-[#54657E] dark:text-gray-300"
         }`}
       >
-        {props.tone === "credit" && props.value > 0 ? "−" : ""}
+        {/* Both deductions carry the minus — it is what makes the row read as
+            arithmetic rather than as four separate counts. */}
+        {(props.tone === "credit" || props.tone === "unbilled") && props.value > 0
+          ? "−"
+          : ""}
         {n(props.value)}
       </p>
       <Show when={props.sub}>
@@ -57,7 +73,7 @@ function Leg(props) {
 }
 
 // Props:
-//   breakdown  { generated, replaced, billable, billedAmount, adSpend } | null
+//   breakdown  { generated, replaced, uncovered, billable, billedAmount, adSpend } | null
 //   title?     section heading (omit for a bare strip)
 //   note?      trailing caption under the strip
 //   compact?   smaller figures, for use inside an existing card
@@ -103,6 +119,18 @@ export default function LeadBreakdown(props) {
             }
           />
         </div>
+        <Show when={b().uncovered > 0}>
+          <Arrow />
+          <div class="sm:px-4 flex-1 min-w-0">
+            <Leg
+              label="Uncovered"
+              value={b().uncovered}
+              tone="unbilled"
+              size={size()}
+              sub="no rate in force that day"
+            />
+          </div>
+        </Show>
         <Arrow />
         <div class="sm:pl-4 flex-1 min-w-0">
           <Leg

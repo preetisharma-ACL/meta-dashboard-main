@@ -157,14 +157,31 @@ function LeadsCard(props) {
           <p class="mt-1.5 text-2xl font-bold tracking-tight tabular-nums text-gray-900 dark:text-gray-100">
             {props.leads}
           </p>
-          {/* Reconciles this card with the Generated → Replaced → Billable
-              strip below: the headline stays the leads generated, the caption
-              says what is actually billed. */}
-          <Show when={props.breakdown?.replaced > 0}>
+          {/* Reconciles this card with the progression strip below: the
+              headline stays the leads generated, the caption says what is
+              actually billed. It fires on uncovered leads too — without that,
+              a month like Gaurav's August shows 86 leads here and a ₹0 charge
+              underneath with nothing in between explaining it. Each leg is
+              named only when it is non-zero, so the usual month still reads
+              "N billable · N replaced". */}
+          <Show
+            when={
+              props.breakdown?.replaced > 0 || props.breakdown?.uncovered > 0
+            }
+          >
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
               {Number(props.breakdown.billable ?? 0).toLocaleString("en-IN")}{" "}
-              billable · {Number(props.breakdown.replaced).toLocaleString("en-IN")}{" "}
-              replaced
+              billable
+              <Show when={props.breakdown.replaced > 0}>
+                {" · "}
+                {Number(props.breakdown.replaced).toLocaleString("en-IN")}{" "}
+                replaced
+              </Show>
+              <Show when={props.breakdown.uncovered > 0}>
+                {" · "}
+                {Number(props.breakdown.uncovered).toLocaleString("en-IN")}{" "}
+                uncovered
+              </Show>
             </p>
           </Show>
         </div>
