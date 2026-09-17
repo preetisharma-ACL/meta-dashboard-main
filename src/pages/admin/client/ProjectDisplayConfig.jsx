@@ -25,6 +25,53 @@ const TYPE_COLORS = {
   retainer: "bg-sky-100 text-sky-700 ring-1 ring-sky-300",
 };
 
+// ── Filter pills (same control as the Client Status board) ───────────────────
+// Dots carry each bucket's own colour from the chips above, so a pill and the
+// rows it produces read as the same thing.
+const TYPE_UNSET = "unset";
+const CLIENT_TYPES = ["hybrid", "cpl", "retainer"];
+// Anything the backend sends that isn't one of the three — null, "", a value
+// added later — lands in `unset` instead of falling outside every pill, which
+// is how a config quietly becomes unreachable from the filters.
+const normaliseType = (t) => {
+  const k = String(t ?? "").toLowerCase();
+  return CLIENT_TYPES.includes(k) ? k : TYPE_UNSET;
+};
+const TYPE_FILTERS = [
+  { key: "all", label: "All Types" },
+  { key: "hybrid", label: "Hybrid" },
+  { key: "cpl", label: "CPL" },
+  { key: "retainer", label: "Retainer" },
+  { key: TYPE_UNSET, label: "No type" },
+];
+const TYPE_DOT = {
+  hybrid: "bg-blue-500",
+  cpl: "bg-amber-500",
+  retainer: "bg-sky-500",
+  [TYPE_UNSET]: "bg-gray-300 dark:bg-gray-600",
+};
+
+// The values are the ones the filter already used ("All" / "Yes" / "No") — this
+// changes the control, not what it means.
+const ACTIVE_FILTERS = [
+  { key: "All", label: "All Status" },
+  { key: "Yes", label: "Active" },
+  { key: "No", label: "Inactive" },
+];
+const ACTIVE_DOT = { Yes: "bg-green-500", No: "bg-red-400" };
+
+const PILL = (on) =>
+  `inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[13px] font-semibold border transition-colors whitespace-nowrap ${
+    on
+      ? "bg-[#14233A] text-white border-[#14233A]"
+      : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-[#14233A]/40"
+  }`;
+
+const PILL_COUNT = (on) =>
+  `text-[11px] font-bold tabular-nums ${
+    on ? "text-white/70" : "text-gray-400 dark:text-gray-500"
+  }`;
+
 const formatDate = (iso) => {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString("en-IN", {
@@ -450,21 +497,60 @@ export default function ProjectDisplayConfig() {
     );
   };
 
-  const filtered = createMemo(() => {
-    let data = [...configs()];
+  // The search alone. Both pill rows count from here (each also applying the
+  // OTHER row's pick), so every number on a pill is exactly how many rows
+  // picking it would show.
+  const searched = createMemo(() => {
     const q = search().trim().toLowerCase();
-    if (q) {
-      data = data.filter(
-        (c) =>
-          c.client_email?.toLowerCase().includes(q) ||
-          c.project_name?.toLowerCase().includes(q),
-      );
+    if (!q) return configs();
+    return configs().filter(
+      (c) =>
+        c.client_email?.toLowerCase().includes(q) ||
+        c.project_name?.toLowerCase().includes(q),
+    );
+  });
+
+  const matchesType = (c) =>
+    typeFilter() === "all" || normaliseType(c.client_type) === typeFilter();
+  const matchesActive = (c) =>
+    activeFilter() === "All" ||
+    (activeFilter() === "Yes" ? !!c.is_active : !c.is_active);
+
+  const typeCounts = createMemo(() => {
+    const acc = { all: 0, hybrid: 0, cpl: 0, retainer: 0, [TYPE_UNSET]: 0 };
+    for (const c of searched()) {
+      if (!matchesActive(c)) continue;
+      acc[normaliseType(c.client_type)] += 1;
+      acc.all += 1;
     }
-    if (typeFilter() !== "all") {
-      data = data.filter((c) => c.client_type === typeFilter());
+    return acc;
+  });
+
+  // "No type" is only offered when such a config exists — or while it is the
+  // active pick, so a selected filter can't vanish and leave an empty table
+  // with nothing pressed.
+  const typeFilters = createMemo(() =>
+    TYPE_FILTERS.filter(
+      (f) =>
+        f.key !== TYPE_UNSET ||
+        typeCounts()[TYPE_UNSET] > 0 ||
+        typeFilter() === TYPE_UNSET,
+    ),
+  );
+
+  const activeCounts = createMemo(() => {
+    const acc = { All: 0, Yes: 0, No: 0 };
+    for (const c of searched()) {
+      if (!matchesType(c)) continue;
+      acc[c.is_active ? "Yes" : "No"] += 1;
+      acc.All += 1;
     }
-    if (activeFilter() === "Yes") data = data.filter((c) => c.is_active);
-    if (activeFilter() === "No") data = data.filter((c) => !c.is_active);
+    return acc;
+  });
+
+  const filtered = createMemo(() => {
+    // filter() already returns a new array, so this sort never touches configs().
+    const data = searched().filter((c) => matchesType(c) && matchesActive(c));
 
     data.sort((a, b) => {
       let va = a[sortKey()];
@@ -847,6 +933,72 @@ export default function ProjectDisplayConfig() {
         </button>
        
       </div>
+      {/* ── Toggle filters ──
+          Two independent axes, one row each: the client's billing type and
+          whether the config is live. On one line they read as a single filter
+          with seven states, which is what the two <select>s here used to be.
+          The count on a pill answers "is it worth clicking this?" — each one is
+          taken with the OTHER row's pick applied, so it is exactly how many rows
+          that click would leave. */}
+      {/* Type */}
+      <div
+        class="flex flex-wrap items-center gap-1.5 mb-2"
+        role="group"
+        aria-label="Filter by client type"
+      >
+        <span class="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mr-1 w-12">
+          Type
+        </span>
+        <For each={typeFilters()}>
+          {(f) => {
+            const on = () => typeFilter() === f.key;
+            return (
+              <button
+                type="button"
+                aria-pressed={on()}
+                onClick={() => applyFilter(setTypeFilter, f.key)}
+                class={PILL(on())}
+              >
+                <Show when={f.key !== "all"}>
+                  <span class={`h-1.5 w-1.5 rounded-full ${TYPE_DOT[f.key]}`} />
+                </Show>
+                {f.label}
+                <span class={PILL_COUNT(on())}>({typeCounts()[f.key] ?? 0})</span>
+              </button>
+            );
+          }}
+        </For>
+      </div>
+      {/* Status */}
+      <div
+        class="flex flex-wrap items-center gap-1.5 mb-4"
+        role="group"
+        aria-label="Filter by status"
+      >
+        <span class="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mr-1 w-12">
+          Status
+        </span>
+        <For each={ACTIVE_FILTERS}>
+          {(f) => {
+            const on = () => activeFilter() === f.key;
+            return (
+              <button
+                type="button"
+                aria-pressed={on()}
+                onClick={() => applyFilter(setActiveFilter, f.key)}
+                class={PILL(on())}
+              >
+                <Show when={f.key !== "All"}>
+                  <span class={`h-1.5 w-1.5 rounded-full ${ACTIVE_DOT[f.key]}`} />
+                </Show>
+                {f.label}
+                <span class={PILL_COUNT(on())}>({activeCounts()[f.key] ?? 0})</span>
+              </button>
+            );
+          }}
+        </For>
+      </div>
+
       {/* Filters Bar */}
       <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-4 mb-4 flex flex-wrap items-center gap-3">
         <div class="relative flex w-[500px]">
@@ -868,25 +1020,6 @@ export default function ProjectDisplayConfig() {
             class="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-purple-400 dark:focus:ring-gray-600"
           />
         </div>
-        <select
-          value={typeFilter()}
-          onChange={(e) => applyFilter(setTypeFilter, e.target.value)}
-          class="px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-1 focus:ring-purple-400 dark:focus:ring-gray-600 cursor-pointer"
-        >
-          <option value="all">All Types</option>
-          <option value="hybrid">Hybrid</option>
-          <option value="cpl">CPL</option>
-          <option value="retainer">Retainer</option>
-        </select>
-        <select
-          value={activeFilter()}
-          onChange={(e) => applyFilter(setActiveFilter, e.target.value)}
-          class="px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-1 focus:ring-purple-400 dark:focus:ring-gray-600 cursor-pointer"
-        >
-          <option value="All">All Status</option>
-          <option value="Yes">Active</option>
-          <option value="No">Inactive</option>
-        </select>
         <button
           onClick={() => {
             setSearch("");

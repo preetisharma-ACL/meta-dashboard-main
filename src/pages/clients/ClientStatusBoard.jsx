@@ -31,8 +31,35 @@ const TYPE_CHIP = {
 };
 const typeLabel = (t) => (t === "cpl" ? "CPL" : t ? `${t[0].toUpperCase()}${t.slice(1)}` : "—");
 
+// Dot colours for the type filter, matching the chips in the Type column so a
+// pill and the rows it produces read as the same thing.
+const TYPE_DOT = {
+  retainer: "bg-amber-500",
+  cpl: "bg-teal-500",
+  hybrid: "bg-indigo-500",
+  unset: "bg-gray-300 dark:bg-gray-600",
+};
+
+// The billing basis a client is on. Anything else — null, "", something new the
+// backend starts sending — lands in `unset` rather than vanishing from every
+// bucket, which is how a filter quietly loses rows.
+const TYPE_UNSET = "unset";
+const CLIENT_TYPES = ["retainer", "cpl", "hybrid"];
+const normaliseType = (t) => {
+  const k = String(t ?? "").toLowerCase();
+  return CLIENT_TYPES.includes(k) ? k : TYPE_UNSET;
+};
+const TYPE_FILTERS = [
+  { key: "all", label: "All types" },
+  { key: "retainer", label: "Retainer" },
+  { key: "cpl", label: "CPL" },
+  { key: "hybrid", label: "Hybrid" },
+  { key: TYPE_UNSET, label: "No type" },
+];
+
 export default function ClientStatusBoard() {
   const [tab, setTab] = createSignal("all");
+  const [typeTab, setTypeTab] = createSignal("all");
   const [query, setQuery] = createSignal("");
   const [historyFor, setHistoryFor] = createSignal(null);
 
@@ -57,7 +84,12 @@ export default function ClientStatusBoard() {
   const countFor = (key) =>
     key === "all" ? (counts().total ?? clients().length) : (counts()[key] ?? 0);
 
-  const visible = createMemo(() => {
+  // Everything the status tab and the search leave standing — i.e. the rows the
+  // type filter is choosing between. The type counts are taken from HERE, not
+  // from the whole board, so each pill's number is exactly how many rows picking
+  // it would show. (The status tabs keep their server-side, board-wide counts;
+  // they are the primary axis and were never narrowed by the search either.)
+  const beforeType = createMemo(() => {
     const t = tab();
     const q = query().trim().toLowerCase();
     return clients()
@@ -67,7 +99,35 @@ export default function ClientStatusBoard() {
           !q ||
           String(c.client_nomen ?? "").toLowerCase().includes(q) ||
           String(c.email ?? "").toLowerCase().includes(q),
-      )
+      );
+  });
+
+  const typeCounts = createMemo(() => {
+    const acc = { all: 0, retainer: 0, cpl: 0, hybrid: 0, [TYPE_UNSET]: 0 };
+    for (const c of beforeType()) {
+      acc[normaliseType(c.client_type)] += 1;
+      acc.all += 1;
+    }
+    return acc;
+  });
+
+  // "No type" is only offered when such a client actually exists; every other
+  // pill stays put, so the row doesn't reshuffle as the board is filtered. It
+  // also stays while it is the ACTIVE pick — a selected filter that vanishes
+  // when its last row does leaves an empty table with nothing pressed.
+  const typeFilters = createMemo(() =>
+    TYPE_FILTERS.filter(
+      (f) =>
+        f.key !== TYPE_UNSET ||
+        typeCounts()[TYPE_UNSET] > 0 ||
+        typeTab() === TYPE_UNSET,
+    ),
+  );
+
+  const visible = createMemo(() => {
+    const ty = typeTab();
+    return beforeType()
+      .filter((c) => ty === "all" || normaliseType(c.client_type) === ty)
       .sort((a, b) =>
         String(a.client_nomen ?? a.email ?? "").localeCompare(
           String(b.client_nomen ?? b.email ?? ""),
@@ -203,6 +263,47 @@ export default function ClientStatusBoard() {
             class="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-purple-400 dark:focus:ring-gray-600"
           />
         </div>
+        {/* ── Client-type toggle ──
+            A second, independent axis: the status tabs say where an engagement
+            stands, this says what it is billed on. Kept in the filter card
+            rather than beside the status tabs so the two are not read as one
+            row of eight buttons. */}
+        <div
+          class="flex flex-wrap items-center gap-1.5"
+          role="group"
+          aria-label="Filter by client type"
+        >
+          <For each={typeFilters()}>
+            {(f) => {
+              const on = () => typeTab() === f.key;
+              return (
+                <button
+                  type="button"
+                  aria-pressed={on()}
+                  onClick={() => setTypeTab(f.key)}
+                  class={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-semibold border transition-colors whitespace-nowrap ${
+                    on()
+                      ? "bg-[#14233A] text-white border-[#14233A]"
+                      : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-[#14233A]/40"
+                  }`}
+                >
+                  <Show when={f.key !== "all"}>
+                    <span class={`h-1.5 w-1.5 rounded-full ${TYPE_DOT[f.key]}`} />
+                  </Show>
+                  {f.label}
+                  <span
+                    class={`text-[11px] font-bold tabular-nums ${
+                      on() ? "text-white/70" : "text-gray-400 dark:text-gray-500"
+                    }`}
+                  >
+                    ({typeCounts()[f.key] ?? 0})
+                  </span>
+                </button>
+              );
+            }}
+          </For>
+        </div>
+
         <span class="ml-auto text-sm text-gray-400 dark:text-gray-500 whitespace-nowrap">
           {visible().length} shown
         </span>
@@ -361,7 +462,7 @@ export default function ClientStatusBoard() {
                       class="p-12 text-center text-gray-500 dark:text-gray-400"
                     >
                       <Show
-                        when={tab() !== "all" || query()}
+                        when={tab() !== "all" || typeTab() !== "all" || query()}
                         fallback="No clients to show."
                       >
                         No clients in this bucket.
