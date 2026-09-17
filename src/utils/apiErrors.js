@@ -25,15 +25,28 @@ export const firstMessage = (v) => {
   return typeof v === "string" ? v : null;
 };
 
-// Flatten the field map to dotted paths so each message can be pinned to the one
-// input that produced it, NESTED ONES INCLUDED:
+const messagesOf = (v) => {
+  if (!v) return [];
+  if (Array.isArray(v)) return v.filter((s) => typeof s === "string" && s);
+  return typeof v === "string" && v ? [v] : [];
+};
+
+// Flatten the field map to dotted paths, keeping EVERY message under each path,
+// NESTED ONES INCLUDED:
 //   fields.email                         → "email"
 //   fields.client.onboarded_by_id        → "client.onboarded_by_id"
 //   fields.campaign_manager.team_lead_id → "campaign_manager.team_lead_id"
+//
+// The list under a key is not always several ways of saying one thing. The CM
+// profile demotion guard answers 422 with fields.tier = [<member>, <member>,
+// <member>] — the list IS the answer, and every entry is a person who would be
+// left reporting to somebody who is no longer a lead. Anything that reads only
+// the first entry silently drops the rest of them.
+//
 // Messages are never rewritten on the way through — the backend's wording names
 // the offending value, and paraphrasing it away is exactly what makes these
 // errors unactionable.
-export const collectFieldErrors = (err) => {
+export const collectFieldMessages = (err) => {
   const fields = rawFieldErrors(err);
   const out = {};
   if (!fields || typeof fields !== "object") return out;
@@ -41,13 +54,24 @@ export const collectFieldErrors = (err) => {
   for (const [key, val] of Object.entries(fields)) {
     if (val && typeof val === "object" && !Array.isArray(val)) {
       for (const [sub, subVal] of Object.entries(val)) {
-        const msg = firstMessage(subVal);
-        if (msg) out[`${key}.${sub}`] = msg;
+        const msgs = messagesOf(subVal);
+        if (msgs.length) out[`${key}.${sub}`] = msgs;
       }
     } else {
-      const msg = firstMessage(val);
-      if (msg) out[key] = msg;
+      const msgs = messagesOf(val);
+      if (msgs.length) out[key] = msgs;
     }
+  }
+  return out;
+};
+
+// The same map, one message per path — what a form needs when it has a single
+// slot under each input. Callers that would otherwise lose a list (a banner, a
+// guard response) should read collectFieldMessages instead.
+export const collectFieldErrors = (err) => {
+  const out = {};
+  for (const [path, msgs] of Object.entries(collectFieldMessages(err))) {
+    out[path] = msgs[0];
   }
   return out;
 };

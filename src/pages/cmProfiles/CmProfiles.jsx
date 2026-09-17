@@ -6,7 +6,7 @@ import {
   fetchCmProfile,
   updateCmProfile,
 } from "../../services/cmProfiles";
-import { collectFieldErrors } from "../../utils/apiErrors";
+import { collectFieldMessages } from "../../utils/apiErrors";
 import { canWriteCmProfiles } from "../../stores/currentUser";
 import ProfileChangeModal from "./ProfileChangeModal";
 import ProfileHistoryDrawer from "./ProfileHistoryDrawer";
@@ -302,24 +302,37 @@ export default function CmProfiles() {
   };
 
   // A 422 here is the normal way the server says no, and every one of them is
-  // worded to be read: the reason rule names the field, the demotion guard lists
-  // the team members who would be left pointing at a non-lead. Both are routed —
-  // the reason to its input, everything else to the banner — and neither is
-  // rewritten on the way through.
+  // worded to be read: the reason rule names the field, the demotion guard
+  // answers fields.tier = [<member>, <member>, <member>] — the three people who
+  // would be left reporting to somebody who is no longer a lead.
+  //
+  // That list is the whole answer, so EVERY entry is shown. Reading one message
+  // per field would have turned anurag's three names into one and left the
+  // operator moving members one at a time to find the rest.
+  //
+  // Both halves are kept: the rule (error.detail) says what stopped the change
+  // and the field list says who. Neither is rewritten on the way through.
   const applyError = (err) => {
-    const pinned = collectFieldErrors(err);
-    setReasonError(pinned.reason ?? null);
+    const fields = collectFieldMessages(err);
+    setReasonError(fields.reason?.join(" ") ?? null);
 
-    const others = Object.entries(pinned)
-      .filter(([path]) => path !== "reason")
-      .map(([, msg]) => msg);
     const detailMsg = err?.data?.error?.detail ?? err?.data?.detail;
+    const parts = [];
+    if (typeof detailMsg === "string" && detailMsg) parts.push(detailMsg);
+    for (const [path, msgs] of Object.entries(fields)) {
+      if (path === "reason") continue;
+      // A backend that repeats its sentence in both places shouldn't print it
+      // twice.
+      for (const msg of msgs) if (!parts.includes(msg)) parts.push(msg);
+    }
 
-    if (others.length) setActionError(others.join(" "));
-    else if (typeof detailMsg === "string" && detailMsg) setActionError(detailMsg);
+    // One per line. The entries under a key can be sentences or bare member
+    // addresses, and a line break is the only separator that reads correctly for
+    // both — both banners render whitespace-pre-wrap for this.
+    if (parts.length) setActionError(parts.join("\n"));
     // A reason rejection is already pinned under the textarea; repeating the
     // wrapper ("Validation failed") above it would only add noise.
-    else if (pinned.reason) setActionError(null);
+    else if (fields.reason) setActionError(null);
     else
       setActionError(
         statusFallback(err?.status) ?? err?.message ?? "Could not apply the change.",
