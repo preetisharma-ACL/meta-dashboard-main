@@ -698,12 +698,28 @@ function InvoiceModal(props) {
 }
 
 // --- Overview: CPL per-project charges -----------------------------------------
-// CPL clients are billed per PROJECT at a contracted rate per qualified lead
-// (qualified = generated − replaced − disqualified), and one client can run
-// several projects on different rates — so a single headline rate is
-// meaningless. This table is the CPL equivalent of the hybrid statement's
-// ad-spend/SC/GST sub-rows: it shows where the month's charge comes from.
-// Rows come straight from month_spend.cpl_projects (empty for hybrid/retainer).
+// CPL clients are billed per PROJECT at a contracted rate per qualified lead,
+// and one client can run several projects on different rates — so a single
+// headline rate is meaningless. This table is the CPL equivalent of the hybrid
+// statement's ad-spend/SC/GST sub-rows: it shows where the month's charge comes
+// from. Rows come straight from month_spend.cpl_projects (empty for
+// hybrid/retainer).
+//
+// A LEAD BILLS AT THE RATE IN FORCE ON THE DAY IT ARRIVED, or not at all. The
+// billing API used to fall back to the latest rate it could find for a project
+// regardless of when that rate started, which invoiced leads against rates that
+// didn't exist yet. Three fields on each row carry the consequences, and none of
+// them means what its name suggests on first reading:
+//
+//   fixed_cpl       is charge / qualified — a BLENDED rate whenever a config was
+//                   closed and replaced mid-month. rates_used lists the distinct
+//                   ones, and more than one entry makes the column an average.
+//   uncovered_leads leads delivered on days no config covered. Never billed. A
+//                   client's row reads 0 generated and 0 charge; admin sees the
+//                   real generated count, and this is what explains the gap.
+//   missing_rate /  fires for real now (it was always present and always empty
+//   missing_cpl_rate  while the fallback existed). Admin and CM only — a client
+//                   gets an empty array, gated server-side.
 function CplProjectTable(props) {
   const rows = () => props.projects || [];
   const num = (n) => Number(n || 0).toLocaleString("en-IN");
@@ -725,6 +741,55 @@ function CplProjectTable(props) {
 
   const missingCount = () =>
     Math.max(props.missing?.length || 0, rows().filter(missingRate).length);
+
+  // The projects the server flagged, BY NAME. missing_cpl_rate was always in
+  // the payload and always empty — the old billing code fell back to any rate
+  // it could find for a project, so nothing was ever missing. It fires now, and
+  // a list of names is what an operator acts on; a count only tells them to go
+  // looking.
+  //
+  // Read from both ends because they answer the same question: the month-level
+  // list, and the rows on screen carrying missing_rate. Deduped by name, and
+  // the COUNT above still comes from the longer of the two, so a name this
+  // can't read is never silently dropped from the tally.
+  const missingName = (m) =>
+    typeof m === "string" ? m : (m?.project_name ?? m?.name ?? m?.project ?? null);
+
+  const missingProjects = () => {
+    const names = [
+      ...(props.missing || []).map(missingName),
+      ...rows().filter(missingRate).map((p) => p.project_name),
+    ].filter(Boolean);
+    return [...new Set(names)];
+  };
+
+  // ── Blended rates ──────────────────────────────────────────────────────────
+  // fixed_cpl is no longer A rate: it is charge / qualified, so a month whose
+  // config was closed and replaced mid-month blends two contracted rates into
+  // one number. rates_used lists the distinct ones. With a single entry the
+  // value IS the contracted rate and reads as before; with more than one it is
+  // an average, and an average shown as a contracted rate is a number the
+  // client will try to reconcile against their agreement and fail.
+  const ratesUsed = (p) => {
+    const r = p.rates_used;
+    if (!Array.isArray(r)) return [];
+    return r
+      .map((x) => (x && typeof x === "object" ? (x.rate ?? x.value ?? null) : x))
+      .filter((x) => x != null && x !== "");
+  };
+  const isBlended = (p) => ratesUsed(p).length > 1;
+  const anyBlended = () => rows().some(isBlended);
+
+  // ── Uncovered leads ────────────────────────────────────────────────────────
+  // Leads delivered on days no config covered. They are not billed at all —
+  // leads bill at the rate in force on the day they arrived, and on those days
+  // there wasn't one. Admin sees the real generated count with uncovered_leads
+  // explaining the gap; a client's row reads 0 generated and 0 charge, so their
+  // page has nothing to explain and this column stays off it.
+  const uncovered = (p) => Number(p.uncovered_leads || 0);
+  const anyUncovered = () => rows().some((p) => uncovered(p) > 0);
+  const totalUncovered = () => rows().reduce((s, p) => s + uncovered(p), 0);
+
   const totalQualified = () =>
     rows().reduce((s, p) => s + Number(p.qualified || 0), 0);
 
@@ -750,16 +815,40 @@ function CplProjectTable(props) {
     >
       <div class="px-6 pt-5 pb-3">
         <Eyebrow>Project Charges · {props.monthLabel}</Eyebrow>
+        {/* The formula has to close against the columns on screen. When a
+            project delivered leads on uncovered days they are subtracted too,
+            and a note that omitted them would leave the operator staring at
+            86 generated, 0 qualified and no arithmetic that reaches it. */}
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-          Each project is billed at its own contracted rate per qualified lead ·
-          qualified = generated − replaced − disqualified
+          Each project is billed at the rate in force on the day each lead
+          arrived · qualified = generated − replaced − disqualified
+          {anyUncovered() ? " − uncovered" : ""}
         </p>
       </div>
 
+      {/* The rate was never missing before — the old code billed at the latest
+          rate it could find, whether or not it existed when the leads arrived.
+          This now means specific projects delivered leads on days no rate
+          covered, so it names them: "some projects" sends an operator hunting
+          through the table for rows that may not even be the ones flagged. */}
       <Show when={missingCount() > 0}>
         <div class="mx-6 mb-4 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-4 py-2.5 text-sm font-medium text-amber-700 dark:text-amber-300">
-          Some projects don't have a contracted rate set and aren't being
-          billed. Contact admin.
+          <Show
+            when={missingProjects().length}
+            fallback={
+              <span>
+                {missingCount()} project{missingCount() === 1 ? "" : "s"}{" "}
+                delivered leads on days no contracted rate covered. Those leads
+                aren't billed. Contact admin.
+              </span>
+            }
+          >
+            <span>
+              No contracted rate covered the days these leads arrived, so they
+              aren't billed: {missingProjects().join(", ")}. A rate has to be in
+              force on the day a lead comes in. Contact admin.
+            </span>
+          </Show>
         </div>
       </Show>
 
@@ -771,6 +860,11 @@ function CplProjectTable(props) {
               <th class={`hidden sm:table-cell ${numHead}`}>Generated</th>
               <th class={`hidden sm:table-cell ${numHead}`}>Replaced</th>
               <th class={`hidden md:table-cell ${numHead}`}>Disqualified</th>
+              {/* Only when there are any: on a covered month this column would
+                  be a row of zeroes, and on a client's page it is always one. */}
+              <Show when={anyUncovered()}>
+                <th class={`hidden md:table-cell ${numHead}`}>Uncovered</th>
+              </Show>
               <th class={numHead}>Qualified</th>
               <th class={numHead}>Rate / lead</th>
               <th class="px-6 py-2.5 text-right font-medium">Charge</th>
@@ -792,6 +886,15 @@ function CplProjectTable(props) {
                   <td class={`hidden md:table-cell ${numCell}`}>
                     {num(p.disqualified)}
                   </td>
+                  <Show when={anyUncovered()}>
+                    <td class={`hidden md:table-cell ${numCell}`}>
+                      <Show when={uncovered(p) > 0} fallback={num(0)}>
+                        <span class="text-amber-600 dark:text-amber-400 font-medium">
+                          {num(uncovered(p))}
+                        </span>
+                      </Show>
+                    </td>
+                  </Show>
                   <td class="px-3 py-3 text-right tabular-nums font-semibold text-gray-900 dark:text-gray-100">
                     {num(p.qualified)}
                   </td>
@@ -802,9 +905,30 @@ function CplProjectTable(props) {
                       when={missingRate(p)}
                       fallback={
                         <Show when={p.fixed_cpl != null} fallback={<Dash />}>
-                          <span class="text-gray-600 dark:text-gray-300">
-                            {fmt(p.fixed_cpl)}
-                          </span>
+                          {/* One rate → the contracted rate, as before. Several
+                              → charge/qualified, which is an AVERAGE and is
+                              labelled as one, with the real rates underneath.
+                              A client reconciling a blended number against their
+                              agreement would otherwise find a rate they never
+                              signed. */}
+                          <Show
+                            when={isBlended(p)}
+                            fallback={
+                              <span class="text-gray-600 dark:text-gray-300">
+                                {fmt(p.fixed_cpl)}
+                              </span>
+                            }
+                          >
+                            <span class="block text-gray-600 dark:text-gray-300">
+                              {fmt(p.fixed_cpl)}
+                              <span class="ml-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                                avg
+                              </span>
+                            </span>
+                            <span class="block text-[11px] text-gray-400 dark:text-gray-500">
+                              {ratesUsed(p).map((r) => fmt(r)).join(" · ")}
+                            </span>
+                          </Show>
                         </Show>
                       }
                     >
@@ -833,6 +957,11 @@ function CplProjectTable(props) {
               <td class="hidden sm:table-cell" />
               <td class="hidden sm:table-cell" />
               <td class="hidden md:table-cell" />
+              <Show when={anyUncovered()}>
+                <td class={`hidden md:table-cell ${numCell} font-bold text-amber-600 dark:text-amber-400`}>
+                  {num(totalUncovered())}
+                </td>
+              </Show>
               <td class="px-3 py-3 text-right tabular-nums font-bold text-gray-900 dark:text-gray-100">
                 {num(totalQualified())}
               </td>
@@ -846,6 +975,32 @@ function CplProjectTable(props) {
           </tbody>
         </table>
       </div>
+
+      {/* Footnotes, only for the conditions actually present in this month.
+          Both explain a number that otherwise looks like a mistake: a rate the
+          client never agreed to, and a generated count the charge doesn't
+          follow from. */}
+      <Show when={anyUncovered() || anyBlended()}>
+        <div class="px-6 py-3 border-t border-gray-100 dark:border-gray-700/60 space-y-1">
+          <Show when={anyUncovered()}>
+            <p class="text-xs text-gray-500 dark:text-gray-400">
+              <span class="font-medium text-amber-600 dark:text-amber-400">
+                Uncovered
+              </span>{" "}
+              leads arrived on days no contracted rate was in force. They are
+              not billed, which is why they are generated but not qualified.
+            </p>
+          </Show>
+          <Show when={anyBlended()}>
+            <p class="text-xs text-gray-500 dark:text-gray-400">
+              A rate marked{" "}
+              <span class="font-medium uppercase tracking-wide">avg</span> is
+              this month's charge divided by its qualified leads — that project
+              ran on more than one contracted rate, listed beneath it.
+            </p>
+          </Show>
+        </div>
+      </Show>
     </Card>
   );
 }
