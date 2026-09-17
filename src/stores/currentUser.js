@@ -188,6 +188,24 @@ export const canSeeValueTier = () => {
   return VALUE_TIER_ROLES.has(role);
 };
 
+// ─── CM profile gates (tier + team lead + active) ─────────────────────────────
+// Reading a profile is open to the same set as the assignments API — admin,
+// coordination, accounts and campaign managers — because what a manager may do
+// and whose dashboard their clients land on is worth being able to look up.
+//
+// WRITING is admin + coordination only. This is deliberately NOT
+// canWriteCampaigns(): that set includes tier-1 CMs, and a tier-1 CM changing
+// tiers would be editing the permission level that granted them the button. The
+// endpoints 403 them regardless; this just keeps the control off their screen.
+// (The READ set is the route's `roles` array in App.jsx — AdminRoute takes a
+// list, not a predicate, so it is stated where it is enforced.)
+const CM_PROFILE_WRITE_ROLES = new Set(["admin", "coordination"]);
+
+export const canWriteCmProfiles = () => {
+  const role = currentUser.loaded ? currentUser.role : readAuth()?.role;
+  return CM_PROFILE_WRITE_ROLES.has(role);
+};
+
 // True once the tier is actually known. A campaign_manager's tier arrives with
 // /auth/me, so a route guard must WAIT on this rather than treat "tier not
 // loaded yet" as "not tier-1" and bounce a legitimate tier-1 lead.

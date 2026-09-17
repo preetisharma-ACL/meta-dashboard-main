@@ -402,6 +402,23 @@ export default function Sidebar() {
         path: "/assignments",
       },
       {
+        // Sits beside Client Assignments for coordination, who own both: one
+        // decides which clients a manager holds, the other what that manager may
+        // do with them and whose dashboard they show up on.
+        //
+        // Accounts and campaign managers get the same row because the API lets
+        // them READ profiles — a manager wondering why a client isn't in their
+        // view is asking a question this screen answers. The page itself hides
+        // every control from them; admin reaches it from the "Campaign Managers"
+        // group instead, which the other three roles don't get.
+        name: "Manager Profiles",
+        roles: ["coordination", "accounts", "campaign_manager"],
+        icon: () => (
+          <Icon d="M12 15a4 4 0 100-8 4 4 0 000 8zm0 0v6m-7-3h14M5 5h14" />
+        ),
+        path: "/cm-profiles",
+      },
+      {
         name: "Accounts & Funding",
         roles: ["admin", "campaign_manager"],
         icon: () => (
@@ -620,6 +637,18 @@ export default function Sidebar() {
             roles: ["admin"],
             icon: () => (
               <SmallIcon d="M13 16h-1v-4h-1m1-4h.01M9 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-4M16 3h5v5M21 3l-9 9" />
+            ),
+          },
+          {
+            // Tier and team lead — the permission level and the visibility
+            // filter. Sits with the other CM screens; coordination, accounts and
+            // the managers themselves get their own top-level row, since this
+            // group is admin-only.
+            name: "Manager Profiles",
+            path: "/cm-profiles",
+            roles: ["admin"],
+            icon: () => (
+              <SmallIcon d="M12 15a4 4 0 100-8 4 4 0 000 8zm0 0v6m-7-3h14M5 5h14" />
             ),
           },
           {

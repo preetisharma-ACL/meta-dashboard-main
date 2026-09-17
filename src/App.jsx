@@ -56,6 +56,7 @@ import ManagerPerformance from "./pages/performance/ManagerPerformance";
 import AdminCampaignManagers from "./pages/admin/cm/AdminCampaignManagers";
 import CampaignManagerClients from "./pages/admin/cm/CampaignManagerClients";
 import BulkCampaignOperations from "./pages/admin/cm/BulkCampaignOperations";
+import CmProfiles from "./pages/cmProfiles/CmProfiles";
 import AccountMonitor from "./pages/monitor/AccountMonitor";
 import MyWork from "./pages/worklog/MyWork";
 import ClientWorkspace from "./pages/worklog/ClientWorkspace";
@@ -217,6 +218,23 @@ function App() {
               component={() => (
                 <AdminRoute>
                   <CampaignManagerClients />
+                </AdminRoute>
+              )}
+            />
+            {/* CM profiles — tier (what a manager may do) and team lead (whose
+                dashboard their clients appear on). The route is the API's READ
+                set, which is wider than the write set on purpose: accounts and
+                campaign managers can look up why a client is or isn't in their
+                view, and the page hides every control behind
+                canWriteCmProfiles() so they are never handed a button that
+                403s. */}
+            <Route
+              path="/cm-profiles"
+              component={() => (
+                <AdminRoute
+                  roles={["admin", "coordination", "accounts", "campaign_manager"]}
+                >
+                  <CmProfiles />
                 </AdminRoute>
               )}
             />
