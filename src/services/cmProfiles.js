@@ -47,10 +47,17 @@ const rows = (res) =>
 
 const num = (v) => (v == null || v === "" ? null : Number(v));
 
-// First non-empty of several candidate spellings. The payload was described to
-// us rather than read back off prod, so every field is read through here: a key
-// that turns out to be spelled differently degrades to null (and renders "—")
-// instead of throwing halfway down a roster.
+// First non-empty of several candidate spellings.
+//
+// The live shape is known and its real spelling always leads the list:
+//   list + detail  id, user_id, email, name, tier, tier_label, team_lead_id,
+//                  team_lead_email, is_active, client_count; team_size on tier-1
+//                  rows; clients (nomen strings) on the detail route only
+//   history        id, field, from_value, to_value, reason, clients_affected,
+//                  changed_by, at
+// The alternates behind them are kept as a floor, not a guess: a serializer
+// rename degrades one field to null (rendering "—") instead of throwing halfway
+// down a roster.
 const pick = (o, ...keys) => {
   for (const k of keys) {
     const v = o?.[k];
@@ -63,99 +70,56 @@ const pick = (o, ...keys) => {
 // ids are coerced to numbers ONCE, here, so nothing downstream has to guess
 // whether it is comparing "7" with 7. Everything else keeps the server's wording.
 
-const toClient = (c) => ({
-  clientId: num(pick(c, "client_id", "id")),
-  nomen: pick(c, "client_nomen", "nomen", "name"),
-  email: pick(c, "client_email", "email"),
-  clientType: pick(c, "client_type", "type"),
-  isActive: c?.is_active !== false,
-});
-
-// A lead can arrive as a bare id, as team_lead_email alongside it, or as a
-// nested object. All three flatten to the same two fields.
-const leadOf = (p) => {
-  const nested =
-    p?.team_lead && typeof p.team_lead === "object" ? p.team_lead : null;
+// The detail route sends `clients` as an array of NOMEN STRINGS, not objects —
+// it is a list of names for exactly one purpose, naming what moves. A string is
+// lifted into the same shape an object would take so the screens render one
+// thing; an object shape is still read, in case the route ever grows fields.
+const toClient = (c) => {
+  if (typeof c === "string") return { clientId: null, nomen: c, email: null, clientType: null, isActive: true };
   return {
-    teamLeadId: num(
-      nested
-        ? pick(nested, "id", "profile_id", "user_id")
-        : pick(p, "team_lead_id", "team_lead"),
-    ),
-    teamLeadEmail: nested
-      ? pick(nested, "email", "user_email")
-      : pick(p, "team_lead_email", "team_lead_name"),
+    clientId: num(pick(c, "client_id", "id")),
+    nomen: pick(c, "client_nomen", "nomen", "name"),
+    email: pick(c, "client_email", "email"),
+    clientType: pick(c, "client_type", "type"),
+    isActive: c?.is_active !== false,
   };
 };
 
 export const toProfile = (p) => {
   const clients = (Array.isArray(p?.clients) ? p.clients : []).map(toClient);
-  const members = (
-    Array.isArray(p?.team_members)
-      ? p.team_members
-      : Array.isArray(p?.members)
-        ? p.members
-        : []
-  ).map((m) => ({
-    id: num(pick(m, "id", "profile_id")),
-    userId: num(pick(m, "user_id", "cm_id")),
-    email: pick(m, "email", "user_email", "cm_email"),
-    tier: pick(m, "tier"),
-    isActive: m?.is_active !== false,
-  }));
 
   return {
     // The PROFILE's own primary key — what the detail, history and PATCH routes
     // are addressed by.
     id: num(pick(p, "id", "profile_id")),
-    // The USER behind it. Kept separate from `id` on purpose: switch-mode and
-    // the assignments API are addressed by user id, and conflating the two is
-    // how a screen ends up writing to the wrong row.
+    // The USER behind it, and the ONLY id that may be sent as team_lead_id:
+    // CampaignManagerProfile.team_lead is an FK to User, the serializer reads
+    // that FK, and the PATCH resolves it with User.objects.filter(pk=lead_id).
+    // On the live roster the two ranges don't even overlap — profile ids run
+    // 1–27, user ids 133–267 — so sending a profile id here would silently
+    // point a lead at nobody.
     userId: num(pick(p, "user_id", "cm_id", "user")),
     email: pick(p, "email", "user_email", "cm_email"),
     name: pick(p, "name", "full_name", "user_name", "cm_name", "username"),
     tier: pick(p, "tier"),
-    ...leadOf(p),
+    // The server's own wording for the tier, used wherever one is printed as
+    // prose. The badge still derives its own from `tier` — it is shared with the
+    // assignments screen, which has no tier_label to read.
+    tierLabel: pick(p, "tier_label"),
+    // A USER id (see above), with the email alongside it so a row can name the
+    // lead without a lookup.
+    teamLeadId: num(pick(p, "team_lead_id", "team_lead")),
+    teamLeadEmail: pick(p, "team_lead_email", "team_lead_name"),
     isActive: p?.is_active !== false,
-    // The server's own counts are read rather than derived from the arrays, so
-    // a list row (which carries no clients[]) and a detail row can't disagree.
+    // The server's own counts are read rather than derived, so a list row (which
+    // carries no clients[]) and a detail row can't disagree. team_size is sent
+    // on tier-1 rows only; a tier-2 manager leads nobody, so 0 is the truth
+    // rather than a missing value.
     clientCount: num(pick(p, "client_count", "clients_count")) ?? clients.length,
-    teamMemberCount:
-      num(pick(p, "team_member_count", "team_members_count", "member_count")) ??
-      members.length,
+    teamMemberCount: num(pick(p, "team_size", "team_member_count")) ?? 0,
     clients,
-    teamMembers: members,
   };
 };
-
-// Which id does team_lead_id actually hold — the profile's PK, or the user's?
-// Both are on every row and the two sets overlap numerically, so guessing is how
-// a lead change silently points at the wrong person. Instead the answer is read
-// off the data: whichever set the EXISTING team_lead_id values are drawn from is
-// the set a new one has to come from too.
-//
-// A tie (or no lead set anywhere) falls back to the profile id, which is what
-// the route itself is keyed by. Callers pass the resolved key to leadIdOf().
-export const resolveLeadIdKey = (profiles) => {
-  const leads = (profiles ?? [])
-    .map((p) => p.teamLeadId)
-    .filter((v) => v != null);
-  if (!leads.length) return "id";
-
-  const ids = new Set((profiles ?? []).map((p) => p.id).filter((v) => v != null));
-  const userIds = new Set(
-    (profiles ?? []).map((p) => p.userId).filter((v) => v != null),
-  );
-
-  const byId = leads.filter((v) => ids.has(v)).length;
-  const byUser = leads.filter((v) => userIds.has(v)).length;
-  return byUser > byId ? "userId" : "id";
-};
-
-// The value to SEND as team_lead_id for a given profile, in whichever id space
-// resolveLeadIdKey() found the server to be using.
-export const leadIdOf = (profile, key) =>
-  (key === "userId" ? profile?.userId : profile?.id) ?? null;
 
 // GET /cm/profiles/ — every campaign manager profile.
 // tier / isActive map to the documented ?tier= and ?is_active= filters. The
@@ -210,10 +174,16 @@ export const updateCmProfile = async (
 };
 
 // GET /cm/profiles/{id}/history/ — every tier / lead / active change on this
-// profile, with the reason given at the time and how many clients it moved.
-// clients_affected is read as either a count or a list, because a change that
-// moved nothing and a change that moved sixteen clients' data between dashboards
-// are not the same event, and this log is where that distinction survives.
+// profile, with the reason given at the time and the clients it moved.
+//
+// `field` is tier | team_lead | is_active — note team_lead WITHOUT the _id the
+// PATCH body uses: the log records the field, not the payload key. Both
+// spellings are handled downstream so a screen never prints a raw column name.
+//
+// clients_affected is an ARRAY (a bare count is tolerated), and it is kept as
+// both a length and a list: a change that moved nothing and a change that moved
+// sixteen clients' data between dashboards are not the same event, and this log
+// is the only place that distinction survives.
 export const fetchCmProfileHistory = async (id) => {
   const res = await api(`${BASE}/${id}/history/`, { method: "GET" });
 

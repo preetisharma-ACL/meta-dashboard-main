@@ -5,8 +5,6 @@ import {
   fetchCmProfiles,
   fetchCmProfile,
   updateCmProfile,
-  resolveLeadIdKey,
-  leadIdOf,
 } from "../../services/cmProfiles";
 import { collectFieldErrors } from "../../utils/apiErrors";
 import { canWriteCmProfiles } from "../../stores/currentUser";
@@ -203,18 +201,13 @@ export default function CmProfiles() {
   const rows = () => profiles() ?? [];
   const canWrite = () => canWriteCmProfiles();
 
-  // Which id space team_lead_id is expressed in — read off the data rather than
-  // assumed, because the profile PK and the user id are both on every row and
-  // sending the wrong one points a lead at the wrong person. See the service.
-  const leadKey = createMemo(() => resolveLeadIdKey(rows()));
-  const sendIdFor = (p) => leadIdOf(p, leadKey());
-
+  // team_lead_id is a USER id — the model's FK is to User and the PATCH resolves
+  // it with User.objects.filter(pk=…). The two ranges don't even overlap on the
+  // live roster (profile ids 1–27, user ids 133–267), so a profile id sent here
+  // would resolve to nobody rather than to the wrong person.
   const byLeadId = createMemo(() => {
     const m = new Map();
-    for (const p of rows()) {
-      const k = sendIdFor(p);
-      if (k != null) m.set(k, p);
-    }
+    for (const p of rows()) if (p.userId != null) m.set(p.userId, p);
     return m;
   });
 
@@ -224,25 +217,27 @@ export default function CmProfiles() {
     return p ? cmLabel(p) : null;
   };
 
-  // A tier-1 lead's team. The detail route may carry team_members; when it
-  // doesn't, the roster already knows — every tier-2 row names its lead.
+  // A tier-1 lead's team. Neither route sends one, so it is derived from the
+  // roster — every tier-2 row names its lead, which is the same relation read
+  // from the other end.
   const teamOf = (p) => {
-    if (!p) return [];
-    if (p.teamMembers?.length) return p.teamMembers;
-    const key = sendIdFor(p);
-    if (key == null) return [];
-    return rows().filter((r) => r.teamLeadId != null && r.teamLeadId === key);
+    if (!p?.userId) return [];
+    return rows().filter((r) => r.teamLeadId != null && r.teamLeadId === p.userId);
   };
 
-  // The server's count when it sent one, the derived team otherwise. Read
-  // through one helper so a roster row and the detail pane can't disagree about
-  // how many people report to the same manager.
+  // team_size when the server sent one (tier-1 rows only), the derived team
+  // otherwise. Read through one helper so a roster row and the detail pane can't
+  // disagree about how many people report to the same manager.
   const teamCountOf = (p) => p?.teamMemberCount || teamOf(p).length;
 
+  // The tier in the server's own words when it sent them, ours otherwise — the
+  // badge keeps deriving its own, since it is shared with a screen that has no
+  // tier_label to read.
+  const tierText = (p) => p?.tierLabel ?? tierLabel(p?.tier);
+
   // The selected profile, merged: identity and clients from the DETAIL payload,
-  // the team derived from the roster when the detail didn't carry it. The row
-  // in the list is the fallback so the pane has something to draw while the
-  // detail is still in flight.
+  // the team derived from the roster. The row in the list is the fallback so the
+  // pane has something to draw while the detail is still in flight.
   const selected = createMemo(() => {
     const listRow = rows().find((p) => p.id === selectedId());
     const d = detail.state === "ready" ? detail() : null;
@@ -252,6 +247,9 @@ export default function CmProfiles() {
     return {
       ...base,
       teamMembers: team,
+      // The derived team is the one with names in it, so an active-member count
+      // (which is what the demotion guard actually tests) comes from there.
+      activeTeamCount: team.filter((m) => m.isActive).length,
       teamMemberCount: base.teamMemberCount || team.length,
     };
   });
@@ -281,7 +279,9 @@ export default function CmProfiles() {
     const self = selected();
     return rows()
       .filter((p) => p.tier === "tier_1" && p.isActive && p.id !== self?.id)
-      .map((p) => ({ ...p, sendId: sendIdFor(p) }))
+      // sendId is the USER id — what team_lead_id holds and what the PATCH
+      // looks up. A row without one is dropped rather than sent as a profile id.
+      .map((p) => ({ ...p, sendId: p.userId }))
       .filter((p) => p.sendId != null);
   });
 
@@ -435,7 +435,7 @@ export default function CmProfiles() {
                   >
                     {cmLabel(p)}
                   </button>{" "}
-                  — {tierLabel(p.tier) ?? "unknown tier"}, inactive, holds{" "}
+                  — {tierText(p) ?? "unknown tier"}, inactive, holds{" "}
                   {p.clientCount} client{p.clientCount === 1 ? "" : "s"}
                 </li>
               )}
@@ -710,7 +710,7 @@ export default function CmProfiles() {
                     </Show>
                   }
                 >
-                  Permissions — {tierLabel(selected().tier) ?? "no tier"}
+                  Permissions — {tierText(selected()) ?? "no tier"}
                 </SectionTitle>
 
                 <p class="text-sm text-[#54657E] dark:text-gray-300 mb-3">
@@ -854,6 +854,10 @@ export default function CmProfiles() {
                       </p>
                     }
                   >
+                    {/* The route sends nomen NAMES, nothing else — no email, no
+                        type, no id — so the row is the name and the mark beside
+                        it. Rendering empty slots for fields the payload doesn't
+                        carry would make a complete list look like a broken one. */}
                     <ul class="divide-y divide-[#E2E8F1] dark:divide-gray-700 border border-[#E2E8F1] dark:border-gray-700 rounded-xl overflow-hidden max-h-80 overflow-y-auto">
                       <For each={selected().clients}>
                         {(c) => (
@@ -863,15 +867,9 @@ export default function CmProfiles() {
                               size="w-8 h-8"
                               textSize="text-[10px]"
                             />
-                            <span class="min-w-0 flex-1">
-                              <span class="block text-sm font-medium text-[#14233A] dark:text-gray-100 truncate">
-                                {clientLabel(c)}
-                              </span>
-                              <span class="block text-xs text-[#8593A8] truncate">
-                                {c.email ?? ""}
-                              </span>
+                            <span class="min-w-0 flex-1 text-sm font-medium text-[#14233A] dark:text-gray-100 truncate">
+                              {clientLabel(c)}
                             </span>
-                            <InactiveBadge isActive={c.isActive} />
                           </li>
                         )}
                       </For>

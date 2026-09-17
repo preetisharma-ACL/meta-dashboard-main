@@ -69,6 +69,11 @@ export default function ProfileChangeModal(props) {
   const clients = () => p()?.clients ?? [];
   const clientCount = () => p()?.clientCount ?? clients().length;
 
+  // Active reports only — both server guards that involve a team test for
+  // ACTIVE members, and a deactivated report must not raise a warning about a
+  // change the server will happily accept.
+  const activeTeam = () => p()?.activeTeamCount ?? 0;
+
   const ready = () => {
     if (!reason().trim()) return false;
     if (needsLead() && !leadId()) return false;
@@ -196,12 +201,14 @@ export default function ProfileChangeModal(props) {
                 </p>
               </Show>
 
-              <Show when={demoting() && (p()?.teamMemberCount ?? 0) > 0}>
+              {/* The guard tests ACTIVE members specifically, so the warning
+                  counts those — telling an operator a demotion will be refused
+                  because of a deactivated report would be a false stop. */}
+              <Show when={demoting() && activeTeam() > 0}>
                 <p class="rounded-lg border border-[#E4B94A]/50 bg-[#FDF6E7] dark:bg-yellow-900/20 dark:border-yellow-700/50 px-3.5 py-2.5 text-xs text-[#8A6410] dark:text-yellow-200">
-                  This manager currently leads {p().teamMemberCount} team member
-                  {p().teamMemberCount === 1 ? "" : "s"}. The server refuses a
-                  demotion while any of them are active — move them to another
-                  lead first.
+                  This manager currently leads {activeTeam()} active team member
+                  {activeTeam() === 1 ? "" : "s"}. The server refuses a demotion
+                  while any of them are active — move them to another lead first.
                 </p>
               </Show>
             </Show>
@@ -218,12 +225,12 @@ export default function ProfileChangeModal(props) {
                   is switched off until somebody reassigns them on Client
                   Assignments.
                 </p>
-                <Show when={(p()?.teamMemberCount ?? 0) > 0}>
+                <Show when={activeTeam() > 0}>
                   <p class="rounded-lg border border-[#E4B94A]/50 bg-[#FDF6E7] dark:bg-yellow-900/20 dark:border-yellow-700/50 px-3.5 py-2.5 text-xs text-[#8A6410] dark:text-yellow-200">
-                    {p().teamMemberCount} tier-2 manager
-                    {p().teamMemberCount === 1 ? "" : "s"} report to this lead,
-                    and a tier-2 manager needs an ACTIVE lead — the server may
-                    refuse this until they are moved.
+                    {activeTeam()} active tier-2 manager
+                    {activeTeam() === 1 ? "" : "s"} report to this lead, and a
+                    tier-2 manager needs an ACTIVE lead — the server may refuse
+                    this until they are moved.
                   </p>
                 </Show>
               </Show>
