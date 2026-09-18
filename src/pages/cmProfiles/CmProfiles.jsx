@@ -754,7 +754,7 @@ export default function CmProfiles() {
                     </Show>
                   }
                 >
-                  Visibility
+                  Team Member 
                 </SectionTitle>
 
                 <Show
