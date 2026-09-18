@@ -289,6 +289,41 @@ console.log("\npagination: four served fields, two derived");
     check("page 3 with no totals can still go back", lost.hasPrev === true);
   }
 
+  console.log("\n  …and the fallback reproduces the serializer, not just plausible arithmetic");
+  {
+    // Three calls confirmed off the wire on 2026-09-18, all 186 clients. The
+    // backend computes (total + size - 1) // size; the fallback here is
+    // Math.ceil(total / size). They agree for positive integers, but that is
+    // worth asserting rather than assuming: the fallback stands in for the
+    // server's own number whenever `pages` is absent, so a divergence would
+    // put a page count on screen that the server would never have served.
+    const CONFIRMED = [
+      { page_size: 3, pages: 62 },
+      { page_size: 50, pages: 4 },
+      { page_size: 200, pages: 1 },
+    ];
+    for (const { page_size, pages } of CONFIRMED) {
+      const served = derivePagination(
+        { page: 1, page_size, total: 186, pages },
+        Math.min(page_size, 186),
+      );
+      const fellBack = derivePagination(
+        { page: 1, page_size, total: 186 }, // no `pages`
+        Math.min(page_size, 186),
+      );
+      check(
+        `${page_size} per page → ${pages} pages, as served`,
+        served.totalPages === pages,
+        `(${served.totalPages})`,
+      );
+      check(
+        `…and the fallback derives the same ${pages}`,
+        fellBack.totalPages === pages,
+        `(${fellBack.totalPages})`,
+      );
+    }
+  }
+
   console.log("\n  …and a self-contradicting payload is surfaced, not absorbed");
   {
     // 186 rows at 200 per page is 1 page, not 62. Both numbers come from the
