@@ -46,6 +46,34 @@ export const SORTABLE = {
 export const rangeKeyOf = ({ preset, start, end }) =>
   preset === "custom" ? `custom:${start ?? ""}:${end ?? ""}` : String(preset);
 
+// ── What the loading state should promise ────────────────────────────────────
+// The server cache is 900s, written by both the endpoint and the refresh task.
+// (It used to be 300 from the endpoint and 900 from the task, so an entry's
+// lifetime depended on which one wrote it; aligned to 900 in 6ec9d4f.) One
+// number, exported, because the UI copy quotes it and a second copy would drift.
+export const CACHE_TTL_MINUTES = 15;
+export const CACHE_TTL_MS = CACHE_TTL_MINUTES * 60 * 1000;
+
+// Whether to warn the reader about a ~14s build.
+//
+// The refresh task runs every ten minutes against a fifteen-minute TTL, so the
+// NAMED PRESETS are warm continuously and only go cold if the task itself
+// fails. Presuming them cold — which is what "this tab hasn't fetched it yet"
+// amounted to — put a "this will take about 15 seconds" warning on the single
+// most common event on this page: opening it. The wait it warned about was
+// 0.1s.
+//
+// A custom range is the opposite: nothing pre-warms an arbitrary window, so the
+// first call for one really is a build.
+//
+// Being wrong in the warm direction is cheap and self-correcting — the page
+// escalates on elapsed time at 3s, which is the signal that can't be wrong. That
+// asymmetry is why the default is optimistic rather than defensive.
+export const expectColdLoad = ({ preset, fetchedInThisTab }) => {
+  if (fetchedInThisTab) return false;
+  return preset === "custom";
+};
+
 // ── Dormancy (?active_only=true, delivered_last_7d) ──────────────────────────
 // A client is DORMANT when it has produced no leads and no spend in the last
 // seven days. 186 clients without the filter, 92 with it.

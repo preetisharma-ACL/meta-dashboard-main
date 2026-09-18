@@ -4,6 +4,7 @@ import {
   rangeKeyOf,
   derivePagination,
   paginationDisagrees,
+  CACHE_TTL_MS,
 } from "./commandRules";
 
 // ─── Command page: the fetch ──────────────────────────────────────────────────
@@ -33,10 +34,13 @@ import {
 
 // ── Server cache warmth (a guess, never a fact) ───────────────────────────────
 // We cannot read the server's cache, so we track what this tab has already asked
-// for and assume the documented five minutes. This ONLY steers the wording of
-// the loading state, so being wrong costs a sentence — and the page escalates
-// its message on elapsed time anyway, which is the signal that can't be wrong.
-const CACHE_TTL_MS = 5 * 60 * 1000;
+// for and assume the documented lifetime (900s — see CACHE_TTL_MS). This is only
+// half the picture: a refresh task also warms the named presets every ten
+// minutes, so a preset can be warm without this tab ever having touched it.
+// expectColdLoad() in commandRules is where those two facts are combined.
+//
+// All of it only steers the wording of the loading state, and the page escalates
+// on elapsed time regardless, which is the signal that can't be wrong.
 const warmUntil = new Map();
 
 export const isRangeWarm = (key) => (warmUntil.get(key) ?? 0) > Date.now();

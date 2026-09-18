@@ -27,6 +27,9 @@ import {
   DELIVERY,
   DELIVERY_WINDOW_DAYS,
   DELIVERY_WINDOW_LABEL,
+  expectColdLoad,
+  CACHE_TTL_MINUTES,
+  CACHE_TTL_MS,
   inr,
   count,
   asList,
@@ -223,6 +226,38 @@ console.log("\ndates are local, not UTC");
   const d = new Date(2026, 8, 18, 23, 30);
   check("late evening stays on its own date", isoDate(d) === "2026-09-18");
   check("single digits are padded", isoDate(new Date(2026, 0, 5)) === "2026-01-05");
+}
+
+console.log("\nthe loading state promises the right wait");
+{
+  // One cache, 900s, written by both the endpoint and the refresh task. It was
+  // 300 from one and 900 from the other, so an entry's lifetime depended on who
+  // wrote it. One constant here, quoted by the UI copy, so the number on screen
+  // cannot drift from the number in the map.
+  check("the TTL is 15 minutes", CACHE_TTL_MINUTES === 15);
+  check("…and the ms form agrees", CACHE_TTL_MS === 15 * 60 * 1000);
+
+  // The task refreshes every ten minutes, so named presets are warm
+  // continuously. Presuming a preset cold because THIS TAB hadn't fetched it
+  // put "about 15 seconds" on the most common event on the page — opening it —
+  // for a wait of 0.1s.
+  for (const preset of ["today", "yesterday", "last7", "last30", "this_month"]) {
+    check(
+      `${preset} on a cold tab is not warned about`,
+      expectColdLoad({ preset, fetchedInThisTab: false }) === false,
+    );
+  }
+
+  // Nothing pre-warms an arbitrary window, so the first call for one is a build
+  // and the reader should be told.
+  check(
+    "a custom range not yet fetched IS a build",
+    expectColdLoad({ preset: "custom", fetchedInThisTab: false }) === true,
+  );
+  check(
+    "…but not a second time",
+    expectColdLoad({ preset: "custom", fetchedInThisTab: true }) === false,
+  );
 }
 
 console.log("\ndormancy is delivery, and a missing field is not dormancy");

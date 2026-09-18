@@ -24,6 +24,8 @@ import {
   humanise,
   asList,
   rangeKeyOf,
+  expectColdLoad,
+  CACHE_TTL_MINUTES,
   isDormant,
   DELIVERY_WINDOW_LABEL,
   inr,
@@ -199,8 +201,20 @@ export default function CommandBoard() {
     onCleanup(() => clearInterval(id));
   });
 
+  // Two signals, combined in expectColdLoad: has this tab already paid for this
+  // range, and is it the kind of range anything pre-warms. A named preset is
+  // refreshed server-side every ten minutes against a fifteen-minute TTL, so it
+  // is warm continuously — presuming otherwise put a 15-second warning on the
+  // most common event on this page, opening it, for a wait of 0.1s.
   const coldRange = () =>
-    !isRangeWarm(rangeKeyOf({ preset: preset(), start: start(), end: end() }));
+    expectColdLoad({
+      preset: preset(),
+      fetchedInThisTab: isRangeWarm(
+        rangeKeyOf({ preset: preset(), start: start(), end: end() }),
+      ),
+    });
+  // Elapsed time overrides the guess in the only direction that matters: if a
+  // "warm" range is still going at 3s, the task has failed and this IS a build.
   const expectSlow = () => coldRange() || elapsed() >= 3;
 
   // ── Custom range ───────────────────────────────────────────────────────────
@@ -729,9 +743,9 @@ export default function CommandBoard() {
                             Building this date range — about 15 seconds.
                           </p>
                           <p class="text-[13px] text-gray-500 dark:text-gray-400 mt-1">
-                            It's cached for five minutes afterwards, so sorting,
-                            filtering, searching and paging are instant from
-                            then on.
+                            It's cached for {CACHE_TTL_MINUTES} minutes
+                            afterwards, so sorting, filtering, searching and
+                            paging are instant from then on.
                           </p>
                         </div>
                       </Show>
