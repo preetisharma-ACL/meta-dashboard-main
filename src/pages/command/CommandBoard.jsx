@@ -117,7 +117,13 @@ export default function CommandBoard() {
   const [pageSize, setPageSize] = createSignal(200);
 
   // Server-side, and a FIXED seven-day window — not the range above it.
-  const [activeOnly, setActiveOnly] = createSignal(false);
+  //
+  // Starts FALSE, i.e. dormant clients hidden, because that is the endpoint's
+  // own default (92 of 186) and the one the page should open on: the 94 hidden
+  // carry 2,911 leads and ₹3.1L over 30 days against 27,390 and ₹40.9L for the
+  // 92 shown, so the default view holds ~90% of the leads and ~93% of the spend.
+  // This toggle ADDS them back; it does not take them away.
+  const [includeDormant, setIncludeDormant] = createSignal(false);
 
   // ── View-only state ────────────────────────────────────────────────────────
   const [gapOnly, setGapOnly] = createSignal(false);
@@ -152,7 +158,7 @@ export default function CommandBoard() {
       end: end(),
       type: type(),
       q: q(),
-      activeOnly: activeOnly(),
+      includeDormant: includeDormant(),
       sort: sort(),
       dir: dir(),
       page: page(),
@@ -288,18 +294,38 @@ export default function CommandBoard() {
   const visible = createMemo(() => (gapOnly() ? gapRows() : rows()));
 
   // ── Dormancy ───────────────────────────────────────────────────────────────
-  // How many of the rows on screen would vanish if the filter were switched on.
-  // Counted the same way as the config gap, and labelled by the same rule: it is
-  // only "of N clients" when the whole filtered set is in hand.
+  // The toggle wants to say how many rows it would ADD. When it's off those rows
+  // aren't in the response, so the number can't be counted — it has to be
+  // remembered from a request that did include them.
+  //
+  // Keyed on the narrowing filters only (type, search), NOT on the date range:
+  // the dormancy test is a fixed 7-day window, so the set of dormant clients
+  // doesn't move when the preset does, and a count learned on Last 7 is still
+  // true on Last 30. Type and search DO change which clients are in scope, so a
+  // count learned under one must never be shown under another.
   const dormantRows = createMemo(() => rows().filter(isDormant));
-  const dormantCaption = () =>
-    wholeSetInView()
-      ? `${dormantRows().length} of ${pagination().total}`
-      : `${dormantRows().length} on this page`;
+  const narrowKey = () => `${type() ?? ""}|${q()}`;
+  const [knownDormant, setKnownDormant] = createSignal({});
 
-  const toggleActiveOnly = () => {
+  createEffect(() => {
+    // Only record a COMPLETE count. A paged response knows its own page's
+    // dormant rows and nothing about the rest.
+    if (!includeDormant() || !wholeSetInView()) return;
+    const key = narrowKey();
+    const n = dormantRows().length;
+    setKnownDormant((prev) => (prev[key] === n ? prev : { ...prev, [key]: n }));
+  });
+
+  // Null until we've actually seen the number for this narrowing — the button
+  // simply carries no count rather than a stale or invented one.
+  const dormantTotal = () => {
+    if (includeDormant() && wholeSetInView()) return dormantRows().length;
+    return knownDormant()[narrowKey()] ?? null;
+  };
+
+  const toggleDormant = () => {
     setPage(1);
-    setActiveOnly((v) => !v);
+    setIncludeDormant((v) => !v);
   };
 
   const gotoPage = (n) => {
@@ -318,7 +344,10 @@ export default function CommandBoard() {
   // The date range narrows the FIGURES, not the roster — a client with no spend
   // in the window still has a row. So only type and search can empty the table,
   // and only they belong in the "nothing matched" wording.
-  const hasFilters = () => !!(type() || q() || activeOnly());
+  // Narrowing the reader applied. Dormancy is deliberately NOT in here: it is on
+  // by default, so counting it as a filter would make "no clients match these
+  // filters" the answer to a question nobody asked.
+  const hasFilters = () => !!(type() || q());
 
   return (
     <div class="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 sm:p-6 lg:p-8">
@@ -434,7 +463,19 @@ export default function CommandBoard() {
 
       {/* ══ Totals ══ */}
       <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
-        <Tile label="Clients" value={count(totals().clients)} />
+        {/* The totals follow the filter, and the filter is on by default — so
+            this card reads 92, not 186, before anyone has touched a control.
+            That is the number someone queries first, so the explanation is on
+            the card rather than only in the footnote. */}
+        <Tile
+          label="Clients"
+          value={count(totals().clients)}
+          note={
+            includeDormant()
+              ? undefined
+              : `Delivering clients only. Dormant clients — no leads and no spend in the ${DELIVERY_WINDOW_LABEL} — are excluded by default, and every total here excludes them too.`
+          }
+        />
         <Tile label="Leads" value={count(totals().leads)} />
         <Tile label="Raw spend" value={inrCompact(totals().raw_spend)} />
         <Tile
@@ -495,29 +536,36 @@ export default function CommandBoard() {
             those two answers diverge. */}
         <button
           type="button"
-          onClick={toggleActiveOnly}
-          aria-pressed={activeOnly()}
-          title={`Hide clients with no leads and no spend in the ${DELIVERY_WINDOW_LABEL}. This window is fixed at 7 days and does not follow the date range above.`}
+          onClick={toggleDormant}
+          aria-pressed={includeDormant()}
+          title={`The page shows clients that delivered leads or spend in the ${DELIVERY_WINDOW_LABEL}. This turns the rest back on. The window is fixed at 7 days and does not follow the date range above.`}
           class={`inline-flex items-center gap-2 px-3.5 py-2 text-sm font-semibold rounded-lg border transition-colors ${
-            activeOnly()
-              ? "bg-[#1F6F4A] text-white border-[#1F6F4A]"
-              : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-[#1F6F4A]/50"
+            includeDormant()
+              ? "bg-[#54657E] text-white border-[#54657E]"
+              : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-[#54657E]/50"
           }`}
         >
           <span
             class={`h-1.5 w-1.5 rounded-full ${
-              activeOnly() ? "bg-white" : "bg-[#1F6F4A]"
+              includeDormant() ? "bg-white" : "bg-gray-300 dark:bg-gray-600"
             }`}
             aria-hidden="true"
           />
-          Delivering
-          <span
-            class={`text-[11px] font-normal ${
-              activeOnly() ? "text-white/70" : "text-gray-400"
-            }`}
-          >
-            ({DELIVERY_WINDOW_LABEL})
-          </span>
+          Include dormant
+          {/* Only ever a number we have actually seen for this exact narrowing.
+              When the toggle is off those rows aren't in the response at all,
+              so there is nothing to count — the button carries no number rather
+              than a guessed one. */}
+          <Show when={dormantTotal() != null}>
+            <span
+              class={`text-[11px] font-bold tabular-nums ${
+                includeDormant() ? "text-white/75" : "text-gray-400"
+              }`}
+            >
+              ({includeDormant() ? "" : "+"}
+              {dormantTotal()})
+            </span>
+          </Show>
         </button>
 
         {/* The flag, as a filter. Its label always names the set it counted —
@@ -559,18 +607,14 @@ export default function CommandBoard() {
 
         <span class="ml-auto text-sm text-gray-400 dark:text-gray-500 whitespace-nowrap">
           {visible().length} shown
-          {/* Only worth saying while they're still on screen. Once the filter
-              is on they're gone and the paginator's total already says so. */}
-          <Show when={!activeOnly() && dormantRows().length > 0}>
+          {/* The count lives on the toggle, not here as well. This only names
+              the scope, which is otherwise invisible: the page is filtered
+              before anyone touches a control. */}
+          <Show when={!includeDormant()}>
             <span class="text-gray-300 dark:text-gray-600"> · </span>
-            <button
-              type="button"
-              onClick={toggleActiveOnly}
-              class="underline decoration-dotted underline-offset-2 hover:text-[#1F6F4A] dark:hover:text-emerald-400 transition-colors"
-              title={`Hide the clients with no leads and no spend in the ${DELIVERY_WINDOW_LABEL}`}
-            >
-              {dormantCaption()} dormant
-            </button>
+            <span title={`No leads and no spend in the ${DELIVERY_WINDOW_LABEL}`}>
+              dormant hidden
+            </span>
           </Show>
         </span>
       </div>
@@ -797,13 +841,20 @@ export default function CommandBoard() {
                       </Match>
                       {/* Named separately so the reader isn't left hunting for
                           a range filter that had nothing to do with it — this
-                          one is a fixed 7-day window. */}
-                      <Match when={activeOnly()}>
-                        No client has delivered leads or spend in the{" "}
+                          one is a fixed 7-day window, and it is on before
+                          anyone touches a control. */}
+                      <Match when={!includeDormant()}>
+                        Nothing has delivered leads or spend in the{" "}
                         {DELIVERY_WINDOW_LABEL}
-                        {hasFilters() && (type() || q())
-                          ? " under these filters."
-                          : "."}
+                        {hasFilters() ? " under these filters" : ""}.{" "}
+                        <button
+                          type="button"
+                          onClick={toggleDormant}
+                          class="font-semibold text-[#3E6FB0] hover:underline"
+                        >
+                          Include dormant clients
+                        </button>
+                        .
                       </Match>
                       <Match when={hasFilters()}>
                         No clients match these filters.
@@ -1099,11 +1150,16 @@ export default function CommandBoard() {
         see where it came from.
       </p>
       <p class="mt-1.5 text-[12px] text-gray-400 dark:text-gray-500">
-        <b class="font-semibold">Delivering</b> means leads or spend in the last
-        7 days — a fixed window that does not follow the date range, so a client
-        dormant for a month stays hidden even on Last 30 Days. It tests
-        delivery, not campaign state: clients still producing leads from
-        since-paused campaigns count as delivering.
+        <b class="font-semibold">
+          This page opens on delivering clients only
+        </b>{" "}
+        — leads or spend in the last 7 days — so the counts and every total
+        above describe that set, not the full client list. Use{" "}
+        <b class="font-semibold">Include dormant</b> for everyone. The 7 days is
+        a fixed window that does not follow the date range, so a client dormant
+        for a month stays hidden even on Last 30 Days. And it tests delivery,
+        not campaign state: clients still producing leads from since-paused
+        campaigns count as delivering.
       </p>
       <p class="mt-1.5 text-[12px] text-gray-400 dark:text-gray-500">
         Balance is deliberately not totalled: a CPL client bills per qualified

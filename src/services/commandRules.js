@@ -120,6 +120,22 @@ export const deliveryState = (row) => {
 // Only a row we KNOW to be dormant is treated as dormant. Unknown is not.
 export const isDormant = (row) => deliveryState(row) === DELIVERY.DORMANT;
 
+// The endpoint DEFAULTS to delivering-only: no param means 92, and
+// ?active_only=false is how you ask for all 186. That inverted on 2026-09-18
+// (e26098a), and it inverted under a frontend whose "show everything" state
+// worked by sending nothing — which silently became "show 92" while the UI still
+// said 186. So the param is always sent explicitly, in both directions.
+//
+// Sending active_only=true rather than omitting it is deliberate. It pins intent
+// against a default that has already moved once, and it cannot misfire: if the
+// value were ever ignored, the server's own default is the same answer. Omitting
+// it has a real failure mode; stating it has none.
+//
+// One line, an inversion, and it decides which half of the book a reader sees —
+// which is why it is here with a check on it rather than inline at the call.
+export const activeOnlyParam = (includeDormant) =>
+  includeDormant ? "false" : "true";
+
 // ── Pagination ────────────────────────────────────────────────────────────────
 // meta.pagination is FOUR fields, verified on the live payload:
 //   { page, page_size, total, pages }

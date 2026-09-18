@@ -4,6 +4,7 @@ import {
   rangeKeyOf,
   derivePagination,
   paginationDisagrees,
+  activeOnlyParam,
   CACHE_TTL_MS,
 } from "./commandRules";
 
@@ -26,11 +27,13 @@ import {
 // header claimed to describe the set. The one exception is called out and
 // labelled where it happens (the config-gap tally on the page).
 //
-// TIMING. The first call for a given date range takes ~14s; the server caches it
-// for five minutes and everything after that — re-sorting, filtering, paging,
-// searching — is ~0.1s off that cached set. So the page is slow to open once and
-// instant thereafter, and the loading state has to say which of the two is
-// happening rather than show a spinner that reads as stuck.
+// TIMING. A cold date range takes ~14s; the server caches it for 900s and
+// everything after that — re-sorting, filtering, paging, searching — is ~0.1s
+// off that cached set. A refresh task rewarms the named presets every ten
+// minutes, so in practice only a custom range is ever cold. See expectColdLoad.
+//
+// DEFAULT SCOPE. The endpoint returns DELIVERING clients only unless told
+// otherwise — 92 of 186. See activeOnlyParam; the param is always sent.
 
 // ── Server cache warmth (a guess, never a fact) ───────────────────────────────
 // We cannot read the server's cache, so we track what this tab has already asked
@@ -169,12 +172,13 @@ const normaliseRow = (row) => {
   };
 };
 
-// filters: { preset, start, end, sort, dir, type, q, activeOnly, page, pageSize }
+// filters: { preset, start, end, sort, dir, type, q, includeDormant, page,
+//            pageSize }
 //
-// `activeOnly` sends ?active_only=true and drops clients with no leads and no
-// spend in the last SEVEN days — a fixed window, independent of preset/start/end.
-// Sent only when true: ?active_only=false is not a documented value, and an
-// undocumented param is a guess.
+// `includeDormant` maps to ?active_only= via activeOnlyParam, and is ALWAYS
+// sent. The endpoint defaults to delivering-only (92 of 186); dormancy is no
+// leads and no spend in the last SEVEN days, a fixed window independent of
+// preset/start/end.
 // `start`/`end` go only with preset === "custom"; sending them alongside a named
 // preset would leave the server to pick a winner we can't predict.
 export const fetchCommandBoard = async (filters = {}) => {
@@ -189,7 +193,7 @@ export const fetchCommandBoard = async (filters = {}) => {
       dir: filters.dir,
       type: filters.type,
       q: filters.q,
-      active_only: filters.activeOnly ? "true" : null,
+      active_only: activeOnlyParam(filters.includeDormant),
       page: filters.page,
       page_size: filters.pageSize ?? filters.page_size,
     })}`,

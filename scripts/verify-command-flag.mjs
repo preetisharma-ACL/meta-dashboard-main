@@ -27,6 +27,7 @@ import {
   DELIVERY,
   DELIVERY_WINDOW_DAYS,
   DELIVERY_WINDOW_LABEL,
+  activeOnlyParam,
   expectColdLoad,
   CACHE_TTL_MINUTES,
   CACHE_TTL_MS,
@@ -304,6 +305,32 @@ console.log("\ndormancy is delivery, and a missing field is not dormancy");
   // range. The label is a constant precisely so no caller can interpolate one.
   check("the window says 7 days", DELIVERY_WINDOW_LABEL === "last 7 days");
   check("…and is not preset-derived", DELIVERY_WINDOW_DAYS === 7);
+
+  // The endpoint's default inverted on 2026-09-18: no param now means 92, and
+  // active_only=false is how you ask for all 186. It inverted under a frontend
+  // whose "show everything" state worked by sending NOTHING — which silently
+  // became "show 92" while the UI still claimed 186. Hence: always sent, both
+  // directions, and asserted, because it is a one-line inversion that decides
+  // which half of the book a reader sees.
+  check(
+    "default (dormant excluded) sends active_only=true",
+    activeOnlyParam(false) === "true",
+  );
+  check(
+    "including dormant sends active_only=false",
+    activeOnlyParam(true) === "false",
+  );
+  check(
+    "neither direction omits the param",
+    activeOnlyParam(true) != null && activeOnlyParam(false) != null,
+  );
+  // The value is a string because the query builder drops null/undefined/"" —
+  // a boolean false would survive, but this keeps the two call sites honest
+  // about what actually goes on the wire.
+  check(
+    "both are non-empty strings the query builder will send",
+    activeOnlyParam(true) !== "" && activeOnlyParam(false) !== "",
+  );
 }
 
 console.log("\npagination: four served fields, two derived");
