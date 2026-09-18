@@ -252,6 +252,18 @@ export default function Sidebar() {
         path: "/dashboard",
       },
       {
+        // Sits directly under Dashboard: it is the screen the desk opens in the
+        // morning and reads top-down — every client, one row each, over a date
+        // range they pick. Top-level rather than a Clients sub-item because
+        // coordination doesn't get the Clients group at all and they are half
+        // this screen's audience; admin + coordination only, matching the
+        // endpoint, which 403s everyone else.
+        name: "Command",
+        roles: ["admin", "coordination"],
+        icon: () => <Icon d="M3 12h4l3 8 4-16 3 8h4" />,
+        path: "/command",
+      },
+      {
         name: "Clients",
         roles: ["admin", "campaign_manager"],
         icon: () => (

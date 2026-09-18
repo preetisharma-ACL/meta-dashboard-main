@@ -1,0 +1,166 @@
+import { api } from "../api/api";
+import { DEFAULT_PRESET, rangeKeyOf } from "./commandRules";
+
+// ─── Command page: the fetch ──────────────────────────────────────────────────
+// GET /clients/command/ — one row per client, every operational number the desk
+// asks for in the morning, over a date range they pick.
+//
+// The rules this screen applies — what a null premium_spend means, how a balance
+// source reads, how every figure is formatted — live in ./commandRules, which
+// imports nothing and is therefore checkable by scripts/verify-command-flag.mjs.
+// This file only knows how to ask the server.
+//
+// ADMIN + COORDINATION ONLY. The endpoint 403s everyone else, so the route gate
+// on the page only decides whether to offer the screen — it is not the security
+// boundary, as everywhere else in this app.
+//
+// EVERYTHING IS A SERVER PARAM — sort, filter, search, page. That is not a
+// preference, it is correctness: the response is one page of a larger set, so
+// narrowing or reordering the rows in hand would describe a slice while the
+// header claimed to describe the set. The one exception is called out and
+// labelled where it happens (the config-gap tally on the page).
+//
+// TIMING. The first call for a given date range takes ~14s; the server caches it
+// for five minutes and everything after that — re-sorting, filtering, paging,
+// searching — is ~0.1s off that cached set. So the page is slow to open once and
+// instant thereafter, and the loading state has to say which of the two is
+// happening rather than show a spinner that reads as stuck.
+
+// ── Server cache warmth (a guess, never a fact) ───────────────────────────────
+// We cannot read the server's cache, so we track what this tab has already asked
+// for and assume the documented five minutes. This ONLY steers the wording of
+// the loading state, so being wrong costs a sentence — and the page escalates
+// its message on elapsed time anyway, which is the signal that can't be wrong.
+const CACHE_TTL_MS = 5 * 60 * 1000;
+const warmUntil = new Map();
+
+export const isRangeWarm = (key) => (warmUntil.get(key) ?? 0) > Date.now();
+
+// ── Query ─────────────────────────────────────────────────────────────────────
+const qs = (params) => {
+  const sp = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v === null || v === undefined || v === "") continue;
+    sp.set(k, String(v));
+  }
+  const s = sp.toString();
+  return s ? `?${s}` : "";
+};
+
+// The row list can arrive as data.clients, data.results, a bare array, or an
+// envelope around any of those. Read all of them rather than bet on one.
+const unwrapRows = (res) => {
+  const d = res?.data ?? res;
+  if (Array.isArray(d)) return d;
+  for (const key of ["clients", "results", "rows", "items"]) {
+    if (Array.isArray(d?.[key])) return d[key];
+  }
+  return [];
+};
+
+const num = (v) => {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+// `total` is the count across the WHOLE filtered set and is the only honest
+// number for a paginator. It deliberately does NOT fall back to the row count:
+// a page size wearing a total's clothes is how "20 of 20" happened on a 264-row
+// ledger. Missing meta → null, and the UI says it doesn't know.
+const readPagination = (res, rowCount) => {
+  const meta = res?.meta ?? res?.data?.meta ?? {};
+  const p = meta.pagination ?? res?.pagination ?? null;
+  return {
+    page: num(p?.page) ?? 1,
+    pageSize: num(p?.page_size) ?? rowCount,
+    total: num(p?.total),
+    totalPages: num(p?.total_pages),
+    hasNext: p?.has_next ?? false,
+    hasPrev: p?.has_prev ?? false,
+  };
+};
+
+// meta.totals covers clients, leads, raw_spend, premium_spend, daily_budget.
+//
+// BALANCE IS NOT IN HERE AND MUST NOT BE ADDED. A CPL client bills per qualified
+// lead with no service charge and no GST; a hybrid bills on spend plus both.
+// Adding those two columns produces a number that describes nothing — not what
+// anyone owes, not what we would invoice. The server declines to total it for
+// that reason; deriving it here would just move the meaningless number.
+const readTotals = (res) => {
+  const meta = res?.meta ?? res?.data?.meta ?? {};
+  const t = meta.totals ?? res?.data?.totals ?? {};
+  return {
+    clients: num(t.clients),
+    leads: num(t.leads),
+    raw_spend: num(t.raw_spend),
+    premium_spend: num(t.premium_spend),
+    daily_budget: num(t.daily_budget),
+  };
+};
+
+// Projects arrive sorted biggest-budget-first. Normalised for shape only, never
+// re-ordered: the server chose the order and the UI says whose order it is.
+const normaliseProjects = (row) => {
+  const list = Array.isArray(row?.projects) ? row.projects : [];
+  return list.map((p) => ({
+    project_id: p?.project_id ?? p?.id ?? null,
+    project_name: p?.project_name ?? p?.name ?? null,
+    daily_budget: num(p?.daily_budget),
+  }));
+};
+
+const normaliseRow = (row) => {
+  const projects = normaliseProjects(row);
+  return {
+    ...row,
+    client_type: String(row?.client_type ?? "").toLowerCase() || null,
+    projects,
+    project_count: num(row?.project_count) ?? projects.length,
+    daily_budget: num(row?.daily_budget),
+    active_campaigns: num(row?.active_campaigns),
+    ad_accounts: num(row?.ad_accounts),
+    leads: num(row?.leads),
+    raw_spend: num(row?.raw_spend),
+    raw_cpl: num(row?.raw_cpl),
+    // Stays a raw null-or-number. WHICH of the two it is drives the config-gap
+    // flag in commandRules, so it must not be coerced anywhere on the way here.
+    premium_spend: num(row?.premium_spend),
+    balance_inc_gst: num(row?.balance_inc_gst),
+  };
+};
+
+// filters: { preset, start, end, sort, dir, type, q, page, pageSize }
+// `start`/`end` go only with preset === "custom"; sending them alongside a named
+// preset would leave the server to pick a winner we can't predict.
+export const fetchCommandBoard = async (filters = {}) => {
+  const preset = filters.preset ?? DEFAULT_PRESET;
+  const custom = preset === "custom";
+  const res = await api(
+    `/clients/command/${qs({
+      preset,
+      start: custom ? filters.start : null,
+      end: custom ? filters.end : null,
+      sort: filters.sort,
+      dir: filters.dir,
+      type: filters.type,
+      q: filters.q,
+      page: filters.page,
+      page_size: filters.pageSize ?? filters.page_size,
+    })}`,
+    { method: "GET" },
+  );
+
+  warmUntil.set(
+    rangeKeyOf({ preset, start: filters.start, end: filters.end }),
+    Date.now() + CACHE_TTL_MS,
+  );
+
+  const rows = unwrapRows(res);
+  return {
+    rows: rows.map(normaliseRow),
+    pagination: readPagination(res, rows.length),
+    totals: readTotals(res),
+  };
+};

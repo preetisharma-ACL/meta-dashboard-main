@@ -33,6 +33,7 @@ import ClientNomen from "./pages/admin/client/ClientNomen";
 import EditClients from "./pages/admin/client/EditClients";
 import ClientStatusBoard from "./pages/clients/ClientStatusBoard";
 import ValueTierBoard from "./pages/clients/ValueTierBoard";
+import CommandBoard from "./pages/command/CommandBoard";
 import Campaigns from "./pages/admin/campaigns/Campaigns";
 import AdAccounts from "./pages/admin/client/AdAccounts";
 import AdAccountClients from "./pages/admin/client/AdAccountClients";
@@ -464,6 +465,19 @@ function App() {
               component={() => (
                 <AdminRoute roles={["admin", "campaign_manager"]}>
                   <ClientStatusBoard />
+                </AdminRoute>
+              )}
+            />
+            {/* Command page — every client on one screen over a chosen date
+                range: what's live, what it spends, what it returns, what's owed
+                and who owns it. Admin + coordination ONLY; /clients/command/
+                403s every other role, so this gate only decides whether the
+                screen is offered, never whether the data is safe to serve. */}
+            <Route
+              path="/command"
+              component={() => (
+                <AdminRoute roles={["admin", "coordination"]}>
+                  <CommandBoard />
                 </AdminRoute>
               )}
             />
