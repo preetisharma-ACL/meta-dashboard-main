@@ -142,6 +142,14 @@ const normaliseRow = (row) => {
   return {
     ...row,
     client_type: String(row?.client_type ?? "").toLowerCase() || null,
+    // Kept strictly true / false / null. Coercing an absent key to false would
+    // mark every client dormant — see deliveryState in commandRules.
+    delivered_last_7d:
+      row?.delivered_last_7d === true
+        ? true
+        : row?.delivered_last_7d === false
+          ? false
+          : null,
     projects,
     project_count: num(row?.project_count) ?? projects.length,
     daily_budget: num(row?.daily_budget),
@@ -157,7 +165,12 @@ const normaliseRow = (row) => {
   };
 };
 
-// filters: { preset, start, end, sort, dir, type, q, page, pageSize }
+// filters: { preset, start, end, sort, dir, type, q, activeOnly, page, pageSize }
+//
+// `activeOnly` sends ?active_only=true and drops clients with no leads and no
+// spend in the last SEVEN days — a fixed window, independent of preset/start/end.
+// Sent only when true: ?active_only=false is not a documented value, and an
+// undocumented param is a guess.
 // `start`/`end` go only with preset === "custom"; sending them alongside a named
 // preset would leave the server to pick a winner we can't predict.
 export const fetchCommandBoard = async (filters = {}) => {
@@ -172,6 +185,7 @@ export const fetchCommandBoard = async (filters = {}) => {
       dir: filters.dir,
       type: filters.type,
       q: filters.q,
+      active_only: filters.activeOnly ? "true" : null,
       page: filters.page,
       page_size: filters.pageSize ?? filters.page_size,
     })}`,

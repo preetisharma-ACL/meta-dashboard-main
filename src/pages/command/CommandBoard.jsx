@@ -24,6 +24,8 @@ import {
   humanise,
   asList,
   rangeKeyOf,
+  isDormant,
+  DELIVERY_WINDOW_LABEL,
   inr,
   inrRate,
   inrCompact,
@@ -112,6 +114,9 @@ export default function CommandBoard() {
   // goes back to saying "on this page".
   const [pageSize, setPageSize] = createSignal(200);
 
+  // Server-side, and a FIXED seven-day window — not the range above it.
+  const [activeOnly, setActiveOnly] = createSignal(false);
+
   // ── View-only state ────────────────────────────────────────────────────────
   const [gapOnly, setGapOnly] = createSignal(false);
   const [expanded, setExpanded] = createSignal(null);
@@ -145,6 +150,7 @@ export default function CommandBoard() {
       end: end(),
       type: type(),
       q: q(),
+      activeOnly: activeOnly(),
       sort: sort(),
       dir: dir(),
       page: page(),
@@ -267,6 +273,21 @@ export default function CommandBoard() {
 
   const visible = createMemo(() => (gapOnly() ? gapRows() : rows()));
 
+  // ── Dormancy ───────────────────────────────────────────────────────────────
+  // How many of the rows on screen would vanish if the filter were switched on.
+  // Counted the same way as the config gap, and labelled by the same rule: it is
+  // only "of N clients" when the whole filtered set is in hand.
+  const dormantRows = createMemo(() => rows().filter(isDormant));
+  const dormantCaption = () =>
+    wholeSetInView()
+      ? `${dormantRows().length} of ${pagination().total}`
+      : `${dormantRows().length} on this page`;
+
+  const toggleActiveOnly = () => {
+    setPage(1);
+    setActiveOnly((v) => !v);
+  };
+
   const gotoPage = (n) => {
     const tp = pagination().totalPages;
     const target = Math.max(1, n);
@@ -283,7 +304,7 @@ export default function CommandBoard() {
   // The date range narrows the FIGURES, not the roster — a client with no spend
   // in the window still has a row. So only type and search can empty the table,
   // and only they belong in the "nothing matched" wording.
-  const hasFilters = () => !!(type() || q());
+  const hasFilters = () => !!(type() || q() || activeOnly());
 
   return (
     <div class="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 sm:p-6 lg:p-8">
@@ -451,6 +472,40 @@ export default function CommandBoard() {
           </For>
         </div>
 
+        {/* Dormancy. Server-side (?active_only=true), and the label states its
+            OWN window every time, because that window is seven days no matter
+            what the range chips say — a client dormant for a month stays hidden
+            on Last 30 Days. "Delivering", never "Active": campaign_activity is
+            already running/paused in this codebase, and the 14 clients that
+            delivered this week off since-paused campaigns are precisely where
+            those two answers diverge. */}
+        <button
+          type="button"
+          onClick={toggleActiveOnly}
+          aria-pressed={activeOnly()}
+          title={`Hide clients with no leads and no spend in the ${DELIVERY_WINDOW_LABEL}. This window is fixed at 7 days and does not follow the date range above.`}
+          class={`inline-flex items-center gap-2 px-3.5 py-2 text-sm font-semibold rounded-lg border transition-colors ${
+            activeOnly()
+              ? "bg-[#1F6F4A] text-white border-[#1F6F4A]"
+              : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-[#1F6F4A]/50"
+          }`}
+        >
+          <span
+            class={`h-1.5 w-1.5 rounded-full ${
+              activeOnly() ? "bg-white" : "bg-[#1F6F4A]"
+            }`}
+            aria-hidden="true"
+          />
+          Delivering
+          <span
+            class={`text-[11px] font-normal ${
+              activeOnly() ? "text-white/70" : "text-gray-400"
+            }`}
+          >
+            ({DELIVERY_WINDOW_LABEL})
+          </span>
+        </button>
+
         {/* The flag, as a filter. Its label always names the set it counted —
             there is no server param for the gap, so this narrows the page in
             hand and must never read as a sweep of the whole list. */}
@@ -490,6 +545,19 @@ export default function CommandBoard() {
 
         <span class="ml-auto text-sm text-gray-400 dark:text-gray-500 whitespace-nowrap">
           {visible().length} shown
+          {/* Only worth saying while they're still on screen. Once the filter
+              is on they're gone and the paginator's total already says so. */}
+          <Show when={!activeOnly() && dormantRows().length > 0}>
+            <span class="text-gray-300 dark:text-gray-600"> · </span>
+            <button
+              type="button"
+              onClick={toggleActiveOnly}
+              class="underline decoration-dotted underline-offset-2 hover:text-[#1F6F4A] dark:hover:text-emerald-400 transition-colors"
+              title={`Hide the clients with no leads and no spend in the ${DELIVERY_WINDOW_LABEL}`}
+            >
+              {dormantCaption()} dormant
+            </button>
+          </Show>
         </span>
       </div>
 
@@ -713,6 +781,16 @@ export default function CommandBoard() {
                         Every client in view has a pricing config for these
                         dates.
                       </Match>
+                      {/* Named separately so the reader isn't left hunting for
+                          a range filter that had nothing to do with it — this
+                          one is a fixed 7-day window. */}
+                      <Match when={activeOnly()}>
+                        No client has delivered leads or spend in the{" "}
+                        {DELIVERY_WINDOW_LABEL}
+                        {hasFilters() && (type() || q())
+                          ? " under these filters."
+                          : "."}
+                      </Match>
                       <Match when={hasFilters()}>
                         No clients match these filters.
                       </Match>
@@ -740,10 +818,24 @@ export default function CommandBoard() {
                                 : "bg-gray-50/60 dark:bg-gray-800/30"
                           }`}
                         >
-                          {/* Client */}
+                          {/* Client. A dormant row is de-emphasised rather than
+                              badged: 94 of 186 are dormant, and a chip on half
+                              the page is not a signal, it's a texture. Muting
+                              the name answers "who disappears if I flip the
+                              filter?" at a glance, and the count lives once, on
+                              the toggle. */}
                           <td class="p-3">
-                            <div class="flex items-center gap-2.5 min-w-0">
-                              <Avatar name={r.client || r.email} />
+                            <div
+                              class="flex items-center gap-2.5 min-w-0"
+                              title={
+                                isDormant(r)
+                                  ? `No leads and no spend in the ${DELIVERY_WINDOW_LABEL}`
+                                  : undefined
+                              }
+                            >
+                              <span class={isDormant(r) ? "opacity-45" : ""}>
+                                <Avatar name={r.client || r.email} />
+                              </span>
                               <div class="min-w-0">
                                 <button
                                   type="button"
@@ -751,7 +843,11 @@ export default function CommandBoard() {
                                     r.client && navigate(`/${slugify(r.client)}`)
                                   }
                                   disabled={!r.client}
-                                  class="block max-w-[200px] truncate text-left font-medium text-gray-800 dark:text-gray-100 hover:text-[#AC2334] dark:hover:text-[#E4566A] disabled:hover:text-inherit disabled:cursor-default"
+                                  class={`block max-w-[200px] truncate text-left font-medium hover:text-[#AC2334] dark:hover:text-[#E4566A] disabled:hover:text-inherit disabled:cursor-default ${
+                                    isDormant(r)
+                                      ? "text-gray-400 dark:text-gray-500"
+                                      : "text-gray-800 dark:text-gray-100"
+                                  }`}
                                 >
                                   {r.client || DASH}
                                 </button>
@@ -987,6 +1083,13 @@ export default function CommandBoard() {
         Balance is always the current month, so it matches what the client sees
         on their billing page and what accounts would quote. Hover a balance to
         see where it came from.
+      </p>
+      <p class="mt-1.5 text-[12px] text-gray-400 dark:text-gray-500">
+        <b class="font-semibold">Delivering</b> means leads or spend in the last
+        7 days — a fixed window that does not follow the date range, so a client
+        dormant for a month stays hidden even on Last 30 Days. It tests
+        delivery, not campaign state: clients still producing leads from
+        since-paused campaigns count as delivering.
       </p>
       <p class="mt-1.5 text-[12px] text-gray-400 dark:text-gray-500">
         Balance is deliberately not totalled: a CPL client bills per qualified

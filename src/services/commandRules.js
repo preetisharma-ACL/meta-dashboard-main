@@ -46,6 +46,52 @@ export const SORTABLE = {
 export const rangeKeyOf = ({ preset, start, end }) =>
   preset === "custom" ? `custom:${start ?? ""}:${end ?? ""}` : String(preset);
 
+// ── Dormancy (?active_only=true, delivered_last_7d) ──────────────────────────
+// A client is DORMANT when it has produced no leads and no spend in the last
+// seven days. 186 clients without the filter, 92 with it.
+//
+// THE WINDOW IS FIXED AND IS NOT THE DATE FILTER. Seven days, whatever range the
+// page is showing. A client dormant for a month stays hidden on Last 30 Days.
+// Structurally the same trap as balance_inc_gst always being the current month,
+// so it gets the same treatment: every label says "last 7 days" out loud, and
+// never just "active", which would silently inherit whatever range is selected.
+//
+// THIS IS DELIVERY, NOT CAMPAIGN STATE, and the two are NOT interchangeable.
+// Coordination asked for "no live campaign"; 14 clients delivered this week off
+// campaigns that have since paused — ShubhamShakya on 49 leads and ₹9,162,
+// RohitAgarwal on 43 and ₹8,480 — and hiding those would have someone asking
+// where they went within a day. Only one client differs between the two tests,
+// and delivery is the one that keeps the 14.
+//
+// The word "active" is also already taken in this codebase: `campaign_activity`
+// is running/paused, derived from campaigns, and valueTier.js carries an
+// explicit warning that the labels on a client must never be merged or
+// described in each other's words. Naming this control "Active" would collide
+// with the exact concept the 14 clients prove it isn't.
+export const DELIVERY_WINDOW_DAYS = 7;
+export const DELIVERY_WINDOW_LABEL = "last 7 days";
+
+export const DELIVERY = {
+  DELIVERING: "delivering",
+  DORMANT: "dormant",
+  UNKNOWN: "unknown",
+};
+
+// Tri-state on purpose, for the same reason premiumSpendState is four-state: a
+// plain `!row.delivered_last_7d` reads a MISSING field as dormant and would mark
+// all 186 clients dormant the day the key is renamed or a cache serves rows from
+// before it existed. That last one is not hypothetical — the row cache is keyed
+// by version, and stale rows are exactly how a new field arrives absent.
+export const deliveryState = (row) => {
+  const v = row?.delivered_last_7d;
+  if (v === true) return DELIVERY.DELIVERING;
+  if (v === false) return DELIVERY.DORMANT;
+  return DELIVERY.UNKNOWN;
+};
+
+// Only a row we KNOW to be dormant is treated as dormant. Unknown is not.
+export const isDormant = (row) => deliveryState(row) === DELIVERY.DORMANT;
+
 // ── Pagination ────────────────────────────────────────────────────────────────
 // meta.pagination is FOUR fields, verified on the live payload:
 //   { page, page_size, total, pages }

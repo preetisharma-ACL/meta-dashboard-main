@@ -22,6 +22,11 @@ import {
   fmtRange,
   derivePagination,
   paginationDisagrees,
+  deliveryState,
+  isDormant,
+  DELIVERY,
+  DELIVERY_WINDOW_DAYS,
+  DELIVERY_WINDOW_LABEL,
   inr,
   count,
   asList,
@@ -218,6 +223,52 @@ console.log("\ndates are local, not UTC");
   const d = new Date(2026, 8, 18, 23, 30);
   check("late evening stays on its own date", isoDate(d) === "2026-09-18");
   check("single digits are padded", isoDate(new Date(2026, 0, 5)) === "2026-01-05");
+}
+
+console.log("\ndormancy is delivery, and a missing field is not dormancy");
+{
+  check(
+    "delivered true → delivering",
+    deliveryState({ delivered_last_7d: true }) === DELIVERY.DELIVERING,
+  );
+  check(
+    "delivered false → dormant",
+    deliveryState({ delivered_last_7d: false }) === DELIVERY.DORMANT,
+  );
+  check("…and isDormant agrees", isDormant({ delivered_last_7d: false }));
+  check("a delivering row is not dormant", isDormant({ delivered_last_7d: true }) === false);
+
+  // The failure this guards. `!row.delivered_last_7d` reads every one of these
+  // as dormant, which would grey out and mis-count all 186 clients the day the
+  // key is renamed — or, more likely, the day a cache at an older version
+  // serves rows from before the field existed. The spec flags exactly that:
+  // bump the cache key or a new field reads as missing on every row.
+  for (const missing of [undefined, null, "", 0, "false", "no"]) {
+    check(
+      `${JSON.stringify(missing)} → unknown, not dormant`,
+      deliveryState({ delivered_last_7d: missing }) === DELIVERY.UNKNOWN,
+    );
+    check(
+      `${JSON.stringify(missing)} → isDormant false`,
+      isDormant({ delivered_last_7d: missing }) === false,
+    );
+  }
+  check("a row with no such key at all", deliveryState({}) === DELIVERY.UNKNOWN);
+
+  // A stale-cache page must not turn into 186 greyed rows and a "186 dormant"
+  // count offering to hide the entire book.
+  {
+    const stale = Array.from({ length: 186 }, () => ({ client_type: "cpl" }));
+    check(
+      "a whole page from before the field existed reads as 0 dormant",
+      stale.filter(isDormant).length === 0,
+    );
+  }
+
+  // The window is fixed at 7 days and must never be described as the selected
+  // range. The label is a constant precisely so no caller can interpolate one.
+  check("the window says 7 days", DELIVERY_WINDOW_LABEL === "last 7 days");
+  check("…and is not preset-derived", DELIVERY_WINDOW_DAYS === 7);
 }
 
 console.log("\npagination: four served fields, two derived");
