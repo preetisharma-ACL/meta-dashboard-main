@@ -102,7 +102,14 @@ export default function CommandBoard() {
   const [sort, setSort] = createSignal("budget");
   const [dir, setDir] = createSignal("desc");
   const [page, setPage] = createSignal(1);
-  const [pageSize, setPageSize] = createSignal(100);
+  // 200 is the server's cap and there are 186 clients, so the default puts the
+  // whole book on one page. That is not about scrolling — it is what makes the
+  // config-gap count below a count of ALL unpriced clients rather than the
+  // unpriced ones on page 1 of 4. The flag is the reason this screen exists; it
+  // should be whole when the page opens, not after someone finds the page-size
+  // control. Past 200 clients this degrades honestly on its own: the caption
+  // goes back to saying "on this page".
+  const [pageSize, setPageSize] = createSignal(200);
 
   // ── View-only state ────────────────────────────────────────────────────────
   const [gapOnly, setGapOnly] = createSignal(false);
@@ -232,10 +239,13 @@ export default function CommandBoard() {
   };
 
   // ── The config gap ─────────────────────────────────────────────────────────
-  // Counted over the rows in hand, because there is no server param for it. When
-  // the whole filtered set happens to fit on one page — 186 clients at 200 per
-  // page does — the count IS the whole set, and the caption says so. Otherwise
-  // it says "on this page", so the number is never read as a total it isn't.
+  // Counted over the rows in hand, because there is no server param for it. At
+  // the default 200 per page all 186 clients are in hand, so the count IS the
+  // whole set and the caption says "N of 186 clients". Drop the page size, or
+  // grow past 200 clients, and it says "N on this page" instead — the number is
+  // never allowed to read as a total it isn't.
+  //
+  // For scale: 29 of the 186 are real gaps today (24 CPL, 5 hybrid).
   const gapRows = createMemo(() => rows().filter(isConfigGap));
   const wholeSetInView = () => {
     const t = pagination().total;

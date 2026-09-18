@@ -82,6 +82,79 @@ console.log("\nno client type → say so; never guess either way");
   }
 }
 
+console.log("\nthe live census — 186 rows, as served on 2026-09-18");
+{
+  // Not a hypothetical. This is the real distribution, and it is here because it
+  // is the argument for the rule: the naive `!premium_spend` check would have
+  // raised 64 warnings of which 35 were wrong, and a flag that cries wolf on
+  // more than half its rows is ignored inside a week.
+  const CENSUS = [
+    ["cpl", 41250, 77], // priced, spent
+    ["hybrid", 41250, 35],
+    ["cpl", 0, 25], // priced, no spend in the window — NOT a gap
+    ["hybrid", 0, 10],
+    ["cpl", null, 24], // the real gap
+    ["hybrid", null, 5],
+    ["retainer", null, 10], // by design
+  ];
+  const rows = CENSUS.flatMap(([client_type, premium_spend, n]) =>
+    Array.from({ length: n }, () => ({ client_type, premium_spend })),
+  );
+
+  check("the census is the whole book", rows.length === 186, `(${rows.length})`);
+
+  const gaps = rows.filter(isConfigGap).length;
+  const nas = rows.filter((r) => premiumSpendState(r) === PREMIUM.NA).length;
+  const values = rows.filter((r) => premiumSpendState(r) === PREMIUM.VALUE).length;
+  const unknowns = rows.filter(
+    (r) => premiumSpendState(r) === PREMIUM.UNKNOWN,
+  ).length;
+
+  check("29 clients are genuinely unpriced", gaps === 29, `(${gaps})`);
+  check("10 retainers read as n/a", nas === 10, `(${nas})`);
+  check("147 carry a figure", values === 147, `(${values})`);
+  check(
+    "nothing is unknown — client_type is on every row today",
+    unknowns === 0,
+    `(${unknowns})`,
+  );
+
+  // The counterfactuals, asserted rather than asserted-about. premiumSpendState
+  // makes TWO independent decisions, and there is a live cost to getting either
+  // wrong. These are the numbers that tell anyone "simplifying" it what they'd
+  // be buying.
+  //
+  // 1. Falsy instead of null, retainer branch still correct. This is the near
+  //    miss — the code looks right and the bug is one character.
+  const falsyOnly = rows.filter(
+    (r) => r.client_type !== "retainer" && !r.premium_spend,
+  ).length;
+  check("a falsy check would have raised 64", falsyOnly === 64, `(${falsyOnly})`);
+  check(
+    "…of which 35 are priced clients with no spend in the window",
+    falsyOnly - gaps === 35,
+    `(${falsyOnly - gaps})`,
+  );
+  check(
+    "…so more than half the flag is wrong, and the flag gets ignored",
+    falsyOnly - gaps > gaps / 2,
+  );
+
+  // 2. Falsy AND no client_type branch — the version written without knowing
+  //    retainers carry no configs. Worse again: 45 of 74.
+  const fullyNaive = rows.filter((r) => !r.premium_spend).length;
+  check(
+    "dropping the retainer branch too would raise 74",
+    fullyNaive === 74,
+    `(${fullyNaive})`,
+  );
+  check(
+    "…45 of them false — nearly two wrong for every one right",
+    fullyNaive - gaps === 45,
+    `(${fullyNaive - gaps})`,
+  );
+}
+
 console.log("\nmissing values print as absence, not as zero");
 {
   check("null money → dash", inr(null) === DASH);

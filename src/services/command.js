@@ -47,14 +47,26 @@ const qs = (params) => {
   return s ? `?${s}` : "";
 };
 
-// The row list can arrive as data.clients, data.results, a bare array, or an
-// envelope around any of those. Read all of them rather than bet on one.
-const unwrapRows = (res) => {
-  const d = res?.data ?? res;
+// ── The envelope, verified against the live payload (186 rows) ───────────────
+//   { success, message, data: [ ...rows... ], meta: { pagination, range, totals } }
+//
+// `data` IS the array — not data.clients, not data.results — and `meta` is a
+// TOP-LEVEL sibling of it, not nested inside. This reader used to try four row
+// keys and two meta positions, written before anyone had seen a response. Now
+// that the shape is known, those branches could never fire, and keeping them
+// would be worse than useless: if the payload ever did move the rows to
+// data.clients, a fallback would quietly find them while `meta` moved out from
+// under the paginator and the totals strip — a half-broken page reporting
+// confident numbers. Failing loudly is the more useful answer.
+const readRows = (res) => {
+  const d = res?.data;
   if (Array.isArray(d)) return d;
-  for (const key of ["clients", "results", "rows", "items"]) {
-    if (Array.isArray(d?.[key])) return d[key];
-  }
+  console.error(
+    "[command] /clients/command/ data is no longer an array of client rows —",
+    "the envelope has changed and meta.pagination/meta.totals have probably",
+    "moved with it. Got:",
+    d,
+  );
   return [];
 };
 
@@ -69,8 +81,7 @@ const num = (v) => {
 // a page size wearing a total's clothes is how "20 of 20" happened on a 264-row
 // ledger. Missing meta → null, and the UI says it doesn't know.
 const readPagination = (res, rowCount) => {
-  const meta = res?.meta ?? res?.data?.meta ?? {};
-  const p = meta.pagination ?? res?.pagination ?? null;
+  const p = res?.meta?.pagination ?? null;
   return {
     page: num(p?.page) ?? 1,
     pageSize: num(p?.page_size) ?? rowCount,
@@ -89,8 +100,7 @@ const readPagination = (res, rowCount) => {
 // anyone owes, not what we would invoice. The server declines to total it for
 // that reason; deriving it here would just move the meaningless number.
 const readTotals = (res) => {
-  const meta = res?.meta ?? res?.data?.meta ?? {};
-  const t = meta.totals ?? res?.data?.totals ?? {};
+  const t = res?.meta?.totals ?? {};
   return {
     clients: num(t.clients),
     leads: num(t.leads),
@@ -157,7 +167,7 @@ export const fetchCommandBoard = async (filters = {}) => {
     Date.now() + CACHE_TTL_MS,
   );
 
-  const rows = unwrapRows(res);
+  const rows = readRows(res);
   return {
     rows: rows.map(normaliseRow),
     pagination: readPagination(res, rows.length),
