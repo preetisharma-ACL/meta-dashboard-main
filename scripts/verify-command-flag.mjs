@@ -19,6 +19,7 @@ import {
   isUnrecorded,
   rangeKeyOf,
   isoDate,
+  fmtRange,
   inr,
   count,
   asList,
@@ -215,6 +216,55 @@ console.log("\ndates are local, not UTC");
   const d = new Date(2026, 8, 18, 23, 30);
   check("late evening stays on its own date", isoDate(d) === "2026-09-18");
   check("single digits are padded", isoDate(new Date(2026, 0, 5)) === "2026-01-05");
+}
+
+console.log("\nthe server's window is printed exactly as served");
+{
+  // meta.range is authoritative — resolved in Asia/Kolkata, and the dates the
+  // figures were actually computed over. The failure this guards against is
+  // subtle and total: `new Date("2026-08-20")` is UTC midnight, so any browser
+  // west of Greenwich renders the server's 20 Aug as 19 Aug, and the page
+  // contradicts the numbers it is labelling. fmtRange never builds a Date.
+  check(
+    "a cross-month window",
+    fmtRange("2026-08-20", "2026-09-18") === "20 Aug – 18 Sep 2026",
+    `(${fmtRange("2026-08-20", "2026-09-18")})`,
+  );
+  check(
+    "within one month, the month is said once",
+    fmtRange("2026-09-12", "2026-09-18") === "12–18 Sep 2026",
+    `(${fmtRange("2026-09-12", "2026-09-18")})`,
+  );
+  check(
+    "a single day is one date, not a range",
+    fmtRange("2026-09-18", "2026-09-18") === "18 Sep 2026",
+    `(${fmtRange("2026-09-18", "2026-09-18")})`,
+  );
+  check(
+    "a cross-year window carries both years",
+    fmtRange("2025-12-20", "2026-01-18") === "20 Dec 2025 – 18 Jan 2026",
+    `(${fmtRange("2025-12-20", "2026-01-18")})`,
+  );
+
+  // The one that actually bites. The first of a month is where a UTC reparse
+  // rolls backwards past a month boundary, turning "1 Sep" into "31 Aug".
+  check(
+    "the 1st of a month does not roll back a day",
+    fmtRange("2026-09-01", "2026-09-30") === "1–30 Sep 2026",
+    `(${fmtRange("2026-09-01", "2026-09-30")})`,
+  );
+  check(
+    "1 Jan does not roll back a year",
+    fmtRange("2026-01-01", "2026-01-01") === "1 Jan 2026",
+    `(${fmtRange("2026-01-01", "2026-01-01")})`,
+  );
+
+  // Half a window is worse than none: it would label the columns with a date
+  // the figures were not computed over.
+  check("a missing end yields nothing", fmtRange("2026-09-01", null) === null);
+  check("a missing start yields nothing", fmtRange(null, "2026-09-30") === null);
+  check("junk yields nothing", fmtRange("last7", "today") === null);
+  check("an impossible month yields nothing", fmtRange("2026-13-01", "2026-13-02") === null);
 }
 
 console.log("\npeople lists survive whichever shape they arrive in");

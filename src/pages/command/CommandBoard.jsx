@@ -29,6 +29,7 @@ import {
   inrCompact,
   count,
   isoDate,
+  fmtRange,
   DASH,
 } from "../../services/commandRules";
 import Avatar from "../../components/common/Avatar";
@@ -164,6 +165,14 @@ export default function CommandBoard() {
   const rows = () => data()?.rows ?? [];
   const pagination = () => data()?.pagination ?? {};
   const totals = () => data()?.totals ?? {};
+
+  // The window the server actually computed over, in its own timezone. Shown as
+  // fact, never recomputed here — see readRange/fmtRange.
+  const range = () => data()?.range ?? null;
+  const rangeLabel = () => {
+    const r = range();
+    return r ? fmtRange(r.since, r.until) : null;
+  };
   const firstLoad = () => board.loading && !board.latest;
 
   // ── How long this is taking, and what to say about it ──────────────────────
@@ -368,10 +377,17 @@ export default function CommandBoard() {
             </div>
           </Show>
 
-          <span class="ml-auto text-[12px] text-gray-400 dark:text-gray-500">
-            Leads, spend, CPL and daily budget only — the balance column is
-            always the current month.
-          </span>
+          {/* What the server actually computed over, in its own timezone. A
+              preset is a request; this is the answer, so it's shown as fact
+              rather than as a restatement of the chip that's lit. */}
+          <Show when={rangeLabel()}>
+            <span class="ml-auto inline-flex items-center gap-2 text-[13px] whitespace-nowrap">
+              <span class="text-gray-400 dark:text-gray-500">Computed over</span>
+              <span class="font-semibold tabular-nums text-gray-700 dark:text-gray-200">
+                {rangeLabel()}
+              </span>
+            </span>
+          </Show>
         </div>
 
         <Show when={preset() === "custom" && !(start() && end())}>
@@ -489,6 +505,39 @@ export default function CommandBoard() {
       <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 overflow-x-auto">
         <table class="min-w-full text-sm">
           <thead>
+            {/* ── Which clock each column runs on ──────────────────────────
+                The mismatch this page invites is a five-column block governed
+                by the date filter sitting next to a balance that is always the
+                current month. A footnote does not fix that — the reader is
+                looking at the numbers, not the bottom of the page. So the
+                window is stated over the columns it governs, and "Current
+                month" over the one it doesn't, where they can't be conflated.
+
+                Live (campaigns / ad accounts) is deliberately outside the
+                dated block: the filter governs leads, spend, CPL and daily
+                budget only, so grouping it under the range would claim
+                something the endpoint never promised. */}
+            <tr class="border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/60">
+              <th colspan="6" />
+              <th
+                colspan="5"
+                class="px-3 pt-2.5 pb-1 text-center text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 whitespace-nowrap border-x border-gray-200 dark:border-gray-700"
+              >
+                <Show when={rangeLabel()} fallback={<span>Selected range</span>}>
+                  <span class="tabular-nums normal-case text-[12px] text-gray-700 dark:text-gray-200">
+                    {rangeLabel()}
+                  </span>
+                </Show>
+              </th>
+              <th
+                colspan="1"
+                class="px-3 pt-2.5 pb-1 text-center text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 whitespace-nowrap border-r border-gray-200 dark:border-gray-700"
+              >
+                Current month
+              </th>
+              <th colspan="1" />
+            </tr>
+
             <tr class="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60">
               <SortableTh
                 label="Client"
@@ -500,6 +549,12 @@ export default function CommandBoard() {
               <th class={TH}>Sales person</th>
               <th class={TH}>Team</th>
               <th class={TH}>Projects</th>
+              <th
+                class={`${TH} text-right`}
+                title="Active campaigns / ad accounts, as they stand now — the date filter does not govern this column"
+              >
+                Live
+              </th>
               <SortableTh
                 label="Daily budget"
                 col="daily_budget"
@@ -507,7 +562,6 @@ export default function CommandBoard() {
                 sortIcon={sortIcon}
                 onSort={toggleSort}
               />
-              <th class={`${TH} text-right`}>Live</th>
               <SortableTh
                 label="Leads"
                 col="leads"
@@ -769,14 +823,9 @@ export default function CommandBoard() {
                             </Show>
                           </td>
 
-                          {/* Daily budget */}
-                          <td
-                            class={`${NUM} font-semibold text-gray-800 dark:text-gray-100`}
-                          >
-                            {inr(r.daily_budget)}
-                          </td>
-
-                          {/* Live: campaigns over ad accounts */}
+                          {/* Live: campaigns over ad accounts. Current state,
+                              NOT date-scoped — which is why it sits outside the
+                              range-headed block that starts at Daily budget. */}
                           <td class={NUM}>
                             <span class="text-gray-800 dark:text-gray-100">
                               {count(r.active_campaigns)}
@@ -788,6 +837,16 @@ export default function CommandBoard() {
                               {" "}
                               / {count(r.ad_accounts)}
                             </span>
+                          </td>
+
+                          {/* ── Everything from here to Premium spend is the
+                              dated block the group header names ── */}
+
+                          {/* Daily budget */}
+                          <td
+                            class={`${NUM} font-semibold text-gray-800 dark:text-gray-100 border-l border-gray-100 dark:border-gray-800`}
+                          >
+                            {inr(r.daily_budget)}
                           </td>
 
                           {/* Leads */}
@@ -809,8 +868,12 @@ export default function CommandBoard() {
                           </td>
 
                           {/* Balance — always the current month, whatever the
-                              date filter says. Never summed. */}
-                          <td class={`${NUM} text-gray-800 dark:text-gray-100`}>
+                              date filter says. Never summed. The vertical rules
+                              close the dated block on its left, so the eye can
+                              see this column is not in it. */}
+                          <td
+                            class={`${NUM} text-gray-800 dark:text-gray-100 border-x border-gray-100 dark:border-gray-800`}
+                          >
                             <span
                               class="border-b border-dotted border-gray-300 dark:border-gray-600 cursor-help"
                               title={balanceSourceNote(r.balance_source)}
@@ -919,10 +982,11 @@ export default function CommandBoard() {
 
       {/* ══ Footnotes ══ */}
       <p class="mt-5 text-[12px] text-gray-400 dark:text-gray-500">
-        The date range governs leads, spend, CPL and daily budget.{" "}
-        <b class="font-semibold">Balance is always the current month</b>, so it
-        matches what the client sees on their billing page and what accounts
-        would quote. Hover a balance to see where it came from.
+        The dated columns are computed in Asia/Kolkata by the server, and the
+        header shows the window it resolved — not this browser's arithmetic.
+        Balance is always the current month, so it matches what the client sees
+        on their billing page and what accounts would quote. Hover a balance to
+        see where it came from.
       </p>
       <p class="mt-1.5 text-[12px] text-gray-400 dark:text-gray-500">
         Balance is deliberately not totalled: a CPL client bills per qualified

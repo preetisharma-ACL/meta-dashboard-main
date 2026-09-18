@@ -183,7 +183,46 @@ export const inrCompact = (v) => {
 
 // YYYY-MM-DD in the BROWSER's timezone. toISOString() would shift an Indian
 // evening back a day, which is how a "today" filter quietly becomes yesterday.
+// Used for the custom-range date inputs — what the user is picking, not what the
+// server resolved. For the latter see fmtRange below.
 export const isoDate = (d) => {
   const p = (n) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+};
+
+// ── The resolved window (meta.range) ─────────────────────────────────────────
+// meta.range = { since, until }, both ISO, always present, resolved server-side
+// in Asia/Kolkata. These dates are AUTHORITATIVE — they are what the figures
+// were actually computed over, not what this browser thinks "last 7 days" means.
+// So they are displayed as fact.
+//
+// Formatted straight off the string, with no Date object anywhere near it. That
+// is the whole point: `new Date("2026-08-20")` parses as UTC midnight, so a
+// browser anywhere west of Greenwich would render the server's 20 Aug as 19 Aug
+// — the page would contradict the numbers it is labelling, in exactly the way
+// this field exists to prevent.
+const MONTHS = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
+const parseIsoParts = (iso) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso ?? "").trim());
+  if (!m) return null;
+  const month = Number(m[2]);
+  if (month < 1 || month > 12) return null;
+  return { y: m[1], m: MONTHS[month - 1], d: String(Number(m[3])) };
+};
+
+// "18 Sep 2026" · "12–18 Sep 2026" · "20 Aug – 18 Sep 2026" ·
+// "20 Dec 2025 – 18 Jan 2026". Returns null if either end is unreadable, so a
+// caller shows nothing rather than half a window.
+export const fmtRange = (since, until) => {
+  const a = parseIsoParts(since);
+  const b = parseIsoParts(until);
+  if (!a || !b) return null;
+  if (a.y === b.y && a.m === b.m && a.d === b.d) return `${a.d} ${a.m} ${a.y}`;
+  if (a.y === b.y && a.m === b.m) return `${a.d}–${b.d} ${b.m} ${b.y}`;
+  if (a.y === b.y) return `${a.d} ${a.m} – ${b.d} ${b.m} ${b.y}`;
+  return `${a.d} ${a.m} ${a.y} – ${b.d} ${b.m} ${b.y}`;
 };

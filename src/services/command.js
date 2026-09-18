@@ -110,6 +110,17 @@ const readTotals = (res) => {
   };
 };
 
+// meta.range = { since, until }, both ISO, always present, resolved server-side
+// in Asia/Kolkata. This is the window the figures were actually computed over —
+// authoritative, and not re-derivable here: "last7" is the server's arithmetic
+// in its own timezone, and a browser recomputing it would sometimes disagree
+// with the numbers it was labelling.
+const readRange = (res) => {
+  const r = res?.meta?.range ?? null;
+  if (!r?.since || !r?.until) return null;
+  return { since: r.since, until: r.until };
+};
+
 // Projects arrive sorted biggest-budget-first. Normalised for shape only, never
 // re-ordered: the server chose the order and the UI says whose order it is.
 const normaliseProjects = (row) => {
@@ -172,5 +183,6 @@ export const fetchCommandBoard = async (filters = {}) => {
     rows: rows.map(normaliseRow),
     pagination: readPagination(res, rows.length),
     totals: readTotals(res),
+    range: readRange(res),
   };
 };
