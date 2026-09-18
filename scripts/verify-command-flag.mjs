@@ -20,6 +20,8 @@ import {
   rangeKeyOf,
   isoDate,
   fmtRange,
+  derivePagination,
+  paginationDisagrees,
   inr,
   count,
   asList,
@@ -216,6 +218,96 @@ console.log("\ndates are local, not UTC");
   const d = new Date(2026, 8, 18, 23, 30);
   check("late evening stays on its own date", isoDate(d) === "2026-09-18");
   check("single digits are padded", isoDate(new Date(2026, 0, 5)) === "2026-01-05");
+}
+
+console.log("\npagination: four served fields, two derived");
+{
+  // The live shape. `pages`, not `total_pages`, and no has_next/has_prev — the
+  // DRF-ish names this was first written against left both flags false forever,
+  // and the nav only renders when one is true. At the default 200 that looked
+  // fine (186 rows really is one page); at 50 it stranded the reader on page 1
+  // of 4 with no controls at all. These checks exist to keep that shut.
+  const served = (page, page_size, total) => ({
+    page,
+    page_size,
+    total,
+    pages: Math.ceil(total / page_size),
+  });
+
+  {
+    const p = derivePagination(served(1, 200, 186), 186);
+    check("the default: 186 of 186", p.total === 186, `(${p.total})`);
+    check("…is one page", p.totalPages === 1, `(${p.totalPages})`);
+    check("…with nothing after it", p.hasNext === false);
+    check("…and nothing before it", p.hasPrev === false);
+  }
+
+  {
+    // The case that was broken. Four pages, and every one of them navigable.
+    const first = derivePagination(served(1, 50, 186), 50);
+    check("at 50 per page there are 4 pages", first.totalPages === 4, `(${first.totalPages})`);
+    check("page 1 can go forward", first.hasNext === true);
+    check("page 1 cannot go back", first.hasPrev === false);
+
+    const mid = derivePagination(served(2, 50, 186), 50);
+    check("page 2 can go both ways", mid.hasNext === true && mid.hasPrev === true);
+
+    const last = derivePagination(served(4, 50, 186), 36);
+    check("the last page cannot go forward", last.hasNext === false);
+    check("the last page can go back", last.hasPrev === true);
+    check(
+      "a short last page does not shrink the total",
+      last.total === 186,
+      `(${last.total})`,
+    );
+  }
+
+  console.log("\n  …and it degrades without stranding anyone");
+  {
+    // `total` must never borrow the row count: that is how a page size ends up
+    // impersonating a total.
+    const blind = derivePagination(null, 50);
+    check("no meta at all → total unknown", blind.total === null);
+    check("…page size falls back to what arrived", blind.pageSize === 50);
+    check("…and forward is closed rather than guessed", blind.hasNext === false);
+
+    // One renamed key must never take the navigation away again.
+    const noPages = derivePagination(
+      { page: 2, page_size: 50, total: 186 },
+      50,
+    );
+    check(
+      "pages missing → derived from total and page size",
+      noPages.totalPages === 4,
+      `(${noPages.totalPages})`,
+    );
+    check("…so forward still works", noPages.hasNext === true);
+
+    // The worse half of stranding: unable to retreat. hasPrev must not depend
+    // on knowing how many pages there are.
+    const lost = derivePagination({ page: 3, page_size: 50 }, 50);
+    check("page 3 with no totals can still go back", lost.hasPrev === true);
+  }
+
+  console.log("\n  …and a self-contradicting payload is surfaced, not absorbed");
+  {
+    // 186 rows at 200 per page is 1 page, not 62. Both numbers come from the
+    // same serializer, so a disagreement is a backend bug — and it shows up as
+    // pages of empty rows the reader can page into.
+    check(
+      "pages that contradict total/page_size are flagged",
+      paginationDisagrees({ page: 1, page_size: 200, total: 186, pages: 62 }),
+    );
+    check(
+      "a consistent block is not flagged",
+      paginationDisagrees({ page: 1, page_size: 200, total: 186, pages: 1 }) ===
+        false,
+    );
+    check(
+      "a partial block is not flagged — nothing to contradict",
+      paginationDisagrees({ page: 1, total: 186 }) === false,
+    );
+  }
 }
 
 console.log("\nthe server's window is printed exactly as served");

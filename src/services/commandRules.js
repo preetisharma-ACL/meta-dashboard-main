@@ -46,6 +46,68 @@ export const SORTABLE = {
 export const rangeKeyOf = ({ preset, start, end }) =>
   preset === "custom" ? `custom:${start ?? ""}:${end ?? ""}` : String(preset);
 
+// ── Pagination ────────────────────────────────────────────────────────────────
+// meta.pagination is FOUR fields, verified on the live payload:
+//   { page, page_size, total, pages }
+// `pages`, not `total_pages`. There is no has_next and no has_prev — those are
+// ours to derive. Reading the DRF-ish names this was first written against left
+// both flags permanently false, and since the nav only renders when one of them
+// is true, the controls vanished entirely: at 50 per page a reader was stranded
+// on page 1 of 4 with no way forward. Invisible at the default 200, because one
+// page of 186 genuinely has no next.
+//
+// Lives here rather than beside the fetch so it can be asserted directly. Two
+// bugs have now come out of these six lines; that is enough to earn checks.
+const toNum = (v) => {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+// `p` is meta.pagination verbatim (or null). `rowCount` is how many rows the
+// response actually carried.
+export const derivePagination = (p, rowCount = 0) => {
+  const page = toNum(p?.page) ?? 1;
+  const pageSize = toNum(p?.page_size) ?? rowCount;
+  // `total` deliberately does NOT fall back to rowCount. A page size wearing a
+  // total's clothes is how "20 of 20" happened on a 264-row ledger; unknown is
+  // an honest answer and the UI says "many".
+  const total = toNum(p?.total);
+
+  const served = toNum(p?.pages);
+  // Arithmetic fallback, so one renamed key can never again take the navigation
+  // away. Only used when the server didn't say.
+  const computed =
+    total != null && pageSize > 0 ? Math.ceil(total / pageSize) : null;
+  const totalPages = served ?? computed;
+
+  return {
+    page,
+    pageSize,
+    total,
+    totalPages,
+    // `pages` is the server's own count and wins where both exist; the mismatch
+    // is surfaced by paginationDisagrees() rather than silently resolved.
+    hasNext: totalPages != null ? page < totalPages : false,
+    // NOT dependent on knowing the total. Someone on page 3 can always go back,
+    // even if the response forgot to say how many pages there are — being unable
+    // to retreat is the worse half of being stranded.
+    hasPrev: page > 1,
+  };
+};
+
+// True when the server's `pages` contradicts what its own `total` and
+// `page_size` imply. Both come from the same serializer and should agree, so a
+// disagreement is a backend bug worth seeing rather than papering over — and it
+// would show up as pages of empty rows the reader can page into.
+export const paginationDisagrees = (p) => {
+  const pages = toNum(p?.pages);
+  const total = toNum(p?.total);
+  const pageSize = toNum(p?.page_size);
+  if (pages == null || total == null || !pageSize) return false;
+  return pages !== Math.ceil(total / pageSize);
+};
+
 // ── The premium-spend flag ────────────────────────────────────────────────────
 // THIS IS THE ONE THING THE PAGE HAS TO GET RIGHT.
 //

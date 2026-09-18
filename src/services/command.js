@@ -1,5 +1,10 @@
 import { api } from "../api/api";
-import { DEFAULT_PRESET, rangeKeyOf } from "./commandRules";
+import {
+  DEFAULT_PRESET,
+  rangeKeyOf,
+  derivePagination,
+  paginationDisagrees,
+} from "./commandRules";
 
 // ─── Command page: the fetch ──────────────────────────────────────────────────
 // GET /clients/command/ — one row per client, every operational number the desk
@@ -76,20 +81,20 @@ const num = (v) => {
   return Number.isFinite(n) ? n : null;
 };
 
-// `total` is the count across the WHOLE filtered set and is the only honest
-// number for a paginator. It deliberately does NOT fall back to the row count:
-// a page size wearing a total's clothes is how "20 of 20" happened on a 264-row
-// ledger. Missing meta → null, and the UI says it doesn't know.
+// meta.pagination = { page, page_size, total, pages }. The derivation — which
+// key means what, and how has_next/has_prev are computed from fields the server
+// doesn't send — lives in commandRules so it can be asserted; this only locates
+// the block in the envelope.
 const readPagination = (res, rowCount) => {
   const p = res?.meta?.pagination ?? null;
-  return {
-    page: num(p?.page) ?? 1,
-    pageSize: num(p?.page_size) ?? rowCount,
-    total: num(p?.total),
-    totalPages: num(p?.total_pages),
-    hasNext: p?.has_next ?? false,
-    hasPrev: p?.has_prev ?? false,
-  };
+  if (paginationDisagrees(p)) {
+    console.warn(
+      "[command] meta.pagination.pages disagrees with total/page_size —",
+      "the paginator will offer pages that come back empty. Got:",
+      p,
+    );
+  }
+  return derivePagination(p, rowCount);
 };
 
 // meta.totals covers clients, leads, raw_spend, premium_spend, daily_budget.
