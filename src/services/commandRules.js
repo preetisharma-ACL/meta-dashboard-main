@@ -27,6 +27,54 @@ export const CLIENT_TYPES = [
   { key: "retainer", label: "Retainer" },
 ];
 
+// The page opens on CPL + Hybrid, the same default the funding and billing
+// screens carry: those are the priced types, and every number this screen exists
+// to police — premium spend, raw CPL, the missing-config flag — is defined only
+// for them. A retainer has no pricing config by design, so with retainers in
+// view the premium column is mostly "n/a" and the rows that matter have to be
+// picked out from among them. They are one chip away, never hidden.
+export const DEFAULT_CLIENT_TYPES = ["cpl", "hybrid"];
+
+// Toggle a key within the selection, never landing on empty: an empty selection
+// sends no param, the server returns all three types, and the chips would then
+// disagree with the table. Deselecting the last lit chip is a no-op.
+export const toggleClientType = (prev, key) => {
+  const cur = Array.isArray(prev) ? prev : [];
+  const next = cur.includes(key) ? cur.filter((k) => k !== key) : [...cur, key];
+  return next.length ? next : cur;
+};
+
+// What goes on the wire as ?type=. All three selected is not a narrowing — it is
+// every type there is — so it sends nothing rather than enumerating the set,
+// which keeps that request identical to the unfiltered one the server caches.
+// Order follows CLIENT_TYPES, so one selection always produces one string
+// whatever order the chips were clicked in.
+export const typeParam = (selected) => {
+  const keys = CLIENT_TYPES.map((t) => t.key);
+  const on = keys.filter((k) => (selected ?? []).includes(k));
+  if (on.length === 0 || on.length === keys.length) return null;
+  return on.join(",");
+};
+
+// Did the server actually apply ?type=? A comma list is the convention
+// everywhere else in this API (?client_types=cpl,hybrid), but that is a
+// different parser on a different view and this endpoint has not been seen
+// handling one. If it ignores the list, or reads it as one unknown value, rows
+// come back carrying types nobody asked for while the chips claim a narrowing —
+// the header describing one set and the rows another. So the rows are checked
+// against the ask and the page says so out loud.
+export const typesNotApplied = (rows, selected) => {
+  const param = typeParam(selected);
+  if (!param) return [];
+  const asked = new Set(param.split(","));
+  const stray = new Set();
+  for (const r of rows ?? []) {
+    const t = r?.client_type;
+    if (t && !asked.has(t)) stray.add(t);
+  }
+  return [...stray];
+};
+
 // The columns the server can sort on, keyed by our column id. A header that
 // isn't in here must not offer a sort control: a client-side sort would reorder
 // one page while reading as an ordering of the whole set.

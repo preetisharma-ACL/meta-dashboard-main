@@ -28,6 +28,11 @@ import {
   DELIVERY_WINDOW_DAYS,
   DELIVERY_WINDOW_LABEL,
   activeOnlyParam,
+  CLIENT_TYPES,
+  DEFAULT_CLIENT_TYPES,
+  toggleClientType,
+  typeParam,
+  typesNotApplied,
   expectColdLoad,
   CACHE_TTL_MINUTES,
   CACHE_TTL_MS,
@@ -505,6 +510,78 @@ console.log("\nthe server's window is printed exactly as served");
   check("a missing start yields nothing", fmtRange(null, "2026-09-30") === null);
   check("junk yields nothing", fmtRange("last7", "today") === null);
   check("an impossible month yields nothing", fmtRange("2026-13-01", "2026-13-02") === null);
+}
+
+console.log("\nthe client-type chips, and what they put on the wire");
+{
+  check(
+    "the page opens on CPL + Hybrid",
+    typeParam(DEFAULT_CLIENT_TYPES) === "cpl,hybrid",
+  );
+  // All three is every type there is, so it must send the SAME request as no
+  // filter at all — otherwise the unfiltered view splits into two cache keys.
+  check(
+    "all three types send no param",
+    typeParam(CLIENT_TYPES.map((t) => t.key)) === null,
+  );
+  check("nothing selected sends no param", typeParam([]) === null);
+  check("undefined sends no param", typeParam(undefined) === null);
+  // One selection, one string: the chips can be clicked in any order.
+  check(
+    "the order is the chips' order, not the clicks'",
+    typeParam(["hybrid", "cpl"]) === "cpl,hybrid",
+  );
+  check("a single type still works", typeParam(["retainer"]) === "retainer");
+
+  check(
+    "a chip turns on",
+    toggleClientType(["cpl"], "retainer").join(",") === "cpl,retainer",
+  );
+  check(
+    "a chip turns off",
+    toggleClientType(["cpl", "hybrid"], "hybrid").join(",") === "cpl",
+  );
+  // Empty would send no param, the server would return all three types, and
+  // every chip would sit dark over a table showing everything.
+  check(
+    "the last lit chip cannot be turned off",
+    toggleClientType(["cpl"], "cpl").join(",") === "cpl",
+  );
+}
+
+console.log("\nthe type filter is checked against the rows it returns");
+{
+  // The endpoint has not been seen parsing a comma list. If it ignores ours,
+  // the rows are the only thing that can say so.
+  check(
+    "rows matching the ask raise nothing",
+    typesNotApplied(
+      [{ client_type: "cpl" }, { client_type: "hybrid" }],
+      DEFAULT_CLIENT_TYPES,
+    ).length === 0,
+  );
+  check(
+    "a retainer under a CPL+Hybrid ask is caught",
+    typesNotApplied(
+      [{ client_type: "cpl" }, { client_type: "retainer" }],
+      DEFAULT_CLIENT_TYPES,
+    ).join(",") === "retainer",
+  );
+  // Nothing was narrowed, so nothing can be stray — a row of any type is
+  // exactly what that request asked for.
+  check(
+    "no filter means no complaint",
+    typesNotApplied(
+      [{ client_type: "retainer" }],
+      CLIENT_TYPES.map((t) => t.key),
+    ).length === 0,
+  );
+  // A row with no client_type is the other known null on this page; it is not
+  // evidence the filter failed, and flagging it would cry wolf.
+  check(
+    "a typeless row is not evidence",
+    typesNotApplied([{ client_type: null }], DEFAULT_CLIENT_TYPES).length === 0,
+  );
 }
 
 console.log("\npeople lists survive whichever shape they arrive in");
