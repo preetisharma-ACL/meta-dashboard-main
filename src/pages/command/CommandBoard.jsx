@@ -15,10 +15,6 @@ import {
   PRESETS,
   DEFAULT_PRESET,
   CLIENT_TYPES,
-  DEFAULT_CLIENT_TYPES,
-  toggleClientType,
-  typeParam,
-  typesNotApplied,
   SORTABLE,
   PREMIUM,
   premiumSpendState,
@@ -103,11 +99,7 @@ export default function CommandBoard() {
   const [preset, setPreset] = createSignal(DEFAULT_PRESET);
   const [start, setStart] = createSignal("");
   const [end, setEnd] = createSignal("");
-  // Multi-select, and it opens on CPL + Hybrid rather than on everything —
-  // see DEFAULT_CLIENT_TYPES for why those two are the page's subject. Always
-  // non-empty; the wire form (and what "all three" means) is typeParam.
-  const [types, setTypes] = createSignal(DEFAULT_CLIENT_TYPES);
-  const type = () => typeParam(types());
+  const [type, setType] = createSignal(null);
   const [query, setQuery] = createSignal(""); // what's in the box
   const [q, setQ] = createSignal(""); // what's been sent, debounced
   // Opens on the biggest daily budgets: a command screen is read top-down and
@@ -256,7 +248,7 @@ export default function CommandBoard() {
 
   const pickType = (key) => {
     setPage(1);
-    setTypes((cur) => toggleClientType(cur, key));
+    setType((cur) => (cur === key ? null : key));
   };
 
   // ── Sorting (server-side) ──────────────────────────────────────────────────
@@ -300,25 +292,6 @@ export default function CommandBoard() {
       : `${gapRows().length} on this page`;
 
   const visible = createMemo(() => (gapOnly() ? gapRows() : rows()));
-
-  // ── Is the type filter real? ───────────────────────────────────────────────
-  // ?type= is sent as a comma list, which every other list param in this API
-  // accepts but this endpoint has not been observed parsing. If it silently
-  // ignores it, the chips would claim a narrowing the rows don't have — so the
-  // rows answer the question, and the page says it out loud rather than
-  // presenting somebody else's set under our header. See typesNotApplied.
-  const strayTypes = createMemo(() => typesNotApplied(rows(), types()));
-  createEffect(() => {
-    const stray = strayTypes();
-    if (stray.length === 0) return;
-    console.error(
-      "[command] /clients/command/?type=" +
-        type() +
-        " came back with rows of type " +
-        stray.join(", ") +
-        " — the endpoint is not applying a comma-separated type list.",
-    );
-  });
 
   // ── Dormancy ───────────────────────────────────────────────────────────────
   // The toggle wants to say how many rows it would ADD. When it's off those rows
@@ -541,9 +514,9 @@ export default function CommandBoard() {
               <button
                 type="button"
                 onClick={() => pickType(t.key)}
-                aria-pressed={types().includes(t.key)}
+                aria-pressed={type() === t.key}
                 class={`px-3.5 py-2 rounded-lg text-[13px] font-semibold border transition-colors ${
-                  types().includes(t.key)
+                  type() === t.key
                     ? "bg-[#14233A] text-white border-[#14233A]"
                     : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-[#14233A]/40"
                 }`}
@@ -645,21 +618,6 @@ export default function CommandBoard() {
           </Show>
         </span>
       </div>
-
-      <Show when={strayTypes().length > 0}>
-        <div class="mb-4 px-4 py-2.5 rounded-lg bg-red-50 dark:bg-red-900/15 border border-red-300 dark:border-red-800 text-[13px] text-red-800 dark:text-red-200">
-          The type filter isn't being applied —{" "}
-          <b class="font-semibold">
-            {strayTypes().map(typeLabel).join(", ")}
-          </b>{" "}
-          rows came back under a request for{" "}
-          <b class="font-semibold">
-            {types().map(typeLabel).join(" + ")}
-          </b>
-          . Read the table as unfiltered by type until the endpoint accepts a
-          list.
-        </div>
-      </Show>
 
       <Show when={gapOnly() && !wholeSetInView()}>
         <div class="mb-4 px-4 py-2.5 rounded-lg bg-[#FBF3E2] dark:bg-yellow-900/15 border border-[#B07A14]/30 text-[13px] text-[#8A6410] dark:text-yellow-200">
