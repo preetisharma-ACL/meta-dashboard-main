@@ -126,10 +126,16 @@ export const isTier1CM = () => {
 // are plain functions over the reactive store, so no reload is needed — and
 // the thing avoided is a deactivated manager being handed a button that 403s.
 //
-// Deliberately NOT folded into isTier1CM(): payments, reassign and lead
-// replacement all hang off that one, and whether THEIR endpoints check
-// is_active has not been confirmed. Widening it here would be guessing on
-// three rules to fix one.
+// CONFIGS ONLY — do not widen this into isTier1CM(). Server-side, is_active is
+// enforced by ConfigAccessPermission and nothing else (checked 2026-09-21):
+// payments, reassign and lead replacement check the TIER and not the flag, so a
+// deactivated tier-1 CM can still do all three. Folding the check into
+// isTier1CM() would hide those three controls from someone the server still
+// lets through — a silent removal, which is the worse of the two failures.
+//
+// Whether those three SHOULD check is_active is a fair question (a deactivated
+// lead reassigning campaigns is odd), but it is a backend change first and this
+// gate follows it, not the other way round.
 export const isActiveTier1CM = () => {
   if (currentUser.loaded) {
     return isCM() && isTier1() && currentUser.cmProfile?.is_active === true;

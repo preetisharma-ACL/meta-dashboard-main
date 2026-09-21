@@ -30,15 +30,24 @@ export const fetchAllAdminClients = async ({ status, activity } = {}) => {
   let page = 1;
   let all = [];
   let total = Infinity;
-  let pageSize = 1000; // try large first; the backend may cap it
-  // Loop until we've collected EVERY client. Do NOT trust has_next / total_pages
-  // / page_size honoring: the backend caps page_size (a large ?page_size=1000
-  // comes back as ~20 rows) while still reporting has_next=false or a total_pages
-  // computed off the requested size — which strands the roster at page 1 (20 of
-  // 150) and made every direct-nav client route resolve to "not found". The
-  // client count (`total`) is the only reliable stop condition, and we page with
-  // the size the backend ACTUALLY applied so offsets line up even when it caps
-  // our request. Guards: stop on an empty page, and a hard page cap.
+  let pageSize = 1000; // one round-trip at today's roster size
+  // Loop until we've collected EVERY client, paging with the size the backend
+  // ACTUALLY applied rather than the one we asked for, and stopping on the
+  // client count (`total`) rather than has_next / total_pages.
+  //
+  // HISTORY, so the next reader doesn't chase a cap that is gone: this sweep
+  // was written when ?page_size was ignored outright — page_size_query_param
+  // was unset, so DRF fell back to its default of 20 while still reporting no
+  // next page, which stranded the roster at 20 of 150 and made every
+  // direct-nav client route resolve to "not found". Both settings are in place
+  // now: StandardPageNumberPagination sets page_size_query_param and allows up
+  // to max_page_size 10000, so ?page_size=500 returns all 188 clients in one
+  // page (confirmed live 2026-09-21). Callers that ask for a single large page
+  // — the config screen's client picker does — are fine at this roster size.
+  //
+  // The loop stays because it is the shape that survives crossing 10000, and
+  // because reading the applied page_size costs nothing when it matches the
+  // requested one. Guards: stop on an empty page, and a hard page cap.
   while (all.length < total) {
     const res = await fetchClients(page, pageSize, status, activity);
     const batch = Array.isArray(res?.data) ? res.data : [];
