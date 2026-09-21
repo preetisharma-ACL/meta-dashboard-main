@@ -206,6 +206,31 @@ export const canWriteCmProfiles = () => {
   return CM_PROFILE_WRITE_ROLES.has(role);
 };
 
+// ─── Project display config gate (per-project billing rules) ──────────────────
+// WRITE (create / edit / close) on /clients/admin/configs/ is admin,
+// coordination, or an ACTIVE tier-1 CM (2f81a1f). READ is wider — every CM,
+// tier included — which is why the route's `roles` array in App.jsx is not this
+// set: a tier-2 CM opens the page, reads every rule, and simply isn't handed a
+// control that always 403s.
+//
+// Coordination is new on BOTH sides: before 2f81a1f they could not even read,
+// which is why the route had to widen as well.
+//
+// The "active" leg is the backend's alone. /auth/me's cm_profile is documented
+// here as { tier, is_active }, but nothing in this app has ever read is_active
+// and the login auth blob mirrors only the tier — so deciding it on the front
+// end would mean picking a default for a field we have never actually seen. A
+// deactivated tier-1 CM therefore still sees the controls and takes the 403,
+// exactly as they do on campaign reassign and lead replacement, which hang off
+// the same tier-1 leg.
+const CONFIG_WRITE_ROLES = new Set(["admin", "coordination"]);
+
+export const canWriteConfigs = () => {
+  const role = currentUser.loaded ? currentUser.role : readAuth()?.role;
+  if (CONFIG_WRITE_ROLES.has(role)) return true;
+  return isTier1CM();
+};
+
 // True once the tier is actually known. A campaign_manager's tier arrives with
 // /auth/me, so a route guard must WAIT on this rather than treat "tier not
 // loaded yet" as "not tier-1" and bounce a legitimate tier-1 lead.

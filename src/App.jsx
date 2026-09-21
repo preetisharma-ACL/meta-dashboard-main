@@ -404,10 +404,19 @@ function App() {
                 </AdminRoute>
               )}
             />
+            {/* Per-project billing rules. The route is the API's READ set,
+                which is wider than the write set on purpose: every CM, tier-2
+                included, may look up the rule their client is billed at. The
+                page hides Add/Edit/Close behind canWriteConfigs() so a tier-2
+                is never handed a control that 403s. Coordination is here
+                because 2f81a1f gave them read AND write; before that they
+                could not even open the screen. */}
             <Route
               path="/project-display-config"
               component={() => (
-                <AdminRoute roles={["admin", "campaign_manager"]}>
+                <AdminRoute
+                  roles={["admin", "coordination", "campaign_manager"]}
+                >
                   <ProjectDisplayConfig />
                 </AdminRoute>
               )}

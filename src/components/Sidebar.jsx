@@ -431,6 +431,19 @@ export default function Sidebar() {
         path: "/cm-profiles",
       },
       {
+        // Top-level for the same reason as Onboarding and Value Tier:
+        // coordination does not get the "Clients" group (admin+CM) that holds
+        // the admin/CM copy of this row, and 2f81a1f made them writers here —
+        // before it they could not even read a config. Coordination only;
+        // admin and CMs reach the same screen from inside that group.
+        name: "Project Display Config",
+        roles: ["coordination"],
+        icon: () => (
+          <Icon d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+        ),
+        path: "/project-display-config",
+      },
+      {
         name: "Accounts & Funding",
         roles: ["admin", "campaign_manager"],
         icon: () => (

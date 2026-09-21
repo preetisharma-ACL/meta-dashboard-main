@@ -14,7 +14,11 @@ import RowsPerPageSelect from "../../../components/common/RowsPerPageSelect";
 import DateTimePicker from "../../../components/DateTimePicker";
 import { fetchProjectsByClient } from "../services/fetchProjectsByClient"; // ← NEW
 import { fetchAllowedBudgetClients } from "../../../services/allowedBudget"; // ← CM-scoped client source
-import { isAdmin, isTier1 } from "../../../stores/currentUser"; // ← validity-window gate
+import {
+  isAdmin,
+  isTier1,
+  canWriteConfigs, // ← create/edit/close gate
+} from "../../../stores/currentUser";
 import SuccessToast, {
   showToast,
 } from "../../../components/common/SuccessToast";
@@ -286,6 +290,13 @@ export default function ProjectDisplayConfig() {
   // keep the existing behavior (no date fields → backend auto-stamps "starts
   // now, open-ended"). The backend also 403s a Tier-2 that sends dates.
   const canSetValidity = createMemo(() => isAdmin() || isTier1());
+
+  // Who may create, edit or close a config: admin, coordination, or a tier-1
+  // CM (2f81a1f). READING is open to every CM, so a tier-2 still gets the whole
+  // screen — the list, the filters, the history — minus the three controls that
+  // would 403. A plain function, not a memo, so it re-reads currentUser when
+  // /auth/me lands and the controls appear without a reload.
+  const canWrite = () => canWriteConfigs();
 
   // ── NEW: CPL preview state ──────────────────────────────────────────────
   const [previewLoading, setPreviewLoading] = createSignal(false);
@@ -603,6 +614,7 @@ export default function ProjectDisplayConfig() {
   };
 
   const openSidebar = () => {
+    if (!canWrite()) return;
     setShowClientDropdown(false);
     setShowProjectDropdown(false);
     // Privileged users get valid_from defaulted to now (required, but editable
@@ -622,6 +634,7 @@ export default function ProjectDisplayConfig() {
 
   // ── CHANGED: async, pre-loads projects for the client being edited ────────
   const handleEdit = async (cfg) => {
+    if (!canWrite()) return;
     setEditingConfig(cfg);
     setFormData({
       client_id: cfg.client_id,
@@ -864,7 +877,7 @@ export default function ProjectDisplayConfig() {
   // where re-sending the refused POST would just be refused again.
   const handleCloseOverlap = async () => {
     const conflict = overlapConflict();
-    if (!canSupersedeOverlap()) return;
+    if (!canWrite() || !canSupersedeOverlap()) return;
     try {
       setClosingOverlap(true);
       setSubmitError("");
@@ -925,12 +938,14 @@ export default function ProjectDisplayConfig() {
             {configs().length} total · billing rules per project
           </p>
         </div>
-        <button
-          onClick={openSidebar}
-          class="mb-6 px-4 py-2 text-sm rounded-md bg-blue-900 text-white hover:bg-blue-800 transition-colors shadow-sm"
-        >
-          + Add Project Config
-        </button>
+        <Show when={canWrite()}>
+          <button
+            onClick={openSidebar}
+            class="mb-6 px-4 py-2 text-sm rounded-md bg-blue-900 text-white hover:bg-blue-800 transition-colors shadow-sm"
+          >
+            + Add Project Config
+          </button>
+        </Show>
        
       </div>
       {/* ── Toggle filters ──
@@ -1108,7 +1123,9 @@ export default function ProjectDisplayConfig() {
               >
                 Created By {sortIcon("created_by_email")}
               </th>
-              <th class="p-3 text-center whitespace-nowrap">Action</th>
+              <Show when={canWrite()}>
+                <th class="p-3 text-center whitespace-nowrap">Action</th>
+              </Show>
             </tr>
           </thead>
 
@@ -1244,27 +1261,29 @@ export default function ProjectDisplayConfig() {
                     <td class="p-3 text-gray-500 dark:text-gray-400 text-sm">
                       {cfg.created_by_email}
                     </td>
-                    <td class="p-3 text-center">
-                      {/* Edit */}
-                      <button
-                        onClick={() => handleEdit(cfg)}
-                        class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-amber-500 text-white hover:bg-amber-100 border border-amber-400 hover:border-amber-300 hover:text-amber-600 transition-all duration-150 shadow-sm hover:shadow"
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          class="w-4 h-4"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="2"
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
+                    <Show when={canWrite()}>
+                      <td class="p-3 text-center">
+                        {/* Edit */}
+                        <button
+                          onClick={() => handleEdit(cfg)}
+                          class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-amber-500 text-white hover:bg-amber-100 border border-amber-400 hover:border-amber-300 hover:text-amber-600 transition-all duration-150 shadow-sm hover:shadow"
                         >
-                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                        </svg>
-                      </button>
-                    </td>
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            class="w-4 h-4"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                          >
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                          </svg>
+                        </button>
+                      </td>
+                    </Show>
                   </tr>
                 )}
               </For>
@@ -1933,21 +1952,23 @@ export default function ProjectDisplayConfig() {
                           </p>
                         }
                       >
-                        <button
-                          onClick={handleCloseOverlap}
-                          disabled={closingOverlap() || submitting()}
-                          class="mt-2.5 w-full px-3 py-2 rounded-lg bg-amber-600 text-white text-sm font-medium hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
-                        >
-                          {closingOverlap()
-                            ? "Closing…"
-                            : `Close config #${conflict().existing.id} on ${overlapCloseAtLabel()} and save`}
-                        </button>
-                        <p class="mt-1.5 text-xs text-amber-700/80 dark:text-amber-400/80">
-                          The old rate keeps every lead billed before{" "}
-                          {overlapCloseAtLabel()}; the new one takes over from
-                          then. Or pick a later start date above to leave it
-                          running until that day.
-                        </p>
+                        <Show when={canWrite()}>
+                          <button
+                            onClick={handleCloseOverlap}
+                            disabled={closingOverlap() || submitting()}
+                            class="mt-2.5 w-full px-3 py-2 rounded-lg bg-amber-600 text-white text-sm font-medium hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                          >
+                            {closingOverlap()
+                              ? "Closing…"
+                              : `Close config #${conflict().existing.id} on ${overlapCloseAtLabel()} and save`}
+                          </button>
+                          <p class="mt-1.5 text-xs text-amber-700/80 dark:text-amber-400/80">
+                            The old rate keeps every lead billed before{" "}
+                            {overlapCloseAtLabel()}; the new one takes over from
+                            then. Or pick a later start date above to leave it
+                            running until that day.
+                          </p>
+                        </Show>
                       </Show>
                     </div>
                   </div>
