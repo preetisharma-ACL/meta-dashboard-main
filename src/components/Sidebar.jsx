@@ -284,12 +284,13 @@ export default function Sidebar() {
             // answers `Allow: POST, OPTIONS` and has no detail route — so a typo in
             // a client type or service charge had nowhere to be fixed.
             //
-            // Same audience as Onboarding, admin + coordination: the backend
-            // widened the endpoint to match (68ed57d), so the pair of rows now
-            // belongs to the same people. CMs are 403ed at the endpoint and so are
-            // not listed.
+            // Same audience as Onboarding, admin + coordination — but this row
+            // is inside the "Clients" group, which is admin+CM, so listing
+            // coordination HERE never actually reached them. They get the
+            // top-level row beside Onboarding instead; this one is the admin
+            // copy. CMs are 403ed at the endpoint and so are not listed.
             name: "Edit Clients",
-            roles: ["admin", "coordination"],
+            roles: ["admin"],
             icon: () => (
               <Icon d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
             ),
@@ -429,6 +430,23 @@ export default function Sidebar() {
           <Icon d="M12 15a4 4 0 100-8 4 4 0 000 8zm0 0v6m-7-3h14M5 5h14" />
         ),
         path: "/cm-profiles",
+      },
+      {
+        // Coordination's copy of a row that also lives inside the "Clients"
+        // group. That group is admin+CM, so the listing there could never
+        // reach them however its own `roles` read — which is why 68ed57d's
+        // coordination client editing appeared to do nothing. It does
+        // something now: 628d344 fixed the viewset that was 403ing them
+        // (IsCampaignManagerOrAdmin) and the CM-scoped queryset behind it, so
+        // coordination lists every client. Create, delete and reset-password
+        // stay admin-only and guard themselves; this screen does none of the
+        // three — every write is a PATCH from EditClientDrawer.
+        name: "Edit Clients",
+        roles: ["coordination"],
+        icon: () => (
+          <Icon d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+        ),
+        path: "/edit-clients",
       },
       {
         // Top-level for the same reason as Onboarding and Value Tier:

@@ -27,6 +27,7 @@ export const cmTier = () => currentUser.cmProfile?.tier ?? null; // "tier_1" | "
 export const isCM = () => currentUser.role === "campaign_manager";
 export const isAdmin = () => currentUser.role === "admin";
 export const isSales = () => currentUser.role === "sales";
+export const isCoordination = () => currentUser.role === "coordination";
 export const isTier1 = () => cmTier() === "tier_1";
 export const isTier2 = () => cmTier() === "tier_2";
 
@@ -112,6 +113,33 @@ export const isTier1CM = () => {
   if (currentUser.loaded) return isCM() && isTier1();
   const auth = readAuth();
   return auth?.role === "campaign_manager" && auth?.cmTier === "tier_1";
+};
+
+// Tier-1 AND not deactivated. /auth/me returns cm_profile {tier, is_active}
+// (confirmed live: {"tier": "tier_1", "is_active": true}), and the loader now
+// mirrors is_active beside the tier so this can answer before /auth/me lands.
+//
+// Fails CLOSED on an unknown flag: a session that logged in before the mirror
+// existed has no cmActive key, and an undefined flag is read as "not active"
+// rather than assumed true. The cost is a control that stays hidden for the
+// moment before /auth/me resolves and then appears — the gates that use this
+// are plain functions over the reactive store, so no reload is needed — and
+// the thing avoided is a deactivated manager being handed a button that 403s.
+//
+// Deliberately NOT folded into isTier1CM(): payments, reassign and lead
+// replacement all hang off that one, and whether THEIR endpoints check
+// is_active has not been confirmed. Widening it here would be guessing on
+// three rules to fix one.
+export const isActiveTier1CM = () => {
+  if (currentUser.loaded) {
+    return isCM() && isTier1() && currentUser.cmProfile?.is_active === true;
+  }
+  const auth = readAuth();
+  return (
+    auth?.role === "campaign_manager" &&
+    auth?.cmTier === "tier_1" &&
+    auth?.cmActive === true
+  );
 };
 
 // Who may POST /payments/add-funds/ — the accounts desk and tier-1 CMs.
@@ -216,19 +244,16 @@ export const canWriteCmProfiles = () => {
 // Coordination is new on BOTH sides: before 2f81a1f they could not even read,
 // which is why the route had to widen as well.
 //
-// The "active" leg is the backend's alone. /auth/me's cm_profile is documented
-// here as { tier, is_active }, but nothing in this app has ever read is_active
-// and the login auth blob mirrors only the tier — so deciding it on the front
-// end would mean picking a default for a field we have never actually seen. A
-// deactivated tier-1 CM therefore still sees the controls and takes the 403,
-// exactly as they do on campaign reassign and lead replacement, which hang off
-// the same tier-1 leg.
+// The CM leg is isActiveTier1CM(), not isTier1CM(): the endpoint wants an
+// ACTIVE tier-1 profile, and is_active is now confirmed to arrive on /auth/me
+// and is mirrored into the auth blob, so the deactivated case can be answered
+// here instead of being left to a 403.
 const CONFIG_WRITE_ROLES = new Set(["admin", "coordination"]);
 
 export const canWriteConfigs = () => {
   const role = currentUser.loaded ? currentUser.role : readAuth()?.role;
   if (CONFIG_WRITE_ROLES.has(role)) return true;
-  return isTier1CM();
+  return isActiveTier1CM();
 };
 
 // True once the tier is actually known. A campaign_manager's tier arrives with
@@ -270,14 +295,19 @@ export const loadCurrentUser = async (force = false) => {
         cmProfile: u.cm_profile ?? null,
       });
 
-      // Mirror tier into localStorage auth so synchronous gates (sidebar/route
-      // guards) can branch without awaiting this fetch. Role is already stored
-      // by the login flow; we just enrich it.
+      // Mirror tier AND the active flag into localStorage auth so synchronous
+      // gates (sidebar/route guards) can branch without awaiting this fetch.
+      // Role is already stored by the login flow; we just enrich it.
+      //
+      // cmActive is stored as a strict boolean, never null: the gates that read
+      // it require === true, so a missing profile and a deactivated one land in
+      // the same place rather than one of them reading as "unknown".
       try {
         const auth = JSON.parse(localStorage.getItem("auth") || "null");
         if (auth) {
           auth.role = u.role ?? auth.role;
           auth.cmTier = u.cm_profile?.tier ?? null;
+          auth.cmActive = u.cm_profile?.is_active === true;
           localStorage.setItem("auth", JSON.stringify(auth));
         }
       } catch {}

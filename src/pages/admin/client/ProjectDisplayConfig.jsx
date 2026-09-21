@@ -17,6 +17,7 @@ import { fetchAllowedBudgetClients } from "../../../services/allowedBudget"; // 
 import {
   isAdmin,
   isTier1,
+  isCoordination,
   canWriteConfigs, // ← create/edit/close gate
 } from "../../../stores/currentUser";
 import SuccessToast, {
@@ -286,10 +287,19 @@ export default function ProjectDisplayConfig() {
     () => !isRetainer() && ruleTypeChoices().length === 1,
   );
 
-  // Only admins and Tier-1 CMs may pick a custom validity window. Tier-2 CMs
-  // keep the existing behavior (no date fields → backend auto-stamps "starts
-  // now, open-ended"). The backend also 403s a Tier-2 that sends dates.
-  const canSetValidity = createMemo(() => isAdmin() || isTier1());
+  // Who may pick a custom validity window: admins, coordination and Tier-1 CMs.
+  // Tier-2 CMs keep the existing behavior (no date fields → backend auto-stamps
+  // "starts now, open-ended"), and the backend 403s a Tier-2 that sends dates
+  // anyway.
+  //
+  // Coordination is on this list as of 628d344: _is_privileged_for_dates was
+  // admin + Tier-1, so a coordination user sending valid_from would have 403ed
+  // exactly like a Tier-2 — which would have made them writers who could create
+  // a config but never backdate one, and backdating valid_from is how a gap in
+  // the billing history gets closed.
+  const canSetValidity = createMemo(
+    () => isAdmin() || isCoordination() || isTier1(),
+  );
 
   // Who may create, edit or close a config: admin, coordination, or a tier-1
   // CM (2f81a1f). READING is open to every CM, so a tier-2 still gets the whole
