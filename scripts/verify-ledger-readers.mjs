@@ -398,6 +398,82 @@ console.log("\nS.C / GST load onto billed_amount, in the invoice's order");
   );
 }
 
+// ── The dashboard hero tile charges on the same base, summed ────────────────
+// The "Spend + N% service charge" tile is Σ of each project's billed figure,
+// charged once on the sum — the same shape as the ledger FOOTER, which charges
+// the totals block rather than adding up charged rows. The trap it replaced is
+// worth pinning: the tile summed each project's `spend`, which is not only
+// pre-replacement but a DIFFERENT figure per role (raw agency cost for an
+// admin or CM, the client-facing premium for the client), so one client's tile
+// read two ways depending on who opened it.
+console.log("\nhero tile: Σ billed, charged once, unpriced rows left out");
+{
+  const { makeLedgerCells } = await import("../src/services/ledgerCells.js");
+  const { billedBaseOf, withSc } = makeLedgerCells({
+    hasRaw: () => true,
+    clientType: () => "hybrid",
+    scPct: () => 13,
+    gstPct: () => 18,
+    iscpl: () => false,
+  });
+
+  // Three projects on an ADMIN payload: raw spend beside the premium, and the
+  // billed figure below both. One of them has no display config at all.
+  const rows = [
+    { spend: "35819.60", premium_spend: "71816.00", billed_amount: "64296.00" },
+    { spend: "10000.00", premium_spend: "20000.00", billed_amount: "19000.00" },
+    { spend: "5000.00", premium_spend: null, billed_amount: null },
+  ];
+
+  let base = 0;
+  let covered = 0;
+  for (const r of rows) {
+    const b = billedBaseOf(r);
+    if (b != null) {
+      base += b;
+      covered++;
+    }
+  }
+
+  check("unpriced project is skipped, not added at 0", covered === 2, `(${covered})`);
+  check("base is Σ billed, not Σ spend or Σ premium", base === 83296, `(${base})`);
+  check(
+    "tile = 13% on that sum (94,124.48)",
+    withSc(base) === 94124.48,
+    `(${withSc(base)})`,
+  );
+
+  // The same rows through the CLIENT payload — no raw keys at all — have to
+  // produce the identical tile, because billed_amount is on both shapes.
+  let clientBase = 0;
+  for (const r of rows) {
+    const { spend, ...clientRow } = r;
+    const b = billedBaseOf(clientRow);
+    if (b != null) clientBase += b;
+  }
+  check(
+    "a client's own payload gives the SAME tile as the admin's",
+    withSc(clientBase) === withSc(base),
+    `(${withSc(clientBase)} vs ${withSc(base)})`,
+  );
+
+  // Σ raw and Σ premium are both live on that fixture, so this test bites.
+  const sumRaw = 35819.6 + 10000 + 5000;
+  const sumPremium = 71816 + 20000;
+  check(
+    "neither old base could pass: Σ raw and Σ premium differ from Σ billed",
+    sumRaw !== base && sumPremium !== base,
+    `(${sumRaw} / ${sumPremium} / ${base})`,
+  );
+
+  // Nothing priced at all → the tile has no figure, and says so.
+  let noneCovered = 0;
+  for (const r of [{ premium_spend: null }, {}]) {
+    if (billedBaseOf(r) != null) noneCovered++;
+  }
+  check("no priced projects → nothing to charge", noneCovered === 0);
+}
+
 // ── Missing premium is legitimate and must stay null, never 0 ───────────────
 // ~299 of 448 live rows have no premium: retainer clients have no display config
 // by design, and some client+project pairs are missing one. A 0 there would

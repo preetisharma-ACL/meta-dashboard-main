@@ -74,6 +74,7 @@ import {
 } from "../services/leadReplacement";
 import { canRecordReplacement } from "../stores/currentUser";
 import { scopeKey } from "../stores/cmScope";
+import { makeLedgerCells } from "../services/ledgerCells";
 import SuccessToast, { showToast } from "../components/common/SuccessToast";
 
 // Guards against stale in-flight loads overwriting the cache after the
@@ -579,7 +580,36 @@ export default function MainDashboard() {
   const serviceChargePercent = () =>
     Number(clientServiceCharge() ?? auth?.serviceCharge ?? 13);
 
-  const serviceChargeRate = () => serviceChargePercent() / 100;
+  // Prefer the REPORTED client's type over the viewer's own — an admin looking
+  // at a CPL client must see the progression. Declared HERE, above the memos
+  // that read it: createMemo bodies run during setup, so a const declared
+  // further down the component would still be in its temporal dead zone.
+  const viewedClientType = () =>
+    clientTypeFromReport() ??
+    (iscpl() ? "cpl" : ishybrid() ? "hybrid" : isRetainer() ? "retainer" : "");
+
+  // ── The service-charge tile reads the ledger's OWN reader ─────────────────
+  // Same module as the Daily Report's "+ S.C" column, so the hero tile and that
+  // column cannot answer differently for the same client and range: one base
+  // (billed_amount — spend AFTER the credit for replaced leads) and one set of
+  // steps (charge rounded to the paisa, then added), both defined once in
+  // services/ledgerCells.
+  //
+  // What this replaces was wrong twice over. The base was Σ of each project's
+  // `spend`, which is PRE-replacement — so the client was charged service
+  // charge on leads they had already been credited for — and `spend` is a
+  // different figure per role: raw agency cost on an admin's or CM's payload,
+  // the client-facing premium on the client's own. The same client's tile
+  // therefore showed one number to them and another to the admin looking at
+  // them. billed_amount is on BOTH payloads, so it settles the base and the
+  // role split in one move.
+  const { billedBaseOf, withSc } = makeLedgerCells({
+    hasRaw: () => true,
+    clientType: viewedClientType,
+    scPct: serviceChargePercent,
+    gstPct: () => 18,
+    iscpl: () => viewedClientType() === "cpl",
+  });
 
   const loadData = async (pageNo = 1, search = "") => {
     const token = activeLoadToken;
@@ -1018,6 +1048,17 @@ export default function MainDashboard() {
         fedLeads,
         totalLeadsWithFed,
         totalSpent: row?.spend ?? 0,
+        // What service charge is charged ON: billed_amount off this same row,
+        // via the ledger's own reader (which falls back to a retainer's billed
+        // spend, having no replacements to credit back). Null — never 0 — when
+        // the row has no billed figure, so a project with no display config is
+        // counted as unpriced rather than as ₹0 of billable spend.
+        billedBase: billedBaseOf(row?.wire ?? {}),
+        // Whether the ledger returned this project at all. A project with no
+        // row did nothing in the range; it is not an unpriced project, and
+        // counting it as one would put "4 of 9 priced" under a total that is
+        // complete.
+        hasLedgerRow: !!row,
         // Cost per META lead — already divided that way server-side. null (no
         // Meta leads to divide by) prints as ₹0, exactly as it did before.
         avgCPL: row?.cpl ?? 0,
@@ -1248,16 +1289,32 @@ export default function MainDashboard() {
       0,
     );
 
-    // Round the RESULT, not the rate. `serviceChargeRate().toFixed(2)` bound to
-    // the rate: the multiplication still worked (JS coerced "0.10" back to a
-    // number) but nothing was ever rounded, so the hero rendered the raw float
-    // as ₹1,80,202.022 — toLocaleString defaults to 3 fraction digits.
-    const serviceChargeSpent = Number(
-      (totalSpent + totalSpent * serviceChargeRate()).toFixed(2),
-    );
-
-    // Admin view: spend + 18% GST (client view uses serviceChargeSpent above)
-    const gstSpent = Number((totalSpent + totalSpent * 0.18).toFixed(2));
+    // ── Spend + service charge ───────────────────────────────────────────
+    // Σ of each project's BILLED figure, then the charge on that sum through
+    // the shared reader. Rows with no billed figure are not 0 — they are
+    // unpriced, and counted as such, because folding them in at 0 would
+    // quietly shrink a total that looks complete. Nothing priced at all → null
+    // → "—", the same answer the ledger's own S.C column gives.
+    //
+    // There was a "Spend + 18% GST" tile beside this one, `totalSpent * 0.18`,
+    // rendered only from commented-out JSX. It is gone rather than carried
+    // along: it had this same pre-replacement base, and it charged GST with no
+    // service charge under it, which is nobody's invoice — a hybrid pays S.C
+    // then GST on the gross. If it comes back it reads withScGst(scBase) off
+    // the reader above, like every other loaded figure.
+    let scBase = 0;
+    let scCovered = 0;
+    let scProjectCount = 0;
+    for (const p of all) {
+      const stats = statsMap[p.id];
+      if (!stats?.hasLedgerRow) continue;
+      scProjectCount++;
+      if (stats.billedBase != null) {
+        scBase += stats.billedBase;
+        scCovered++;
+      }
+    }
+    const serviceChargeSpent = scCovered > 0 ? withSc(scBase) : null;
 
     // Number, not the string .toFixed() returns: this is rendered via
     // .toLocaleString("en-IN"), and String's toLocaleString is a no-op that
@@ -1281,7 +1338,8 @@ export default function MainDashboard() {
       totalLeadsWithFed: totalLeads + totalFedLeads,
       totalSpent,
       serviceChargeSpent,
-      gstSpent,
+      scCovered,
+      scProjectCount,
       avgCPL,
       activeCampaigns,
       pausedCampaigns,
@@ -1349,12 +1407,6 @@ export default function MainDashboard() {
   );
 
   const leadBreakdown = createMemo(() => summaryLeadBreakdown(summaryRes()));
-
-  // Prefer the REPORTED client's type over the viewer's own — an admin looking
-  // at a CPL client must see the progression.
-  const viewedClientType = () =>
-    clientTypeFromReport() ??
-    (iscpl() ? "cpl" : ishybrid() ? "hybrid" : isRetainer() ? "retainer" : "");
 
   const showLeadBreakdown = () =>
     showsReplacement(leadBreakdown(), viewedClientType());
@@ -2399,39 +2451,51 @@ export default function MainDashboard() {
                 </p>
               </Show>
             </div>
-            
+            {/* No service charge for a CPL client: they are billed per lead,
+                and service_charge is null on their record BY DESIGN. The tile
+                rendered for them anyway, on a rate that had fallen back to a
+                hardcoded 13% — an invented charge on a client who owes none.
+                The Daily Report already hides its S.C columns for CPL; this is
+                the same rule in the same words. */}
+            <Show when={viewedClientType() !== "cpl"}>
               <div class="py-3.5 border-b border-[#E2E8F1] dark:border-gray-700">
                 <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
                   Spend + {serviceChargePercent()}% service charge
                 </p>
                 <p class="text-xl font-bold text-gray-700 dark:text-white mt-1">
-                  {"₹"}
-                  {overviewStatsCards().serviceChargeSpent.toLocaleString(
-                    "en-IN",
-                  )}
+                  {overviewStatsCards().serviceChargeSpent == null
+                    ? "—"
+                    : `₹${overviewStatsCards().serviceChargeSpent.toLocaleString(
+                        "en-IN",
+                      )}`}
                 </p>
                 <p class="text-xs text-[#54657E] dark:text-gray-400 mt-0.5">
-                  (excluding GST)
+                  (after replacements · excluding GST)
                 </p>
+                {/* Same disclosure the ledger footer makes: a project with no
+                    display config has no billed figure, so it is outside this
+                    total rather than inside it at ₹0. */}
+                <Show
+                  when={
+                    overviewStatsCards().scCovered <
+                    overviewStatsCards().scProjectCount
+                  }
+                >
+                  <p class="text-xs text-[#54657E] dark:text-gray-400 mt-0.5">
+                    {overviewStatsCards().scCovered} of{" "}
+                    {overviewStatsCards().scProjectCount} projects priced
+                  </p>
+                </Show>
               </div>
+            </Show>
             
-            {/* <Show when={isAdmin()}>
-              <div class="py-3.5 border-b border-[#E2E8F1] dark:border-gray-700">
-                <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
-                  Spend + 18% GST
-                </p>
-                <p class="text-xl font-bold text-gray-700 dark:text-white mt-1">
-                  {"₹"}
-                  <CountUp
-                    value={overviewStatsCards().gstSpent}
-                    loading={heroLoading()}
-                  />
-                </p>
-                <p class="text-xs text-[#54657E] dark:text-gray-400 mt-0.5">
-                  (including 18% GST)
-                </p>
-              </div>
-            </Show> */}
+            {/* An admin-only "Spend + 18% GST" tile used to sit here, commented
+                out, reading a gstSpent that charged 18% on pre-replacement
+                spend with no service charge under it. Both the base and the
+                shape were wrong — a hybrid pays S.C first, then GST on the
+                gross — so it is deleted rather than left ready to uncomment.
+                The loaded figure, if it is ever wanted here, is withScGst() on
+                the same billed base the tile above uses. */}
             {/* Bordered only in the two-up tablet layout, where it shares a
                 row with the tile above it. */}
             <div class="py-3.5 border-b max-sm:border-b-0 lg:border-b-0 border-[#E2E8F1] dark:border-gray-700">

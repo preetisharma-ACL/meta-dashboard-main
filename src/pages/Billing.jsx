@@ -453,8 +453,14 @@ function AddFundsModal(props) {
   const [method, setMethod] = createSignal("UPI");
   const quickAmounts = [50000, 100000, 200000, 500000];
   const methods = ["UPI", "Bank Transfer", "Credit Card", "Cheque"];
+  // GST on a top-up the client types in, NOT on spend — no replacement credit
+  // applies to money being added. The RATE still comes from the API through a
+  // prop: 1.18 was hardcoded here while the page above already had gst_pct per
+  // client, so a client on any other slab was quoted a figure they would not be
+  // charged.
+  const gstPct = () => Number(props.gstPct) || 0;
   const totalWithGST = () =>
-    amount() ? Math.round(Number(amount()) * 1.18) : null;
+    amount() ? Math.round(Number(amount()) * (1 + gstPct() / 100)) : null;
 
   const handleBackdrop = (e) => {
     if (e.target === e.currentTarget) props.onClose();
@@ -515,7 +521,7 @@ function AddFundsModal(props) {
               />
             </div>
             <p class="text-sm text-gray-600 dark:text-gray-400">
-              +18% GST · You pay:{" "}
+              +{gstPct()}% GST · You pay:{" "}
               <span class="font-semibold text-gray-700 dark:text-gray-400">
                 {totalWithGST() ? fmt(totalWithGST()) : "—"}
               </span>
@@ -1206,14 +1212,36 @@ export default function Billing() {
   const billedForClient = () => billedIncGst();
   const withServiceCharge = () =>
     Number(monthSpend().total_with_service_charge ?? adSpendExGst());
-  const serviceChargeAmt = () =>
-    Math.max(0, withServiceCharge() - adSpendExGst());
-  const gstAmt = () =>
-    Math.max(
+  // ── The statement's two charge rows ──────────────────────────────────────
+  // The API computes both — on total_spend_ex_gst, which is ALREADY net of the
+  // credit for replaced leads — and sends them as service_charge_amount and
+  // gst_amount. Read them. Subtracting one server total from another lands on
+  // the same answer only while all three totals are present and agree, and a
+  // figure the server has already stated is not one to re-derive: re-deriving
+  // is how two screens end up disagreeing about a single invoice.
+  //
+  // The subtraction stays behind them, unchanged, for a month_spend that
+  // predates the fields — a missing key degrades to today's behaviour rather
+  // than to a gap.
+  const apiNum = (v) => {
+    if (v == null || v === "") return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  const serviceChargeAmt = () => {
+    const sent = apiNum(monthSpend().service_charge_amount);
+    if (sent != null) return sent;
+    return Math.max(0, withServiceCharge() - adSpendExGst());
+  };
+  const gstAmt = () => {
+    const sent = apiNum(monthSpend().gst_amount);
+    if (sent != null) return sent;
+    return Math.max(
       0,
       Number(monthSpend().total_with_service_charge_and_gst || 0) -
         withServiceCharge(),
     );
+  };
   const remainingBalance = () => Number(closingBalance().inc_gst || 0);
   // API's funds_added_inc_gst currently includes points-method payments;
   // strip them out so points only appear in their own ledger row.
@@ -1360,9 +1388,13 @@ export default function Billing() {
   // present, else service_charge_pct × ad spend. No hardcoded default.
   const retainerScPct = () => Number(serviceChargePct()) || 0;
 
+  // Same preference as the statement rows above, through the same reader: a
+  // service_charge_amount the API sent wins, including a legitimate 0.00 —
+  // `apiAmt > 0` treated a stated zero as "absent" and billed the percentage
+  // instead.
   const retainerScAmount = () => {
-    const apiAmt = Number(monthSpend().service_charge_amount);
-    if (apiAmt > 0) return apiAmt;
+    const sent = apiNum(monthSpend().service_charge_amount);
+    if (sent != null) return sent;
     return (adSpendExGst() * retainerScPct()) / 100;
   };
 
@@ -1776,7 +1808,11 @@ export default function Billing() {
           </div>
         </Show>
 
-        <AddFundsModal open={showModal()} onClose={() => setShowModal(false)} />
+        <AddFundsModal
+          open={showModal()}
+          onClose={() => setShowModal(false)}
+          gstPct={Number(gstPct())}
+        />
         <InvoiceModal
           open={showInvoiceModal()}
           invoice={selectedInvoice()}
