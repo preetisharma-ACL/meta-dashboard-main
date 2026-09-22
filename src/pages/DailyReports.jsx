@@ -1054,7 +1054,6 @@ export default function DailyReports() {
               setToDate("");
               setShowPreview(false);
               setProjects([]);
-              setInsightsMap({});
               if (isAdmin()) {
                 setSelectedAdminClientId("");
                 setAdminClientQuery("");
