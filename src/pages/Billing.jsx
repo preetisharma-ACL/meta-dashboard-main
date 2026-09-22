@@ -1,4 +1,11 @@
-import { createSignal, createMemo, createResource, For, Show } from "solid-js";
+import {
+  createSignal,
+  createMemo,
+  createEffect,
+  createResource,
+  For,
+  Show,
+} from "solid-js";
 import { fetchBillingOverview } from "../services/billing-service";
 import { fetchPaymentsDetails } from "../services/payments-service";
 import useRole, { clientRole } from "../hooks/useRole";
@@ -731,15 +738,28 @@ function InvoiceModal(props) {
 //   fixed_cpl       is charge / qualified — a BLENDED rate whenever a config was
 //                   closed and replaced mid-month. rates_used lists the distinct
 //                   ones, and more than one entry makes the column an average.
-//   uncovered_leads leads delivered on days no config covered. Never billed. A
-//                   client's row reads 0 generated and 0 charge; admin sees the
-//                   real generated count, and this is what explains the gap.
+//   uncovered_leads leads delivered on days no config covered. Never billed.
+//                   ADMIN AND CM ONLY: the key is ABSENT from a client's row,
+//                   and a project with no covered day at all is left out of
+//                   their payload entirely, so a client's page has no gap to
+//                   explain. Absent must read exactly as zero here — it is not
+//                   an unknown count, it is a column that isn't theirs.
 //   missing_rate /  fires for real now (it was always present and always empty
 //   missing_cpl_rate  while the fallback existed). Admin and CM only — a client
 //                   gets an empty array, gated server-side.
 function CplProjectTable(props) {
   const rows = () => props.projects || [];
   const num = (n) => Number(n || 0).toLocaleString("en-IN");
+
+  // cpl_projects can be EMPTY for a client. A project is omitted from their
+  // payload entirely when no contracted rate covered a single day of the
+  // month, so a CPL client with no config — or one whose config ended — gets
+  // an array with nothing in it. That is a real, explainable month, not a
+  // failure to load: the card keeps its header and shows an empty state,
+  // rather than column titles with only a Total row underneath. Admin and CM
+  // still get every project, so they reach this only when there genuinely
+  // were none.
+  const hasRows = () => rows().length > 0;
 
   // "No contracted rate set" is a statement about the agency's own setup, so
   // whether the viewer is told it is the server's call, not ours. It stopped
@@ -800,9 +820,17 @@ function CplProjectTable(props) {
   // ── Uncovered leads ────────────────────────────────────────────────────────
   // Leads delivered on days no config covered. They are not billed at all —
   // leads bill at the rate in force on the day they arrived, and on those days
-  // there wasn't one. Admin sees the real generated count with uncovered_leads
-  // explaining the gap; a client's row reads 0 generated and 0 charge, so their
-  // page has nothing to explain and this column stays off it.
+  // there wasn't one. Admin and CM see the real generated count with
+  // uncovered_leads explaining the gap.
+  //
+  // A CLIENT'S ROW NO LONGER CARRIES THE KEY AT ALL — absent, not zero. Their
+  // counts are already the covered ones, so there is nothing for the column to
+  // explain. Absent collapses to 0 here on purpose, the same as an explicit 0:
+  // no row reports any, so anyUncovered() is false, the column and its footnote
+  // stay off the page, and the arithmetic note drops the "− uncovered" term.
+  // Nothing may treat the missing key as UNKNOWN and render a dash or a
+  // placeholder — that would put a column of "—" on every client's statement
+  // for a concept they are not billed on.
   const uncovered = (p) => Number(p.uncovered_leads || 0);
   const anyUncovered = () => rows().some((p) => uncovered(p) > 0);
   const totalUncovered = () => rows().reduce((s, p) => s + uncovered(p), 0);
@@ -835,12 +863,15 @@ function CplProjectTable(props) {
         {/* The formula has to close against the columns on screen. When a
             project delivered leads on uncovered days they are subtracted too,
             and a note that omitted them would leave the operator staring at
-            86 generated, 0 qualified and no arithmetic that reaches it. */}
-        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-          Each project is billed at the rate in force on the day each lead
-          arrived · qualified = generated − replaced − disqualified
-          {anyUncovered() ? " − uncovered" : ""}
-        </p>
+            86 generated, 0 qualified and no arithmetic that reaches it. With
+            no rows it describes columns that aren't on screen, so it goes. */}
+        <Show when={hasRows()}>
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            Each project is billed at the rate in force on the day each lead
+            arrived · qualified = generated − replaced − disqualified
+            {anyUncovered() ? " − uncovered" : ""}
+          </p>
+        </Show>
       </div>
 
       {/* The rate was never missing before — the old code billed at the latest
@@ -869,129 +900,145 @@ function CplProjectTable(props) {
         </div>
       </Show>
 
-      <div class="overflow-x-auto">
-        <table class="w-full text-sm">
-          <thead>
-            <tr class="border-y border-gray-200 dark:border-gray-700 text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-              <th class="px-6 py-2.5 text-left font-medium">Project</th>
-              <th class={`hidden sm:table-cell ${numHead}`}>Generated</th>
-              <th class={`hidden sm:table-cell ${numHead}`}>Replaced</th>
-              <th class={`hidden md:table-cell ${numHead}`}>Disqualified</th>
-              {/* Only when there are any: on a covered month this column would
-                  be a row of zeroes, and on a client's page it is always one. */}
-              <Show when={anyUncovered()}>
-                <th class={`hidden md:table-cell ${numHead}`}>Uncovered</th>
-              </Show>
-              <th class={numHead}>Qualified</th>
-              <th class={numHead}>Rate / lead</th>
-              <th class="px-6 py-2.5 text-right font-medium">Charge</th>
-            </tr>
-          </thead>
-          <tbody>
-            <For each={rows()}>
-              {(p) => (
-                <tr class="border-b border-gray-100 dark:border-gray-700/60">
-                  <td class="px-6 py-3 font-medium text-gray-900 dark:text-gray-100">
-                    {p.project_name}
-                  </td>
-                  <td class={`hidden sm:table-cell ${numCell}`}>
-                    {num(p.generated)}
-                  </td>
-                  <td class={`hidden sm:table-cell ${numCell}`}>
-                    {num(p.replaced)}
-                  </td>
-                  <td class={`hidden md:table-cell ${numCell}`}>
-                    {num(p.disqualified)}
-                  </td>
-                  <Show when={anyUncovered()}>
+      <Show
+        when={hasRows()}
+        fallback={
+          <div class="border-t border-gray-100 dark:border-gray-700/60 px-6 py-10 text-center">
+            <p class="text-sm font-medium text-gray-900 dark:text-gray-100">
+              No project charges this month
+            </p>
+            <p class="mx-auto mt-1 max-w-md text-xs text-gray-500 dark:text-gray-400">
+              A project is listed here for the days a contracted rate covered
+              it. No contracted rate covered any day of {props.monthLabel}, so
+              nothing was billed per lead.
+            </p>
+          </div>
+        }
+      >
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-y border-gray-200 dark:border-gray-700 text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                <th class="px-6 py-2.5 text-left font-medium">Project</th>
+                <th class={`hidden sm:table-cell ${numHead}`}>Generated</th>
+                <th class={`hidden sm:table-cell ${numHead}`}>Replaced</th>
+                <th class={`hidden md:table-cell ${numHead}`}>Disqualified</th>
+                {/* Only when there are any: on a covered month this column would
+                    be a row of zeroes, and on a client's page it is always one. */}
+                <Show when={anyUncovered()}>
+                  <th class={`hidden md:table-cell ${numHead}`}>Uncovered</th>
+                </Show>
+                <th class={numHead}>Qualified</th>
+                <th class={numHead}>Rate / lead</th>
+                <th class="px-6 py-2.5 text-right font-medium">Charge</th>
+              </tr>
+            </thead>
+            <tbody>
+              <For each={rows()}>
+                {(p) => (
+                  <tr class="border-b border-gray-100 dark:border-gray-700/60">
+                    <td class="px-6 py-3 font-medium text-gray-900 dark:text-gray-100">
+                      {p.project_name}
+                    </td>
+                    <td class={`hidden sm:table-cell ${numCell}`}>
+                      {num(p.generated)}
+                    </td>
+                    <td class={`hidden sm:table-cell ${numCell}`}>
+                      {num(p.replaced)}
+                    </td>
                     <td class={`hidden md:table-cell ${numCell}`}>
-                      <Show when={uncovered(p) > 0} fallback={num(0)}>
-                        <span class="text-amber-600 dark:text-amber-400 font-medium">
-                          {num(uncovered(p))}
+                      {num(p.disqualified)}
+                    </td>
+                    <Show when={anyUncovered()}>
+                      <td class={`hidden md:table-cell ${numCell}`}>
+                        <Show when={uncovered(p) > 0} fallback={num(0)}>
+                          <span class="text-amber-600 dark:text-amber-400 font-medium">
+                            {num(uncovered(p))}
+                          </span>
+                        </Show>
+                      </td>
+                    </Show>
+                    <td class="px-3 py-3 text-right tabular-nums font-semibold text-gray-900 dark:text-gray-100">
+                      {num(p.qualified)}
+                    </td>
+                    <td class="px-3 py-3 text-right tabular-nums">
+                      {/* Only the server's flag produces "rate not set". A null
+                          rate on its own renders "—" and nothing else. */}
+                      <Show
+                        when={missingRate(p)}
+                        fallback={
+                          <Show when={p.fixed_cpl != null} fallback={<Dash />}>
+                            {/* One rate → the contracted rate, as before. Several
+                                → charge/qualified, which is an AVERAGE and is
+                                labelled as one, with the real rates underneath.
+                                A client reconciling a blended number against their
+                                agreement would otherwise find a rate they never
+                                signed. */}
+                            <Show
+                              when={isBlended(p)}
+                              fallback={
+                                <span class="text-gray-600 dark:text-gray-300">
+                                  {fmt(p.fixed_cpl)}
+                                </span>
+                              }
+                            >
+                              <span class="block text-gray-600 dark:text-gray-300">
+                                {fmt(p.fixed_cpl)}
+                                <span class="ml-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                                  avg
+                                </span>
+                              </span>
+                              <span class="block text-[11px] text-gray-400 dark:text-gray-500">
+                                {ratesUsed(p).map((r) => fmt(r)).join(" · ")}
+                              </span>
+                            </Show>
+                          </Show>
+                        }
+                      >
+                        <span class="text-amber-600 dark:text-amber-400">
+                          — rate not set
                         </span>
                       </Show>
                     </td>
-                  </Show>
-                  <td class="px-3 py-3 text-right tabular-nums font-semibold text-gray-900 dark:text-gray-100">
-                    {num(p.qualified)}
-                  </td>
-                  <td class="px-3 py-3 text-right tabular-nums">
-                    {/* Only the server's flag produces "rate not set". A null
-                        rate on its own renders "—" and nothing else. */}
-                    <Show
-                      when={missingRate(p)}
-                      fallback={
-                        <Show when={p.fixed_cpl != null} fallback={<Dash />}>
-                          {/* One rate → the contracted rate, as before. Several
-                              → charge/qualified, which is an AVERAGE and is
-                              labelled as one, with the real rates underneath.
-                              A client reconciling a blended number against their
-                              agreement would otherwise find a rate they never
-                              signed. */}
-                          <Show
-                            when={isBlended(p)}
-                            fallback={
-                              <span class="text-gray-600 dark:text-gray-300">
-                                {fmt(p.fixed_cpl)}
-                              </span>
-                            }
-                          >
-                            <span class="block text-gray-600 dark:text-gray-300">
-                              {fmt(p.fixed_cpl)}
-                              <span class="ml-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                                avg
-                              </span>
-                            </span>
-                            <span class="block text-[11px] text-gray-400 dark:text-gray-500">
-                              {ratesUsed(p).map((r) => fmt(r)).join(" · ")}
-                            </span>
-                          </Show>
-                        </Show>
-                      }
-                    >
-                      <span class="text-amber-600 dark:text-amber-400">
-                        — rate not set
-                      </span>
-                    </Show>
-                  </td>
-                  <td class="px-6 py-3 text-right tabular-nums font-semibold text-gray-900 dark:text-gray-100">
-                    {/* Keyed off the charge itself: null is not billed yet,
-                        which is "—" rather than ₹0.00 ("free"). */}
-                    <Show
-                      when={!missingRate(p) && p.charge != null}
-                      fallback={<Dash />}
-                    >
-                      {fmt(p.charge)}
-                    </Show>
-                  </td>
-                </tr>
-              )}
-            </For>
-            <tr class="border-t border-gray-200 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-900/30">
-              <td class="px-6 py-3 font-bold text-gray-900 dark:text-gray-100">
-                Total
-              </td>
-              <td class="hidden sm:table-cell" />
-              <td class="hidden sm:table-cell" />
-              <td class="hidden md:table-cell" />
-              <Show when={anyUncovered()}>
-                <td class={`hidden md:table-cell ${numCell} font-bold text-amber-600 dark:text-amber-400`}>
-                  {num(totalUncovered())}
+                    <td class="px-6 py-3 text-right tabular-nums font-semibold text-gray-900 dark:text-gray-100">
+                      {/* Keyed off the charge itself: null is not billed yet,
+                          which is "—" rather than ₹0.00 ("free"). */}
+                      <Show
+                        when={!missingRate(p) && p.charge != null}
+                        fallback={<Dash />}
+                      >
+                        {fmt(p.charge)}
+                      </Show>
+                    </td>
+                  </tr>
+                )}
+              </For>
+              <tr class="border-t border-gray-200 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-900/30">
+                <td class="px-6 py-3 font-bold text-gray-900 dark:text-gray-100">
+                  Total
                 </td>
-              </Show>
-              <td class="px-3 py-3 text-right tabular-nums font-bold text-gray-900 dark:text-gray-100">
-                {num(totalQualified())}
-              </td>
-              <td />
-              <td class="px-6 py-3 text-right tabular-nums font-bold text-gray-900 dark:text-gray-100">
-                <Show when={billedCharges().length > 0} fallback={<Dash />}>
-                  {fmt(totalCharge())}
+                <td class="hidden sm:table-cell" />
+                <td class="hidden sm:table-cell" />
+                <td class="hidden md:table-cell" />
+                <Show when={anyUncovered()}>
+                  <td class={`hidden md:table-cell ${numCell} font-bold text-amber-600 dark:text-amber-400`}>
+                    {num(totalUncovered())}
+                  </td>
                 </Show>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+                <td class="px-3 py-3 text-right tabular-nums font-bold text-gray-900 dark:text-gray-100">
+                  {num(totalQualified())}
+                </td>
+                <td />
+                <td class="px-6 py-3 text-right tabular-nums font-bold text-gray-900 dark:text-gray-100">
+                  <Show when={billedCharges().length > 0} fallback={<Dash />}>
+                    {fmt(totalCharge())}
+                  </Show>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </Show>
 
       {/* Footnotes, only for the conditions actually present in this month.
           Both explain a number that otherwise looks like a mistake: a rate the
@@ -1112,6 +1159,27 @@ export default function Billing() {
       return key >= LAUNCH_KEY && key <= currentKey;
     });
   };
+
+  // available_months is SCOPED for a client: a month is offered only if they
+  // paid in it or a contracted rate covered part of it. A client with no
+  // config comes down to a single month — ShashankVirtualRealty and
+  // MohitSawasdee18 are both September-only — while the selection always
+  // OPENS on today's month. Those two agree today and stop agreeing the moment
+  // the calendar rolls over: on 1 October a September-only client lands on
+  // 2026-10, which lights no pill, so the page shows a month they were never
+  // offered and every pill on screen looks unselected. Snap to the most recent
+  // month they actually have.
+  //
+  // Converges: the key it snaps to is one the list already contains, so the
+  // refetch it triggers comes back with that same month present and the effect
+  // makes no further change. An EMPTY list is left alone — that is a month
+  // still in flight, not a client with nothing.
+  createEffect(() => {
+    const keys = availableMonths().map((m) => `${m.year}-${pad2(m.month)}`);
+    if (!keys.length || keys.includes(selectedMonth())) return;
+    // pad2 makes the keys sort chronologically as plain strings.
+    setSelectedMonth(keys.reduce((a, b) => (b > a ? b : a)));
+  });
   const currentPeriod = () => data().current_period || {};
   const openingBalance = () => data().opening_balance || {};
   const monthSpend = () => data().month_spend || {};
@@ -1497,8 +1565,22 @@ export default function Billing() {
 
             {/* ── CPL only: what each project charged this month ──
                 Replaces the old single "CPL As Given" card: rates are
-                per-project, so the charge is only meaningful per project. */}
-            <Show when={iscpl() && cplProjects().length > 0}>
+                per-project, so the charge is only meaningful per project.
+
+                An empty cpl_projects is now a real answer for a client —
+                projects with no covered day are omitted, so a client with no
+                config gets []. The card still renders and says so, because a
+                CPL client whose billing card silently vanishes has no way to
+                tell "nothing was billed per lead" from "this page is broken".
+                Held back while the month is still loading or errored, though:
+                data() falls back to {} there, and an empty state asserted over
+                a payload that hasn't arrived is a lie that reads as fact. */}
+            <Show
+              when={
+                iscpl() &&
+                (cplProjects().length > 0 || (!isLoading() && !loadError()))
+              }
+            >
               <CplProjectTable
                 projects={cplProjects()}
                 missing={missingCplRate()}
