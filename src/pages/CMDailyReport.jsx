@@ -230,11 +230,7 @@ export default function CMDailyReport() {
   // /daily-reports reads it: that overview belongs to the CM, not to the client
   // this report is about.
   const GST_PCT = 18;
-  const scMult = () => {
-    const p = scPct();
-    return p == null ? null : 1 + p / 100;
-  };
-  const gstMult = () => 1 + GST_PCT / 100;
+  const gstPct = () => GST_PCT;
   const billedInclLabel = () => {
     if (iscpl()) return `Client Billed (incl ${GST_PCT}% GST)`;
     const p = scPct();
@@ -275,16 +271,15 @@ export default function CMDailyReport() {
   // agency-cost keys are on their payload — whether the raw COLUMNS render is
   // the toggle's business (showRaw), not the reader's.
   //
-  // The S.C / GST column loads onto premium_spend — the "Spent" column, before
-  // the replacement credit — which is what /daily-reports loads onto too. This
-  // page briefly loaded onto billed_amount instead; the two agree only where
-  // replaced_leads is 0, so that was the same disagreement this migration
-  // exists to remove, in a column nobody would have thought to compare.
+  // The S.C / GST column loads onto billed_amount — the "Billed" column, AFTER
+  // the credit for replaced leads — which is what /daily-reports loads onto
+  // too. Both pages used to load onto premium_spend, and both were charging
+  // service charge and GST on leads the client had already been credited for.
   const { rowOf: rowCells } = makeLedgerCells({
     hasRaw: () => true,
     clientType,
-    scMult,
-    gstMult,
+    scPct,
+    gstPct,
     iscpl,
   });
 

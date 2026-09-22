@@ -295,6 +295,109 @@ console.log("\nbilled_amount is printed, not reconstructed");
   );
 }
 
+// ── S.C and GST are charged on BILLED, and rounded the invoice's way ────────
+// The ledger's two computed columns. Both used to load onto premium_spend, the
+// figure BEFORE the credit for replaced leads — so a client was charged 13%
+// and then 18% on leads they had already been credited for, and the ledger
+// contradicted the invoice the Billing page drew from the same facts.
+//
+// The fixtures are Anubhav's ledger, 1–22 Sept, at 13%: two real rows and the
+// seven-project footer, to the paisa. They pin the ORDER as well as the base —
+// service charge rounded and added, then GST on that gross rounded and added,
+// which is build_billing_overview's order. Multiplying by 1.13 × 1.18 in one
+// step passes the first two rows and drifts on others, so the footer is here
+// too.
+console.log("\nS.C / GST load onto billed_amount, in the invoice's order");
+{
+  const { makeLedgerCells } = await import("../src/services/ledgerCells.js");
+  const cells = (type, pct) =>
+    makeLedgerCells({
+      hasRaw: () => true,
+      clientType: () => type,
+      scPct: () => pct,
+      gstPct: () => 18,
+      iscpl: () => type === "cpl",
+    }).rowOf;
+
+  const hybrid = cells("hybrid", 13);
+
+  // premium_spend is on every fixture and is DELIBERATELY not the base: each
+  // one is the wrong figure the column used to print.
+  for (const [name, wire, sc, gst] of [
+    ["9 replaced", { premium_spend: "8053.56", billed_amount: "5983.52" }, 6761.38, 7978.43],
+    ["23 replaced", { premium_spend: "7536.23", billed_amount: "498.23" }, 563.0, 664.34],
+    ["footer, 7 projects", { premium_spend: "120901.25", billed_amount: "104353.25" }, 117919.17, 139144.62],
+  ]) {
+    const r = hybrid(wire);
+    check(
+      `${name}: + S.C = ${sc}`,
+      r.spentwithServiceCharge === sc,
+      `(${r.spentwithServiceCharge})`,
+    );
+    check(
+      `${name}: + S.C + GST = ${gst}`,
+      r.spentwithservice_gst === gst,
+      `(${r.spentwithservice_gst})`,
+    );
+  }
+
+  // The old base, spelled out: what the 9-replaced row used to print.
+  const old = hybrid({ premium_spend: "8053.56", billed_amount: "5983.52" });
+  check(
+    "the column is NOT premium_spend × 1.13 (9,100.48) any more",
+    old.spentwithServiceCharge !== 9100.48,
+    `(${old.spentwithServiceCharge})`,
+  );
+
+  // Where nothing was replaced the two bases agree, so nothing moves.
+  const flat = hybrid({ premium_spend: "1000", billed_amount: "1000" });
+  check(
+    "no replacements → unchanged (1,130.00 / 1,333.40)",
+    flat.spentwithServiceCharge === 1130 && flat.spentwithservice_gst === 1333.4,
+    `(${flat.spentwithServiceCharge} / ${flat.spentwithservice_gst})`,
+  );
+
+  // Gaps stay gaps in both directions.
+  const noRate = cells("hybrid", null)({ billed_amount: "900" });
+  check(
+    "unresolved rate → null, never a silent 0% service charge",
+    noRate.spentwithServiceCharge === null &&
+      noRate.spentwithservice_gst === null,
+  );
+  const noBase = hybrid({ premium_spend: "1000" });
+  check(
+    "hybrid row with no billed_amount → null, NOT a fallback to premium_spend",
+    noBase.spentwithServiceCharge === null &&
+      noBase.spentwithservice_gst === null,
+    `(${noBase.spentwithServiceCharge})`,
+  );
+
+  // A retainer has no replacements to credit, so their billed spend IS the
+  // base — the same belt and braces the "Spent" column already carries.
+  const ret = cells("retainer", 15)({ spend: "2000" });
+  check(
+    "retainer with no premium/billed keys still charges on their spend",
+    ret.spentwithServiceCharge === 2300 && ret.spentwithservice_gst === 2714,
+    `(${ret.spentwithServiceCharge} / ${ret.spentwithservice_gst})`,
+  );
+
+  // CPL clients pay per lead: GST applies, service charge does not.
+  const cpl = cells("cpl", null)({ premium_spend: "5000", billed_amount: "4000" });
+  check(
+    "CPL: GST only, on billed (4,720.00), and no S.C figure at all",
+    cpl.spentwithservice_gst === 4720 && cpl.spentwithServiceCharge === null,
+    `(${cpl.spentwithservice_gst})`,
+  );
+
+  // The TOTAL row runs through the same rowOf against the totals block.
+  const emptyTotals = hybrid({});
+  check(
+    "an empty totals block → '—', not 0.00 with tax on top",
+    emptyTotals.spentwithServiceCharge === null &&
+      emptyTotals.spentwithservice_gst === null,
+  );
+}
+
 // ── Missing premium is legitimate and must stay null, never 0 ───────────────
 // ~299 of 448 live rows have no premium: retainer clients have no display config
 // by design, and some client+project pairs are missing one. A 0 there would

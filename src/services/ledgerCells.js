@@ -77,14 +77,17 @@ export const exp = (v) => (v == null ? "" : v);
 //
 //   hasRaw()      may this viewer see raw agency cost
 //   clientType()  "cpl" | "hybrid" | "retainer" | "" — the VIEWED client's
-//   scMult()      1 + S.C%/100, or NULL when the rate could not be resolved
-//   gstMult()     1 + GST%/100, or NULL when it could not be resolved
+//   scPct()       the client's service-charge RATE in percent, or NULL when it
+//                 could not be resolved. The RATE, not a multiplier: the charge
+//                 is rounded to the paisa on its own before it is added, and a
+//                 1.13 cannot express that.
+//   gstPct()      the GST rate in percent — flat 18 — or NULL
 //   iscpl()       CPL clients pay per lead: GST applies, service charge doesn't
 export const makeLedgerCells = ({
   hasRaw,
   clientType,
-  scMult,
-  gstMult,
+  scPct,
+  gstPct,
   iscpl,
 }) => {
   // The spend the CLIENT is charged, as opposed to what the ads cost us.
@@ -108,6 +111,22 @@ export const makeLedgerCells = ({
     const premium = readKey(w, "premium_spend");
     if (premium != null) return premium;
     return clientType() === "retainer" ? readKey(w, "spend") : null;
+  };
+
+  // What the S.C and GST columns are charged ON: billed_amount, the client's
+  // spend AFTER the credit for replaced leads. One named key off the same row.
+  //
+  // The retainer branch is the same belt and braces as billedSpendOf's, and
+  // rests on the fact the replacement columns already rest on: replacements
+  // apply to CPL and hybrid clients only, so a retainer's billed figure IS
+  // their billed spend — there is nothing to credit back. Nobody else falls
+  // back. A hybrid row with no billed_amount has a genuinely unknown base, and
+  // charging S.C on the pre-credit figure to fill that gap is the exact bug
+  // this function exists to close.
+  const billedBaseOf = (w) => {
+    const billed = readKey(w, "billed_amount");
+    if (billed != null) return billed;
+    return clientType() === "retainer" ? billedSpendOf(w) : null;
   };
 
   // ── One row of the payload → the cells of one row on screen ───────────────
@@ -157,43 +176,58 @@ export const makeLedgerCells = ({
 
   // The S.C and GST columns are the one place a figure is computed, and they
   // are not the banned shape: no division, and no second column involved. Each
-  // is ONE row's own figure times that client's own rate.
+  // is ONE row's own figure plus that client's own rate on it.
+  //
+  // The ORDER and the per-step rounding are build_billing_overview's, because
+  // the invoice is what these columns have to match: round the service charge
+  // to the paisa, add it, round GST on THAT gross to the paisa, add it. One
+  // multiplication at the end (base × 1.13 × 1.18) is the same arithmetic only
+  // until a half-paisa turns up, and then the ledger and the invoice differ by
+  // a paisa for no reason a reader can see.
   //
   // Null in → null out → "—", in BOTH directions: an unknown billed figure
   // can't surface as a confident ₹0.00 with tax on top, and an unresolved RATE
   // prints "—" rather than silently charging 0% service charge. A 0% fallback
   // is a confident wrong number, which is the one thing worse than a gap.
+  const round2 = (n) => parseFloat(n.toFixed(2));
   const withSc = (base) => {
-    const sc = scMult();
-    if (base == null || sc == null) return null;
-    return parseFloat((base * sc).toFixed(2));
+    const pct = scPct();
+    if (base == null || pct == null) return null;
+    return round2(base + round2((base * pct) / 100));
   };
   const withScGst = (base) => {
-    const sc = scMult();
-    const gst = gstMult();
+    const gst = gstPct();
     if (base == null || gst == null) return null;
-    if (iscpl()) return parseFloat((base * gst).toFixed(2));
-    if (sc == null) return null;
-    return parseFloat((base * sc * gst).toFixed(2));
+    const gross = iscpl() ? base : withSc(base);
+    if (gross == null) return null;
+    return round2(gross + round2((gross * gst) / 100));
   };
 
   // Rows and the TOTAL row are the same shape, so a cell written once reads
   // correctly at either level.
   //
-  // The S.C and GST columns load onto `spent` — premium_spend, the pre-credit
-  // figure — on every surface. This was briefly configurable per page, with the
-  // CM report loading onto billed_amount instead. It isn't any more: the two
-  // bases agree only where replaced_leads is 0, so a knob here is a knob for
-  // making two reports of the same client disagree, and the whole point of this
-  // module is that they can't.
+  // The S.C and GST columns load onto billed_amount on every surface, and that
+  // is not a per-page knob for the same reason nothing else here is: the two
+  // candidate bases agree only where replaced_leads is 0, so a knob would be a
+  // knob for making two reports of the same client disagree.
+  //
+  // They used to load onto `spent` — premium_spend, BEFORE the replacement
+  // credit. A replaced lead is one the client does not owe for, so charging
+  // 13% and then 18% on top of it billed them for a lead they had already been
+  // credited: a row with 9 replacements printed ₹9,100.48 where the invoice
+  // said ₹6,761.38, and a seven-project footer ran about ₹22,000 over. The
+  // Billing page had it right the whole time — build_billing_overview takes
+  // the replacement cost off FIRST, then service charge, then GST — so the
+  // ledger was not merely high, it contradicted the client's own invoice.
   const rowOf = (w) => {
     const cells = cellsOf(w);
+    const base = billedBaseOf(w);
     return {
       ...cells,
-      spentwithServiceCharge: withSc(cells.spent),
-      spentwithservice_gst: withScGst(cells.spent),
+      spentwithServiceCharge: withSc(base),
+      spentwithservice_gst: withScGst(base),
     };
   };
 
-  return { billedSpendOf, cellsOf, withSc, withScGst, rowOf };
+  return { billedSpendOf, billedBaseOf, cellsOf, withSc, withScGst, rowOf };
 };

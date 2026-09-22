@@ -331,11 +331,7 @@ export default function DailyReports() {
   // GST is a flat 18% platform-wide — a policy constant, not a per-client rate,
   // so there is nothing to resolve and nothing that can come back missing.
   const GST_PCT = 18;
-  const scMult = () => {
-    const p = scPct();
-    return p == null ? null : 1 + p / 100;
-  };
-  const gstMult = () => 1 + GST_PCT / 100;
+  const gstPct = () => GST_PCT;
   // Labels name the rate only when there IS one; an unresolved rate must not
   // print as "+ 0% S.C" in a header any more than in a cell.
   const scColLabel = () =>
@@ -509,10 +505,11 @@ export default function DailyReports() {
     // A client's own login never receives raw agency cost.
     hasRaw: hasRawSpend,
     clientType: reportClientType,
-    // The SELECTED client's own rate, from the report's meta.report_summary,
-    // falling back to the viewer's billing overview until that lands.
-    scMult,
-    gstMult,
+    // The SELECTED client's own rate, from the report's meta.report_summary.
+    // Rates, not multipliers: the reader rounds the service charge before it
+    // adds it, the way the invoice does.
+    scPct,
+    gstPct,
     iscpl: iscplReport,
   });
 
