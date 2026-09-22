@@ -27,6 +27,12 @@ import {
   fetchProjectById,
   getSelectedClientNomenId,
 } from "../services/campaigns";
+import {
+  sumInsightRows,
+  cplFrom,
+  rawSpendOf,
+  toNumber,
+} from "../services/campaignTotals";
 import useColumnSort from "../components/Columnsorting";
 import {
   projectDetailsCache,
@@ -38,14 +44,14 @@ import Chart from "chart.js/auto";
 import Avatar from "../components/common/Avatar";
 import useRole, { clientRole } from "./../hooks/useRole";
 
-// Admin/CM "preview as client" insight rows (returned when the bulk call is sent
-// with as_client_id) carry BOTH `spend` (client-facing — markup / fixed-CPL
-// applied) and `spend_raw` (the actual Meta charge). This footer's raw "Total
-// Spent" / CPL is the Meta figure — the Premium CPL is computed separately from
-// premium_metrics — so read `spend_raw` when present. A client's own rows have no
-// `spend_raw`, so fall back to `spend` (already their billed figure).
-const rawSpendOf = (row) =>
-  parseFloat((row?.spend_raw != null ? row.spend_raw : row?.spend) || 0);
+// rawSpendOf / sumInsightRows / cplFrom live in services/campaignTotals.js —
+// every number in this page's footer goes through them. They are imported, not
+// written here, because a footer sum over bulk-insights rows has to survive two
+// things this page cannot change: money serialised as STRINGS ("3595.03", which
+// a bare + concatenates onto the running total) and campaigns with NO ROW AT
+// ALL on a day they did not deliver (undefined, which turns an int column into
+// NaN). scripts/verify-campaign-totals.mjs asserts that module against a real
+// day, so the rules cannot drift out from under this file.
 
 export default function ProjectDetails() {
   const location = useLocation();
@@ -694,27 +700,16 @@ export default function ProjectDetails() {
             return dateStr >= from && dateStr <= to;
           });
 
-    let totalLeads = 0;
-    let totalClicks = 0;
-    let totalReach = 0;
-    let totalSpent = 0;
-
-    for (const d of filtered) {
-      totalLeads += d.leads || 0;
-      totalClicks += d.clicks || 0;
-      totalReach += d.impressions || 0;
-      totalSpent += rawSpendOf(d);
-    }
-
-    const cpl =
-      totalLeads > 0 ? Number((totalSpent / totalLeads).toFixed(2)) : 0;
+    // Coerced and absent-tolerant: leads/clicks/impressions are ints today but
+    // arrive beside strings from the same serialiser, and spend always is one.
+    const stats = sumInsightRows(filtered);
 
     return {
-      leads: totalLeads,
-      clicks: totalClicks,
-      reach: totalReach,
-      spent: totalSpent,
-      cpl,
+      leads: stats.leads,
+      clicks: stats.clicks,
+      reach: stats.reach,
+      spent: stats.spend,
+      cpl: Number(cplFrom(stats.spend, stats.leads).toFixed(2)),
     };
   };
 
@@ -763,7 +758,9 @@ export default function ProjectDetails() {
         // combined lead count.
         const totalLeads = stats.leads + extraLeadsOf(row);
         const totalCPL =
-          totalLeads > 0 ? Number((stats.spent / totalLeads).toFixed(2)) : 0;
+          totalLeads > 0
+            ? Number(cplFrom(stats.spent, totalLeads).toFixed(2))
+            : 0;
 
         map.set(key, {
           ...row,
@@ -803,7 +800,7 @@ export default function ProjectDetails() {
     const premiumCpl = pm && pm.cpl != null ? Number(pm.cpl) : null;
     const totalLeads = stats.leads + extraLeadsOf(row);
     const totalCPL =
-      totalLeads > 0 ? Number((stats.spent / totalLeads).toFixed(2)) : 0;
+      totalLeads > 0 ? Number(cplFrom(stats.spent, totalLeads).toFixed(2)) : 0;
     return {
       ...row,
       totalLeads,
@@ -1039,12 +1036,17 @@ export default function ProjectDetails() {
 
       const pm = row.premium_metrics;
       if (pm && pm.spend != null && pm.leads_count != null) {
-        premiumSpend += Number(pm.spend);
-        premiumLeads += Number(pm.leads_count);
+        // Same serialiser, same string decimals — coerced through the same
+        // helper so a premium total can't go NaN where the raw one can't.
+        premiumSpend += toNumber(pm.spend);
+        premiumLeads += toNumber(pm.leads_count);
       }
     }
 
-    const avgCPL = totalLeads > 0 ? (totalSpent / totalLeads).toFixed(2) : 0;
+    // Σ spend ÷ Σ leads. Adding the rows' own cpl values would weight a
+    // one-lead campaign the same as a two-hundred-lead one.
+    const avgCPL =
+      totalLeads > 0 ? cplFrom(totalSpent, totalLeads).toFixed(2) : 0;
 
     const premiumCPL = premiumLeads > 0 ? premiumSpend / premiumLeads : null;
 
@@ -1578,6 +1580,16 @@ export default function ProjectDetails() {
                 <span class="px-3 py-1 bg-purple-600 text-white rounded-lg text-xs font-bold">
                   TOTAL
                 </span>
+                {/* With no client selected every total below is "—" on purpose
+                    — see scopeUnresolved. Say why. A silent row of dashes is
+                    indistinguishable from a sum that broke, and gets reported
+                    as one. */}
+                <Show when={scopeUnresolved()}>
+                  <span class="ml-2 text-xs font-medium text-gray-600 dark:text-gray-300">
+                    Pick a client to total this project — its campaigns span
+                    several
+                  </span>
+                </Show>
               </td>
 
               {/* ✅ Add this — matches the Ad Account column in thead */}
