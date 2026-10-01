@@ -169,6 +169,10 @@ const normaliseRow = (row) => {
     // flag in commandRules, so it must not be coerced anywhere on the way here.
     premium_spend: num(row?.premium_spend),
     balance_inc_gst: num(row?.balance_inc_gst),
+    // Hybrid Credit Notes pool (from 2026-09); null for everyone else. A
+    // hybrid balance_inc_gst now subtracts this month's charge (it used not
+    // to), so hybrid balances drop — that is correct, not a regression.
+    credit_notes_inc_gst: num(row?.credit_notes_inc_gst),
   };
 };
 

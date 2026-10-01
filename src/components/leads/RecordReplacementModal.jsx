@@ -24,6 +24,11 @@ import { fetchProjectsByClient } from "../../pages/admin/services/fetchProjectsB
 //   400 replaced > generated (the typo guard) → pinned NEXT TO the count field,
 //        because that is the field the operator has to fix
 //   403 client outside a tier-1 CM's book → banner, pinned to the client field
+//   422 validation_error, fields.notes → the note is compulsory; pinned to it
+//   409 needs_confirmation (hybrid) → fields.warnings in a confirm dialog: the
+//        date sits in a closed month (opening balances get recalculated), or
+//        the credit per lead beats the project's average CPL that month. On
+//        confirm the SAME body goes again with confirm: true.
 //
 // Props: open, onClose(), onRecorded({count, clientName, projectName, batch})?,
 //        clientId? (Client PK to pre-select when it's in the picker's roster)
@@ -55,6 +60,10 @@ export default function RecordReplacementModal(props) {
   const [formError, setFormError] = createSignal(null); // retainer / unknown
   const [clientError, setClientError] = createSignal(null); // 403 out of book
   const [countError, setCountError] = createSignal(null); // replaced > generated
+  const [notesError, setNotesError] = createSignal(null); // 422 note missing
+  // 409 needs_confirmation: the sentences to confirm, plus the body that drew
+  // them so the confirm resends exactly that and nothing re-read from the form.
+  const [pending, setPending] = createSignal(null); // { warnings, payload }
 
   const [clientQuery, setClientQuery] = createSignal("");
   const [projectQuery, setProjectQuery] = createSignal("");
@@ -78,6 +87,8 @@ export default function RecordReplacementModal(props) {
     setFormError(null);
     setClientError(null);
     setCountError(null);
+    setNotesError(null);
+    setPending(null);
     setProjects([]);
   };
 
@@ -160,34 +171,68 @@ export default function RecordReplacementModal(props) {
     !!form().target_client_id &&
     !!form().project_id &&
     countIsValid() &&
-    costIsValid();
+    costIsValid() &&
+    notesAreValid();
 
-  const handleSubmit = async () => {
+  // The note is compulsory (the backend 422s without one).
+  const notesAreValid = () => form().reason.trim() !== "";
+
+  const fieldMessage = (v) =>
+    Array.isArray(v) ? v.join(" ") : v ? String(v) : null;
+
+  // The 409's sentences: fields.warnings is the list; detail carries the same
+  // sentences joined, for an envelope that only has that.
+  const warningsOf = (err) => {
+    const w = err?.fields?.warnings;
+    if (Array.isArray(w) && w.length) return w.map(String);
+    const detail = err?.data?.error?.detail ?? err?.data?.detail ?? err?.message;
+    return detail ? [String(detail)] : [];
+  };
+
+  const buildPayload = () => {
+    const note = form().reason.trim();
+    const payload = {
+      target_client_id: Number(form().target_client_id),
+      project_id: Number(form().project_id),
+      replaced_count: Number(form().replaced_count),
+      // Decimal — send the string the operator typed so no rounding happens
+      // on the way out; the backend parses it.
+      replaced_cost: String(form().replaced_cost),
+      // The 422 names the field `notes`; the batch has always been created
+      // with `reason`. Same text under both until the backend confirms which
+      // one the serializer reads — never a different value in each.
+      notes: note,
+      reason: note,
+    };
+    // received_date is optional; the backend defaults to today when omitted.
+    // Never send an empty string.
+    const day = form().received_date?.trim();
+    if (day) payload.received_date = day;
+    return payload;
+  };
+
+  const handleSubmit = async (confirmedPayload) => {
     setFormError(null);
     setClientError(null);
     setCountError(null);
+    setNotesError(null);
 
     if (!countIsValid()) {
       setCountError("Replaced count must be a whole number of 1 or more.");
       return;
     }
+    if (!notesAreValid()) {
+      setNotesError("A note is required.");
+      return;
+    }
+
+    const payload = confirmedPayload
+      ? { ...confirmedPayload, confirm: true }
+      : buildPayload();
+    setPending(null);
 
     setSubmitting(true);
     try {
-      const payload = {
-        target_client_id: Number(form().target_client_id),
-        project_id: Number(form().project_id),
-        replaced_count: Number(form().replaced_count),
-        // Decimal — send the string the operator typed so no rounding happens
-        // on the way out; the backend parses it.
-        replaced_cost: String(form().replaced_cost),
-        reason: form().reason,
-      };
-      // received_date is optional; the backend defaults to today when omitted.
-      // Never send an empty string.
-      const day = form().received_date?.trim();
-      if (day) payload.received_date = day;
-
       const res = await createReplacementBatch(payload);
 
       const recorded = {
@@ -207,7 +252,11 @@ export default function RecordReplacementModal(props) {
       // allowed count, which is the whole value of these messages.
       const msg = err?.message || "Could not record the replacement.";
       const status = err?.status;
-      if (status === 403) {
+      if (err?.code === "needs_confirmation" && !confirmedPayload) {
+        setPending({ warnings: warningsOf(err), payload });
+      } else if (err?.code === "validation_error" && err?.fields?.notes) {
+        setNotesError(fieldMessage(err.fields.notes));
+      } else if (status === 403) {
         setClientError(msg);
       } else if (status === 400 && /replac|generated|max|exceed/i.test(msg)) {
         setCountError(msg);
@@ -444,7 +493,8 @@ export default function RecordReplacementModal(props) {
                 />
               </div>
               <p class="text-xs text-[#8593A8] mt-1">
-                The rupee amount credited back on this client's bill.
+                The rupee amount credited back on this client's bill. For a
+                hybrid client (from Sep 2026) it goes to their Credit Notes.
               </p>
             </div>
 
@@ -465,16 +515,39 @@ export default function RecordReplacementModal(props) {
               </p>
             </div>
 
-            {/* Reason */}
+            {/* Notes — compulsory */}
             <div>
-              <label class={LABEL}>Notes</label>
+              <label class={LABEL}>
+                Notes <span class="text-[#AC2334]">*</span>
+              </label>
               <textarea
                 rows="4"
                 value={form().reason}
-                onInput={(e) => set("reason", e.target.value)}
+                onInput={(e) => {
+                  set("reason", e.target.value);
+                  setNotesError(null);
+                }}
                 placeholder="Why were these leads replaced?"
-                class={`${FIELD} resize-none`}
+                aria-invalid={!!notesError()}
+                class={`${FIELD} resize-none ${
+                  notesError()
+                    ? "border-[#AC2334] focus:border-[#AC2334] ring-1 ring-[#AC2334]/30"
+                    : ""
+                }`}
               />
+              <Show
+                when={notesError()}
+                fallback={
+                  <p class="text-xs text-[#8593A8] mt-1">Required.</p>
+                }
+              >
+                <p
+                  role="alert"
+                  class="mt-1.5 text-sm font-medium text-[#AC2334] dark:text-red-400"
+                >
+                  {notesError()}
+                </p>
+              </Show>
             </div>
           </div>
 
@@ -487,7 +560,7 @@ export default function RecordReplacementModal(props) {
               Cancel
             </button>
             <button
-              onClick={handleSubmit}
+              onClick={() => handleSubmit()}
               disabled={!canSubmit()}
               class="flex-1 px-4 py-2.5 rounded-lg bg-[#AC2334] text-white font-semibold hover:bg-[#93192a] disabled:opacity-40 disabled:cursor-not-allowed transition"
             >
@@ -495,6 +568,56 @@ export default function RecordReplacementModal(props) {
             </button>
           </div>
         </div>
+
+        {/* 409 needs_confirmation — the backend's own sentences, verbatim. */}
+        <Show when={pending()}>
+          <div class="fixed inset-0 z-[60] flex items-center justify-center p-4">
+            <div
+              class="fixed inset-0 bg-black/45"
+              aria-hidden="true"
+              onClick={() => setPending(null)}
+            />
+            <div
+              role="alertdialog"
+              aria-modal="true"
+              aria-label="Confirm replacement"
+              class="relative w-full max-w-md rounded-xl border border-[#E2E8F1] dark:border-gray-700 bg-white dark:bg-gray-900 shadow-2xl"
+            >
+              <div class="px-6 pt-5">
+                <h3 class="text-lg font-bold text-[#14233A] dark:text-white">
+                  Confirm this replacement
+                </h3>
+                <p class="mt-1 text-sm text-[#54657E] dark:text-gray-400">
+                  Please check before recording:
+                </p>
+                <ul class="mt-3 space-y-2">
+                  <For each={pending().warnings}>
+                    {(w) => (
+                      <li class="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-3.5 py-2.5 text-sm text-amber-800 dark:text-amber-300">
+                        {w}
+                      </li>
+                    )}
+                  </For>
+                </ul>
+              </div>
+              <div class="mt-5 px-6 py-4 border-t border-[#E2E8F1] dark:border-gray-700 flex gap-3">
+                <button
+                  onClick={() => setPending(null)}
+                  class="flex-1 px-4 py-2.5 rounded-lg border border-[#E2E8F1] dark:border-gray-600 font-semibold text-[#54657E] dark:text-gray-300 hover:bg-[#E2E8F1]/60 dark:hover:bg-gray-700 transition"
+                >
+                  Go back
+                </button>
+                <button
+                  onClick={() => handleSubmit(pending().payload)}
+                  disabled={submitting()}
+                  class="flex-1 px-4 py-2.5 rounded-lg bg-[#AC2334] text-white font-semibold hover:bg-[#93192a] disabled:opacity-40 transition"
+                >
+                  Confirm & record
+                </button>
+              </div>
+            </div>
+          </div>
+        </Show>
       </div>
     </Show>
   );

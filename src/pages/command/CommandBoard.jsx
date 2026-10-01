@@ -1041,6 +1041,15 @@ export default function CommandBoard() {
                             >
                               {inr(r.balance_inc_gst)}
                             </span>
+                            {/* Hybrid on Credit Notes only — null otherwise. */}
+                            <Show when={r.credit_notes_inc_gst != null}>
+                              <div
+                                class="text-[11px] font-normal text-[#3E6FB0] dark:text-blue-300"
+                                title="Credit Notes left (inc GST). They pay this client's charges before the main balance."
+                              >
+                                + {inr(r.credit_notes_inc_gst)} credit notes
+                              </div>
+                            </Show>
                           </td>
 
                           {/* Lead destination — "Not recorded yet" for all 186
@@ -1165,6 +1174,11 @@ export default function CommandBoard() {
         Balance is deliberately not totalled: a CPL client bills per qualified
         lead with no service charge and no GST, a hybrid bills on spend plus
         both. Adding the column would produce a number that means nothing.
+      </p>
+      <p class="mt-1.5 text-[12px] text-gray-400 dark:text-gray-500">
+        From September 2026 a hybrid client's replaced leads go into Credit
+        Notes instead of reducing the bill. Their balance is the main balance
+        after this month's charge, with any Credit Notes left shown beneath it.
       </p>
       <p class="mt-1.5 text-[12px] text-gray-400 dark:text-gray-500">
         A blank premium spend means two different things.{" "}

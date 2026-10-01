@@ -116,6 +116,11 @@ const PAY_COLUMNS = [
   { key: "received", label: "Received", align: "right", type: "num", base: "received" },
   { key: "billed", label: "Billed", align: "right", type: "num", base: "utilized" },
   { key: "remaining", label: "Remaining", align: "right", type: "num", base: "closing_balance" },
+  // Hybrid Credit Notes pool (from 2026-09). inc GST only — the endpoint sends
+  // no ex-GST counterpart — so it ignores the toggle and says so in its label.
+  // `optional`: shown only when some row carries the field, so a month or a
+  // table with no hybrid-on-Credit-Notes client gets no column of dashes.
+  { key: "credit_notes", label: "Credit notes · inc", align: "right", type: "num", optional: true, get: (c) => c.credit_notes_inc_gst },
   { key: "leads", label: "Leads", align: "right", type: "num", get: (c) => c.total_leads },
   { key: "status", label: "Status", align: "center", type: "str", get: (c) => c.status },
 ];
@@ -142,6 +147,17 @@ export function PaymentsTable(props) {
   const gstSuffix = () => (props.incGst === false ? "ex_gst" : "inc_gst");
   const money = (row, base) => row?.[`${base}_${gstSuffix()}`];
   const valueOf = (row, col) => (col.base ? money(row, col.base) : col.get(row));
+
+  // Credit Notes column: only when at least one row carries either field
+  // (null for non-hybrid, absent before the backend ships it).
+  const showCredit = createMemo(() =>
+    (props.rows() ?? []).some(
+      (r) =>
+        !isMissing(r?.credit_notes_inc_gst) || !isMissing(r?.credit_used_inc_gst),
+    ),
+  );
+  const columns = () =>
+    PAY_COLUMNS.filter((c) => !c.optional || showCredit());
 
   // null sortKey → preserve the server's debtors-first order.
   const [sortKey, setSortKey] = createSignal(null);
@@ -243,7 +259,7 @@ export function PaymentsTable(props) {
         <thead class="bg-[#F8FAFC] dark:bg-gray-800">
           <tr class="[&_th]:whitespace-nowrap [&_th]:text-xs [&_th]:uppercase [&_th]:tracking-wider [&_th]:font-bold [&_th]:px-4 [&_th]:py-3.5 text-[#54657E] dark:text-gray-300 border-b border-[#D4DDE9] dark:border-gray-700">
             <th class="text-center w-12">S.No</th>
-            <For each={PAY_COLUMNS}>
+            <For each={columns()}>
               {(col) => (
                 <th
                   class={
@@ -368,6 +384,17 @@ export function PaymentsTable(props) {
                   >
                     {fmtMoney(money(c, "closing_balance"), 2)}
                   </td>
+                  {/* Credit notes — pool left, and what it paid this month */}
+                  <Show when={showCredit()}>
+                    <td class="px-4 py-3 text-right tabular-nums font-medium text-[#3E6FB0] dark:text-blue-300">
+                      {fmtMoney(c.credit_notes_inc_gst, 2)}
+                      <Show when={!isMissing(c.credit_used_inc_gst)}>
+                        <div class="text-[11px] font-normal text-[#8593A8] dark:text-gray-400">
+                          used {fmtMoney(c.credit_used_inc_gst, 2)}
+                        </div>
+                      </Show>
+                    </td>
+                  </Show>
                   {/* Leads */}
                   <td class="px-4 py-3 text-right tabular-nums text-[#14233A] dark:text-gray-300">
                     {fmtNum(c.total_leads)}

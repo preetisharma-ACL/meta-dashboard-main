@@ -78,6 +78,11 @@ function Leg(props) {
 //   note?      trailing caption under the strip
 //   compact?   smaller figures, for use inside an existing card
 //   class?     extra classes on the wrapper
+//   creditNotes? hybrid months on Credit Notes (from 2026-09): replaced leads
+//              no longer reduce the bill, so Billable = Generated. Replaced is
+//              shown as INFO — no minus, no arrows — because drawn as a
+//              deduction the row reads 100 → −10 → 100, arithmetic that fails.
+//   creditSub? caption under Replaced in that mode (e.g. the credit amount)
 export default function LeadBreakdown(props) {
   const b = () => props.breakdown || {};
   const size = () => (props.compact ? "text-xl" : "text-2xl");
@@ -105,19 +110,33 @@ export default function LeadBreakdown(props) {
         <div class="sm:pr-4 flex-1 min-w-0">
           <Leg label="Leads Generated" value={b().generated} size={size()} />
         </div>
-        <Arrow />
+        <Show when={!props.creditNotes}>
+          <Arrow />
+        </Show>
         <div class="sm:px-4 flex-1 min-w-0">
-          <Leg
-            label="Replaced"
-            value={b().replaced}
-            tone="credit"
-            size={size()}
-            sub={
-              b().billedAmount != null && b().adSpend != null
-                ? `₹${Math.round(Math.max(0, b().adSpend - b().billedAmount)).toLocaleString("en-IN")} credited`
-                : null
+          <Show
+            when={props.creditNotes}
+            fallback={
+              <Leg
+                label="Replaced"
+                value={b().replaced}
+                tone="credit"
+                size={size()}
+                sub={
+                  b().billedAmount != null && b().adSpend != null
+                    ? `₹${Math.round(Math.max(0, b().adSpend - b().billedAmount)).toLocaleString("en-IN")} credited`
+                    : null
+                }
+              />
             }
-          />
+          >
+            <Leg
+              label="Replaced"
+              value={b().replaced}
+              size={size()}
+              sub={props.creditSub ?? "added to Credit Notes"}
+            />
+          </Show>
         </div>
         <Show when={b().uncovered > 0}>
           <Arrow />
@@ -131,14 +150,16 @@ export default function LeadBreakdown(props) {
             />
           </div>
         </Show>
-        <Arrow />
+        <Show when={!props.creditNotes}>
+          <Arrow />
+        </Show>
         <div class="sm:pl-4 flex-1 min-w-0">
           <Leg
             label="Billable"
             value={b().billable}
             tone="final"
             size={size()}
-            sub="charged to the client"
+            sub={props.creditNotes ? "= generated" : "charged to the client"}
           />
         </div>
       </div>

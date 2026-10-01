@@ -6,10 +6,15 @@ import {
   For,
   Show,
 } from "solid-js";
-import { fetchBillingOverview } from "../services/billing-service";
+import {
+  fetchBillingOverview,
+  fetchCreditNotes,
+} from "../services/billing-service";
 import { fetchPaymentsDetails } from "../services/payments-service";
 import useRole, { clientRole } from "../hooks/useRole";
 import LeadBreakdown from "../components/leads/LeadBreakdown";
+import CreditNotesSidebar from "../components/billing/CreditNotesSidebar";
+import { cnNum, creditNotesStatement } from "../services/creditNotes";
 import { readLeadBreakdown, showsReplacement } from "../services/leadReplacement";
 
 // --- Helpers ------------------------------------------------------------------
@@ -183,6 +188,9 @@ function LeadsCard(props) {
                 {" · "}
                 {Number(props.breakdown.replaced).toLocaleString("en-IN")}{" "}
                 replaced
+                {/* Credit Notes months: replaced is info, not a deduction —
+                    billable equals generated and the credit goes to the pool. */}
+                {props.creditNotes ? " (to Credit Notes)" : ""}
               </Show>
               <Show when={props.breakdown.uncovered > 0}>
                 {" · "}
@@ -1075,6 +1083,104 @@ function CplProjectTable(props) {
   );
 }
 
+// --- Overview: hybrid per-project table (Credit Notes months) -----------------
+// Same look as the CPL "Project Charges" table. Rows come straight from
+// overview.hybrid_projects, which is non-null only for hybrid months on Credit
+// Notes. Replace credit is what each project's replacements added to the pool —
+// it does NOT reduce the ad spend beside it.
+//
+// The footer reads the server's total_* fields. Adding up the row strings here
+// would be a second derivation of a figure the server already states.
+function HybridProjectTable(props) {
+  const rows = () => props.data?.rows || [];
+  const cnt = (v) => {
+    const n = cnNum(v);
+    return n == null ? "—" : n.toLocaleString("en-IN");
+  };
+  const amt = (v) => (cnNum(v) == null ? "—" : fmt(v));
+
+  const numCell =
+    "px-3 py-3 text-right tabular-nums text-gray-500 dark:text-gray-400";
+  const numHead = "px-3 py-2.5 text-right font-medium";
+
+  return (
+    <Card
+      class="mt-4 overflow-hidden"
+      aria-label={`Project charges for ${props.monthLabel}`}
+    >
+      <div class="px-6 pt-5 pb-3">
+        <Eyebrow>Project Charges · {props.monthLabel}</Eyebrow>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          Ad spend is billed in full · replaced leads are credited to your
+          Credit Notes
+        </p>
+      </div>
+      <Show
+        when={rows().length > 0}
+        fallback={
+          <div class="border-t border-gray-100 dark:border-gray-700/60 px-6 py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+            No project activity this month
+          </div>
+        }
+      >
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-y border-gray-200 dark:border-gray-700 text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                <th class="px-6 py-2.5 text-left font-medium">Project</th>
+                <th class={`hidden sm:table-cell ${numHead}`}>Generated</th>
+                <th class={`hidden sm:table-cell ${numHead}`}>Replaced</th>
+                <th class={numHead}>Ad spend · ex GST</th>
+                <th class="px-6 py-2.5 text-right font-medium">
+                  Replace credit · inc GST
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <For each={rows()}>
+                {(p) => (
+                  <tr class="border-b border-gray-100 dark:border-gray-700/60">
+                    <td class="px-6 py-3 font-medium text-gray-900 dark:text-gray-100">
+                      {p.project_name ?? "—"}
+                    </td>
+                    <td class={`hidden sm:table-cell ${numCell}`}>
+                      {cnt(p.generated)}
+                    </td>
+                    <td class={`hidden sm:table-cell ${numCell}`}>
+                      {cnt(p.replaced)}
+                    </td>
+                    <td class="px-3 py-3 text-right tabular-nums font-semibold text-gray-900 dark:text-gray-100">
+                      {amt(p.ad_spend_ex_gst)}
+                    </td>
+                    <td class="px-6 py-3 text-right tabular-nums text-green-700 dark:text-green-400">
+                      {amt(p.replace_credit_inc_gst)}
+                    </td>
+                  </tr>
+                )}
+              </For>
+              <tr class="border-t border-gray-200 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-900/30 font-bold text-gray-900 dark:text-gray-100">
+                <td class="px-6 py-3">Total</td>
+                <td class="hidden sm:table-cell px-3 py-3 text-right tabular-nums">
+                  {cnt(props.data?.total_generated)}
+                </td>
+                <td class="hidden sm:table-cell px-3 py-3 text-right tabular-nums">
+                  {cnt(props.data?.total_replaced)}
+                </td>
+                <td class="px-3 py-3 text-right tabular-nums">
+                  {amt(props.data?.total_ad_spend_ex_gst)}
+                </td>
+                <td class="px-6 py-3 text-right tabular-nums text-green-700 dark:text-green-400">
+                  {amt(props.data?.total_replace_credit_inc_gst)}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </Show>
+    </Card>
+  );
+}
+
 // --- Root Component -----------------------------------------------------------
 export default function Billing() {
   const [tab, setTab] = createSignal("overview");
@@ -1263,6 +1369,47 @@ export default function Billing() {
   // showsReplacement() keeps the whole section off their page.
   const leadBreakdown = createMemo(() => readLeadBreakdown(monthSpend()));
 
+  // ── Credit Notes (hybrid, from 2026-09) ───────────────────────────────────
+  // The backend decides: credit_notes is non-null only for a hybrid month on
+  // Credit Notes. In those months month_spend is GROSS (replacements are not
+  // subtracted, billable_leads = generated) and closing_balance is the MAIN
+  // balance after Credit Notes paid their share. Every other month and client
+  // type renders exactly as before.
+  const creditNotes = () => data().credit_notes ?? null;
+  const cnMode = () => ishybrid() && creditNotes() != null;
+  const hybridProjects = () => data().hybrid_projects ?? null;
+  const cnStatement = createMemo(() =>
+    cnMode()
+      ? creditNotesStatement({
+          overview: data(),
+          fundsAddedIncGst: fundsAddedIncGst(),
+          pointsAdded: pointsAddedThisMonth(),
+        })
+      : null,
+  );
+  // The statement is a ledger, so it must close. If the rows on screen don't
+  // add up to the server's remaining balance, say so in the console rather
+  // than quietly print an account that can't be reconciled.
+  createEffect(() => {
+    const s = cnStatement();
+    if (s && s.balances === false)
+      console.warn(
+        "[billing] Credit Notes statement does not close:",
+        { expected: s.expected, remaining: s.remaining },
+      );
+  });
+  const fmtOrDash = (v) => (v == null ? "—" : fmt(v));
+
+  // GET /billing/credit-notes/ — the pool across all months, for the Payments
+  // tab card and the sidebar. Hybrid only; `applies: false` hides both.
+  const [cnRes] = createResource(
+    () => (ishybrid() ? "cn" : null),
+    () => fetchCreditNotes(),
+  );
+  const cnData = () => cnRes()?.data ?? null;
+  const cnApplies = () => cnData()?.applies === true;
+  const [cnOpen, setCnOpen] = createSignal(false);
+
   // ── CPL per-project charges ───────────────────────────────────────────────
   // Only CPL clients get cpl_projects (one row per project with its own
   // contracted rate); the array is absent/empty for hybrid and retainer.
@@ -1328,8 +1475,11 @@ export default function Billing() {
   // Rough runway: remaining balance ÷ current daily burn (inc GST).
   const runwayDays = createMemo(() => {
     const mp = monthProgress();
-    if (!mp.dayOfMonth || !billedIncGst()) return null;
-    const dailyBurn = billedIncGst() / mp.dayOfMonth;
+    // On Credit Notes the main balance only pays billed − used, so that is
+    // its burn; the gross bill would understate the runway.
+    const burn = cnMode() ? (cnStatement()?.paidFromMain ?? 0) : billedIncGst();
+    if (!mp.dayOfMonth || !burn) return null;
+    const dailyBurn = burn / mp.dayOfMonth;
     if (dailyBurn <= 0) return null;
     return Math.floor(remainingBalance() / dailyBurn);
   });
@@ -1491,7 +1641,11 @@ export default function Billing() {
                 <HeroCard
                   accent
                   ariaLabel="Remaining balance"
-                  label="Remaining Balance · inc GST"
+                  label={
+                    cnMode()
+                      ? "Remaining Balance · main · inc GST"
+                      : "Remaining Balance · inc GST"
+                  }
                   value={fmt(remainingBalance())}
                   sub={
                     <>
@@ -1545,6 +1699,7 @@ export default function Billing() {
                   showCpl
                   cpl={avgCpl()}
                   breakdown={showBreakdown() ? leadBreakdown() : null}
+                  creditNotes={cnMode()}
                 />
               </div>
             </Show>
@@ -1591,7 +1746,27 @@ export default function Billing() {
                 class="mt-4"
                 title={`Leads · ${monthLabel()}`}
                 breakdown={leadBreakdown()}
-                note="Replaced leads are credited back — the amounts in the statement below are already net of that credit."
+                creditNotes={cnMode()}
+                creditSub={
+                  cnNum(hybridProjects()?.total_replace_credit_inc_gst) != null
+                    ? `${fmt(hybridProjects().total_replace_credit_inc_gst)} to Credit Notes`
+                    : undefined
+                }
+                note={
+                  cnMode()
+                    ? "Replaced leads are added to your Credit Notes, which pay your charges before your main balance."
+                    : "Replaced leads are credited back — the amounts in the statement below are already net of that credit."
+                }
+              />
+            </Show>
+
+            {/* ── Hybrid on Credit Notes: per-project generated / replaced /
+                ad spend / replace credit. Present only when the server sends
+                hybrid_projects. */}
+            <Show when={cnMode() && hybridProjects()}>
+              <HybridProjectTable
+                data={hybridProjects()}
+                monthLabel={monthLabel()}
               />
             </Show>
 
@@ -1628,6 +1803,93 @@ export default function Billing() {
               <div class="px-6 pt-5 pb-1">
                 <Eyebrow>Account Statement · {monthLabel()}</Eyebrow>
               </div>
+
+              {/* Hybrid on Credit Notes: two pools on one statement. The bill is
+                  gross; Credit Notes pay first and only the rest reaches the
+                  main balance, so
+                    opening + funds + points − (billed − used) = remaining.
+                  Every other client and month falls through to the statement
+                  below, unchanged. */}
+              <Show
+                when={!cnMode()}
+                fallback={
+                  <>
+                    <LedgerRow
+                      noBorder
+                      name="Opening balance"
+                      tag={`main · inc GST${openingSourceLabel() ? ` · ${openingSourceLabel()}` : ""}`}
+                      value={fmtOrDash(cnStatement()?.opening)}
+                    />
+                    <LedgerRow
+                      name="Credit Notes carried over"
+                      tag="inc GST"
+                      value={fmtOrDash(cnStatement()?.cnOpening)}
+                      tone={cnStatement()?.cnOpening ? "pos" : "zero"}
+                    />
+                    <LedgerRow
+                      op="+"
+                      name="Credit Notes added this month"
+                      tag="replaced leads · inc GST"
+                      value={fmtOrDash(cnStatement()?.cnAdded)}
+                      tone={cnStatement()?.cnAdded ? "pos" : "zero"}
+                    />
+                    <LedgerRow
+                      op="+"
+                      name="Funds added this month"
+                      value={fmt(fundsAddedIncGst())}
+                      tone={fundsAddedIncGst() === 0 ? "zero" : "pos"}
+                    />
+                    <LedgerRow
+                      op="+"
+                      name="Points Added This Month"
+                      tag="via Points"
+                      value={fmtPoints(pointsAddedThisMonth())}
+                      tone={pointsAddedThisMonth() === 0 ? "zero" : "pos"}
+                    />
+                    <LedgerRow
+                      op="−"
+                      name="Billed This Month"
+                      tag="inc GST & Service Charge"
+                      value={fmtOrDash(cnStatement()?.billed)}
+                      tone="neg"
+                    />
+                    <LedgerRow sub name="Ad spend" value={fmt(adSpendExGst())} />
+                    <Show when={showServiceCharge()}>
+                      <LedgerRow
+                        sub
+                        name={`Service charge · ${Number(serviceChargePct())}%`}
+                        value={fmt(serviceChargeAmt())}
+                      />
+                    </Show>
+                    <LedgerRow
+                      sub
+                      name={`GST · ${Number(gstPct())}%`}
+                      value={fmt(gstAmt())}
+                    />
+                    <LedgerRow
+                      sub
+                      name="Paid from Credit Notes"
+                      value={fmtOrDash(cnStatement()?.used)}
+                    />
+                    <LedgerRow
+                      sub
+                      name="Paid from main balance"
+                      value={fmtOrDash(cnStatement()?.paidFromMain)}
+                    />
+                    <LedgerRow
+                      total
+                      name="Remaining balance"
+                      tag="main · inc GST · end of month position"
+                      value={fmtOrDash(cnStatement()?.remaining)}
+                    />
+                    <LedgerRow
+                      name="Credit Notes remaining"
+                      tag="inc GST"
+                      value={fmtOrDash(cnStatement()?.cnClosing)}
+                    />
+                  </>
+                }
+              >
 
               {/* Opening balance — hidden for retainer */}
               <Show when={!isRetainer()}>
@@ -1721,6 +1983,7 @@ export default function Billing() {
                   value={fmt(remainingBalance())}
                 />
               </Show>
+              </Show>
             </Card>
           </div>
         </Show>
@@ -1788,6 +2051,30 @@ export default function Billing() {
                   </p>
                 </div>
               </Show>
+
+              {/* ── Credit Notes — hybrid on Credit Notes only ──
+                  Needs both: the pool applies to this client (credit-notes
+                  endpoint) and the selected month carries credit_notes. The
+                  figure is that month's closing pool; the sidebar has the rest. */}
+              <Show when={cnApplies() && cnMode()}>
+                <div class="h-px w-full md:h-auto md:w-px bg-gray-200 dark:bg-gray-700" />
+                <button
+                  type="button"
+                  onClick={() => setCnOpen(true)}
+                  class="flex-1 p-6 text-left bg-gradient-to-b from-blue-50/80 to-white dark:from-blue-950/30 dark:to-gray-800/70 hover:from-blue-100/80 dark:hover:from-blue-950/50 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500"
+                >
+                  <p class="text-sm text-gray-600 dark:text-gray-300">
+                    Credit Notes
+                  </p>
+                  <p class="mt-2 text-3xl font-bold tracking-tight tabular-nums text-blue-900 dark:text-blue-300">
+                    {fmtOrDash(cnNum(creditNotes()?.closing_inc))}
+                  </p>
+                  <p class="mt-1.5 inline-flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    <span class="h-1.5 w-1.5 rounded-full bg-blue-900 dark:bg-blue-400" />
+                    Pays charges first · inc GST · view details →
+                  </p>
+                </button>
+              </Show>
             </div>
             <Show
               when={!paymentsData.loading}
@@ -1818,6 +2105,15 @@ export default function Billing() {
           invoice={selectedInvoice()}
           onClose={() => setShowInvoiceModal(false)}
         />
+        <Show when={cnApplies()}>
+          <CreditNotesSidebar
+            open={cnOpen()}
+            onClose={() => setCnOpen(false)}
+            data={cnData()}
+            loading={cnRes.loading}
+            error={cnRes.error}
+          />
+        </Show>
       </div>
     </div>
   );

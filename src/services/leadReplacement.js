@@ -162,7 +162,10 @@ export const summaryLeadBreakdown = (res) => {
 
 // POST /leads/replacement-batches/ — record a replacement.
 // Body: { target_client_id, project_id, replaced_count, replaced_cost,
-//         received_date?, reason }
+//         received_date?, notes, reason, confirm? }
+// The note is compulsory (422 validation_error, fields.notes). A hybrid batch
+// may answer 409 needs_confirmation with fields.warnings; the caller confirms
+// and resends the same body with confirm: true.
 // 201 on success. The caller handles the documented validation failures:
 //   400 — client is on a retainer ("applies only to CPL and hybrid clients")
 //   400 — replaced_count > generated leads (message states the max allowed)

@@ -9,6 +9,19 @@ export const fetchBillingOverview = async (month) => {
   });
 };
 
+// Credit Notes pool (hybrid clients, from 2026-09). Replaced leads become
+// credits here instead of reducing the month's bill; each month's charge is
+// paid from this pool first. `applies: false` means the client has no pool at
+// all (CPL / retainer) and nothing about it may render.
+// asClientId (Client PK) is the admin/CM preview; a client's own login omits it.
+export const fetchCreditNotes = async (asClientId) => {
+  const qs =
+    asClientId != null && asClientId !== ""
+      ? `?as_client_id=${encodeURIComponent(asClientId)}`
+      : "";
+  return await api(`/billing/credit-notes/${qs}`, { method: "GET" });
+};
+
 // ✅ Fetch all active projects (same API used in ClientDashboard)
 export const fetchAllProjects = async () => {
   return await api("/projects/?page=1&page_size=50", {
