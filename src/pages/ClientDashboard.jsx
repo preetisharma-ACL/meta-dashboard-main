@@ -2040,7 +2040,7 @@ export default function MainDashboard() {
             {/* Crimson holds the word; gold is a highlight on the tail, not an
                 equal partner. via-72% is what keeps the ramp off the middle. */}
             <span class="inline-block pb-0.5 leading-tight bg-gradient-to-r from-[#7E1522] via-[#AC2334] via-72% to-[#C4802B] dark:from-[#D9455E] dark:via-[#E4566A] dark:to-[#E9AE5C] bg-clip-text text-transparent">
-              Active Projects
+              Active Project
             </span>
           </h1>
           <p class="pl-[46px] text-md text-[#54657E] dark:text-gray-400">
