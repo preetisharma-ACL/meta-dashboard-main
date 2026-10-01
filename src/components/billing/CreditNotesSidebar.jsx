@@ -76,13 +76,13 @@ export default function CreditNotesSidebar(props) {
         <div
           role="dialog"
           aria-modal="true"
-          aria-label="Credit Notes"
+          aria-label="Replaced Credit Notes"
           class="fixed inset-y-0 right-0 z-50 w-full max-w-lg bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-700 shadow-2xl flex flex-col"
         >
           <div class="flex items-start justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
             <div>
               <h2 class="text-lg font-bold text-gray-900 dark:text-gray-100">
-                Credit Notes
+                Replaced Credit Notes
               </h2>
               <p class="text-sm text-gray-500 dark:text-gray-400">
                 Replaced leads become credits that pay your charges before your
@@ -101,7 +101,7 @@ export default function CreditNotesSidebar(props) {
           <div class="flex-1 overflow-y-auto">
             <Show when={props.error}>
               <div class="mx-6 mt-5 rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-4 py-3 text-sm font-medium text-red-700 dark:text-red-300">
-                Couldn't load Credit Notes.
+                Couldn't load Replaced Credit Notes.
               </div>
             </Show>
 
@@ -109,7 +109,7 @@ export default function CreditNotesSidebar(props) {
               when={!props.loading}
               fallback={
                 <p class="px-6 py-10 text-center text-sm text-gray-500 dark:text-gray-400">
-                  Loading Credit Notes…
+                  Loading Replaced Credit Notes…
                 </p>
               }
             >

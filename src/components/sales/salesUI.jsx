@@ -120,7 +120,7 @@ const PAY_COLUMNS = [
   // no ex-GST counterpart — so it ignores the toggle and says so in its label.
   // `optional`: shown only when some row carries the field, so a month or a
   // table with no hybrid-on-Credit-Notes client gets no column of dashes.
-  { key: "credit_notes", label: "Credit notes · inc", align: "right", type: "num", optional: true, get: (c) => c.credit_notes_inc_gst },
+  { key: "credit_notes", label: "Replaced credit notes · inc", align: "right", type: "num", optional: true, get: (c) => c.credit_notes_inc_gst },
   { key: "leads", label: "Leads", align: "right", type: "num", get: (c) => c.total_leads },
   { key: "status", label: "Status", align: "center", type: "str", get: (c) => c.status },
 ];

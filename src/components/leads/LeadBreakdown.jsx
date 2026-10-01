@@ -134,7 +134,7 @@ export default function LeadBreakdown(props) {
               label="Replaced"
               value={b().replaced}
               size={size()}
-              sub={props.creditSub ?? "added to Credit Notes"}
+              sub={props.creditSub ?? "added to Replaced Credit Notes"}
             />
           </Show>
         </div>

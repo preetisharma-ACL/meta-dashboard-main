@@ -190,7 +190,7 @@ function LeadsCard(props) {
                 replaced
                 {/* Credit Notes months: replaced is info, not a deduction —
                     billable equals generated and the credit goes to the pool. */}
-                {props.creditNotes ? " (to Credit Notes)" : ""}
+                {props.creditNotes ? " (to Replaced Credit Notes)" : ""}
               </Show>
               <Show when={props.breakdown.uncovered > 0}>
                 {" · "}
@@ -1112,7 +1112,7 @@ function HybridProjectTable(props) {
         <Eyebrow>Project Charges · {props.monthLabel}</Eyebrow>
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
           Ad spend is billed in full · replaced leads are credited to your
-          Credit Notes
+          Replaced Credit Notes
         </p>
       </div>
       <Show
@@ -1749,12 +1749,12 @@ export default function Billing() {
                 creditNotes={cnMode()}
                 creditSub={
                   cnNum(hybridProjects()?.total_replace_credit_inc_gst) != null
-                    ? `${fmt(hybridProjects().total_replace_credit_inc_gst)} to Credit Notes`
+                    ? `${fmt(hybridProjects().total_replace_credit_inc_gst)} to Replaced Credit Notes`
                     : undefined
                 }
                 note={
                   cnMode()
-                    ? "Replaced leads are added to your Credit Notes, which pay your charges before your main balance."
+                    ? "Replaced leads are added to your Replaced Credit Notes, which pay your charges before your main balance."
                     : "Replaced leads are credited back — the amounts in the statement below are already net of that credit."
                 }
               />
@@ -1821,14 +1821,14 @@ export default function Billing() {
                       value={fmtOrDash(cnStatement()?.opening)}
                     />
                     <LedgerRow
-                      name="Credit Notes carried over"
+                      name="Replaced Credit Notes carried over"
                       tag="inc GST"
                       value={fmtOrDash(cnStatement()?.cnOpening)}
                       tone={cnStatement()?.cnOpening ? "pos" : "zero"}
                     />
                     <LedgerRow
                       op="+"
-                      name="Credit Notes added this month"
+                      name="Replaced Credit Notes added this month"
                       tag="replaced leads · inc GST"
                       value={fmtOrDash(cnStatement()?.cnAdded)}
                       tone={cnStatement()?.cnAdded ? "pos" : "zero"}
@@ -1868,7 +1868,7 @@ export default function Billing() {
                     />
                     <LedgerRow
                       sub
-                      name="Paid from Credit Notes"
+                      name="Paid from Replaced Credit Notes"
                       value={fmtOrDash(cnStatement()?.used)}
                     />
                     <LedgerRow
@@ -1883,7 +1883,7 @@ export default function Billing() {
                       value={fmtOrDash(cnStatement()?.remaining)}
                     />
                     <LedgerRow
-                      name="Credit Notes remaining"
+                      name="Replaced Credit Notes remaining"
                       tag="inc GST"
                       value={fmtOrDash(cnStatement()?.cnClosing)}
                     />
@@ -2064,7 +2064,7 @@ export default function Billing() {
                   class="flex-1 p-6 text-left bg-gradient-to-b from-blue-50/80 to-white dark:from-blue-950/30 dark:to-gray-800/70 hover:from-blue-100/80 dark:hover:from-blue-950/50 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500"
                 >
                   <p class="text-sm text-gray-600 dark:text-gray-300">
-                    Credit Notes
+                    Replaced Credit Notes
                   </p>
                   <p class="mt-2 text-3xl font-bold tracking-tight tabular-nums text-blue-900 dark:text-blue-300">
                     {fmtOrDash(cnNum(creditNotes()?.closing_inc))}

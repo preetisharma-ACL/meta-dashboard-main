@@ -493,7 +493,7 @@ export default function RecordReplacementModal(props) {
               </div>
               <p class="text-xs text-[#8593A8] mt-1">
                 The rupee amount credited back on this client's bill. For a
-                hybrid client (from Sep 2026) it goes to their Credit Notes.
+                hybrid client (from Sep 2026) it goes to their Replaced Credit Notes.
               </p>
             </div>
 

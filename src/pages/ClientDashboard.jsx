@@ -2546,7 +2546,7 @@ export default function MainDashboard() {
           breakdown={leadBreakdown()}
           note={
             onCreditNotes()
-              ? "Replaced leads are added to the client's Credit Notes, which pay charges before the main balance."
+              ? "Replaced leads are added to the client's Replaced Credit Notes, which pay charges before the main balance."
               : "Replaced leads are credited back on the client's bill. Utilisation and CPL above stay on true ad spend."
           }
         />

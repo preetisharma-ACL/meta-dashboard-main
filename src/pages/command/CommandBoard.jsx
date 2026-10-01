@@ -1045,9 +1045,9 @@ export default function CommandBoard() {
                             <Show when={r.credit_notes_inc_gst != null}>
                               <div
                                 class="text-[11px] font-normal text-[#3E6FB0] dark:text-blue-300"
-                                title="Credit Notes left (inc GST). They pay this client's charges before the main balance."
+                                title="Replaced Credit Notes left (inc GST). They pay this client's charges before the main balance."
                               >
-                                + {inr(r.credit_notes_inc_gst)} credit notes
+                                + {inr(r.credit_notes_inc_gst)} replaced credit notes
                               </div>
                             </Show>
                           </td>
@@ -1181,7 +1181,7 @@ export default function CommandBoard() {
       <p class="mt-1.5 text-[12px] text-gray-400 dark:text-gray-500">
         From September 2026 a hybrid client's replaced leads go into Credit
         Notes instead of reducing the bill. Their balance is the main balance
-        after this month's charge, with any Credit Notes left shown beneath it.
+        after this month's charge, with any Replaced Credit Notes left shown beneath it.
       </p>
       </Show>
       <p class="mt-1.5 text-[12px] text-gray-400 dark:text-gray-500">

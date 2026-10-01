@@ -356,7 +356,7 @@ export default function ClientBilling() {
           }
         >
           <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#ECF2FA] dark:bg-blue-900/30 text-[13px] font-bold text-[#3E6FB0] dark:text-blue-300 tabular-nums">
-            {fmtMoney(totals().credit_notes_inc_gst, 0)} in Credit Notes
+            {fmtMoney(totals().credit_notes_inc_gst, 0)} in Replaced Credit Notes
             <span class="font-semibold text-[11.5px] text-[#54657E] dark:text-gray-400">
               · {fmtMoney(totals().credit_used_inc_gst, 0)} used this month ·
               incl. GST
