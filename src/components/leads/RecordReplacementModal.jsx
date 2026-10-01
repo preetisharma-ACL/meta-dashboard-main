@@ -198,11 +198,10 @@ export default function RecordReplacementModal(props) {
       // Decimal — send the string the operator typed so no rounding happens
       // on the way out; the backend parses it.
       replaced_cost: String(form().replaced_cost),
-      // The 422 names the field `notes`; the batch has always been created
-      // with `reason`. Same text under both until the backend confirms which
-      // one the serializer reads — never a different value in each.
+      // `notes` is the field the backend reads. This form used to send
+      // `reason`, which was never read — every batch before this has an
+      // empty note.
       notes: note,
-      reason: note,
     };
     // received_date is optional; the backend defaults to today when omitted.
     // Never send an empty string.

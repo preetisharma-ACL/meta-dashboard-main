@@ -1411,6 +1411,16 @@ export default function MainDashboard() {
   const showLeadBreakdown = () =>
     showsReplacement(leadBreakdown(), viewedClientType());
 
+  // Hybrid clients moved to Credit Notes from 2026-09: replaced leads stop
+  // reducing the bill. Keyed off the range START ("YYYY-MM-DD" sorts as a
+  // string), so a range that reaches back before September — or no range at
+  // all — keeps the old wording, which is still true for those days.
+  const CREDIT_NOTES_FROM = "2026-09-01";
+  const onCreditNotes = () =>
+    viewedClientType() === "hybrid" &&
+    !!fromDate() &&
+    fromDate() >= CREDIT_NOTES_FROM;
+
   // "Record Replacement" — admin + tier-1 CM only (canRecordReplacement()).
   const [showReplacementForm, setShowReplacementForm] = createSignal(false);
 
@@ -2534,7 +2544,11 @@ export default function MainDashboard() {
           class="mb-8"
           title={`Lead replacement · ${rangeLabel()}`}
           breakdown={leadBreakdown()}
-          note="Replaced leads are credited back on the client's bill. Utilisation and CPL above stay on true ad spend."
+          note={
+            onCreditNotes()
+              ? "Replaced leads are added to the client's Credit Notes, which pay charges before the main balance."
+              : "Replaced leads are credited back on the client's bill. Utilisation and CPL above stay on true ad spend."
+          }
         />
       </Show>
 

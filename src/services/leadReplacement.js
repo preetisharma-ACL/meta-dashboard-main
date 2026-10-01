@@ -162,7 +162,7 @@ export const summaryLeadBreakdown = (res) => {
 
 // POST /leads/replacement-batches/ — record a replacement.
 // Body: { target_client_id, project_id, replaced_count, replaced_cost,
-//         received_date?, notes, reason, confirm? }
+//         received_date?, notes, confirm? }
 // The note is compulsory (422 validation_error, fields.notes). A hybrid batch
 // may answer 409 needs_confirmation with fields.warnings; the caller confirms
 // and resends the same body with confirm: true.

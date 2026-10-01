@@ -1175,11 +1175,15 @@ export default function CommandBoard() {
         lead with no service charge and no GST, a hybrid bills on spend plus
         both. Adding the column would produce a number that means nothing.
       </p>
+      {/* Only once the backend sends the field — before the release this would
+          describe a change no row on screen reflects. */}
+      <Show when={rows().some((r) => r.credit_notes_inc_gst != null)}>
       <p class="mt-1.5 text-[12px] text-gray-400 dark:text-gray-500">
         From September 2026 a hybrid client's replaced leads go into Credit
         Notes instead of reducing the bill. Their balance is the main balance
         after this month's charge, with any Credit Notes left shown beneath it.
       </p>
+      </Show>
       <p class="mt-1.5 text-[12px] text-gray-400 dark:text-gray-500">
         A blank premium spend means two different things.{" "}
         <b class="font-semibold">n/a</b> on a retainer is by design — retainers
