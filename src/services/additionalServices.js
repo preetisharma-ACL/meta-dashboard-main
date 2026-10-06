@@ -168,33 +168,36 @@ export const isRevoked = (row) => row?.is_revoked === true;
 //
 // THE ID IS THE WHOLE PROBLEM HERE. /billing/additional-services/ takes
 // client_id = the CLIENT PK. /payments/clients/ is a NOMEN roster: its `id` is
-// what POST /payments/add-funds/ sends as `client_nomen` (see
+// the nomen, which POST /payments/add-funds/ sends as `client_nomen` (see
 // normalizeClientOption + addFunds in services/payments.js), and its 277 rows
 // outnumber the ~168 clients because one client can hold several nomens. The
 // two ids differ for all but one client, so reading `id` as a PK here would
 // book a non-ad charge against the WRONG client's balance — silently, with a
 // plausible name on screen.
 //
-// So the PK is read ONLY from keys that can mean nothing else, and `id` is
-// deliberately not among them for this source. If the payload carries no such
-// key the source is REJECTED rather than guessed at, we fall through to the
-// directory, and the caller is told why. The directory's `id` IS the PK, which
-// is why that normalisation stays in services/leadReplacement.js where the
-// other three pickers already share it.
-const PK_KEYS = ["client_id", "client_pk", "client", "pk"];
-
+// The payload carries BOTH: `client_id` (the PK, NULLABLE) beside the unchanged
+// nomen `id`. Several nomens can resolve to one client, and ~87 of the 277
+// resolve to none at all.
+//
+// So this reads `client_id` AND NOTHING ELSE — no fallback chain. A fallback
+// would fire on exactly the rows whose client_id is null, i.e. the ones the
+// backend has already said have no client behind them, and the likeliest thing
+// it could find there is the nomen pk. A guess that only ever runs on those
+// rows is a wrong-client write waiting to happen, so a null here means "skip
+// this nomen" and never "look harder".
+//
+// If `client_id` vanishes from the payload altogether the source is REJECTED
+// rather than guessed at: we fall through to the directory and the caller is
+// told why. The directory's `id` IS the PK, which is why that normalisation
+// stays in services/leadReplacement.js where the other three pickers share it.
 const readPk = (row) => {
-  for (const k of PK_KEYS) {
-    const v = row?.[k];
-    // A nested { id } object is still a client reference; a bare value is the
-    // id itself. Anything non-numeric is not a PK and is left alone.
-    const candidate = v && typeof v === "object" ? v.id : v;
-    if (candidate === undefined || candidate === null || candidate === "")
-      continue;
-    const n = Number(candidate);
-    if (Number.isFinite(n)) return n;
-  }
-  return null;
+  const v = row?.client_id;
+  // Tolerates a nested { id } should the field ever serialise as the object.
+  const candidate = v && typeof v === "object" ? v.id : v;
+  if (candidate === undefined || candidate === null || candidate === "")
+    return null;
+  const n = Number(candidate);
+  return Number.isFinite(n) ? n : null;
 };
 
 const readName = (row) =>
@@ -205,12 +208,14 @@ const readName = (row) =>
   row?.label ||
   null;
 
-// Source 1. Returns { rows, status } where status is:
+// Source 1. Returns { rows, status, skipped } where status is:
 //   "ok"          → usable rows, each with a real Client PK
 //   "forbidden"   → 403 (coordination, tier-2 CM) → try the directory
 //   "no_pk"       → rows came back but none carried a Client PK, so this
 //                   endpoint cannot answer client_id → try the directory
 //   "error"       → anything else
+// `skipped` counts the nomens dropped for having no client record, which the
+// screen uses to explain a name the payments desk can see and this cannot.
 const fetchPaymentsRosterForServices = async () => {
   let res;
   try {
@@ -227,6 +232,10 @@ const fetchPaymentsRosterForServices = async () => {
         ? res.results
         : [];
 
+  // Nomens whose client_id is null have no client record behind them — about 87
+  // of the 277 — and there is nothing to bill, so they are dropped. That is the
+  // EXPECTED shape of this payload, not a fault: roughly two thirds of the rows
+  // surviving is what a healthy response looks like here.
   const rows = raw
     .map((r) => ({
       id: readPk(r),
@@ -237,15 +246,16 @@ const fetchPaymentsRosterForServices = async () => {
     }))
     .filter((c) => c.id != null);
 
+  // EVERY row lacking a PK is different: that is client_id gone from the
+  // payload, not nomens without clients. Loud, because it is the case that
+  // would otherwise get "fixed" by reading `id` — which is the nomen.
   if (raw.length > 0 && rows.length === 0) {
-    // Loud, because this is the case that would otherwise become a wrong-client
-    // write the first time someone "fixes" it by reading `id`.
     console.warn(
-      "[additionalServices] /payments/clients/ returned rows with no Client PK " +
-        "(its `id` is the nomen id, which client_id must NOT receive). " +
-        "Falling back to the client directory.",
+      "[additionalServices] /payments/clients/ returned rows but not one " +
+        "carried client_id. Its `id` is the NOMEN id, which client_id must " +
+        "never receive. Falling back to the client directory.",
     );
-    return { rows: [], status: "no_pk" };
+    return { rows: [], status: "no_pk", skipped: 0 };
   }
 
   // Several nomens can map to one client; the picker lists clients, so collapse
@@ -262,6 +272,7 @@ const fetchPaymentsRosterForServices = async () => {
       ),
     ),
     status: "ok",
+    skipped: raw.length - rows.length,
   };
 };
 
@@ -271,7 +282,16 @@ const fetchPaymentsRosterForServices = async () => {
 export const fetchServiceClientRoster = async () => {
   const payments = await fetchPaymentsRosterForServices();
   if (payments.status === "ok" && payments.rows.length > 0)
-    return { rows: payments.rows, source: "payments", failed: false };
+    return {
+      rows: payments.rows,
+      source: "payments",
+      failed: false,
+      // Nomens with no client record. The payments desk's own picker lists all
+      // 277, so someone who works from that screen can look for a name this
+      // one does not offer — the count lets the picker say why instead of
+      // answering "no clients match".
+      skippedNomens: payments.skipped ?? 0,
+    };
 
   // Fall through on 403 (coordination), on a payload with no PK, on an error,
   // and on an empty 200 — the directory may still know this caller's clients.

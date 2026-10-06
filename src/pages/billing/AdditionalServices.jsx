@@ -157,12 +157,20 @@ export default function AdditionalServices() {
   const rosterFailed = () => roster()?.failed === true;
   const rosterPkMissing = () => roster()?.pkMissing === true;
 
-  // Which endpoint answered. Only worth saying when the roster is narrower than
-  // the whole org — a tier-1 CM's own book — so nobody reads a correct 27 as a
-  // broken 277.
+  // How many clients the picker holds, and — when the payments roster answered
+  // — how many of its nomens had no client record to bill. Both numbers exist
+  // to stop a correct list reading as a broken one: a tier-1 CM's 27 where
+  // admin sees ~190 is the backend scoping them, and a name on the payments
+  // desk's 277-nomen picker that is missing here is a nomen with no client,
+  // not a lost client.
   const rosterNote = () => {
     if (roster.loading || rosterEmpty()) return null;
-    return `${clientList().length} clients you can bill`;
+    const n = clientList().length;
+    const skipped = roster()?.skippedNomens ?? 0;
+    const base = `${n} ${n === 1 ? "client" : "clients"} you can bill`;
+    return skipped > 0
+      ? `${base} · ${skipped} payment names have no client record and cannot be charged`
+      : base;
   };
 
   // Reset the dropdown's text to the picked client whenever the selection
@@ -298,9 +306,10 @@ export default function AdditionalServices() {
               </div>
             </Show>
           </div>
-          {/* A tier-1 CM is scoped to their own book and their team's, so a
-              short roster is the backend working. Stating the count stops a
-              correct 27 reading as a truncated list. */}
+          {/* A short roster is usually the backend working, not a truncated
+              list — a tier-1 CM is scoped to their own book and their team's,
+              and the payments roster carries nomens that no client sits behind.
+              Stating both counts is cheaper than the support ping. */}
           <Show when={rosterNote()}>
             <p class="mt-1 text-xs text-[#8593A8] dark:text-gray-400">
               {rosterNote()}
