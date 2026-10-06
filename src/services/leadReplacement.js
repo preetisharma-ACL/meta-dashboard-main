@@ -394,8 +394,19 @@ const normaliseHierarchyClient = (c) => ({
 // `allowedTypes` may be null/omitted for callers where every client type is
 // valid (campaign ownership is one — any type can own a campaign). A null set is
 // NOT the same as an empty one: empty would filter the roster down to nothing.
-export const fetchClientsForLeadAction = async (allowedTypes) => {
+// The same roster, with WHY it is empty. An empty picker has two very different
+// causes — this caller genuinely holds no matching clients, or BOTH sources
+// refused them — and a picker that says "no clients" for the second case sends
+// someone looking at the client instead of at their own access. Only the
+// additional-services screen needs the distinction so far (the accounts desk
+// works from it, and whether /clients/admin/clients/ serves that role is not
+// something the frontend can know); every other caller keeps the plain list.
+//
+// `failed` is true only when both sources threw. A source that answers an empty
+// list has answered, so `failed` stays false.
+export const fetchClientRosterWithStatus = async (allowedTypes) => {
   let rows = [];
+  let failed = false;
   try {
     rows = (await fetchAllAdminClients()).map(normaliseAdminClient);
   } catch {
@@ -406,16 +417,25 @@ export const fetchClientsForLeadAction = async (allowedTypes) => {
       );
     } catch {
       rows = [];
+      failed = true;
     }
   }
 
-  return rows
-    .filter((c) => c.id != null)
-    .filter((c) => !allowedTypes || !c.clientType || allowedTypes.has(c.clientType))
-    .sort((a, b) =>
-      a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
-    );
+  return {
+    failed,
+    rows: rows
+      .filter((c) => c.id != null)
+      .filter(
+        (c) => !allowedTypes || !c.clientType || allowedTypes.has(c.clientType),
+      )
+      .sort((a, b) =>
+        a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
+      ),
+  };
 };
+
+export const fetchClientsForLeadAction = async (allowedTypes) =>
+  (await fetchClientRosterWithStatus(allowedTypes)).rows;
 
 // Clients a replacement may be booked against. Only CPL and hybrid — the
 // backend 400s a retainer client, so offering one is offering a guaranteed

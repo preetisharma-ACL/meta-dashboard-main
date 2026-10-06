@@ -1,4 +1,5 @@
 import { createSignal, createResource, createMemo, Show } from "solid-js";
+import { A } from "@solidjs/router";
 
 import { fetchSalesPayments } from "../../services/sales";
 import {
@@ -15,7 +16,10 @@ import ClientTypeFilter, {
   CLIENT_TYPES,
   toggleClientTypeIn,
 } from "../../components/funding/ClientTypeFilter";
-import { currentUser } from "../../stores/currentUser";
+import {
+  currentUser,
+  canSeeAdditionalServices,
+} from "../../stores/currentUser";
 
 // ─── Client Payments — the single payments-overview screen ────────────────────
 // One page for every role that reads this ledger. It replaces three near-
@@ -266,6 +270,30 @@ export default function ClientBilling() {
             </button>
           </div>
 
+          {/* The only other screen that writes to these balances. The sidebar
+              carries the row too; this is here because an operator looking at
+              a balance that dropped is already on this page. Hidden from sales,
+              who read this ledger but never bill a non-ad charge. */}
+          <Show when={canSeeAdditionalServices()}>
+            <A
+              href="/billing/additional-services"
+              class="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-[#E2E8F1] dark:border-gray-600 bg-white dark:bg-gray-800 text-sm font-semibold text-[#54657E] dark:text-gray-300 hover:bg-[#F6F9FC] dark:hover:bg-gray-700 transition-colors whitespace-nowrap"
+            >
+              <svg
+                class="w-4 h-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M10 21h4M7 3h10a2 2 0 012 2v4a7 7 0 01-7 7 7 7 0 01-7-7V5a2 2 0 012-2zm5 13v5" />
+              </svg>
+              Additional services
+            </A>
+          </Show>
+
           <button
             onClick={handleRefresh}
             disabled={refreshing()}
@@ -360,6 +388,26 @@ export default function ClientBilling() {
             <span class="font-semibold text-[11.5px] text-[#54657E] dark:text-gray-400">
               · {fmtMoney(totals().credit_used_inc_gst, 0)} used this month ·
               incl. GST
+            </span>
+          </span>
+        </Show>
+
+        {/* Additional services — website development, SEO and other non-ad
+            work, already deducted from every Remaining figure on this page.
+            inc GST only (the endpoint publishes no ex-GST counterpart, so this
+            ignores the toggle and says so) and absent/null until someone
+            records one, so the chip stays off an untouched month rather than
+            reading ₹0.
+
+            NOT the service charge: that is the 13%/15% on ad spend and it sits
+            inside the "Billed · spend + S.C" tile above. Different money, and
+            a shared label would make the two impossible to tell apart. */}
+        <Show when={!isMissing(totals().additional_services_inc_gst)}>
+          <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#FBF3E2] dark:bg-yellow-900/30 text-[13px] font-bold text-[#B07A14] dark:text-yellow-300 tabular-nums">
+            {fmtMoney(totals().additional_services_inc_gst, 0)} in additional
+            services
+            <span class="font-semibold text-[11.5px] text-[#54657E] dark:text-gray-400">
+              · non-ad work · incl. GST
             </span>
           </span>
         </Show>

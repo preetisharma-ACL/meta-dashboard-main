@@ -10,6 +10,8 @@
 //
 // Money arrives as strings. null is "unknown" and renders "—", never 0.
 
+import { additionalServicesTotalIncGst } from "./additionalServices";
+
 // String/number → finite number, or null when absent / unparsable.
 export const cnNum = (v) => {
   if (v === undefined || v === null || v === "") return null;
@@ -22,7 +24,14 @@ export const cnNum = (v) => {
 // subtracted), and the part of it the main balance actually paid is
 // billed − used. Any leg that is null makes the derived figure null too.
 //
-//   check: opening + funds + points − (billed − used) = remaining
+//   check: opening + funds + points − (billed − used) − additional services
+//          = remaining
+//
+// ADDITIONAL SERVICES (website development, SEO, …) are the fourth deduction.
+// They come off the MAIN balance and Replaced Credit Notes never pay for them —
+// those cover ads only — so they are added to `paidFromMain` rather than being
+// allowed to compete for the pool. A month with none contributes 0 and the
+// statement reads exactly as it did before.
 //
 // `funds` and `points` are what the statement shows on those two rows (the page
 // splits points out of funds_added_inc_gst), so the check covers the rows on
@@ -38,7 +47,15 @@ export const creditNotesStatement = ({
 
   const billed = cnNum(ms.total_with_service_charge_and_gst);
   const used = cnNum(cn.used_inc);
-  const paidFromMain = billed != null && used != null ? billed - used : null;
+  // 0 when the client had no services this month; null only when the block is
+  // present and unreadable, which makes the whole derivation null rather than
+  // silently billing the ads figure alone.
+  const additionalServices = additionalServicesTotalIncGst(overview);
+  const adsPaidFromMain = billed != null && used != null ? billed - used : null;
+  const paidFromMain =
+    adsPaidFromMain != null && additionalServices != null
+      ? adsPaidFromMain + additionalServices
+      : null;
 
   const opening = cnNum(overview?.opening_balance?.inc_gst);
   const remaining = cnNum(overview?.closing_balance?.inc_gst);
@@ -61,6 +78,7 @@ export const creditNotesStatement = ({
     cnAdded: cnNum(cn.added_inc),
     billed,
     used,
+    additionalServices,
     paidFromMain,
     remaining,
     cnClosing: cnNum(cn.closing_inc),

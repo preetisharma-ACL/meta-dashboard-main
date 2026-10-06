@@ -15,6 +15,12 @@ import useRole, { clientRole } from "../hooks/useRole";
 import LeadBreakdown from "../components/leads/LeadBreakdown";
 import CreditNotesSidebar from "../components/billing/CreditNotesSidebar";
 import { cnNum, creditNotesStatement } from "../services/creditNotes";
+import {
+  asNum,
+  readAdditionalServices,
+  serviceLabel,
+  fmtChargeDate,
+} from "../services/additionalServices";
 import { readLeadBreakdown, showsReplacement } from "../services/leadReplacement";
 
 // --- Helpers ------------------------------------------------------------------
@@ -1083,6 +1089,114 @@ function CplProjectTable(props) {
   );
 }
 
+// --- Overview: additional services (website development, SEO, …) -------------
+// NON-AD work, charged to the main balance in the month of each charge date.
+// Not a "service charge": that phrase means the 13%/15% on Meta ad spend and
+// nothing else, and no label here uses it.
+//
+// Rendered ONLY when the month carries rows (readAdditionalServices returns
+// null otherwise), so a client who has never bought one of these sees no
+// section at all rather than an empty table. Every client type can have them.
+//
+// The footer reads the server's total_* fields. The rows are decimal STRINGS
+// and adding them up here would be a second derivation of a figure the server
+// already states — which is how two surfaces end up disagreeing about one
+// invoice. Nothing in the client's view carries the note or who recorded it.
+function AdditionalServicesTable(props) {
+  const rows = () => props.data?.rows ?? [];
+  // Money reads through asNum so a missing amount renders "—" and not ₹0.00.
+  // On a bill, ₹0.00 reads as "free" where "—" reads as "we don't know".
+  const amt = (v) => (asNum(v) == null ? "—" : fmt(v));
+
+  const numCell =
+    "px-3 py-3 text-right tabular-nums text-gray-500 dark:text-gray-400";
+  const numHead = "px-3 py-2.5 text-right font-medium";
+
+  return (
+    <Card
+      class="mt-4 overflow-hidden"
+      aria-label={`Additional services for ${props.monthLabel}`}
+    >
+      <div class="px-6 pt-5 pb-3">
+        <Eyebrow>Additional services · {props.monthLabel}</Eyebrow>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          Work outside Meta ads, charged to your balance in the month of each
+          charge date. GST applies; no service charge is added on these.
+        </p>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-y border-gray-200 dark:border-gray-700 text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              <th class="px-6 py-2.5 text-left font-medium">Service</th>
+              <th class="hidden sm:table-cell px-3 py-2.5 text-left font-medium">
+                Description
+              </th>
+              <th class="px-3 py-2.5 text-left font-medium">Date</th>
+              <th class={numHead}>Amount (ex GST)</th>
+              <th class={numHead}>GST</th>
+              <th class="px-6 py-2.5 text-right font-medium">Total (inc GST)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <For each={rows()}>
+              {(r) => (
+                <tr class="border-b border-gray-100 dark:border-gray-700/60">
+                  <td class="px-6 py-3 font-medium text-gray-900 dark:text-gray-100">
+                    {serviceLabel(r)}
+                  </td>
+                  <td class="hidden sm:table-cell px-3 py-3 text-gray-500 dark:text-gray-400">
+                    <Show
+                      when={r.description}
+                      fallback={
+                        <span class="text-gray-400 dark:text-gray-500">—</span>
+                      }
+                    >
+                      {r.description}
+                    </Show>
+                  </td>
+                  <td class="px-3 py-3 whitespace-nowrap text-gray-500 dark:text-gray-400">
+                    {fmtChargeDate(r.charge_date)}
+                  </td>
+                  <td class={numCell}>{amt(r.amount_ex_gst)}</td>
+                  <td class={numCell}>
+                    {amt(r.gst_amount)}
+                    <Show when={asNum(r.gst_pct) != null}>
+                      <span class="block text-[11px] text-gray-400 dark:text-gray-500">
+                        {asNum(r.gst_pct)}%
+                      </span>
+                    </Show>
+                  </td>
+                  <td class="px-6 py-3 text-right tabular-nums font-semibold text-gray-900 dark:text-gray-100">
+                    {amt(r.total_inc_gst)}
+                  </td>
+                </tr>
+              )}
+            </For>
+            <tr class="border-t border-gray-200 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-900/30">
+              <td class="px-6 py-3 font-bold text-gray-900 dark:text-gray-100">
+                Total
+              </td>
+              <td class="hidden sm:table-cell" />
+              <td />
+              <td class={`${numCell} font-bold text-gray-900 dark:text-gray-100`}>
+                {amt(props.data?.totalExGst)}
+              </td>
+              <td class={`${numCell} font-bold text-gray-900 dark:text-gray-100`}>
+                {amt(props.data?.gstAmount)}
+              </td>
+              <td class="px-6 py-3 text-right tabular-nums font-bold text-gray-900 dark:text-gray-100">
+                {amt(props.data?.totalIncGst)}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
 // --- Overview: hybrid per-project table (Credit Notes months) -----------------
 // Same look as the CPL "Project Charges" table. Rows come straight from
 // overview.hybrid_projects, which is non-null only for hybrid months on Credit
@@ -1400,6 +1514,19 @@ export default function Billing() {
   });
   const fmtOrDash = (v) => (v == null ? "—" : fmt(v));
 
+  // ── Additional services (website development, SEO, …) ─────────────────────
+  // Non-ad charges that come off the MAIN balance in the month of their charge
+  // date. Non-null only when this month actually has rows, so the section and
+  // the statement block both stay off a page with none — which is every page
+  // until someone records one. Independent of client type: a retainer client
+  // buys a website the same as anyone else.
+  //
+  // closing_balance ALREADY has them deducted. Nothing here subtracts them a
+  // second time; the statement rows only explain where the deduction came
+  // from, the same way the lead-replacement block explains its credit.
+  const addlServices = createMemo(() => readAdditionalServices(data()));
+  const hasAddlServices = () => addlServices() != null;
+
   // GET /billing/credit-notes/ — the pool across all months, for the Payments
   // tab card and the sidebar. Hybrid only; `applies: false` hides both.
   const [cnRes] = createResource(
@@ -1650,6 +1777,14 @@ export default function Billing() {
                   sub={
                     <>
                       After this month's billing
+                      {/* The hero is the first number a client looks at, and a
+                          balance that dropped by more than the ad bill is the
+                          exact thing this feature must not leave unexplained.
+                          Named here, detailed in the section below. */}
+                      <Show when={hasAddlServices()}>
+                        {" "}
+                        and additional services
+                      </Show>
                       <Show when={runwayDays() !== null}>
                         {" "}
                         · covers roughly{" "}
@@ -1795,6 +1930,18 @@ export default function Billing() {
               />
             </Show>
 
+            {/* ── Additional services ──
+                Only when the month carries rows — no empty state and no
+                placeholder, because until someone records a service there is
+                nothing to explain. Every client type, since the backend
+                deducts these from every type's balance. */}
+            <Show when={hasAddlServices()}>
+              <AdditionalServicesTable
+                data={addlServices()}
+                monthLabel={monthLabel()}
+              />
+            </Show>
+
             {/* ── Account statement ledger (rows vary by client type) ── */}
             <Card
               class="mt-4 overflow-hidden"
@@ -1806,8 +1953,10 @@ export default function Billing() {
 
               {/* Hybrid on Credit Notes: two pools on one statement. The bill is
                   gross; Credit Notes pay first and only the rest reaches the
-                  main balance, so
-                    opening + funds + points − (billed − used) = remaining.
+                  main balance, and additional services come off that balance
+                  too (the pool pays for ads only), so
+                    opening + funds + points − (billed − used)
+                      − additional services = remaining.
                   Every other client and month falls through to the statement
                   below, unchanged. */}
               <Show
@@ -1871,6 +2020,32 @@ export default function Billing() {
                       name="Paid from Replaced Credit Notes"
                       value={fmtOrDash(cnStatement()?.used)}
                     />
+                    {/* The fourth deduction, after the ad bill and before the
+                        line that sums what the main balance paid. Replaced
+                        Credit Notes cover ADS ONLY, so these never touch the
+                        pool — they come straight off the main balance. */}
+                    <Show when={hasAddlServices()}>
+                      <LedgerRow
+                        op="−"
+                        name="Additional services this month"
+                        tag="inc GST"
+                        value={fmtOrDash(addlServices()?.totalIncGst)}
+                        tone="neg"
+                      />
+                      <For each={addlServices()?.rows ?? []}>
+                        {(r) => (
+                          <LedgerRow
+                            sub
+                            name={`${serviceLabel(r)} · ${fmtChargeDate(r.charge_date)}`}
+                            value={fmtOrDash(asNum(r.total_inc_gst))}
+                          />
+                        )}
+                      </For>
+                    </Show>
+                    {/* ads billed − Replaced Credit Notes used + additional
+                        services. Both deductions land here, which is what
+                        makes the statement close against the remaining
+                        balance below. */}
                     <LedgerRow
                       sub
                       name="Paid from main balance"
@@ -1972,6 +2147,36 @@ export default function Billing() {
                   name="Payable amount"
                   value={fmt(retainerPayable())}
                 />
+              </Show>
+
+              {/* ── Additional services — any client type ──
+                  One insertion point for all three: after the hybrid charge
+                  sub-rows and after the retainer payable total, so it never
+                  reads as part of either subtotal. It is its own deduction
+                  from the main balance, in the month of each charge date, and
+                  the remaining balance below already reflects it.
+
+                  Deliberately NOT gated on client type: the backend deducts
+                  these for every type, so hiding them from a retainer or CPL
+                  client would leave a balance that dropped with nothing on
+                  screen explaining it. */}
+              <Show when={hasAddlServices()}>
+                <LedgerRow
+                  op="−"
+                  name="Additional services this month"
+                  tag="inc GST"
+                  value={fmtOrDash(addlServices()?.totalIncGst)}
+                  tone="neg"
+                />
+                <For each={addlServices()?.rows ?? []}>
+                  {(r) => (
+                    <LedgerRow
+                      sub
+                      name={`${serviceLabel(r)} · ${fmtChargeDate(r.charge_date)}`}
+                      value={fmtOrDash(asNum(r.total_inc_gst))}
+                    />
+                  )}
+                </For>
               </Show>
 
               {/* Closing/remaining row — hybrid only */}

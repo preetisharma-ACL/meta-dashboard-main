@@ -65,6 +65,7 @@ import CplRules from "./pages/cpl/CplRules";
 import LeadReplacements from "./pages/leads/LeadReplacements";
 import LeadDisqualifications from "./pages/leads/LeadDisqualifications";
 import ClientBilling from "./pages/billing/ClientBilling";
+import AdditionalServices from "./pages/billing/AdditionalServices";
 import OnboardingWizard from "./pages/onboarding/OnboardingWizard";
 import Assignments from "./pages/assignments/Assignments";
 import PaymentsList from "./pages/payments/PaymentsList";
@@ -310,6 +311,33 @@ function App() {
             <Route
               path="/sales/payments"
               component={() => <Navigate href="/client-payments" />}
+            />
+            {/* Additional services — the non-ad charges (website development,
+                SEO, …) that come off a client's MAIN balance. NOT the service
+                charge, which is the 13%/15% on ad spend.
+
+                Route-gated to the four staff roles; sales are deliberately out
+                (they onboard clients, they don't bill them) and a CLIENT must
+                never reach it — they see the charge on their own billing page
+                and never the notes or who recorded it. Campaign managers are in
+                at ROLE level so a tier-2 CM gets the read-only list; the write
+                controls inside gate again on canWriteAdditionalServices(),
+                which is the same read-wide/write-narrow split as Project
+                Display Config. The API 403s are the backstop underneath. */}
+            <Route
+              path="/billing/additional-services"
+              component={() => (
+                <AdminRoute
+                  roles={[
+                    "admin",
+                    "accounts",
+                    "coordination",
+                    "campaign_manager",
+                  ]}
+                >
+                  <AdditionalServices />
+                </AdminRoute>
+              )}
             />
             {/* ── Payments desk ────────────────────────────────────────────
                 Accounts + admin get the ledger and the needs-docs queue;

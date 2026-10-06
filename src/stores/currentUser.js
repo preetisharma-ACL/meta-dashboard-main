@@ -154,6 +154,43 @@ export const canRecordPayments = () => isAccountsDesk() || isTier1CM();
 // Who may PATCH / DELETE a payment — accounts and admin only, never a CM.
 export const canManagePayments = () => isAccountsDesk();
 
+// ─── Additional services gates (website development, SEO, …) ─────────────────
+// An additional service is a one-time charge deducted from a client's MAIN
+// balance. Not an ad charge, so it is NOT the campaign-write set; it is money,
+// so accounts is in — this is the first gate where the accounts desk WRITES
+// rather than only reads.
+//
+// READ is the four staff roles plus every campaign manager: a tier-2 CM gets
+// the list so they can answer "why did this client's balance drop" without
+// being able to change it, which is the same read/write split as Project
+// Display Config.
+//
+// A CLIENT IS NEVER IN EITHER SET. They see the charge on their own billing
+// page and nothing else: not this screen, not the notes, not who recorded it.
+// Strict role equality, failing CLOSED on an unresolved role — the screen
+// renders nothing at all rather than an empty shell.
+const ADDL_SERVICE_READ_ROLES = new Set([
+  "admin",
+  "accounts",
+  "coordination",
+  "campaign_manager",
+]);
+const ADDL_SERVICE_WRITE_ROLES = new Set(["admin", "accounts", "coordination"]);
+
+export const canSeeAdditionalServices = () => {
+  const role = currentUser.loaded ? currentUser.role : readAuth()?.role;
+  return ADDL_SERVICE_READ_ROLES.has(role);
+};
+
+// The CM leg is isTier1CM() and not isActiveTier1CM(): is_active is enforced
+// server-side by ConfigAccessPermission and nothing else, so folding it in here
+// would hide the control from someone the API still lets through.
+export const canWriteAdditionalServices = () => {
+  const role = currentUser.loaded ? currentUser.role : readAuth()?.role;
+  if (ADDL_SERVICE_WRITE_ROLES.has(role)) return true;
+  return isTier1CM();
+};
+
 // ─── Lead-replacement gates ───────────────────────────────────────────────────
 // Who may POST /leads/replacement-batches/ — admins and TIER-1 campaign managers
 // only. Tier-2 CMs, clients, sales, coordination and accounts must not see the

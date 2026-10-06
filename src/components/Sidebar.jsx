@@ -607,6 +607,23 @@ export default function Sidebar() {
         ),
         path: "/client-payments",
       },
+      {
+        // ONE top-level row for all four staff roles. It cannot live inside
+        // "Payments Desk" (admin-only) or the accounts flat list: a sub-item's
+        // `roles` never widen past its parent group's, so nesting it would hide
+        // it from coordination and the CMs however the child's roles read.
+        //
+        // Campaign managers are listed at ROLE level on purpose — a tier-2 CM
+        // gets the row and lands on a read-only list, which is how they answer
+        // "why did this client's balance drop". Sales are out: they onboard
+        // clients, they don't bill them. CLIENTS ARE NEVER HERE.
+        name: "Additional Services",
+        roles: ["admin", "accounts", "coordination", "campaign_manager"],
+        icon: () => (
+          <Icon d="M10 21h4M7 3h10a2 2 0 012 2v4a7 7 0 01-7 7 7 7 0 01-7-7V5a2 2 0 012-2zm5 13v5" />
+        ),
+        path: "/billing/additional-services",
+      },
       // ── Tier-1 CM payment entry ───────────────────────────────────────────
       // TIER-1 ONLY. `roles` can't express this on its own — tier-2 CMs share
       // the role and must not see these — so the `when` predicate carries the

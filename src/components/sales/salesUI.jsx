@@ -120,7 +120,17 @@ const PAY_COLUMNS = [
   // no ex-GST counterpart — so it ignores the toggle and says so in its label.
   // `optional`: shown only when some row carries the field, so a month or a
   // table with no hybrid-on-Credit-Notes client gets no column of dashes.
-  { key: "credit_notes", label: "Replaced credit notes · inc", align: "right", type: "num", optional: true, get: (c) => c.credit_notes_inc_gst },
+  { key: "credit_notes", label: "Replaced credit notes · inc", align: "right", type: "num", optional: "credit", get: (c) => c.credit_notes_inc_gst },
+  // Additional services (website development, SEO, …) — non-ad charges already
+  // deducted from the Remaining column beside it. inc GST only, like the credit
+  // notes column: the endpoint publishes no ex-GST counterpart, so the label
+  // says so and the column ignores the toggle. Shown only when a row carries
+  // the field, so a month where nobody bought one gets no column of dashes.
+  //
+  // NOT "service charge" — that is the 13%/15% on ad spend, which is inside the
+  // Billed column two across. Different money, and a shared label would make
+  // the two impossible to tell apart on one row.
+  { key: "additional_services", label: "Additional services · inc", align: "right", type: "num", optional: "addl", get: (c) => c.additional_services_inc_gst },
   { key: "leads", label: "Leads", align: "right", type: "num", get: (c) => c.total_leads },
   { key: "status", label: "Status", align: "center", type: "str", get: (c) => c.status },
 ];
@@ -156,8 +166,15 @@ export function PaymentsTable(props) {
         !isMissing(r?.credit_notes_inc_gst) || !isMissing(r?.credit_used_inc_gst),
     ),
   );
+  // Additional services column: same rule, its own field. The two are
+  // independent — a month can have one, both or neither — so they get separate
+  // flags rather than sharing the credit-notes one.
+  const showAddl = createMemo(() =>
+    (props.rows() ?? []).some((r) => !isMissing(r?.additional_services_inc_gst)),
+  );
+  const optionalShown = { credit: showCredit, addl: showAddl };
   const columns = () =>
-    PAY_COLUMNS.filter((c) => !c.optional || showCredit());
+    PAY_COLUMNS.filter((c) => !c.optional || optionalShown[c.optional]());
 
   // null sortKey → preserve the server's debtors-first order.
   const [sortKey, setSortKey] = createSignal(null);
@@ -393,6 +410,13 @@ export function PaymentsTable(props) {
                           used {fmtMoney(c.credit_used_inc_gst, 2)}
                         </div>
                       </Show>
+                    </td>
+                  </Show>
+                  {/* Additional services — non-ad charges, already inside the
+                      Remaining column. Not the service charge on ad spend. */}
+                  <Show when={showAddl()}>
+                    <td class="px-4 py-3 text-right tabular-nums font-medium text-[#B07A14] dark:text-yellow-300">
+                      {fmtMoney(c.additional_services_inc_gst, 2)}
                     </td>
                   </Show>
                   {/* Leads */}
