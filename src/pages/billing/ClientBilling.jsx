@@ -395,14 +395,22 @@ export default function ClientBilling() {
         {/* Additional services — website development, SEO and other non-ad
             work, already deducted from every Remaining figure on this page.
             inc GST only (the endpoint publishes no ex-GST counterpart, so this
-            ignores the toggle and says so) and absent/null until someone
-            records one, so the chip stays off an untouched month rather than
-            reading ₹0.
+            ignores the toggle and says so).
+
+            The field is always sent, so the chip is gated on a NON-ZERO total:
+            "₹0 in additional services" is noise on a month where nobody bought
+            any, and the matching column in the table below gates the same way
+            so the two never disagree about whether this month had any.
 
             NOT the service charge: that is the 13%/15% on ad spend and it sits
             inside the "Billed · spend + S.C" tile above. Different money, and
             a shared label would make the two impossible to tell apart. */}
-        <Show when={!isMissing(totals().additional_services_inc_gst)}>
+        <Show
+          when={
+            !isMissing(totals().additional_services_inc_gst) &&
+            Number(totals().additional_services_inc_gst) !== 0
+          }
+        >
           <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#FBF3E2] dark:bg-yellow-900/30 text-[13px] font-bold text-[#B07A14] dark:text-yellow-300 tabular-nums">
             {fmtMoney(totals().additional_services_inc_gst, 0)} in additional
             services

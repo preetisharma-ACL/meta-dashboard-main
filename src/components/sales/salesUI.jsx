@@ -124,8 +124,8 @@ const PAY_COLUMNS = [
   // Additional services (website development, SEO, …) — non-ad charges already
   // deducted from the Remaining column beside it. inc GST only, like the credit
   // notes column: the endpoint publishes no ex-GST counterpart, so the label
-  // says so and the column ignores the toggle. Shown only when a row carries
-  // the field, so a month where nobody bought one gets no column of dashes.
+  // says so and the column ignores the toggle. Shown only when some client
+  // actually has one (see showAddl) — the field itself is always sent.
   //
   // NOT "service charge" — that is the 13%/15% on ad spend, which is inside the
   // Billed column two across. Different money, and a shared label would make
@@ -166,11 +166,21 @@ export function PaymentsTable(props) {
         !isMissing(r?.credit_notes_inc_gst) || !isMissing(r?.credit_used_inc_gst),
     ),
   );
-  // Additional services column: same rule, its own field. The two are
-  // independent — a month can have one, both or neither — so they get separate
-  // flags rather than sharing the credit-notes one.
+  // Additional services column. Independent of the credit-notes one (a month
+  // can have either, both or neither), so it gets its own flag.
+  //
+  // Gated on a NON-ZERO value rather than mere presence: the endpoint sends
+  // additional_services_inc_gst on every row and in totals, always, so
+  // presence alone would add a column of ₹0.00 across every client in a month
+  // where nobody bought any non-ad work. A zero here is not a missing number
+  // being hidden — the deduction, when there is one, is already inside the
+  // Remaining column beside it, so an absent column cannot be misread as money
+  // in hand the way a hidden balance could.
   const showAddl = createMemo(() =>
-    (props.rows() ?? []).some((r) => !isMissing(r?.additional_services_inc_gst)),
+    (props.rows() ?? []).some((r) => {
+      const v = r?.additional_services_inc_gst;
+      return !isMissing(v) && Number(v) !== 0;
+    }),
   );
   const optionalShown = { credit: showCredit, addl: showAddl };
   const columns = () =>

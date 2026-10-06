@@ -1,4 +1,5 @@
 import { api } from "../api/api";
+import { fetchClientRosterWithStatus } from "./leadReplacement";
 
 // ─── Additional services (website development, SEO, …) ───────────────────────
 // A one-time charge for work that is NOT Meta ad spend, deducted from the
@@ -93,13 +94,14 @@ export const gstPreview = ({ amount, gstPct } = {}) => {
 };
 
 // ── Billing-overview block (the client's own page) ──────────────────────────
-// GET /billing/overview/ carries:
+// GET /billing/overview/ ALWAYS carries (confirmed against the backend):
 //   additional_services: { rows: [...], total_ex_gst, gst_amount, total_inc_gst }
 //
-// Returns null whenever there is nothing to show — the key absent (a month that
-// predates the feature) or rows empty. Callers render the section only on a
-// non-null, so a client with no services sees no section at all rather than an
-// empty table or a row of zeroes.
+// Returns null whenever there is nothing to SHOW — rows empty, which is the
+// common case, or the block missing despite the guarantee. Callers render the
+// section only on a non-null, so a client with no services sees no section at
+// all rather than an empty table or a row of zeroes. The block being always
+// present is why this gates on rows.length and not on the key.
 //
 // The totals are the SERVER's: read straight off the payload, never summed from
 // the row strings. The rows are already rounded to paise server-side and a
@@ -120,11 +122,12 @@ export const readAdditionalServices = (overview) => {
 // The month's additional-services total (inc GST) for the ACCOUNT STATEMENT's
 // arithmetic, as opposed to the section above which decides what to render.
 //
-// Returns 0 when the block is absent — a month that predates the feature, or a
-// client with no services, genuinely had none, and a null there would blank out
-// an otherwise complete statement. Returns null only when the block IS there
-// and its total cannot be read, so the ledger says "this doesn't close" instead
-// of quietly dropping a charge the client is being billed for.
+// Returns 0 when the block is absent. The backend always sends it, so that is
+// a guard rather than an expected path — and 0 is still the right answer for
+// it, because a null would blank out an otherwise complete statement. Returns
+// null only when the block IS there and its total cannot be read, so the ledger
+// says "this doesn't close" instead of quietly dropping a charge the client is
+// being billed for.
 export const additionalServicesTotalIncGst = (overview) => {
   const block = overview?.additional_services;
   if (!block || typeof block !== "object") return 0;
@@ -153,13 +156,151 @@ export const fmtChargeDate = (value) => {
 // missing flag as revoked would strike through every row on the default list.
 export const isRevoked = (row) => row?.is_revoked === true;
 
+// ── Client picker roster ────────────────────────────────────────────────────
+// TWO sources, in this order (verified per role on prod):
+//   1) GET /payments/clients/   — accounts 200 (277 rows), admin 200 (277),
+//                                 tier-1 CM 200 (27), coordination 403,
+//                                 tier-2 CM 403
+//   2) GET /clients/admin/clients/ (via the shared lead-action roster, which
+//      also falls back to the CM hierarchy) — covers coordination
+// Tier-2 CMs get the read-only list and never a picker, so their 403 on both
+// is expected rather than a failure to report.
+//
+// THE ID IS THE WHOLE PROBLEM HERE. /billing/additional-services/ takes
+// client_id = the CLIENT PK. /payments/clients/ is a NOMEN roster: its `id` is
+// what POST /payments/add-funds/ sends as `client_nomen` (see
+// normalizeClientOption + addFunds in services/payments.js), and its 277 rows
+// outnumber the ~168 clients because one client can hold several nomens. The
+// two ids differ for all but one client, so reading `id` as a PK here would
+// book a non-ad charge against the WRONG client's balance — silently, with a
+// plausible name on screen.
+//
+// So the PK is read ONLY from keys that can mean nothing else, and `id` is
+// deliberately not among them for this source. If the payload carries no such
+// key the source is REJECTED rather than guessed at, we fall through to the
+// directory, and the caller is told why. The directory's `id` IS the PK, which
+// is why that normalisation stays in services/leadReplacement.js where the
+// other three pickers already share it.
+const PK_KEYS = ["client_id", "client_pk", "client", "pk"];
+
+const readPk = (row) => {
+  for (const k of PK_KEYS) {
+    const v = row?.[k];
+    // A nested { id } object is still a client reference; a bare value is the
+    // id itself. Anything non-numeric is not a PK and is left alone.
+    const candidate = v && typeof v === "object" ? v.id : v;
+    if (candidate === undefined || candidate === null || candidate === "")
+      continue;
+    const n = Number(candidate);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+};
+
+const readName = (row) =>
+  row?.name ||
+  row?.client_nomen_name ||
+  row?.client_name ||
+  row?.nomen_name ||
+  row?.label ||
+  null;
+
+// Source 1. Returns { rows, status } where status is:
+//   "ok"          → usable rows, each with a real Client PK
+//   "forbidden"   → 403 (coordination, tier-2 CM) → try the directory
+//   "no_pk"       → rows came back but none carried a Client PK, so this
+//                   endpoint cannot answer client_id → try the directory
+//   "error"       → anything else
+const fetchPaymentsRosterForServices = async () => {
+  let res;
+  try {
+    res = await api(`/payments/clients/`, { method: "GET" });
+  } catch (err) {
+    return { rows: [], status: err?.status === 403 ? "forbidden" : "error" };
+  }
+
+  const raw = Array.isArray(res?.data?.results)
+    ? res.data.results
+    : Array.isArray(res?.data)
+      ? res.data
+      : Array.isArray(res?.results)
+        ? res.results
+        : [];
+
+  const rows = raw
+    .map((r) => ({
+      id: readPk(r),
+      nomenId: r?.client_nomen ?? r?.client_nomen_id ?? r?.nomen_id ?? r?.id ?? null,
+      name: readName(r),
+      email: r?.email ?? null,
+      clientType: (r?.client_type || "").toLowerCase() || null,
+    }))
+    .filter((c) => c.id != null);
+
+  if (raw.length > 0 && rows.length === 0) {
+    // Loud, because this is the case that would otherwise become a wrong-client
+    // write the first time someone "fixes" it by reading `id`.
+    console.warn(
+      "[additionalServices] /payments/clients/ returned rows with no Client PK " +
+        "(its `id` is the nomen id, which client_id must NOT receive). " +
+        "Falling back to the client directory.",
+    );
+    return { rows: [], status: "no_pk" };
+  }
+
+  // Several nomens can map to one client; the picker lists clients, so collapse
+  // duplicates on the PK and keep the first name seen.
+  const byPk = new Map();
+  for (const c of rows) if (!byPk.has(c.id)) byPk.set(c.id, c);
+
+  return {
+    rows: [...byPk.values()].sort((a, b) =>
+      (a.name || `Client #${a.id}`).localeCompare(
+        b.name || `Client #${b.id}`,
+        undefined,
+        { sensitivity: "base" },
+      ),
+    ),
+    status: "ok",
+  };
+};
+
+// The roster the staff screen picks from, plus WHY it is empty when it is.
+// `source` names which endpoint answered, so a short list can be explained
+// (a tier-1 CM's 27 clients is correct, not a truncated 277).
+export const fetchServiceClientRoster = async () => {
+  const payments = await fetchPaymentsRosterForServices();
+  if (payments.status === "ok" && payments.rows.length > 0)
+    return { rows: payments.rows, source: "payments", failed: false };
+
+  // Fall through on 403 (coordination), on a payload with no PK, on an error,
+  // and on an empty 200 — the directory may still know this caller's clients.
+  const directory = await fetchClientRosterWithStatus(null);
+  if (directory.rows.length > 0)
+    return { rows: directory.rows, source: "directory", failed: false };
+
+  return {
+    rows: [],
+    source: null,
+    // Only a genuine refusal from BOTH sides is a failure. A source that
+    // answered an empty list has answered, and reporting that as broken access
+    // would send someone looking in the wrong place.
+    failed: payments.status !== "ok" && directory.failed,
+    // Kept separate so the screen can say which of the two it was.
+    pkMissing: payments.status === "no_pk",
+  };
+};
+
 // ── Staff endpoints ─────────────────────────────────────────────────────────
 // Verbs confirmed against the deployed API (OPTIONS → Allow):
 //   /billing/additional-services/        GET, POST
-//   /billing/additional-services/<id>/   PATCH         (no detail GET, no DELETE
-//                                                       — an entry is revoked,
-//                                                       never deleted)
+//   /billing/additional-services/<id>/   PATCH
 //   /billing/additional-services/<id>/revoke/   POST
+//
+// NO DETAIL GET AND NO DELETE, BY DESIGN. Revoke is the only removal path the
+// API offers (a superadmin hard delete exists in Django admin and nowhere
+// else), so the UI edits from the row the list already gave it and never offers
+// a delete. An entry stays on the record and stops being charged.
 //
 // api() lifts `message`, `code` and `fields` off the envelope and attaches the
 // HTTP status, so callers branch on err.code / err.status and show the server's

@@ -6,8 +6,8 @@ import {
   For,
   Show,
 } from "solid-js";
-import { fetchClientRosterWithStatus } from "../../services/leadReplacement";
 import {
+  fetchServiceClientRoster,
   fetchAdditionalServices,
   serviceLabel,
   fmtChargeDate,
@@ -34,11 +34,17 @@ import { errorMessage } from "../../utils/apiErrors";
 // and never sees the notes or who recorded a service.
 //
 // One client at a time, because that is the shape of the API: the list endpoint
-// requires client_id and there is no all-clients roll-up to read. The roster
-// comes from the shared lead-action picker source, which resolves the CLIENT PK
-// (admin clients list, falling back to the CM hierarchy for a manager) — the
-// nomen id is a different number and sending it here would hit the wrong client
-// or 404.
+// requires client_id and there is no all-clients roll-up to read.
+//
+// The roster comes from fetchServiceClientRoster() — /payments/clients/ first
+// (accounts, admin, tier-1 CMs), then the client directory (coordination). That
+// helper is also where the CLIENT PK is resolved, which is the part worth being
+// careful about: the nomen id is a different number for all but one client, and
+// sending it as client_id would charge somebody else.
+//
+// There is no DELETE anywhere on this screen. Revoke is the only removal path
+// the API offers; a hard delete exists in Django admin and is not ours to
+// offer.
 
 const money = (v) => {
   const n = asNum(v);
@@ -67,10 +73,15 @@ export default function AdditionalServices() {
   const [editRow, setEditRow] = createSignal(null);
   const [revokeRow, setRevokeRow] = createSignal(null);
 
-  // Every client type can be charged for an additional service (a retainer
-  // client buys a website too), so the roster is unfiltered — null, not an
-  // empty set, which would filter it down to nothing.
-  const [roster] = createResource(() => fetchClientRosterWithStatus(null));
+  // Two sources in order: the payments-desk picker (accounts, admin, tier-1
+  // CMs) then the client directory (coordination). Unfiltered by client type —
+  // a retainer client buys a website the same as anyone else.
+  //
+  // A SHORT LIST IS OFTEN CORRECT: a tier-1 CM is scoped to their own book and
+  // their team's, so 27 clients where admin sees every one is the backend doing
+  // its job, not a truncated roster. The hint under the picker says which
+  // source answered so nobody chases a missing client that was never theirs.
+  const [roster] = createResource(fetchServiceClientRoster);
   const clientList = () => roster()?.rows ?? [];
 
   const selectedClient = createMemo(() =>
@@ -137,12 +148,22 @@ export default function AdditionalServices() {
       ? errorMessage(listRes.error, "Could not load additional services.")
       : null;
 
-  // The roster came back empty. The two causes read very differently: this
-  // caller genuinely holds no clients, or both roster sources refused them —
-  // which is an access problem, not an empty book, and saying "no clients"
-  // there would send them looking in the wrong place.
+  // The roster came back empty. The causes read very differently: this caller
+  // genuinely holds no clients, both sources refused them (an access problem,
+  // not an empty book), or the payments picker answered without a Client PK —
+  // the one case where the data is there and unusable, which needs naming or
+  // it gets "fixed" by sending the nomen id and charging the wrong client.
   const rosterEmpty = () => !roster.loading && clientList().length === 0;
   const rosterFailed = () => roster()?.failed === true;
+  const rosterPkMissing = () => roster()?.pkMissing === true;
+
+  // Which endpoint answered. Only worth saying when the roster is narrower than
+  // the whole org — a tier-1 CM's own book — so nobody reads a correct 27 as a
+  // broken 277.
+  const rosterNote = () => {
+    if (roster.loading || rosterEmpty()) return null;
+    return `${clientList().length} clients you can bill`;
+  };
 
   // Reset the dropdown's text to the picked client whenever the selection
   // changes from elsewhere (a cleared field, say), so the box never shows a
@@ -241,11 +262,13 @@ export default function AdditionalServices() {
                   when={filteredClients().length}
                   fallback={
                     <p class="px-3 py-3 text-sm text-[#8593A8]">
-                      {rosterFailed()
-                        ? "The client list could not be loaded for your account. Ask an admin to check your access — this is not a client with nothing recorded."
-                        : rosterEmpty()
-                          ? "No clients available to you."
-                          : "No clients match."}
+                      {rosterPkMissing()
+                        ? "The client list loaded but carries no client id this screen can bill against. Tell an admin — do not work around it; the other id on that payload belongs to a different client."
+                        : rosterFailed()
+                          ? "The client list could not be loaded for your account. Ask an admin to check your access — this is not a client with nothing recorded."
+                          : rosterEmpty()
+                            ? "No clients available to you."
+                            : "No clients match."}
                     </p>
                   }
                 >
@@ -275,6 +298,14 @@ export default function AdditionalServices() {
               </div>
             </Show>
           </div>
+          {/* A tier-1 CM is scoped to their own book and their team's, so a
+              short roster is the backend working. Stating the count stops a
+              correct 27 reading as a truncated list. */}
+          <Show when={rosterNote()}>
+            <p class="mt-1 text-xs text-[#8593A8] dark:text-gray-400">
+              {rosterNote()}
+            </p>
+          </Show>
         </div>
 
         {/* Revoked entries are off by default — they are not charged, so they
