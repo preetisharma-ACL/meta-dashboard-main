@@ -175,9 +175,10 @@ export const isRevoked = (row) => row?.is_revoked === true;
 // book a non-ad charge against the WRONG client's balance — silently, with a
 // plausible name on screen.
 //
-// The payload carries BOTH: `client_id` (the PK, NULLABLE) beside the unchanged
-// nomen `id`. Several nomens can resolve to one client, and ~87 of the 277
-// resolve to none at all.
+// The payload carries BOTH: `client_id` (the PK, NULLABLE) beside the nomen
+// `id`, plus a nullable `organization_id`. Several nomens can resolve to one
+// client, and 84 of the 277 resolve to none at all (checked against the DB on
+// 7 Oct 2026, 0 mismatches). Worked example: nomen 66 is client 6.
 //
 // So this reads `client_id` AND NOTHING ELSE — no fallback chain. A fallback
 // would fire on exactly the rows whose client_id is null, i.e. the ones the
@@ -232,10 +233,10 @@ const fetchPaymentsRosterForServices = async () => {
         ? res.results
         : [];
 
-  // Nomens whose client_id is null have no client record behind them — about 87
-  // of the 277 — and there is nothing to bill, so they are dropped. That is the
-  // EXPECTED shape of this payload, not a fault: roughly two thirds of the rows
-  // surviving is what a healthy response looks like here.
+  // Nomens whose client_id is null have no client record behind them — 84 of
+  // the 277 on 7 Oct 2026 — and there is nothing to bill, so they are dropped.
+  // That is the EXPECTED shape of this payload, not a fault: roughly two thirds
+  // of the rows surviving is what a healthy response looks like here.
   const rows = raw
     .map((r) => ({
       id: readPk(r),

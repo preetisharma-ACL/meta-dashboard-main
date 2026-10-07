@@ -293,12 +293,21 @@ export default function AdditionalServices() {
                         class="w-full text-left px-3 py-2 hover:bg-[#FBEEF0] dark:hover:bg-gray-800 transition-colors"
                       >
                         <div class="font-medium text-[#14233A] dark:text-gray-100">
-                          {c.name}
+                          {c.name || `Client #${c.id}`}
                         </div>
-                        <div class="text-xs text-[#8593A8]">
-                          {c.clientType ? c.clientType.toUpperCase() : "—"}
-                          {c.email ? ` · ${c.email}` : ""}
-                        </div>
+                        {/* The payments roster carries only id / client_id /
+                            organization_id and a name — no type, no email — so
+                            this line is rendered only when one of the two
+                            sources actually supplied something. A hardcoded
+                            "—" here put a dash under every client for accounts
+                            and admin, which is noise, not information. */}
+                        <Show when={c.clientType || c.email}>
+                          <div class="text-xs text-[#8593A8]">
+                            {c.clientType ? c.clientType.toUpperCase() : ""}
+                            {c.clientType && c.email ? " · " : ""}
+                            {c.email || ""}
+                          </div>
+                        </Show>
                       </button>
                     )}
                   </For>
