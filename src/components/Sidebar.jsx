@@ -462,8 +462,11 @@ export default function Sidebar() {
         path: "/project-display-config",
       },
       {
+        // Accounts gets the whole group, view only. Backend opened every
+        // endpoint under it to GLOBAL_READ; "Refresh from Meta" was already
+        // GLOBAL_READ and only re-reads balances.
         name: "Accounts & Funding",
-        roles: ["admin", "campaign_manager"],
+        roles: ["admin", "campaign_manager", "accounts"],
         icon: () => (
           <Icon d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
         ),
@@ -471,7 +474,7 @@ export default function Sidebar() {
           {
             name: "Account Funding",
             path: "/account-funding",
-            roles: ["admin", "campaign_manager"],
+            roles: ["admin", "campaign_manager", "accounts"],
             icon: () => (
               <SmallIcon d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
             ),
@@ -479,7 +482,7 @@ export default function Sidebar() {
           {
             name: "Funds Added",
             path: "/funds-added",
-            roles: ["admin", "campaign_manager"],
+            roles: ["admin", "campaign_manager", "accounts"],
             // Rupee, not dollar — every figure on this page is in ₹.
             icon: () => (
               <SmallIcon d="M15 8.25H9m6 3H9m3 6l-3-3h1.5a3 3 0 100-6M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -488,7 +491,7 @@ export default function Sidebar() {
           {
             name: "Meta Ad Accounts",
             path: "/ad-accounts",
-            roles: ["admin", "campaign_manager"],
+            roles: ["admin", "campaign_manager", "accounts"],
             icon: () => (
               <SmallIcon d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
             ),
@@ -496,7 +499,7 @@ export default function Sidebar() {
           {
             name: "Spend Segregation",
             path: "/spend-segregation",
-            roles: ["admin"],
+            roles: ["admin", "accounts"],
             icon: () => (
               <SmallIcon d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
             ),
@@ -504,7 +507,7 @@ export default function Sidebar() {
           {
             name: "Account Monitor",
             path: "/account-monitor",
-            roles: ["admin"],
+            roles: ["admin", "accounts"],
             icon: () => <SmallIcon d="M3 12l2-2 4 4 6-6 4 4 2-2" />,
           },
         ],
@@ -521,7 +524,7 @@ export default function Sidebar() {
       {
         name: "My Work",
         // No "accounts": My Work is a CM/admin operational tool. The accounts
-        // sidebar is Payments · Record Payment · Needs Docs · Billing · Logout.
+        // sidebar is the payments desk plus a view-only Accounts & Funding.
         roles: ["campaign_manager", "admin", "coordination"],
         icon: () => (
           <Icon d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />

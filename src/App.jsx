@@ -549,7 +549,7 @@ function App() {
             <Route
               path="/ad-accounts"
               component={() => (
-                <AdminRoute roles={["admin", "campaign_manager"]}>
+                <AdminRoute roles={["admin", "campaign_manager", "accounts"]}>
                   <AdAccounts />
                 </AdminRoute>
               )}
@@ -557,7 +557,7 @@ function App() {
             <Route
               path="/ad-account-clients"
               component={() => (
-                <AdminRoute roles={["admin", "campaign_manager"]}>
+                <AdminRoute roles={["admin", "campaign_manager", "accounts"]}>
                   <AdAccountClients />
                 </AdminRoute>
               )}
@@ -565,7 +565,7 @@ function App() {
             <Route
               path="/ad-accounts/:id"
               component={() => (
-                <AdminRoute roles={["admin", "campaign_manager"]}>
+                <AdminRoute roles={["admin", "campaign_manager", "accounts"]}>
                   <AdAccountCampaigns />
                 </AdminRoute>
               )}
