@@ -26,14 +26,6 @@ import {
 //
 // Admin, CM and coordination only. "Only my clients" (mine=1) is offered to CMs.
 
-const pick = (row, ...keys) => {
-  for (const k of keys) {
-    const v = row?.[k];
-    if (v !== undefined && v !== null && v !== "") return v;
-  }
-  return null;
-};
-
 const COLS = [
   { label: "Ad name" },
   { label: "Client" },
@@ -69,10 +61,10 @@ export default function UntaggedAds() {
     const r = props.r;
     return (
       <tr class={ROW}>
-        <td class="font-medium max-w-[24rem] break-words">{pick(r, "ad_name", "name") ?? "—"}</td>
-        <td class="whitespace-nowrap">{pick(r, "client_nomen", "client", "nomen_name") ?? "—"}</td>
-        <td class="max-w-[18rem]">{pick(r, "campaign_name", "campaign") ?? "—"}</td>
-        <td class="whitespace-nowrap">{pick(r, "ad_account_name", "ad_account", "account_name") ?? "—"}</td>
+        <td class="font-medium max-w-[24rem] break-words">{r.ad_name ?? "—"}</td>
+        <td class="whitespace-nowrap">{r.client_nomen ?? "—"}</td>
+        <td class="max-w-[18rem]">{r.campaign ?? "—"}</td>
+        <td class="whitespace-nowrap">{r.ad_account ?? "—"}</td>
         <td class={NUM}>{fmtMoney(r.spend)}</td>
         <td class={NUM}>{fmtInt(r.leads)}</td>
       </tr>
@@ -149,19 +141,19 @@ export default function UntaggedAds() {
       <DataTable
         cols={[{ label: "Code" }, ...COLS]}
         loading={data.loading}
-        empty={!unknownRows(d()).length}
+        empty={!(d()?.unknown_codes ?? []).length}
         emptyText="No unknown codes in this range."
       >
-        <For each={unknownRows(d())}>
+        <For each={(d()?.unknown_codes ?? [])}>
           {(r) => (
             <tr class={ROW}>
               <td class="font-mono font-semibold whitespace-nowrap text-[#7A5410] dark:text-yellow-200">
-                {pick(r, "code", "unknown_code") ?? "—"}
+                {r.code ?? "—"}
               </td>
-              <td class="font-medium max-w-[24rem] break-words">{pick(r, "ad_name", "name") ?? "—"}</td>
-              <td class="whitespace-nowrap">{pick(r, "client_nomen", "client", "nomen_name") ?? "—"}</td>
-              <td class="max-w-[18rem]">{pick(r, "campaign_name", "campaign") ?? "—"}</td>
-              <td class="whitespace-nowrap">{pick(r, "ad_account_name", "ad_account", "account_name") ?? "—"}</td>
+              <td class="font-medium max-w-[24rem] break-words">{r.ad_name ?? "—"}</td>
+              <td class="whitespace-nowrap">{r.client_nomen ?? "—"}</td>
+              <td class="max-w-[18rem]">{r.campaign ?? "—"}</td>
+              <td class="whitespace-nowrap">{r.ad_account ?? "—"}</td>
               <td class={NUM}>{fmtMoney(r.spend)}</td>
               <td class={NUM}>{fmtInt(r.leads)}</td>
             </tr>
@@ -171,8 +163,3 @@ export default function UntaggedAds() {
     </PageShell>
   );
 }
-
-// unknown_codes rows are ads; a bare string list (codes only) is wrapped so the
-// table still renders something useful.
-const unknownRows = (d) =>
-  (d?.unknown_codes ?? []).map((u) => (typeof u === "string" ? { code: u } : u));

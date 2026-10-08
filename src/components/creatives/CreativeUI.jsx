@@ -391,6 +391,34 @@ export function ProjectSelect(props) {
   );
 }
 
+// ── Project filter (Library / Ranking) ────────────────────────────────────────
+// options: [{ id, name }] from distinctProjects() — no API call of its own.
+// A selection that drops out of the options (client changed) is cleared.
+export function ProjectFilter(props) {
+  createEffect(() => {
+    const opts = props.options ?? [];
+    const v = props.value;
+    if (props.loading || v == null || v === "") return;
+    if (!opts.some((p) => String(p.id) === String(v))) props.onChange("");
+  });
+  return (
+    <select
+      class={FIELD}
+      value={props.value ?? ""}
+      onChange={(e) => props.onChange(e.target.value)}
+    >
+      <option value="">All projects</option>
+      <For each={props.options ?? []}>
+        {(p) => (
+          <option value={String(p.id)} selected={String(p.id) === String(props.value ?? "")}>
+            {p.name}
+          </option>
+        )}
+      </For>
+    </select>
+  );
+}
+
 // ── Table shell ───────────────────────────────────────────────────────────────
 // cols: [{ label, align?: "right" }]. Children are the <tr>s.
 export function DataTable(props) {

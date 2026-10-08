@@ -2,6 +2,8 @@ import { createSignal, createResource, For, Show } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import {
   fetchRanking,
+  fetchCreatives,
+  distinctProjects,
   kindLabel,
   fmtMoney,
   fmtCpl,
@@ -14,7 +16,7 @@ import {
   LABEL,
   KindSelect,
   NomenPicker,
-  ProjectSelect,
+  ProjectFilter,
   DatePresets,
   defaultRange,
   DataTable,
@@ -61,6 +63,16 @@ export default function CreativeRanking() {
   });
 
   const [data] = createResource(params, (p) => fetchRanking(p));
+
+  // Ranking rows carry the project NAME but no project_id, so the project
+  // dropdown comes from the library list for the chosen client instead
+  // (distinct project_id / project). Never /options/projects/?all=1 — that is
+  // every project in the system.
+  const [library] = createResource(
+    () => ({ nomen_id: nomen()?.id ?? "" }),
+    (p) => fetchCreatives(p).catch(() => []),
+  );
+  const projects = () => distinctProjects(library.error ? [] : library() ?? []);
   const d = () => (data.error ? null : data());
   const minLeads = () => d()?.min_leads ?? 5;
 
@@ -113,10 +125,9 @@ export default function CreativeRanking() {
           </div>
           <div>
             <label class={LABEL}>Project</label>
-            <ProjectSelect
-              nomenId={nomen()?.id}
-              showAll
-              allLabel="All projects"
+            <ProjectFilter
+              options={projects()}
+              loading={library.loading}
               value={projectId()}
               onChange={setProjectId}
             />
@@ -166,35 +177,44 @@ export default function CreativeRanking() {
   );
 }
 
-// Unknown codes may arrive as plain strings or as rows ({code, ads, spend,
-// leads, …}); render whichever came.
+// unknown_codes rows here are per-code aggregates:
+// {code, leads, spend, cpl, ads, clients, campaigns}.
 export function UnknownCodesPanel(props) {
-  const code = (u) => (typeof u === "string" ? u : u?.code ?? "—");
   return (
     <div class="mt-8 rounded-xl border border-[#D89A2B]/40 bg-[#FDF6E9] dark:bg-yellow-900/10 dark:border-yellow-800 p-5">
       <h2 class="text-base font-bold text-[#7A5410] dark:text-yellow-200">Unknown codes</h2>
-      <p class="text-sm text-[#7A5410]/80 dark:text-yellow-200/80">
+      <p class="mb-3 text-sm text-[#7A5410]/80 dark:text-yellow-200/80">
         Codes used in Meta ad names but not in the library, usually a typo.
       </p>
-      <Show
-        when={props.codes.length}
-        fallback={<p class="mt-3 text-sm text-[#7A5410]/70">None in this range.</p>}
+      <DataTable
+        cols={[
+          { label: "Code" },
+          { label: "Leads", align: "right" },
+          { label: "Spend", align: "right" },
+          { label: "CPL", align: "right" },
+          { label: "Ads", align: "right" },
+          { label: "Clients", align: "right" },
+          { label: "Campaigns", align: "right" },
+        ]}
+        empty={!props.codes.length}
+        emptyText="None in this range."
       >
-        <div class="mt-3 flex flex-wrap gap-2">
-          <For each={props.codes}>
-            {(u) => (
-              <span class="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-white dark:bg-gray-800 border border-[#D89A2B]/40 font-mono text-sm font-semibold text-[#14233A] dark:text-gray-100">
-                {code(u)}
-                <Show when={typeof u === "object" && u?.ads != null}>
-                  <span class="font-sans text-xs font-normal text-[#8593A8]">
-                    {fmtInt(u.ads)} ad{Number(u.ads) === 1 ? "" : "s"}
-                  </span>
-                </Show>
-              </span>
-            )}
-          </For>
-        </div>
-      </Show>
+        <For each={props.codes}>
+          {(u) => (
+            <tr class={ROW}>
+              <td class="font-mono font-semibold whitespace-nowrap text-[#7A5410] dark:text-yellow-200">
+                {u.code ?? "—"}
+              </td>
+              <td class={NUM + " font-semibold"}>{fmtInt(u.leads)}</td>
+              <td class={NUM}>{fmtMoney(u.spend)}</td>
+              <td class={NUM}>{fmtCpl(u.cpl)}</td>
+              <td class={NUM}>{fmtInt(u.ads)}</td>
+              <td class={NUM}>{fmtInt(u.clients)}</td>
+              <td class={NUM}>{fmtInt(u.campaigns)}</td>
+            </tr>
+          )}
+        </For>
+      </DataTable>
     </div>
   );
 }

@@ -195,11 +195,11 @@ export default function CreativeModal(props) {
                       <ReadOnly label="Type" value={kindLabel(props.creative.kind)} />
                       <ReadOnly
                         label="Client"
-                        value={props.creative.client_nomen ?? props.creative.nomen_name}
+                        value={props.creative.client_nomen}
                       />
                       <ReadOnly
                         label="Project"
-                        value={props.creative.project ?? props.creative.project_name}
+                        value={props.creative.project}
                       />
                     </div>
                     <p class="text-xs text-[#8593A8] dark:text-gray-400">

@@ -41,14 +41,6 @@ import {
 // totals, a daily chart, and the breakdowns by client, campaign and ad.
 // Raw Meta spend; a null CPL (0 leads) prints "n/a".
 
-const pick = (row, ...keys) => {
-  for (const k of keys) {
-    const v = row?.[k];
-    if (v !== undefined && v !== null && v !== "") return v;
-  }
-  return null;
-};
-
 export default function CreativeDetail() {
   const params = useParams();
   const [range, setRange] = createSignal(defaultRange());
@@ -95,8 +87,8 @@ export default function CreativeDetail() {
       <Show when={c()}>
         <div class="mb-6 grid grid-cols-2 md:grid-cols-5 gap-4 rounded-xl border border-[#E2E8F1] dark:border-gray-700 bg-white dark:bg-gray-800 p-5 text-sm">
           <Meta label="Type">{kindLabel(c().kind)}</Meta>
-          <Meta label="Client">{pick(c(), "client_nomen", "nomen_name") ?? "—"}</Meta>
-          <Meta label="Project">{pick(c(), "project", "project_name") ?? "—"}</Meta>
+          <Meta label="Client">{c().client_nomen ?? "—"}</Meta>
+          <Meta label="Project">{c().project ?? "—"}</Meta>
           <Meta label="OneDrive">
             <OneDriveLink url={c().onedrive_url} />
           </Meta>
@@ -157,7 +149,7 @@ export default function CreativeDetail() {
         <For each={p()?.by_client ?? []}>
           {(r) => (
             <tr class={ROW}>
-              <td class="font-medium">{pick(r, "client_nomen", "client", "nomen_name", "name") ?? "—"}</td>
+              <td class="font-medium">{r.client_nomen ?? "—"}</td>
               <td class={NUM}>{fmtInt(r.leads)}</td>
               <td class={NUM}>{fmtMoney(r.spend)}</td>
               <td class={NUM}>{fmtCpl(r.cpl)}</td>
@@ -184,8 +176,8 @@ export default function CreativeDetail() {
         <For each={p()?.by_campaign ?? []}>
           {(r) => (
             <tr class={ROW}>
-              <td class="font-medium max-w-[22rem]">{pick(r, "campaign_name", "campaign", "name") ?? "—"}</td>
-              <td class="whitespace-nowrap">{pick(r, "client_nomen", "client", "nomen_name") ?? "—"}</td>
+              <td class="font-medium max-w-[22rem]">{r.campaign ?? "—"}</td>
+              <td class="whitespace-nowrap">{r.client_nomen ?? "—"}</td>
               <td class={NUM}>{fmtInt(r.leads)}</td>
               <td class={NUM}>{fmtMoney(r.spend)}</td>
               <td class={NUM}>{fmtCpl(r.cpl)}</td>
@@ -214,14 +206,14 @@ export default function CreativeDetail() {
         <For each={p()?.by_ad ?? []}>
           {(r) => (
             <tr class={ROW}>
-              <td class="font-medium max-w-[22rem]">{pick(r, "ad_name", "name") ?? "—"}</td>
-              <td class="whitespace-nowrap">{pick(r, "ad_account_name", "ad_account", "account_name") ?? "—"}</td>
-              <td class="max-w-[18rem]">{pick(r, "campaign_name", "campaign") ?? "—"}</td>
+              <td class="font-medium max-w-[22rem]">{r.ad_name ?? "—"}</td>
+              <td class="whitespace-nowrap">{r.ad_account ?? "—"}</td>
+              <td class="max-w-[18rem]">{r.campaign ?? "—"}</td>
               <td class={NUM}>{fmtInt(r.leads)}</td>
               <td class={NUM}>{fmtMoney(r.spend)}</td>
               <td class={NUM}>{fmtCpl(r.cpl)}</td>
-              <td class="whitespace-nowrap">{fmtDate(pick(r, "first_date", "first_seen", "start"))}</td>
-              <td class="whitespace-nowrap">{fmtDate(pick(r, "last_date", "last_seen", "end"))}</td>
+              <td class="whitespace-nowrap">{fmtDate(r.first_date)}</td>
+              <td class="whitespace-nowrap">{fmtDate(r.last_date)}</td>
             </tr>
           )}
         </For>
@@ -258,7 +250,7 @@ function DailyChart(props) {
 
   createEffect(() => {
     const rows = props.daily ?? [];
-    const cats = rows.map((r) => pick(r, "date", "day") ?? "");
+    const cats = rows.map((r) => r.date ?? "");
     const leads = rows.map((r) => Number(r.leads) || 0);
     const cpl = rows.map((r) => (r.cpl == null || r.cpl === "" ? null : Number(r.cpl)));
     const label = isDark() ? "#9CA3AF" : "#54657E";

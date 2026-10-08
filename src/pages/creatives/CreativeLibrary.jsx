@@ -1,7 +1,8 @@
-import { createSignal, createResource, createEffect, on, onCleanup, For, Show } from "solid-js";
+import { createSignal, createResource, createEffect, createMemo, on, onCleanup, For, Show } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import {
   fetchCreatives,
+  distinctProjects,
   canWriteCreatives,
   kindLabel,
   fmtDate,
@@ -16,7 +17,7 @@ import {
   PRIMARY_BTN,
   KindSelect,
   NomenPicker,
-  ProjectSelect,
+  ProjectFilter,
   DataTable,
   CodeCell,
   StatusPill,
@@ -25,17 +26,12 @@ import {
 } from "../../components/creatives/CreativeUI";
 
 // ─── Creative Library (/creatives) ────────────────────────────────────────────
-// Every creative and its code. Filters go to the server (kind, nomen_id,
-// project_id, active, q). Row opens the detail page. "Add creative" is admin +
-// creative only; everyone else who can reach this screen reads it.
-
-// created_by is an id elsewhere in this API; prefer the name field, then a
-// nested object's name, and never print a bare id or "[object Object]".
-const personName = (c) =>
-  c.created_by_name ??
-  (typeof c.created_by === "object" ? c.created_by?.name : null) ??
-  (typeof c.created_by === "string" ? c.created_by : null) ??
-  "—";
+// Every creative and its code. kind, nomen_id, active and q go to the server.
+// PROJECT is filtered here, on the loaded rows: its dropdown is built from the
+// distinct project_id / project of those same rows (no extra call), and
+// filtering server-side would shrink that list to the one project picked.
+// Row opens the detail page. "Add creative" is admin + creative only; everyone
+// else who can reach this screen reads it.
 
 export default function CreativeLibrary() {
   const navigate = useNavigate();
@@ -59,14 +55,18 @@ export default function CreativeLibrary() {
   const params = () => ({
     kind: kind(),
     nomen_id: nomen()?.id,
-    project_id: projectId(),
     active: active(),
     q: q(),
   });
 
   const [rows, { refetch }] = createResource(params, (p) => fetchCreatives(p));
 
-  const list = () => (rows.error ? [] : rows() ?? []);
+  const loaded = () => (rows.error ? [] : rows() ?? []);
+  const projects = createMemo(() => distinctProjects(loaded()));
+  const list = () =>
+    projectId()
+      ? loaded().filter((c) => String(c.project_id) === String(projectId()))
+      : loaded();
 
   return (
     <PageShell
@@ -99,10 +99,9 @@ export default function CreativeLibrary() {
         </div>
         <div>
           <label class={LABEL}>Project</label>
-          <ProjectSelect
-            nomenId={nomen()?.id}
-            showAll
-            allLabel="All projects"
+          <ProjectFilter
+            options={projects()}
+            loading={rows.loading}
             value={projectId()}
             onChange={setProjectId}
           />
@@ -152,8 +151,8 @@ export default function CreativeLibrary() {
               </td>
               <td class="font-medium max-w-[18rem]">{c.title || "—"}</td>
               <td class="whitespace-nowrap">{kindLabel(c.kind)}</td>
-              <td class="whitespace-nowrap">{c.client_nomen ?? c.nomen_name ?? "—"}</td>
-              <td class="whitespace-nowrap">{c.project ?? c.project_name ?? "—"}</td>
+              <td class="whitespace-nowrap">{c.client_nomen ?? "—"}</td>
+              <td class="whitespace-nowrap">{c.project ?? "—"}</td>
               <td>
                 <OneDriveLink url={c.onedrive_url} />
               </td>
@@ -161,7 +160,7 @@ export default function CreativeLibrary() {
                 <StatusPill active={c.is_active !== false} />
               </td>
               <td class="whitespace-nowrap text-[#54657E] dark:text-gray-400">
-                {personName(c)}
+                {c.created_by || "—"}
               </td>
               <td class="whitespace-nowrap text-[#54657E] dark:text-gray-400">
                 {fmtDate(c.created_at)}

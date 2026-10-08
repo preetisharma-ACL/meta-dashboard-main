@@ -123,6 +123,19 @@ const asList = (res) => {
   return [];
 };
 
+// ── Project filter options ────────────────────────────────────────────────────
+// The Library / Ranking project filter is built from the distinct
+// project_id / project of a loaded creatives list — NOT /options/projects/
+// ?all=1, which returns every project in the system (hundreds).
+export const distinctProjects = (rows) => {
+  const seen = new Map();
+  (rows ?? []).forEach((r) => {
+    if (r?.project_id == null || seen.has(String(r.project_id))) return;
+    seen.set(String(r.project_id), { id: r.project_id, name: r.project ?? `#${r.project_id}` });
+  });
+  return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
+};
+
 // ── Library ───────────────────────────────────────────────────────────────────
 export const fetchCreatives = async (filters = {}) =>
   asList(await api(`/creatives/${qs(filters)}`));
