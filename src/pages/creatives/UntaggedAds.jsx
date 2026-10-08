@@ -10,6 +10,7 @@ import {
   PageShell,
   ErrorBox,
   LABEL,
+  FIELD,
   NomenPicker,
   DatePresets,
   defaultRange,
@@ -53,8 +54,21 @@ export default function UntaggedAds() {
   const d = () => (data.error ? null : data());
 
   // Each table sorts on its own; display-only, API order is the default.
-  const [untaggedSort, onUntaggedSort] = createTableSort();
-  const [unknownSort, onUnknownSort] = createTableSort();
+  const [untaggedSort, onUntaggedSort, setUntaggedSort] = createTableSort();
+  const [unknownSort, onUnknownSort, setUnknownSort] = createTableSort();
+
+  // "Sort by leads" in the filter bar drives both tables at once. It reads back
+  // "desc"/"asc" only while both tables are on leads in that direction, so a
+  // header click elsewhere returns it to "Default".
+  const leadsSort = () => {
+    const a = untaggedSort(), b = unknownSort();
+    return a.key === "leads" && b.key === "leads" && a.dir === b.dir ? a.dir : "";
+  };
+  const setLeadsSort = (dir) => {
+    const s = dir ? { key: "leads", dir } : { key: null, dir: "desc" };
+    setUntaggedSort(s);
+    setUnknownSort(s);
+  };
   const untagged = () => sortRows(d()?.untagged ?? [], untaggedSort());
   const unknownCodes = () => sortRows(d()?.unknown_codes ?? [], unknownSort());
 
@@ -89,6 +103,14 @@ export default function UntaggedAds() {
         <div class="w-full lg:max-w-xs">
           <label class={LABEL}>Client</label>
           <NomenPicker clearable placeholder="All clients" value={nomen()} onChange={setNomen} />
+        </div>
+        <div class="w-full lg:w-48">
+          <label class={LABEL}>Sort by leads</label>
+          <select class={FIELD} value={leadsSort()} onChange={(e) => setLeadsSort(e.target.value)}>
+            <option value="">Default</option>
+            <option value="desc">Highest first</option>
+            <option value="asc">Lowest first</option>
+          </select>
         </div>
         <Show when={isCMRole()}>
           <label class="inline-flex items-center gap-2 px-3 py-2.5 rounded-lg border border-[#E2E8F1] dark:border-gray-700 bg-white dark:bg-gray-800 text-sm font-semibold text-[#54657E] dark:text-gray-300 cursor-pointer select-none">

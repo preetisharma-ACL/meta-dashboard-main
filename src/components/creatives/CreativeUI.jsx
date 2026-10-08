@@ -507,7 +507,7 @@ export function createTableSort() {
   const [sort, setSort] = createSignal({ key: null, dir: "desc" });
   const onSort = (key) =>
     setSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "desc" }));
-  return [sort, onSort];
+  return [sort, onSort, setSort];
 }
 
 // Stable, blanks-last sort. Numeric strings ("1234.50") compare as numbers;
