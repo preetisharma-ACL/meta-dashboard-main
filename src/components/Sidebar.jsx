@@ -522,6 +522,56 @@ export default function Sidebar() {
       },
 
       {
+        // Creative Library + Ranking. Staff get a group; the "creative" desk
+        // gets the same two rows flat below (a sub-item's roles can never widen
+        // past its group's, and the backend 403s that desk everywhere else, so
+        // these two rows are its whole sidebar). Untagged Ads is the internal
+        // audit and stays staff-only.
+        name: "Creatives",
+        roles: ["admin", "campaign_manager", "coordination"],
+        icon: () => (
+          <Icon d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+        ),
+        subMenus: [
+          {
+            name: "Creative Library",
+            path: "/creatives",
+            roles: ["admin", "campaign_manager", "coordination"],
+            icon: () => (
+              <SmallIcon d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+            ),
+          },
+          {
+            name: "Creative Ranking",
+            path: "/creatives/ranking",
+            roles: ["admin", "campaign_manager", "coordination"],
+            icon: () => <SmallIcon d="M9 19v-6H5v6h4zm6 0V5h-4v14h4zm6 0v-9h-4v9h4z" />,
+          },
+          {
+            name: "Untagged Ads",
+            path: "/creatives/untagged",
+            roles: ["admin", "campaign_manager", "coordination"],
+            icon: () => (
+              <SmallIcon d="M7 7h.01M7 3h5a1.99 1.99 0 011.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A2 2 0 013 12V7a4 4 0 014-4z" />
+            ),
+          },
+        ],
+      },
+      {
+        name: "Creative Library",
+        roles: ["creative"],
+        icon: () => (
+          <Icon d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+        ),
+        path: "/creatives",
+      },
+      {
+        name: "Creative Ranking",
+        roles: ["creative"],
+        icon: () => <Icon d="M9 19v-6H5v6h4zm6 0V5h-4v14h4zm6 0v-9h-4v9h4z" />,
+        path: "/creatives/ranking",
+      },
+      {
         name: "My Work",
         // No "accounts": My Work is a CM/admin operational tool. The accounts
         // sidebar is the payments desk plus a view-only Accounts & Funding.
@@ -928,7 +978,14 @@ export default function Sidebar() {
         name: isLoggedIn() ? "Logout" : "Login",
         // "accounts" added: the payments desk is a primary role now, and it was
         // the only signed-in role with no way to sign out of its own sidebar.
-        roles: ["admin", "client", "campaign_manager", "sales", "accounts"],
+        roles: [
+          "admin",
+          "client",
+          "campaign_manager",
+          "sales",
+          "accounts",
+          "creative",
+        ],
         icon: () => (
           <Icon d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
         ),

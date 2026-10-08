@@ -16,7 +16,7 @@ const defaultUser = {
   organizationId: null,
   organizationName: null,
 
-  role: null, // admin | campaign_manager | client | sales | coordination | accounts
+  role: null, // admin | campaign_manager | client | sales | coordination | accounts | creative
   cmProfile: null, // { tier, is_active } | null
 };
 

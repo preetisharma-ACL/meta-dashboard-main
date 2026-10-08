@@ -75,6 +75,11 @@ import MyPaymentEntries from "./pages/payments/MyPaymentEntries";
 import PaymentsRoute from "./utils/PaymentsRoute";
 import AlertsPanel from "./components/AlertsPanel";
 import ReportingIntro from "./pages/landing/ReportingIntro";
+import CreativeLibrary from "./pages/creatives/CreativeLibrary";
+import CreativeRanking from "./pages/creatives/CreativeRanking";
+import CreativeDetail from "./pages/creatives/CreativeDetail";
+import UntaggedAds from "./pages/creatives/UntaggedAds";
+import { CREATIVE_READ_ROLES, UNTAGGED_ROLES } from "./services/creatives";
 import { loadCurrentUser } from "./stores/currentUser";
 
 // The home route ("/") branches on role: Campaign Managers get the CM dashboard,
@@ -93,6 +98,9 @@ function RoleHome() {
   // The accounts desk's primary screen is the payments ledger, not the client
   // dashboard — it's the surface they work out of all day.
   if (role === "accounts") return <PaymentsList />;
+  // The creative desk is 403ed everywhere but /creatives/, so its home IS the
+  // library. Redirect rather than render so the sidebar row lights up.
+  if (role === "creative") return <Navigate href="/creatives" />;
   return <MainDashboard />;
 }
 
@@ -376,6 +384,44 @@ function App() {
                 <PaymentsRoute allow="cm">
                   <MyPaymentEntries />
                 </PaymentsRoute>
+              )}
+            />
+            {/* ── Creatives ────────────────────────────────────────────────
+                Library, ranking and per-creative detail: admin, CMs (both
+                tiers), coordination and the "creative" desk. Add/edit inside
+                is admin + creative only (canWriteCreatives). Untagged Ads is
+                the internal audit and leaves the creative desk out. Static
+                segments outrank "/creatives/:id". */}
+            <Route
+              path="/creatives"
+              component={() => (
+                <AdminRoute roles={CREATIVE_READ_ROLES}>
+                  <CreativeLibrary />
+                </AdminRoute>
+              )}
+            />
+            <Route
+              path="/creatives/ranking"
+              component={() => (
+                <AdminRoute roles={CREATIVE_READ_ROLES}>
+                  <CreativeRanking />
+                </AdminRoute>
+              )}
+            />
+            <Route
+              path="/creatives/untagged"
+              component={() => (
+                <AdminRoute roles={UNTAGGED_ROLES}>
+                  <UntaggedAds />
+                </AdminRoute>
+              )}
+            />
+            <Route
+              path="/creatives/:id"
+              component={() => (
+                <AdminRoute roles={CREATIVE_READ_ROLES}>
+                  <CreativeDetail />
+                </AdminRoute>
               )}
             />
             <Route path="/account-monitor" component={AccountMonitor} />
