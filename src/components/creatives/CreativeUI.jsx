@@ -432,15 +432,33 @@ export function ProjectFilter(props) {
 }
 
 // ── Table shell ───────────────────────────────────────────────────────────────
-// cols: [{ label, align?: "right" }]. Children are the <tr>s.
+// cols: [{ label, align?: "right", key? }]. Children are the <tr>s.
+// Sorting is opt-in: pass sort={{ key, dir }} + onSort(key), and every col with
+// a `key` becomes a clickable header. The caller sorts its own rows (sortRows).
 export function DataTable(props) {
+  const sortIcon = (key) => {
+    if (props.sort?.key !== key) return <span class="ml-1 text-[#9DAEC4] dark:text-gray-600">⇅</span>;
+    return <span class="ml-1 text-[#AC2334] dark:text-red-300">{props.sort.dir === "asc" ? "↑" : "↓"}</span>;
+  };
   return (
     <div class="overflow-x-auto bg-white dark:bg-gray-800 rounded-xl border border-[#E2E8F1] dark:border-gray-700">
       <table class="w-full text-sm table-auto">
         <thead class="bg-[#F8FAFC] dark:bg-gray-800">
           <tr class="[&_th]:whitespace-nowrap [&_th]:text-xs [&_th]:uppercase [&_th]:tracking-wider [&_th]:font-bold [&_th]:px-4 [&_th]:py-3.5 text-[#54657E] dark:text-gray-300 border-b border-[#D4DDE9] dark:border-gray-700">
             <For each={props.cols}>
-              {(c) => <th class={c.align === "right" ? "text-right" : "text-left"}>{c.label}</th>}
+              {(c) => (
+                <th class={c.align === "right" ? "text-right" : "text-left"}>
+                  <Show when={c.key && props.onSort} fallback={c.label}>
+                    <span
+                      onClick={() => props.onSort(c.key)}
+                      title={`Sort by ${c.label}`}
+                      class="inline-flex items-center cursor-pointer select-none hover:text-[#AC2334] dark:hover:text-red-300"
+                    >
+                      {c.label} {sortIcon(c.key)}
+                    </span>
+                  </Show>
+                </th>
+              )}
             </For>
           </tr>
         </thead>
@@ -480,6 +498,43 @@ export function DataTable(props) {
       </table>
     </div>
   );
+}
+
+// ── Column sort state for a DataTable ────────────────────────────────────────
+// Same behaviour as the app's other sortable tables: re-clicking the active
+// column flips direction, a new column starts descending. Null key = API order.
+export function createTableSort() {
+  const [sort, setSort] = createSignal({ key: null, dir: "desc" });
+  const onSort = (key) =>
+    setSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "desc" }));
+  return [sort, onSort];
+}
+
+// Stable, blanks-last sort. Numeric strings ("1234.50") compare as numbers;
+// anything else compares as case-insensitive text.
+export function sortRows(rows, sort) {
+  const { key, dir } = sort ?? {};
+  if (!key) return rows;
+  const sign = dir === "asc" ? 1 : -1;
+  const val = (r) => {
+    const v = r?.[key];
+    if (v == null || v === "") return null;
+    const n = typeof v === "number" ? v : Number(v);
+    return Number.isFinite(n) ? n : String(v).toLowerCase();
+  };
+  return rows
+    .map((r, i) => ({ r, i, v: val(r) }))
+    .sort((a, b) => {
+      if (a.v == null && b.v == null) return a.i - b.i;
+      if (a.v == null) return 1;
+      if (b.v == null) return -1;
+      const d =
+        typeof a.v === "number" && typeof b.v === "number"
+          ? a.v - b.v
+          : String(a.v).localeCompare(String(b.v));
+      return d !== 0 ? d * sign : a.i - b.i;
+    })
+    .map((x) => x.r);
 }
 
 export const ROW =

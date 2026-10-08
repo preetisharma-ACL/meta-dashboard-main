@@ -17,6 +17,8 @@ import {
   SectionTitle,
   ROW,
   NUM,
+  createTableSort,
+  sortRows,
 } from "../../components/creatives/CreativeUI";
 
 // ─── Untagged Ads (/creatives/untagged) ───────────────────────────────────────
@@ -27,12 +29,12 @@ import {
 // Admin, CM and coordination only. "Only my clients" (mine=1) is offered to CMs.
 
 const COLS = [
-  { label: "Ad name" },
-  { label: "Client" },
-  { label: "Campaign" },
-  { label: "Ad account" },
-  { label: "Spend", align: "right" },
-  { label: "Leads", align: "right" },
+  { label: "Ad name", key: "ad_name" },
+  { label: "Client", key: "client_nomen" },
+  { label: "Campaign", key: "campaign" },
+  { label: "Ad account", key: "ad_account" },
+  { label: "Spend", align: "right", key: "spend" },
+  { label: "Leads", align: "right", key: "leads" },
 ];
 
 export default function UntaggedAds() {
@@ -49,6 +51,12 @@ export default function UntaggedAds() {
 
   const [data] = createResource(params, (p) => fetchUntagged(p));
   const d = () => (data.error ? null : data());
+
+  // Each table sorts on its own; display-only, API order is the default.
+  const [untaggedSort, onUntaggedSort] = createTableSort();
+  const [unknownSort, onUnknownSort] = createTableSort();
+  const untagged = () => sortRows(d()?.untagged ?? [], untaggedSort());
+  const unknownCodes = () => sortRows(d()?.unknown_codes ?? [], unknownSort());
 
   const coverage = () => {
     const v = d()?.tag_coverage_pct;
@@ -128,23 +136,27 @@ export default function UntaggedAds() {
       <SectionTitle>Ads with no code</SectionTitle>
       <DataTable
         cols={COLS}
+        sort={untaggedSort()}
+        onSort={onUntaggedSort}
         loading={data.loading}
-        empty={!(d()?.untagged ?? []).length}
+        empty={!untagged().length}
         emptyText="Every ad in this range carries a code."
       >
-        <For each={d()?.untagged ?? []}>{(r) => <AdRow r={r} />}</For>
+        <For each={untagged()}>{(r) => <AdRow r={r} />}</For>
       </DataTable>
 
       <SectionTitle note="Codes used in Meta ad names but not in the library, usually a typo.">
         Ads with an unknown code
       </SectionTitle>
       <DataTable
-        cols={[{ label: "Code" }, ...COLS]}
+        cols={[{ label: "Code", key: "code" }, ...COLS]}
+        sort={unknownSort()}
+        onSort={onUnknownSort}
         loading={data.loading}
-        empty={!(d()?.unknown_codes ?? []).length}
+        empty={!unknownCodes().length}
         emptyText="No unknown codes in this range."
       >
-        <For each={(d()?.unknown_codes ?? [])}>
+        <For each={unknownCodes()}>
           {(r) => (
             <tr class={ROW}>
               <td class="font-mono font-semibold whitespace-nowrap text-[#7A5410] dark:text-yellow-200">
