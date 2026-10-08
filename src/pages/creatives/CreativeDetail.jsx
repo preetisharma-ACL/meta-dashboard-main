@@ -17,6 +17,7 @@ import {
   fmtCpl,
   fmtInt,
   fmtDate,
+  fmtDateTimeIST,
 } from "../../services/creatives";
 import { errorMessage } from "../../utils/apiErrors";
 import CreativeModal from "../../components/creatives/CreativeModal";
@@ -85,7 +86,7 @@ export default function CreativeDetail() {
       />
 
       <Show when={c()}>
-        <div class="mb-6 grid grid-cols-2 md:grid-cols-5 gap-4 rounded-xl border border-[#E2E8F1] dark:border-gray-700 bg-white dark:bg-gray-800 p-5 text-sm">
+        <div class="mb-6 grid grid-cols-2 md:grid-cols-4 gap-4 rounded-xl border border-[#E2E8F1] dark:border-gray-700 bg-white dark:bg-gray-800 p-5 text-sm">
           <Meta label="Type">{kindLabel(c().kind)}</Meta>
           <Meta label="Client">{c().client_nomen ?? "—"}</Meta>
           <Meta label="Project">{c().project ?? "—"}</Meta>
@@ -95,8 +96,10 @@ export default function CreativeDetail() {
           <Meta label="Status">
             <StatusPill active={c().is_active !== false} />
           </Meta>
+          <Meta label="Created by">{c().created_by || "—"}</Meta>
+          <Meta label="Created">{fmtDateTimeIST(c().created_at)}</Meta>
           <Show when={c().notes}>
-            <div class="col-span-2 md:col-span-5">
+            <div class="col-span-2 md:col-span-4">
               <Meta label="Notes">
                 <span class="whitespace-pre-line">{c().notes}</span>
               </Meta>
@@ -235,7 +238,7 @@ function Meta(props) {
       <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400 mb-1">
         {props.label}
       </p>
-      <div class="font-medium text-[#14233A] dark:text-gray-100">{props.children}</div>
+      <div class="font-medium text-[#14233A] dark:text-gray-100 [overflow-wrap:anywhere]">{props.children}</div>
     </div>
   );
 }

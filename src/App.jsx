@@ -389,7 +389,7 @@ function App() {
             {/* ── Creatives ────────────────────────────────────────────────
                 Library, ranking and per-creative detail: admin, CMs (both
                 tiers), coordination and the "creative" desk. Add/edit inside
-                is admin + creative only (canWriteCreatives). Untagged Ads is
+                is admin, coordination and creative (canWriteCreatives). Untagged Ads is
                 the internal audit and leaves the creative desk out. Static
                 segments outrank "/creatives/:id". */}
             <Route

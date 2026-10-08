@@ -5,7 +5,7 @@ import {
   distinctProjects,
   canWriteCreatives,
   kindLabel,
-  fmtDate,
+  fmtDateTimeIST,
 } from "../../services/creatives";
 import { errorMessage } from "../../utils/apiErrors";
 import CreativeModal from "../../components/creatives/CreativeModal";
@@ -23,6 +23,7 @@ import {
   StatusPill,
   OneDriveLink,
   ROW,
+  STICKY_TD,
 } from "../../components/creatives/CreativeUI";
 
 // ─── Creative Library (/creatives) ────────────────────────────────────────────
@@ -30,8 +31,8 @@ import {
 // PROJECT is filtered here, on the loaded rows: its dropdown is built from the
 // distinct project_id / project of those same rows (no extra call), and
 // filtering server-side would shrink that list to the one project picked.
-// Row opens the detail page. "Add creative" is admin + creative only; everyone
-// else who can reach this screen reads it.
+// Row opens the detail page. "Add creative" is admin, coordination and creative
+// (canWriteCreatives); a CM reads it.
 
 export default function CreativeLibrary() {
   const navigate = useNavigate();
@@ -132,7 +133,7 @@ export default function CreativeLibrary() {
         empty={!list().length}
         emptyText="No creatives match these filters."
         cols={[
-          { label: "Code" },
+          { label: "Code", sticky: true },
           { label: "Title" },
           { label: "Type" },
           { label: "Client" },
@@ -145,13 +146,20 @@ export default function CreativeLibrary() {
       >
         <For each={list()}>
           {(c) => (
-            <tr class={ROW + " cursor-pointer"} onClick={() => navigate(`/creatives/${c.id}`)}>
-              <td>
+            <tr class={ROW + " group cursor-pointer"} onClick={() => navigate(`/creatives/${c.id}`)}>
+              {/* Pinned left so the code and its Copy button never scroll off. */}
+              <td class={STICKY_TD}>
                 <CodeCell code={c.code} />
               </td>
               <td class="font-medium max-w-[18rem]">{c.title || "—"}</td>
               <td class="whitespace-nowrap">{kindLabel(c.kind)}</td>
-              <td class="whitespace-nowrap">{c.client_nomen ?? "—"}</td>
+              {/* Nomens run long and unbroken (e.g. KamleshKumarMeena…RealEstateLlp):
+                  cut at a fixed width, full name on hover. */}
+              <td>
+                <div class="max-w-[12rem] truncate" title={c.client_nomen ?? ""}>
+                  {c.client_nomen ?? "—"}
+                </div>
+              </td>
               <td class="whitespace-nowrap">{c.project ?? "—"}</td>
               <td>
                 <OneDriveLink url={c.onedrive_url} />
@@ -163,7 +171,7 @@ export default function CreativeLibrary() {
                 {c.created_by || "—"}
               </td>
               <td class="whitespace-nowrap text-[#54657E] dark:text-gray-400">
-                {fmtDate(c.created_at)}
+                {fmtDateTimeIST(c.created_at)}
               </td>
             </tr>
           )}

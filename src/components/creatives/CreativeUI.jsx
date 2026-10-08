@@ -447,7 +447,12 @@ export function DataTable(props) {
           <tr class="[&_th]:whitespace-nowrap [&_th]:text-xs [&_th]:uppercase [&_th]:tracking-wider [&_th]:font-bold [&_th]:px-4 [&_th]:py-3.5 text-[#54657E] dark:text-gray-300 border-b border-[#D4DDE9] dark:border-gray-700">
             <For each={props.cols}>
               {(c) => (
-                <th class={c.align === "right" ? "text-right" : "text-left"}>
+                <th
+                  class={
+                    (c.align === "right" ? "text-right" : "text-left") +
+                    (c.sticky ? " " + STICKY_TH : "")
+                  }
+                >
                   <Show when={c.key && props.onSort} fallback={c.label}>
                     <span
                       onClick={() => props.onSort(c.key)}
@@ -536,6 +541,16 @@ export function sortRows(rows, sort) {
     })
     .map((x) => x.r);
 }
+
+// Sticky first column: a col with sticky:true pins its <th>; the caller puts
+// STICKY_TD on the matching <td> and "group" on the <tr>. Sticky cells need an
+// OPAQUE background or the columns scrolling underneath show through, so the
+// row-hover tint is repeated here as a solid colour. The right-edge shadow
+// marks where the pinned column ends.
+export const STICKY_TH =
+  "sticky left-0 z-20 bg-[#F8FAFC] dark:bg-gray-800 shadow-[1px_0_0_#E2E8F1] dark:shadow-[1px_0_0_#374151]";
+export const STICKY_TD =
+  "sticky left-0 z-10 bg-white dark:bg-gray-800 group-hover:bg-[#FBF7F8] dark:group-hover:bg-[#2B3442] shadow-[1px_0_0_#E2E8F1] dark:shadow-[1px_0_0_#374151] transition-colors";
 
 export const ROW =
   "border-t border-[#E2E8F1] dark:border-gray-700 hover:bg-[#FBF7F8] dark:hover:bg-gray-700/40 transition-colors";

@@ -18,8 +18,8 @@ import { api } from "../api/api";
 // ── Roles ─────────────────────────────────────────────────────────────────────
 // "creative" is a login that the backend 403s everywhere except /creatives/ and
 // /auth/*. Read access is the creative desk plus the four internal roles below;
-// accounts, sales and clients are 403ed. WRITE (add / edit) is admin + creative
-// only — a CM or coordination sees the library read only.
+// accounts, sales and clients are 403ed. WRITE (add / edit / new project) is
+// admin, coordination and creative; a CM sees the library read only.
 const readRole = () => {
   try {
     return JSON.parse(localStorage.getItem("auth") || "null")?.role ?? null;
@@ -34,13 +34,11 @@ export const CREATIVE_READ_ROLES = [
   "coordination",
   "creative",
 ];
+export const CREATIVE_WRITE_ROLES = ["admin", "coordination", "creative"];
 export const UNTAGGED_ROLES = ["admin", "campaign_manager", "coordination"];
 
 export const isCreativeRole = () => readRole() === "creative";
-export const canWriteCreatives = () => {
-  const r = readRole();
-  return r === "admin" || r === "creative";
-};
+export const canWriteCreatives = () => CREATIVE_WRITE_ROLES.includes(readRole());
 export const isCMRole = () => readRole() === "campaign_manager";
 
 // ── Kinds ─────────────────────────────────────────────────────────────────────
@@ -86,6 +84,30 @@ export const fmtDate = (v) => {
     month: "short",
     year: "numeric",
   });
+};
+
+// created_at is a full datetime. Shown in IST whatever the viewer's machine
+// is set to: "08 Oct 2026, 3:42 PM". Only NUMERIC parts are taken from Intl
+// (in IST) and the words are ours: locale month/period text varies by browser
+// ("Sept" vs "Sep", "pm" vs "PM").
+const IST_PARTS = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Kolkata",
+  day: "2-digit",
+  month: "numeric",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+export const fmtDateTimeIST = (v) => {
+  if (!v) return "—";
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return String(v);
+  const p = Object.fromEntries(IST_PARTS.formatToParts(d).map((x) => [x.type, x.value]));
+  const h24 = Number(p.hour) % 24;
+  const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+  return `${p.day} ${MONTHS[Number(p.month) - 1]} ${p.year}, ${h12}:${p.minute} ${h24 < 12 ? "AM" : "PM"}`;
 };
 
 // ── Date presets ──────────────────────────────────────────────────────────────
@@ -179,7 +201,7 @@ export const fetchProjectOptions = async (nomenId, all = false) =>
     ),
   );
 
-// New project from the Add creative form (admin + creative). The backend saves
+// New project from the Add creative form (admin, coordination, creative). The backend saves
 // the name in campaign style ("noida event" / "Noida-Event" → "NoidaEvent"):
 //   201 {id, name, city, linked:false, created:true}   made
 //   200 {…, created:false}                              same project existed, reused
