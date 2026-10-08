@@ -179,7 +179,33 @@ export const fetchProjectOptions = async (nomenId, all = false) =>
     ),
   );
 
-export const fetchCodePreview = async ({ nomen_id, project_id, kind }) =>
+// New project from the Add creative form (admin + creative). The backend saves
+// the name in campaign style ("noida event" / "Noida-Event" → "NoidaEvent"):
+//   201 {id, name, city, linked:false, created:true}   made
+//   200 {…, created:false}                              same project existed, reused
+//   409 {needs_confirmation, similar:[{id,name}]}       similar names exist →
+//       pick one, or resend with confirm:true
+//   400 detail                                          name too short / long
+// campaignStyleName() only PREVIEWS that rule; the saved name is whatever the
+// response says.
+export const campaignStyleName = (s) =>
+  String(s ?? "")
+    .split(/[^A-Za-z0-9]+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join("");
+
+export const createProject = async ({ name, nomen_id, confirm }) => {
+  const body = { name, nomen_id };
+  if (confirm) body.confirm = true;
+  const res = await api(`/creatives/options/projects/`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return res?.data ?? res ?? null;
+};
+
+export const fetchCodePreview =async ({ nomen_id, project_id, kind }) =>
   (await api(`/creatives/code-preview/${qs({ nomen_id, project_id, kind })}`))
     ?.data?.code ?? null;
 

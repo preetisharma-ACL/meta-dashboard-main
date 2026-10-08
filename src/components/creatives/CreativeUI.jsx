@@ -346,17 +346,29 @@ export function NomenPicker(props) {
 // ── Project select (depends on a nomen) ───────────────────────────────────────
 // Default list = projects this nomen runs campaigns for. showAll adds &all=1,
 // every project — for a creative made before its campaign exists.
+// extra: projects to merge in that the fetched list may not hold yet — a
+// project just created from the Add form, or a "similar" one picked from the
+// 409 choices.
 export function ProjectSelect(props) {
-  const [projects] = createResource(
+  const [fetched] = createResource(
     () => (props.nomenId ? { id: props.nomenId, all: !!props.showAll } : false),
     ({ id, all }) => fetchProjectOptions(id, all).catch(() => []),
   );
 
+  const projects = () => {
+    const list = fetched() ?? [];
+    const extra = (props.extra ?? []).filter(
+      (x) => !list.some((p) => String(p.id) === String(x.id)),
+    );
+    return [...extra, ...list];
+  };
+
   // Drop a selection the new list no longer contains (client changed, or the
   // "show all" list was narrowed back).
   createEffect(() => {
+    if (fetched.loading || !fetched()) return;
     const list = projects();
-    if (!list || props.value == null || props.value === "") return;
+    if (props.value == null || props.value === "") return;
     if (!list.some((p) => String(p.id) === String(props.value))) props.onChange("");
   });
 
@@ -365,18 +377,18 @@ export function ProjectSelect(props) {
   return (
     <select
       class={FIELD}
-      disabled={props.disabled || !props.nomenId || projects.loading}
+      disabled={props.disabled || !props.nomenId || fetched.loading}
       value={props.value ?? ""}
       onChange={(e) => props.onChange(e.target.value)}
     >
       <option value="">
         {!props.nomenId
           ? "Pick a client first"
-          : projects.loading
+          : fetched.loading
             ? "Loading…"
             : props.allLabel ?? "Select project"}
       </option>
-      <For each={projects() ?? []}>
+      <For each={projects()}>
         {(p) => (
           <option
             value={String(p.id)}

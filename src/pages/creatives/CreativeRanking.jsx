@@ -1,8 +1,7 @@
-import { createSignal, createResource, For, Show } from "solid-js";
+import { createSignal, createResource, createEffect, For, Show } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import {
   fetchRanking,
-  fetchCreatives,
   distinctProjects,
   kindLabel,
   fmtMoney,
@@ -62,18 +61,26 @@ export default function CreativeRanking() {
     project_id: projectId(),
   });
 
-  const [data] = createResource(params, (p) => fetchRanking(p));
-
-  // Ranking rows carry the project NAME but no project_id, so the project
-  // dropdown comes from the library list for the chosen client instead
-  // (distinct project_id / project). Never /options/projects/?all=1 — that is
-  // every project in the system.
-  const [library] = createResource(
-    () => ({ nomen_id: nomen()?.id ?? "" }),
-    (p) => fetchCreatives(p).catch(() => []),
-  );
-  const projects = () => distinctProjects(library.error ? [] : library() ?? []);
+  // Tag each response with the project filter it was fetched under, so the
+  // dropdown below knows whether it is looking at a full or a narrowed list.
+  const [data] = createResource(params, async (p) => {
+    const res = await fetchRanking(p);
+    return res ? { ...res, _forProject: p.project_id || "" } : res;
+  });
   const d = () => (data.error ? null : data());
+
+  // Project dropdown = distinct project_id / project of the ranked and
+  // not-enough-data rows. Never /options/projects/?all=1 (every project in the
+  // system). Taken only from a response fetched WITHOUT a project filter:
+  // a filtered response holds just the picked project, and rebuilding from it
+  // would shrink the dropdown to that one option. While a project is picked the
+  // options stay as last seen; changing the client clears the pick anyway.
+  const [projects, setProjects] = createSignal([]);
+  createEffect(() => {
+    const x = d();
+    if (!x || x._forProject) return;
+    setProjects(distinctProjects([...(x.ranked ?? []), ...(x.not_enough_data ?? [])]));
+  });
   const minLeads = () => d()?.min_leads ?? 5;
 
   const Row = (props) => {
@@ -127,7 +134,7 @@ export default function CreativeRanking() {
             <label class={LABEL}>Project</label>
             <ProjectFilter
               options={projects()}
-              loading={library.loading}
+              loading={data.loading}
               value={projectId()}
               onChange={setProjectId}
             />

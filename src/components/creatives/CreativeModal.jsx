@@ -1,9 +1,12 @@
-import { createSignal, createResource, createEffect, Show } from "solid-js";
+import { createSignal, createResource, createEffect, For, Show } from "solid-js";
 import {
   createCreative,
   updateCreative,
   fetchCodePreview,
   kindLabel,
+  canWriteCreatives,
+  campaignStyleName,
+  createProject,
 } from "../../services/creatives";
 import { errorBanner } from "../../utils/apiErrors";
 import {
@@ -49,6 +52,9 @@ export default function CreativeModal(props) {
   const [error, setError] = createSignal("");
   const [dupe, setDupe] = createSignal(null); // existing_code awaiting confirm
   const [savedCode, setSavedCode] = createSignal(null);
+  const [extraProjects, setExtraProjects] = createSignal([]); // injected into the dropdown
+  const [newOpen, setNewOpen] = createSignal(false);
+  const [newProject, setNewProject] = createSignal(null); // made via "+ New project"
 
   // Reset whenever the modal opens.
   createEffect(() => {
@@ -66,6 +72,9 @@ export default function CreativeModal(props) {
     setError("");
     setDupe(null);
     setSavedCode(null);
+    setExtraProjects([]);
+    setNewOpen(false);
+    setNewProject(null);
   });
 
   const [preview] = createResource(
@@ -219,28 +228,71 @@ export default function CreativeModal(props) {
                     onChange={(v) => {
                       setNomen(v);
                       setProjectId("");
+                      // A project made or picked for the old client doesn't
+                      // belong in the new client's list.
+                      setExtraProjects([]);
+                      setNewProject(null);
+                      setNewOpen(false);
                     }}
                   />
                 </div>
                 <div>
-                  <div class="flex items-center justify-between mb-1.5">
+                  <div class="flex items-center justify-between gap-3 mb-1.5">
                     <label class={LABEL + " !mb-0"}>Project</label>
-                    <label class="inline-flex items-center gap-1.5 text-xs font-semibold text-[#54657E] dark:text-gray-400 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        class="w-3.5 h-3.5 accent-[#AC2334]"
-                        checked={showAll()}
-                        onChange={(e) => setShowAll(e.target.checked)}
-                      />
-                      Show all projects
-                    </label>
+                    <div class="flex items-center gap-3">
+                      <Show when={canWriteCreatives() && nomen()?.id && !newOpen()}>
+                        <button
+                          type="button"
+                          class="text-xs font-bold text-[#AC2334] hover:underline"
+                          onClick={() => setNewOpen(true)}
+                        >
+                          + New project
+                        </button>
+                      </Show>
+                      <label class="inline-flex items-center gap-1.5 text-xs font-semibold text-[#54657E] dark:text-gray-400 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          class="w-3.5 h-3.5 accent-[#AC2334]"
+                          checked={showAll()}
+                          onChange={(e) => setShowAll(e.target.checked)}
+                        />
+                        Show all projects
+                      </label>
+                    </div>
                   </div>
                   <ProjectSelect
                     nomenId={nomen()?.id}
                     showAll={showAll()}
+                    extra={extraProjects()}
                     value={projectId()}
                     onChange={setProjectId}
                   />
+                  <Show when={newOpen() && nomen()?.id}>
+                    <NewProjectPanel
+                      nomenId={nomen().id}
+                      onClose={() => setNewOpen(false)}
+                      onPicked={(p, made) => {
+                        setExtraProjects((xs) => [
+                          p,
+                          ...xs.filter((x) => String(x.id) !== String(p.id)),
+                        ]);
+                        setProjectId(String(p.id));
+                        setNewProject(made ? p : null);
+                        setNewOpen(false);
+                      }}
+                    />
+                  </Show>
+                  <Show when={newProject() && String(newProject().id) === String(projectId())}>
+                    <div class="mt-2 rounded-lg border border-[#3E6FB0]/30 bg-[#ECF2FA] dark:bg-blue-900/20 px-3 py-2.5 text-sm text-[#14233A] dark:text-blue-100">
+                      Tell the CM to use exactly{" "}
+                      <span class="font-mono font-bold">{newProject().name}</span> as the
+                      project in the campaign name, e.g.{" "}
+                      <span class="font-mono">
+                        ClientName | {newProject().name} | ...
+                      </span>{" "}
+                      (same capitals), so it links to this project.
+                    </div>
+                  </Show>
                 </div>
                 <Show when={nomen()?.id && projectId()}>
                   <div class="rounded-lg border border-dashed border-[#D4DDE9] dark:border-gray-600 px-4 py-3">
@@ -337,5 +389,119 @@ export default function CreativeModal(props) {
         </div>
       </div>
     </Show>
+  );
+}
+
+// ── "+ New project" ───────────────────────────────────────────────────────────
+// POST /creatives/options/projects/ {name, nomen_id, confirm?}. The backend
+// saves the name in campaign style; the "Will be saved as" line previews that
+// rule, and the name in the response is what actually gets used.
+//   201 created / 200 reused → onPicked(project, true)
+//   409 similar names        → offer them (picking one → onPicked(p, false)),
+//                              or "Create new anyway" = resend with confirm:true
+//   400                      → show detail
+// Lives inside the creative <form>: every button is type="button" and Enter in
+// the input is caught here, so neither submits the creative.
+function NewProjectPanel(props) {
+  const [name, setName] = createSignal("");
+  const [busy, setBusy] = createSignal(false);
+  const [error, setError] = createSignal("");
+  const [similar, setSimilar] = createSignal(null);
+
+  const preview = () => campaignStyleName(name());
+
+  const create = async (confirm = false) => {
+    if (!name().trim() || busy()) return;
+    setBusy(true);
+    setError("");
+    try {
+      const p = await createProject({
+        name: name().trim(),
+        nomen_id: props.nomenId,
+        confirm,
+      });
+      if (!p?.id) throw new Error("The project was not returned.");
+      props.onPicked(p, true);
+    } catch (err) {
+      const d = err?.data ?? {};
+      const info = d.needs_confirmation ? d : d.error?.needs_confirmation ? d.error : d.data;
+      if (err?.status === 409 && info?.needs_confirmation) {
+        setSimilar(info.similar ?? []);
+      } else {
+        setError(errorBanner(err, {}, "Could not create the project."));
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div class="mt-2 rounded-lg border border-[#E2E8F1] dark:border-gray-600 bg-[#F8FAFC] dark:bg-gray-800/60 p-3 space-y-2">
+      <div class="flex gap-2">
+        <input
+          class={FIELD}
+          placeholder="New project name, e.g. noida event"
+          value={name()}
+          autofocus
+          onInput={(e) => {
+            setName(e.target.value);
+            setSimilar(null);
+            setError("");
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              create(false);
+            }
+          }}
+        />
+        <button
+          type="button"
+          class={PRIMARY_BTN + " !py-2"}
+          disabled={!name().trim() || busy()}
+          onClick={() => create(false)}
+        >
+          {busy() ? "…" : "Create"}
+        </button>
+        <button type="button" class={GHOST_BTN + " !py-2"} onClick={() => props.onClose()}>
+          Cancel
+        </button>
+      </div>
+      <Show when={preview()}>
+        <p class="text-xs text-[#54657E] dark:text-gray-400">
+          Will be saved as:{" "}
+          <span class="font-mono font-bold text-[#14233A] dark:text-white">{preview()}</span>
+        </p>
+      </Show>
+      <Show when={error()}>
+        <p class="text-sm font-medium text-[#AC2334] dark:text-red-300">{error()}</p>
+      </Show>
+      <Show when={similar()}>
+        <div class="rounded-md border border-[#D89A2B]/40 bg-[#FDF6E9] dark:bg-yellow-900/20 px-3 py-2.5 text-sm text-[#7A5410] dark:text-yellow-200">
+          <p class="font-semibold">Similar projects already exist. Use one of these?</p>
+          <div class="mt-2 flex flex-wrap gap-2">
+            <For each={similar()}>
+              {(p) => (
+                <button
+                  type="button"
+                  class="px-2.5 py-1 rounded-md bg-white dark:bg-gray-800 border border-[#D89A2B]/50 font-mono text-sm font-semibold text-[#14233A] dark:text-gray-100 hover:border-[#AC2334] hover:text-[#AC2334]"
+                  onClick={() => props.onPicked({ id: p.id, name: p.name }, false)}
+                >
+                  {p.name}
+                </button>
+              )}
+            </For>
+          </div>
+          <button
+            type="button"
+            class={GHOST_BTN + " !py-1.5 mt-3"}
+            disabled={busy()}
+            onClick={() => create(true)}
+          >
+            Create new anyway
+          </button>
+        </div>
+      </Show>
+    </div>
   );
 }
