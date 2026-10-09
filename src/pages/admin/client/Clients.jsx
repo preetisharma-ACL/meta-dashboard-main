@@ -11,11 +11,7 @@ import {
 import { useNavigate } from "@solidjs/router";
 import { fetchClients } from "../services/fetchClients";
 import { fetchHierarchyClients } from "../../../services/cm";
-import { fetchManagerPerformance } from "../../../services/performance";
-import {
-  probeAdminSwitchMode,
-  fetchManagerOwnClients,
-} from "../../../services/cmAdmin";
+import { fetchAssignmentsByClient } from "../../../services/cmAssignments";
 import { setProjectsCache } from "../../../cacheStore/appStore";
 import Avatar from "../../../components/common/Avatar";
 import RowsPerPageSelect from "../../../components/common/RowsPerPageSelect";
@@ -77,12 +73,6 @@ const ASSIGN_OPTIONS = [
   { value: "assigned", label: "Assigned" },
   { value: "unassigned", label: "Not assigned yet" },
 ];
-
-// Current month key (YYYY-MM) — the manager roster is month-scoped.
-const currentMonthKey = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-};
 
 // Friendly manager name from their email local-part.
 const labelFromEmail = (email) => {
@@ -347,72 +337,55 @@ export default function Clients() {
     setSortDir("desc");
   };
 
-  // ── Campaign-manager map (client_nomen → owning CM) ────────────────────────
-  // The admin clients endpoint carries no owner, so we assemble it the same way
-  // the "Campaign Manager's Clients" screen does: roster → switch-mode probe →
-  // per-manager own-client lists, joined on the client nomen id.
-  // Roster + switch-mode probing are admin-only; skip them entirely for CMs so
-  // they don't 403 (and leave the CM filter stuck on "Loading managers…").
-  const [rosterRes] = createResource(
-    () => (isCampaignManager() ? false : currentMonthKey()),
-    async (m) => {
-      const res = await fetchManagerPerformance(m);
-      return Array.isArray(res?.data) ? res.data : [];
-    },
-  );
-  const managers = () => rosterRes() ?? [];
-
-  const [switchMode, setSwitchMode] = createSignal("unknown");
-  createEffect(
-    on(managers, (list) => {
-      if (switchMode() !== "unknown") return;
-      if (!list || list.length === 0) return;
-      setSwitchMode("checking");
-      probeAdminSwitchMode(list[0].manager_id)
-        .then((r) => setSwitchMode(r.allowed ? "allowed" : "denied"))
-        .catch(() => setSwitchMode("denied"));
-    }),
-  );
-  const cmAllowed = () => switchMode() === "allowed";
-
-  const [ownLists] = createResource(
-    () => (cmAllowed() && managers().length ? managers() : null),
-    async (list) => {
-      const entries = await Promise.all(
-        list.map(async (m) => [
-          m.manager_id,
-          await fetchManagerOwnClients(m.manager_id),
-        ]),
-      );
-      return Object.fromEntries(entries);
-    },
-  );
-
-  // nomen (as string) → { email, name } of the first manager that owns it.
-  const cmByNomen = createMemo(() => {
-    const own = ownLists() ?? {};
-    const map = {};
-    for (const m of managers()) {
-      for (const c of own[m.manager_id] ?? []) {
-        const key = String(c.client_nomen_id);
-        if (!(key in map)) {
-          map[key] = { email: m.manager_email, name: labelFromEmail(m.manager_email) };
-        }
+  // ── Campaign-manager map (Client PK → assigned CMs) ────────────────────────
+  // The admin clients endpoint carries no owner, so read the assignment table
+  // itself: /cm/assignments/by-client/ answers every client with its
+  // campaign_managers[], any tier. Assignment is many-to-many, so a client can
+  // show several managers. Joined on the Client PK — `id` on the admin roster,
+  // `client_id` on this payload. (This used to be rebuilt from the
+  // manager-performance roster + per-manager own-client lists, which dropped
+  // every client whose manager wasn't in that roster, e.g. new Tier 3s.)
+  // The column is admin-only (CMs never render it), so CMs skip the fetch.
+  const [assignRes] = createResource(
+    () => !isCampaignManager(),
+    async () => {
+      try {
+        return await fetchAssignmentsByClient();
+      } catch (err) {
+        console.error("Clients: assignments by client failed", err);
+        return null;
       }
+    },
+  );
+
+  const toCm = (m) => ({
+    email: m.email,
+    name: m.name || labelFromEmail(m.email),
+  });
+
+  // Client PK (as string) → [{ email, name }] of its ACTIVE assigned managers.
+  const cmsByPk = createMemo(() => {
+    const map = {};
+    for (const row of assignRes() ?? []) {
+      if (row.clientId == null) continue;
+      const cms = row.campaignManagers
+        .filter((m) => m.isActive && m.email)
+        .map(toCm);
+      if (cms.length) map[String(row.clientId)] = cms;
     }
     return map;
   });
-  const cmForClient = (c) => cmByNomen()[String(c.client_nomen)] ?? null;
-  // Map is trustworthy only once the probe allowed it AND the lists resolved.
-  const cmReady = () => cmAllowed() && !ownLists.loading && !!ownLists();
+  const cmsForClient = (c) => cmsByPk()[String(c.id)] ?? [];
+  // Map is trustworthy only once the assignments resolved.
+  const cmReady = () => !assignRes.loading && !!assignRes();
 
-  // Every manager from the roster, A→Z, for the CM filter dropdown.
-  const managerOptions = createMemo(() =>
-    managers()
-      .map((m) => ({ email: m.manager_email, name: labelFromEmail(m.manager_email) }))
-      .filter((m) => m.email)
-      .sort((a, b) => a.name.localeCompare(b.name)),
-  );
+  // Every assigned manager, deduped by email, A→Z, for the CM filter dropdown.
+  const managerOptions = createMemo(() => {
+    const byEmail = new Map();
+    for (const cms of Object.values(cmsByPk()))
+      for (const m of cms) if (!byEmail.has(m.email)) byEmail.set(m.email, m);
+    return [...byEmail.values()].sort((a, b) => a.name.localeCompare(b.name));
+  });
   const [sortKey, setSortKey] = createSignal("created_at");
   const [sortDir, setSortDir] = createSignal("desc");
   const [selected, setSelected] = createSignal(new Set());
@@ -550,12 +523,14 @@ export default function Clients() {
     // Assignment filter — only applied once the CM map is trustworthy.
     if (cmReady() && assignFilter() !== "all") {
       const wantAssigned = assignFilter() === "assigned";
-      data = data.filter((c) => Boolean(cmForClient(c)) === wantAssigned);
+      data = data.filter((c) => (cmsForClient(c).length > 0) === wantAssigned);
     }
 
-    // Campaign-manager filter — clients owned by the selected manager.
+    // Campaign-manager filter — clients assigned to the selected manager.
     if (cmReady() && cmFilter() !== "all") {
-      data = data.filter((c) => cmForClient(c)?.email === cmFilter());
+      data = data.filter((c) =>
+        cmsForClient(c).some((m) => m.email === cmFilter()),
+      );
     }
 
     if (activeFilter() === "Yes") data = data.filter((c) => c.is_active);
@@ -1199,21 +1174,27 @@ export default function Clients() {
                           }
                         >
                           <Show
-                            when={cmForClient(client)}
+                            when={cmsForClient(client).length > 0}
                             fallback={
                               <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700 ring-1 ring-amber-200 dark:bg-amber-900/20 dark:text-amber-300">
                                 Not assigned
                               </span>
                             }
                           >
-                            <div class="flex items-center gap-2">
-                              <Avatar name={cmForClient(client).email} size="w-7 h-7" />
-                              <span
-                                class="text-gray-700 dark:text-gray-300 font-medium truncate max-w-[160px]"
-                                title={cmForClient(client).email}
-                              >
-                                {cmForClient(client).name}
-                              </span>
+                            <div class="flex flex-col gap-1.5">
+                              <For each={cmsForClient(client)}>
+                                {(m) => (
+                                  <div class="flex items-center gap-2">
+                                    <Avatar name={m.email} size="w-7 h-7" />
+                                    <span
+                                      class="text-gray-700 dark:text-gray-300 font-medium truncate max-w-[160px]"
+                                      title={m.email}
+                                    >
+                                      {m.name}
+                                    </span>
+                                  </div>
+                                )}
+                              </For>
                             </div>
                           </Show>
                         </Show>
