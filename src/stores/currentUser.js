@@ -1,5 +1,6 @@
 import { createStore } from "solid-js/store";
 import { fetchUser } from "../services/userProfile";
+import { isSeniorTierValue } from "../utils/cmTiers";
 
 // ─── Current user identity store ──────────────────────────────────────────────
 // Fetched once per session from GET /auth/me. The whole CM UI gates on the
@@ -23,17 +24,18 @@ const defaultUser = {
 export const [currentUser, setCurrentUser] = createStore(defaultUser);
 
 // ─── Derived helpers (functions so callers stay reactive) ─────────────────────
-export const cmTier = () => currentUser.cmProfile?.tier ?? null; // "tier_1" | "tier_2" | null
+export const cmTier = () => currentUser.cmProfile?.tier ?? null; // "tier_1" | "tier_2" | "tier_3" | null
 export const isCM = () => currentUser.role === "campaign_manager";
 export const isAdmin = () => currentUser.role === "admin";
 export const isSales = () => currentUser.role === "sales";
 export const isCoordination = () => currentUser.role === "coordination";
-export const isTier1 = () => cmTier() === "tier_1";
-export const isTier2 = () => cmTier() === "tier_2";
+// Tier 1 and Tier 2 hold the same powers; Tier 3 is the restricted tier.
+export const isSeniorTier = () => isSeniorTierValue(cmTier());
+export const isTier3 = () => cmTier() === "tier_3";
 
 // Controls the rest of the UI gates on:
-export const canSwitch = () => isTier1();
-export const canUseAI = () => isAdmin() || isTier1();
+export const canSwitch = () => isSeniorTier();
+export const canUseAI = () => isAdmin() || isSeniorTier();
 
 // ─── GLOBAL_READ gate ─────────────────────────────────────────────────────────
 // admin + coordination + accounts read across the whole org (all managers /
@@ -53,8 +55,8 @@ export const isGlobalRead = () => {
 };
 
 // ─── Campaign write gate (pause/resume) ───────────────────────────────────────
-// Who may write a campaign's status: admins, coordination, and Tier-1 campaign
-// managers. Tier-2 CMs, clients, sales and ACCOUNTS cannot. The backend is the
+// Who may write a campaign's status: admins, coordination, and Tier-1/Tier-2
+// campaign managers. Tier-3 CMs, clients, sales and ACCOUNTS cannot. The backend is the
 // real authority (it also scope-checks that a CM owns the campaign); this gate
 // just decides whether to SHOW the control so non-writers don't see a button
 // that always 403s.
@@ -70,7 +72,7 @@ export const canWriteCampaigns = () => {
   // Primary source of truth: the loaded /auth/me store.
   if (currentUser.loaded) {
     if (CAMPAIGN_WRITE_ROLES.has(currentUser.role)) return true;
-    return isCM() && isTier1();
+    return isCM() && isSeniorTier();
   }
   // Fallback before /auth/me resolves: read role/tier mirrored into localStorage
   // auth (role at login, cmTier enriched by loadCurrentUser). Keeps the control
@@ -79,19 +81,19 @@ export const canWriteCampaigns = () => {
     const auth = JSON.parse(localStorage.getItem("auth") || "null");
     if (!auth) return false;
     if (CAMPAIGN_WRITE_ROLES.has(auth.role)) return true;
-    return auth.role === "campaign_manager" && auth.cmTier === "tier_1";
+    return auth.role === "campaign_manager" && isSeniorTierValue(auth.cmTier);
   } catch {
     return false;
   }
 };
 
-// ─── Payments gates (accounts desk + tier-1 CM entry) ─────────────────────────
+// ─── Payments gates (accounts desk + senior CM entry) ─────────────────────────
 // Same two-source pattern as canWriteCampaigns(): prefer the loaded /auth/me
 // store, fall back to the role/tier mirrored into localStorage so a gate
 // doesn't flicker (or wrongly deny) before /auth/me resolves.
 //
 // These decide which CONTROLS and ROUTES to show. The API is the authority:
-// /payments/clients/ and add-funds 403 a tier-2 CM, and PATCH/DELETE 403 any
+// /payments/clients/ and add-funds 403 a tier-3 CM, and PATCH/DELETE 403 any
 // CM at all. The UI gate exists so nobody is handed a button that always fails.
 
 const readAuth = () => {
@@ -108,14 +110,15 @@ export const isAccountsDesk = () => {
   return role === "accounts" || role === "admin";
 };
 
-// Tier-1 campaign managers ONLY. Tier-2 is excluded everywhere in payments.
-export const isTier1CM = () => {
-  if (currentUser.loaded) return isCM() && isTier1();
+// Senior campaign managers (Tier 1 or Tier 2) ONLY. Tier 3 is excluded
+// everywhere in payments, replacements, reassign and configs.
+export const isSeniorCM = () => {
+  if (currentUser.loaded) return isCM() && isSeniorTier();
   const auth = readAuth();
-  return auth?.role === "campaign_manager" && auth?.cmTier === "tier_1";
+  return auth?.role === "campaign_manager" && isSeniorTierValue(auth?.cmTier);
 };
 
-// Tier-1 AND not deactivated. /auth/me returns cm_profile {tier, is_active}
+// Senior tier AND not deactivated. /auth/me returns cm_profile {tier, is_active}
 // (confirmed live: {"tier": "tier_1", "is_active": true}), and the loader now
 // mirrors is_active beside the tier so this can answer before /auth/me lands.
 //
@@ -126,30 +129,30 @@ export const isTier1CM = () => {
 // are plain functions over the reactive store, so no reload is needed — and
 // the thing avoided is a deactivated manager being handed a button that 403s.
 //
-// CONFIGS ONLY — do not widen this into isTier1CM(). Server-side, is_active is
+// CONFIGS ONLY — do not widen this into isSeniorCM(). Server-side, is_active is
 // enforced by ConfigAccessPermission and nothing else (checked 2026-09-21):
 // payments, reassign and lead replacement check the TIER and not the flag, so a
-// deactivated tier-1 CM can still do all three. Folding the check into
-// isTier1CM() would hide those three controls from someone the server still
+// deactivated senior CM can still do all three. Folding the check into
+// isSeniorCM() would hide those three controls from someone the server still
 // lets through — a silent removal, which is the worse of the two failures.
 //
 // Whether those three SHOULD check is_active is a fair question (a deactivated
 // lead reassigning campaigns is odd), but it is a backend change first and this
 // gate follows it, not the other way round.
-export const isActiveTier1CM = () => {
+export const isActiveSeniorCM = () => {
   if (currentUser.loaded) {
-    return isCM() && isTier1() && currentUser.cmProfile?.is_active === true;
+    return isCM() && isSeniorTier() && currentUser.cmProfile?.is_active === true;
   }
   const auth = readAuth();
   return (
     auth?.role === "campaign_manager" &&
-    auth?.cmTier === "tier_1" &&
+    isSeniorTierValue(auth?.cmTier) &&
     auth?.cmActive === true
   );
 };
 
-// Who may POST /payments/add-funds/ — the accounts desk and tier-1 CMs.
-export const canRecordPayments = () => isAccountsDesk() || isTier1CM();
+// Who may POST /payments/add-funds/ — the accounts desk and senior (tier-1/tier-2) CMs.
+export const canRecordPayments = () => isAccountsDesk() || isSeniorCM();
 
 // Who may PATCH / DELETE a payment — accounts and admin only, never a CM.
 export const canManagePayments = () => isAccountsDesk();
@@ -160,7 +163,7 @@ export const canManagePayments = () => isAccountsDesk();
 // so accounts is in — this is the first gate where the accounts desk WRITES
 // rather than only reads.
 //
-// READ is the four staff roles plus every campaign manager: a tier-2 CM gets
+// READ is the four staff roles plus every campaign manager: a tier-3 CM gets
 // the list so they can answer "why did this client's balance drop" without
 // being able to change it, which is the same read/write split as Project
 // Display Config.
@@ -182,24 +185,24 @@ export const canSeeAdditionalServices = () => {
   return ADDL_SERVICE_READ_ROLES.has(role);
 };
 
-// The CM leg is isTier1CM() and not isActiveTier1CM(): is_active is enforced
+// The CM leg is isSeniorCM() and not isActiveSeniorCM(): is_active is enforced
 // server-side by ConfigAccessPermission and nothing else, so folding it in here
 // would hide the control from someone the API still lets through.
 export const canWriteAdditionalServices = () => {
   const role = currentUser.loaded ? currentUser.role : readAuth()?.role;
   if (ADDL_SERVICE_WRITE_ROLES.has(role)) return true;
-  return isTier1CM();
+  return isSeniorCM();
 };
 
 // ─── Lead-replacement gates ───────────────────────────────────────────────────
-// Who may POST /leads/replacement-batches/ — admins and TIER-1 campaign managers
-// only. Tier-2 CMs, clients, sales, coordination and accounts must not see the
+// Who may POST /leads/replacement-batches/ — admins and SENIOR (tier-1/tier-2) campaign managers
+// only. Tier-3 CMs, clients, sales, coordination and accounts must not see the
 // "Record Replacement" action at all. Same two-source pattern as above; the
 // backend 403s regardless, this just avoids handing anyone a button that fails.
 export const canRecordReplacement = () => {
   const role = currentUser.loaded ? currentUser.role : readAuth()?.role;
   if (role === "admin") return true;
-  return isTier1CM();
+  return isSeniorCM();
 };
 
 // Revoking a batch and reading its audit log are admin-only.
@@ -213,13 +216,13 @@ export const canRevokeReplacement = () => {
 // for the whole period from the effective date on — the same weight of change as
 // client_type or onboarded_by.
 //
-// The backend's rule is: not admin → must hold a CampaignManagerProfile at TIER 1.
+// The backend's rule is: not admin → must hold a CampaignManagerProfile at TIER 1 or TIER 2.
 // So this is deliberately NOT canWriteCampaigns(), which the pause/resume path
 // uses. That set includes COORDINATION, and a coordination user has no CM profile
 // at all — they would be handed a Move button that 403s every single time. The
 // shape here is canRecordReplacement()'s, for exactly the same reason.
 //
-// One rule this gate CANNOT evaluate: a tier-1 CM may move a campaign only when
+// One rule this gate CANNOT evaluate: a senior CM may move a campaign only when
 // BOTH the current and the target client are in their team. The target picker is
 // sourced from the CM hierarchy, which already narrows the target side; the
 // current side is the backend's call, and its 403 is routed to a plain sentence
@@ -227,11 +230,11 @@ export const canRevokeReplacement = () => {
 export const canReassignCampaigns = () => {
   const role = currentUser.loaded ? currentUser.role : readAuth()?.role;
   if (role === "admin") return true;
-  return isTier1CM();
+  return isSeniorCM();
 };
 
 // Reading the ownership trail is information rather than an action, so the gate
-// is wider on the CM side — a TIER-2 CM cannot move a campaign but can still ask
+// is wider on the CM side — a TIER-3 CM cannot move a campaign but can still ask
 // who owned it when. It is NOT wider on the ROLE side: both ownership routes sit
 // behind IsCampaignManagerOrAdmin, so coordination, accounts and sales 403 on the
 // history exactly as they do on the reassign. Clients never see it, and an
@@ -265,7 +268,7 @@ export const canSeeValueTier = () => {
 // and whose dashboard their clients land on is worth being able to look up.
 //
 // WRITING is admin + coordination only. This is deliberately NOT
-// canWriteCampaigns(): that set includes tier-1 CMs, and a tier-1 CM changing
+// canWriteCampaigns(): that set includes senior CMs, and a senior CM changing
 // tiers would be editing the permission level that granted them the button. The
 // endpoints 403 them regardless; this just keeps the control off their screen.
 // (The READ set is the route's `roles` array in App.jsx — AdminRoute takes a
@@ -279,16 +282,16 @@ export const canWriteCmProfiles = () => {
 
 // ─── Project display config gate (per-project billing rules) ──────────────────
 // WRITE (create / edit / close) on /clients/admin/configs/ is admin,
-// coordination, or an ACTIVE tier-1 CM (2f81a1f). READ is wider — every CM,
+// coordination, or an ACTIVE tier-1/tier-2 CM (2f81a1f). READ is wider — every CM,
 // tier included — which is why the route's `roles` array in App.jsx is not this
-// set: a tier-2 CM opens the page, reads every rule, and simply isn't handed a
+// set: a tier-3 CM opens the page, reads every rule, and simply isn't handed a
 // control that always 403s.
 //
 // Coordination is new on BOTH sides: before 2f81a1f they could not even read,
 // which is why the route had to widen as well.
 //
-// The CM leg is isActiveTier1CM(), not isTier1CM(): the endpoint wants an
-// ACTIVE tier-1 profile, and is_active is now confirmed to arrive on /auth/me
+// The CM leg is isActiveSeniorCM(), not isSeniorCM(): the endpoint wants an
+// ACTIVE tier-1/tier-2 profile, and is_active is now confirmed to arrive on /auth/me
 // and is mirrored into the auth blob, so the deactivated case can be answered
 // here instead of being left to a 403.
 const CONFIG_WRITE_ROLES = new Set(["admin", "coordination"]);
@@ -296,12 +299,12 @@ const CONFIG_WRITE_ROLES = new Set(["admin", "coordination"]);
 export const canWriteConfigs = () => {
   const role = currentUser.loaded ? currentUser.role : readAuth()?.role;
   if (CONFIG_WRITE_ROLES.has(role)) return true;
-  return isActiveTier1CM();
+  return isActiveSeniorCM();
 };
 
 // True once the tier is actually known. A campaign_manager's tier arrives with
 // /auth/me, so a route guard must WAIT on this rather than treat "tier not
-// loaded yet" as "not tier-1" and bounce a legitimate tier-1 lead.
+// loaded yet" as "not senior" and bounce a legitimate tier-1/tier-2 CM.
 export const isTierResolved = () => {
   if (currentUser.loaded) return true;
   const auth = readAuth();

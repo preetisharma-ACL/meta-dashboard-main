@@ -1,4 +1,5 @@
 import { For, Show } from "solid-js";
+import { isSeniorTierValue, tierShortLabel } from "../../utils/cmTiers";
 
 // ─── CM profile formatting ────────────────────────────────────────────────────
 // Shared by the roster, the detail pane, the edit modal and the history drawer,
@@ -60,8 +61,7 @@ export const historyValue = (field, value, resolve) => {
     return f === "is_active" ? "inactive" : "false";
 
   const s = String(value);
-  if (s === "tier_1") return "Tier 1";
-  if (s === "tier_2") return "Tier 2";
+  if (/^tier_d$/.test(s)) return tierShortLabel(s);
 
   // A lead recorded as a bare id is unreadable on its own — resolve it against
   // the roster when the caller can, and fall back to the id rather than hiding
@@ -75,10 +75,10 @@ export const historyValue = (field, value, resolve) => {
 // ─── Permission table ─────────────────────────────────────────────────────────
 // Both columns are always drawn, including the one the manager is NOT on. The
 // point of the table is the DIFFERENCE between the tiers — a list of what a
-// tier-2 manager can't do is the argument for promoting them, and it disappears
-// if only the current tier is shown.
+// tier-3 manager can't do is the argument for promoting them, and it disappears
+// if only the current tier is shown. Tier 1 and Tier 2 hold the same powers.
 export function TierPowers(props) {
-  const isLead = () => props.tier === "tier_1";
+  const isLead = () => isSeniorTierValue(props.tier);
 
   return (
     <ul class="space-y-1.5">

@@ -1,5 +1,6 @@
 import { createResource, For, Show } from "solid-js";
-import { canSwitch } from "../stores/currentUser";
+import { canSwitch, currentUser } from "../stores/currentUser";
+import { tierShortLabel } from "../utils/cmTiers";
 import {
   asTeamMemberId,
   ownScope,
@@ -9,13 +10,19 @@ import {
 } from "../stores/cmScope";
 import { fetchTeamMembers } from "../services/cm";
 
-// Tier-1-only scope selector. Three modes:
+// Tier 1 + Tier 2 scope selector. Three modes:
 //   • "Just me"            → as_team_member_id = the lead's OWN id (own clients only)
 //   • "My team (everyone)" → no scope param (own + all team members, merged)
 //   • a specific member    → as_team_member_id = that member's id
 // Selecting a mode sets the global asTeamMemberId scope, which every CM data
 // fetch threads via withScope/scopeQuery — so all views refetch accordingly.
-// Tier 2 / non-CM never render this (gated by canSwitch()).
+// Tier 3 / non-CM never render this (gated by canSwitch()).
+//
+// The team list runs down the whole tree: a Tier 1 gets their Tier 2s AND
+// those Tier 2s' Tier 3s; a Tier 2 gets their Tier 3s. Each option names the
+// member's tier and, when it isn't the viewer, who they report to.
+// UNVERIFIED: the reports-to key on /cm/team-members/ — read as team_lead_email
+// (the /cm/profiles/ spelling) with reports_to_email behind it.
 const ME = "__me__";
 const TEAM = "__team__";
 
@@ -34,8 +41,15 @@ export default function SwitchModeDropdown() {
     },
   );
 
-  const tierLabel = (t) =>
-    t === "tier_1" ? "Tier 1" : t === "tier_2" ? "Tier 2" : "";
+  const reportsTo = (m) => {
+    const lead = m.team_lead_email ?? m.reports_to_email ?? null;
+    return lead && lead !== currentUser.email ? lead : null;
+  };
+
+  const optionLabel = (m) =>
+    [m.email, tierShortLabel(m.tier), reportsTo(m) && `reports to ${reportsTo(m)}`]
+      .filter(Boolean)
+      .join(" · ");
 
   const onChange = (e) => {
     const val = e.target.value;
@@ -70,9 +84,8 @@ export default function SwitchModeDropdown() {
               <optgroup label="Team members">
                 <For each={members() ?? []}>
                   {(m) => (
-                    <option value={String(m.user_id)}>
-                      {m.email}
-                      {tierLabel(m.tier) ? ` · ${tierLabel(m.tier)}` : ""}
+                    <option value={String(m.user_id)} title={optionLabel(m)}>
+                      {optionLabel(m)}
                     </option>
                   )}
                 </For>

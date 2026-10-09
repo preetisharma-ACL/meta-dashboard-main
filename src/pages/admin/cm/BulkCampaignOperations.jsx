@@ -203,7 +203,7 @@ export default function BulkCampaignOperations() {
                 Not available for your role
               </div>
               <p class="mt-2 text-sm text-gray-500 dark:text-gray-400 max-w-[440px] mx-auto">
-                Bulk campaign operations are limited to admins and Tier-1 campaign
+                Bulk campaign operations are limited to admins and Tier 1 / Tier 2 campaign
                 managers. These actions make real changes on Meta.
               </p>
             </div>

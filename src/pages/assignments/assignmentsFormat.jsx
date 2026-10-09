@@ -1,4 +1,5 @@
 import { Show } from "solid-js";
+import { tierShortLabel } from "../../utils/cmTiers";
 
 // ─── Assignment screen formatting ─────────────────────────────────────────────
 // Shared by the two tabs, the confirm modal and the history drawer, so a tier or
@@ -19,10 +20,7 @@ export const CARD =
 // showing what the server sent beats inventing a label for it.
 export const tierLabel = (tier) => {
   if (!tier) return null;
-  const t = String(tier);
-  if (t === "tier_1") return "Tier 1";
-  if (t === "tier_2") return "Tier 2";
-  return t.replace(/_/g, " ");
+  return tierShortLabel(String(tier)).replace(/_/g, " ");
 };
 
 // ─── Badges ───────────────────────────────────────────────────────────────────
@@ -46,21 +44,30 @@ function Dot(props) {
 
 // Every badge is the same object — tinted fill, matching ring, saturated dot —
 // and only the HUE changes, so the operator learns one shape and reads the
-// colour. Tier 1 is indigo (a lead), tier 2 teal (a report): distinct enough to
-// tell apart mid-scroll, and neither is the amber that means "inactive" or the
-// brand red that means "client type".
+// colour. Tier 1 is indigo, tier 2 teal, tier 3 slate: distinct enough to tell
+// apart mid-scroll, and none is the amber that means "inactive" or the brand
+// red that means "client type".
+const TIER_TINT = {
+  tier_1: {
+    pill: "bg-[#EDF0FB] text-[#3A4BA0] ring-[#3A4BA0]/20 dark:bg-indigo-900/30 dark:text-indigo-200 dark:ring-indigo-400/25",
+    dot: "bg-[#4C5FD7]",
+  },
+  tier_2: {
+    pill: "bg-[#E6F4F6] text-[#136B78] ring-[#136B78]/20 dark:bg-teal-900/30 dark:text-teal-200 dark:ring-teal-400/25",
+    dot: "bg-[#1B93A5]",
+  },
+  tier_3: {
+    pill: "bg-[#F0F2F5] text-[#4A5568] ring-[#4A5568]/20 dark:bg-slate-700/40 dark:text-slate-200 dark:ring-slate-400/25",
+    dot: "bg-[#718096]",
+  },
+};
+
 export function TierBadge(props) {
-  const lead = () => props.tier === "tier_1";
+  const tint = () => TIER_TINT[props.tier] ?? TIER_TINT.tier_3;
   return (
     <Show when={tierLabel(props.tier)}>
-      <span
-        class={`${PILL} ${
-          lead()
-            ? "bg-[#EDF0FB] text-[#3A4BA0] ring-[#3A4BA0]/20 dark:bg-indigo-900/30 dark:text-indigo-200 dark:ring-indigo-400/25"
-            : "bg-[#E6F4F6] text-[#136B78] ring-[#136B78]/20 dark:bg-teal-900/30 dark:text-teal-200 dark:ring-teal-400/25"
-        }`}
-      >
-        <Dot class={lead() ? "bg-[#4C5FD7]" : "bg-[#1B93A5]"} />
+      <span class={`${PILL} ${tint().pill}`}>
+        <Dot class={tint().dot} />
         {tierLabel(props.tier)}
       </span>
     </Show>

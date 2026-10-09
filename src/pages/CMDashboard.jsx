@@ -15,6 +15,7 @@ import {
 } from "../services/leadReplacement";
 import { asTeamMemberId, ownScope, clearScope, scopeKey } from "../stores/cmScope";
 import { currentUser, cmTier, canWriteCampaigns } from "../stores/currentUser";
+import { tierLabel as cmTierLabel } from "../utils/cmTiers";
 import CMHierarchy from "../components/CMHierarchy";
 import CampaignStatusControl from "../components/CampaignStatusControl";
 
@@ -477,7 +478,7 @@ export default function CMDashboard() {
     };
   });
 
-  const tierLabel = () => (cmTier() === "tier_1" ? "Team Lead" : cmTier() === "tier_2" ? "Individual" : "");
+  const tierLabel = () => cmTierLabel(cmTier(), currentUser.cmProfile?.tier_label);
 
   // ════════════════════════════════════════════════════════════════════════
   // DISPLAY-ONLY DERIVATIONS for the redesigned sections.

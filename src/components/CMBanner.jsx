@@ -1,8 +1,9 @@
 import { Show } from "solid-js";
 import { asTeamMemberId, viewingAs, clearScope } from "../stores/cmScope";
 import { canSwitch, isAdmin } from "../stores/currentUser";
+import { tierLabel } from "../utils/cmTiers";
 
-// Persistent banner shown whenever a Tier 1 is viewing as a team member, OR an
+// Persistent banner shown whenever a Tier 1/2 is viewing as a team member, OR an
 // admin is "viewing as" a campaign manager from the Campaign Managers screen.
 // Email/tier come from meta.viewing_as captured on the latest scoped response
 // (the admin screen also primes it on select). "Return to my view" clears the
@@ -12,9 +13,6 @@ import { canSwitch, isAdmin } from "../stores/currentUser";
 // naturally suppressed in the Tier-1 "Just me" mode (scope=own with no member —
 // the lead's own perspective) and on the default team view.
 export default function CMBanner() {
-  const tierLabel = (t) =>
-    t === "tier_1" ? "Tier 1" : t === "tier_2" ? "Tier 2" : t;
-
   return (
     <Show when={(canSwitch() || isAdmin()) && asTeamMemberId() != null}>
       <div class="bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800/60">
@@ -46,7 +44,7 @@ export default function CMBanner() {
               <Show when={viewingAs()?.tier}>
                 {" "}
                 <span class="text-amber-600 dark:text-amber-400">
-                  ({tierLabel(viewingAs()?.tier)})
+                  ({tierLabel(viewingAs()?.tier, viewingAs()?.tier_label)})
                 </span>
               </Show>
             </span>

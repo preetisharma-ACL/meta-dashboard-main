@@ -705,25 +705,22 @@ export default function Assignments() {
                   </button>
                 </div>
 
-                {/* Visibility is WIDER than this list for a tier-1 lead, and
-                    this list is not proof of what they can see. Worded so it
-                    never reads as direct assignment. */}
-                <Show when={selectedCm().tier === "tier_1"}>
+                {/* Visibility is WIDER than this list for anyone with reports,
+                    and runs down the whole tree (Tier 1 → Tier 2 → Tier 3).
+                    Worded so it never reads as direct assignment. */}
+                <Show when={selectedCm().tier === "tier_1" || selectedCm().tier === "tier_2"}>
                   <p class="mt-4 rounded-lg bg-[#F0F4F9] dark:bg-gray-700/50 px-3.5 py-2.5 text-xs text-[#54657E] dark:text-gray-300">
-                    As a tier-1 lead, this manager can also see the clients
-                    assigned to their tier-2 reports. Those clients are not
-                    listed here — this list is only what's assigned to them
-                    directly.
+                    {selectedCm().tier === "tier_1"
+                      ? "This manager can also see the clients assigned to their Tier 2 reports and to those reports' Tier 3s."
+                      : "This manager can also see the clients assigned to their Tier 3 reports."}{" "}
+                    Those clients are not listed here — this list is only
+                    what's assigned to them directly.
                   </p>
                 </Show>
-                <Show
-                  when={
-                    selectedCm().tier === "tier_2" && selectedCm().teamLeadId
-                  }
-                >
+                <Show when={selectedCm().teamLeadId}>
                   <p class="mt-4 rounded-lg bg-[#F0F4F9] dark:bg-gray-700/50 px-3.5 py-2.5 text-xs text-[#54657E] dark:text-gray-300">
-                    This manager reports to a tier-1 lead, who can also see
-                    every client assigned here.
+                    This manager reports to a lead, who — along with everyone
+                    above that lead — can also see every client assigned here.
                   </p>
                 </Show>
 
@@ -905,9 +902,9 @@ export default function Assignments() {
                 {/* Same caveat from the client's side: the managers listed are
                     the ones ASSIGNED, which is not the full set who can see it. */}
                 <p class="mt-4 rounded-lg bg-[#F0F4F9] dark:bg-gray-700/50 px-3.5 py-2.5 text-xs text-[#54657E] dark:text-gray-300">
-                  These are the managers assigned to this client. A tier-1 lead
-                  whose tier-2 report is listed here can also see it without
-                  appearing in this list.
+                  These are the managers assigned to this client. Anyone above
+                  a listed manager in the reporting line (their lead, and that
+                  lead's lead) can also see it without appearing in this list.
                 </p>
 
                 {/* Assigned managers */}

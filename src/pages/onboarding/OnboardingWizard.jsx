@@ -12,6 +12,13 @@ import {
   collectFieldErrors,
   errorBanner,
 } from "../../services/onboarding";
+import {
+  CM_TIERS,
+  leadRequiredFor,
+  leadTiersFor,
+  tierLabel,
+  tierShortLabel,
+} from "../../utils/cmTiers";
 
 // ─── Onboarding wizard ────────────────────────────────────────────────────────
 // Creates a login and its role profile in ONE atomic backend call. Admin and
@@ -66,7 +73,7 @@ const ROLE_META = {
   },
   campaign_manager: {
     label: "Campaign Manager",
-    blurb: "Runs campaigns. Tier-2 managers report to a tier-1 team lead.",
+    blurb: "Runs campaigns. Tier 2 reports to a Tier 1 or an admin; Tier 3 to a Tier 2.",
   },
   sales: {
     label: "Sales",
@@ -197,6 +204,18 @@ function ErrorText(props) {
 export default function OnboardingWizard() {
   const [options, { refetch }] = createResource(fetchOnboardingOptions);
 
+  // lead_options ({id, email, tier: "admin"|"tier_1"|"tier_2"}) narrowed to who
+  // may lead the picked tier. Falls back to the legacy tier-1 list if the
+  // backend ever omits lead_options, so a Tier 2 can still be created.
+  const leadOptionsFor = (tier) => {
+    const o = options();
+    const all = o?.leadOptions?.length
+      ? o.leadOptions
+      : (o?.tier1CampaignManagers ?? []).map((u) => ({ ...u, tier: "tier_1" }));
+    const allowed = leadTiersFor(tier);
+    return all.filter((u) => allowed.includes(u.tier));
+  };
+
   const [step, setStep] = createSignal(1);
   const [account, setAccount] = createSignal(emptyAccount());
   const [role, setRole] = createSignal("");
@@ -286,13 +305,14 @@ export default function OnboardingWizard() {
   };
 
   const pickTier = (t) => {
-    // team_lead_id must be ABSENT for tier_1 — drop any value the operator
-    // picked before switching, so it can't ride along in the payload.
-    setCm((prev) => ({
-      ...prev,
-      tier: t,
-      team_lead_id: t === "tier_2" ? prev.team_lead_id : "",
-    }));
+    // Who may lead depends on the tier, so a lead picked for the previous tier
+    // is dropped unless it is still eligible — it can't ride along otherwise.
+    setCm((prev) => {
+      const still = leadOptionsFor(t).some(
+        (o) => String(o.id) === String(prev.team_lead_id),
+      );
+      return { ...prev, tier: t, team_lead_id: still ? prev.team_lead_id : "" };
+    });
     clearErr("campaign_manager.tier", "campaign_manager.team_lead_id");
   };
 
@@ -498,9 +518,11 @@ export default function OnboardingWizard() {
     if (isCampaignManager()) {
       const m = cm();
       if (!m.tier) found["campaign_manager.tier"] = "Pick a tier.";
-      else if (m.tier === "tier_2" && !m.team_lead_id)
+      else if (leadRequiredFor(m.tier) && !m.team_lead_id)
         found["campaign_manager.team_lead_id"] =
-          "A tier-2 manager must report to a tier-1 team lead.";
+          m.tier === "tier_3"
+            ? "A Tier 3 manager must report to a Tier 2 manager."
+            : "A Tier 2 manager must report to a Tier 1 manager or an admin.";
     }
 
     return found;
@@ -574,8 +596,9 @@ export default function OnboardingWizard() {
   const buildCampaignManager = () => {
     const m = cm();
     const out = { tier: m.tier };
-    // Absent for tier_1 by design: sending it is a documented 400.
-    if (m.tier === "tier_2") out.team_lead_id = Number(m.team_lead_id);
+    // Optional for tier_1 (an admin, or nobody), required for tier_2/tier_3.
+    // Absent rather than null when unset; the backend 422s a bad pairing.
+    if (m.team_lead_id) out.team_lead_id = Number(m.team_lead_id);
     return out;
   };
 
@@ -1571,8 +1594,8 @@ export default function OnboardingWizard() {
                 <Show when={isCampaignManager()}>
                   <div>
                     <label class={LABEL}>Tier <Req /></label>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <For each={["tier_1", "tier_2"]}>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <For each={CM_TIERS}>
                         {(t) => (
                           <button
                             type="button"
@@ -1584,12 +1607,14 @@ export default function OnboardingWizard() {
                             }`}
                           >
                             <span class="block font-semibold text-[#14233A] dark:text-gray-100">
-                              {t === "tier_1" ? "Tier 1" : "Tier 2"}
+                              {tierLabel(t)}
                             </span>
                             <span class="block text-xs text-[#8593A8] mt-0.5">
                               {t === "tier_1"
-                                ? "Team lead. Reports to nobody."
-                                : "Reports to a tier-1 team lead."}
+                                ? "Full powers. Reports to an admin, or nobody."
+                                : t === "tier_2"
+                                  ? "Full powers. Reports to a Tier 1 or an admin."
+                                  : "Own clients only. Reports to a Tier 2."}
                             </span>
                           </button>
                         )}
@@ -1598,12 +1623,17 @@ export default function OnboardingWizard() {
                     <ErrorText message={errFor("campaign_manager.tier")} />
                   </div>
 
-                  {/* Team lead — tier-2 only. Deliberately not rendered for
-                      tier-1: the backend 400s a tier-1 manager that carries
-                      one, so there must be no way to set it. */}
-                  <Show when={cm().tier === "tier_2"}>
+                  {/* Reports to — options follow the tier (lead_options
+                      filtered by utils/cmTiers): tier_1 → admin or nobody,
+                      tier_2 → Tier 1 or admin, tier_3 → Tier 2. */}
+                  <Show when={cm().tier}>
                     <div>
-                      <label class={LABEL}>Team lead <Req /></label>
+                      <label class={LABEL}>
+                        Reports to{" "}
+                        <Show when={leadRequiredFor(cm().tier)} fallback={<span class={HINT}>(optional)</span>}>
+                          <Req />
+                        </Show>
+                      </label>
                       <select
                         value={cm().team_lead_id}
                         onChange={(e) => setM("team_lead_id", e.target.value)}
@@ -1613,12 +1643,16 @@ export default function OnboardingWizard() {
                       >
                         <option value="">
                           {options.loading
-                            ? "Loading team leads…"
-                            : "Select a tier-1 manager…"}
+                            ? "Loading leads…"
+                            : leadRequiredFor(cm().tier)
+                              ? "Select who they report to…"
+                              : "No lead"}
                         </option>
-                        <For each={options()?.tier1CampaignManagers ?? []}>
+                        <For each={leadOptionsFor(cm().tier)}>
                           {(u) => (
-                            <option value={String(u.id)}>{u.email}</option>
+                            <option value={String(u.id)}>
+                              {u.email} · {u.tier === "admin" ? "Admin" : tierShortLabel(u.tier)}
+                            </option>
                           )}
                         </For>
                       </select>
@@ -1626,7 +1660,11 @@ export default function OnboardingWizard() {
                         when={errFor("campaign_manager.team_lead_id")}
                         fallback={
                           <p class={HINT}>
-                            Required for tier 2. Tier-1 managers never have one.
+                            {cm().tier === "tier_1"
+                              ? "Optional. A Tier 1 manager reports to an admin, or to nobody."
+                              : cm().tier === "tier_2"
+                                ? "A Tier 2 manager reports to a Tier 1 manager or an admin."
+                                : "A Tier 3 manager reports to a Tier 2 manager."}
                           </p>
                         }
                       >

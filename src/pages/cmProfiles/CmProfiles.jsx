@@ -6,7 +6,13 @@ import {
   fetchCmProfile,
   updateCmProfile,
 } from "../../services/cmProfiles";
+import { fetchOnboardingOptions } from "../../services/onboarding";
 import { collectFieldMessages } from "../../utils/apiErrors";
+import {
+  CM_TIERS,
+  isSeniorTierValue,
+  tierShortLabel,
+} from "../../utils/cmTiers";
 import { canWriteCmProfiles } from "../../stores/currentUser";
 import ProfileChangeModal from "./ProfileChangeModal";
 import ProfileHistoryDrawer from "./ProfileHistoryDrawer";
@@ -51,8 +57,7 @@ import {
 
 const TIER_FILTERS = [
   { key: "all", label: "All tiers" },
-  { key: "tier_1", label: "Tier 1" },
-  { key: "tier_2", label: "Tier 2" },
+  ...CM_TIERS.map((t) => ({ key: t, label: tierShortLabel(t) })),
 ];
 
 const STATUS_FILTERS = [
@@ -217,12 +222,24 @@ export default function CmProfiles() {
     return p ? cmLabel(p) : null;
   };
 
-  // A tier-1 lead's team. Neither route sends one, so it is derived from the
-  // roster — every tier-2 row names its lead, which is the same relation read
+  // A manager's DIRECT reports. Neither route sends one, so it is derived from
+  // the roster — every report names its lead, which is the same relation read
   // from the other end.
   const teamOf = (p) => {
     if (!p?.userId) return [];
     return rows().filter((r) => r.teamLeadId != null && r.teamLeadId === p.userId);
+  };
+
+  // The whole tree under a manager, depth-first, because visibility now runs
+  // all the way down: a Tier 1 sees their Tier 2s and those Tier 2s' Tier 3s.
+  // `seen` guards a bad roster that loops rather than hanging the pane.
+  const treeOf = (p, depth = 0, seen = new Set()) => {
+    if (!p?.userId || seen.has(p.userId)) return [];
+    seen.add(p.userId);
+    return teamOf(p).flatMap((m) => [
+      { member: m, depth },
+      ...treeOf(m, depth + 1, seen),
+    ]);
   };
 
   // team_size when the server sent one (tier-1 rows only), the derived team
@@ -273,16 +290,33 @@ export default function CmProfiles() {
     rows().filter((p) => !p.isActive && (p.clientCount ?? 0) > 0),
   );
 
-  // Every active tier-1 manager except the one being changed — nobody can report
-  // to themselves, and a tier-2 manager's lead must be ACTIVE.
+  // Every possible lead: admins + Tier 1 + Tier 2, as onboarding's lead_options
+  // ({id, email, tier}) — the only list that carries admins, who can now lead a
+  // Tier 1 or Tier 2. Writers only (admin + coordination, the same set the
+  // options route allows). The modal narrows it by the tier being landed on.
+  const [leadOptions] = createResource(
+    () => (canWrite() ? "load" : null),
+    async () => {
+      try {
+        return (await fetchOnboardingOptions()).leadOptions;
+      } catch {
+        return [];
+      }
+    },
+  );
+
+  // sendId is the USER id — what team_lead_id holds and what the PATCH looks
+  // up. If lead_options didn't load, fall back to the roster's active senior
+  // managers (no admins then) so a CM-to-CM move still works.
   const leadCandidates = createMemo(() => {
-    const self = selected();
+    const opts = leadOptions() ?? [];
+    if (opts.length)
+      return opts
+        .map((o) => ({ sendId: Number(o.id), email: o.email, tier: o.tier }))
+        .filter((o) => Number.isFinite(o.sendId));
     return rows()
-      .filter((p) => p.tier === "tier_1" && p.isActive && p.id !== self?.id)
-      // sendId is the USER id — what team_lead_id holds and what the PATCH
-      // looks up. A row without one is dropped rather than sent as a profile id.
-      .map((p) => ({ ...p, sendId: p.userId }))
-      .filter((p) => p.sendId != null);
+      .filter((p) => isSeniorTierValue(p.tier) && p.isActive && p.userId != null)
+      .map((p) => ({ ...p, sendId: p.userId }));
   });
 
   // ── Writes ─────────────────────────────────────────────────────────────────
@@ -589,11 +623,10 @@ export default function CmProfiles() {
                         <CountChip count={p.clientCount} label="clients" />
                       </span>
                       <span class="block text-xs text-[#8593A8] truncate mt-0.5">
-                        {p.tier === "tier_1"
-                          ? teamCountOf(p)
-                            ? `Leads ${teamCountOf(p)} manager${teamCountOf(p) === 1 ? "" : "s"}`
-                            : "Leads nobody"
-                          : `Reports to ${p.teamLeadEmail ?? resolveLead(p.teamLeadId) ?? "—"}`}
+                        {`Reports to ${p.teamLeadEmail ?? resolveLead(p.teamLeadId) ?? (p.tier === "tier_1" ? "nobody" : "—")}`}
+                        {teamCountOf(p)
+                          ? ` · leads ${teamCountOf(p)}`
+                          : ""}
                       </span>
                       <span class="flex flex-wrap items-center gap-1.5 mt-2">
                         <TierBadge tier={p.tier} />
@@ -710,15 +743,9 @@ export default function CmProfiles() {
                         onClick={() => ask("tier")}
                         disabled={!detailReady()}
                         title={detailReady() ? undefined : "Loading this manager’s clients…"}
-                        class={`${actionBtn} border ${
-                          selected().tier === "tier_1"
-                            ? "border-[#AC2334]/30 text-[#AC2334] hover:bg-[#FBEEF0] dark:hover:bg-red-900/20"
-                            : "border-[#15966A]/40 text-[#0F7A55] hover:bg-[#E7F5EE] dark:hover:bg-green-900/20"
-                        }`}
+                        class={`${actionBtn} border border-[#E2E8F1] dark:border-gray-700 text-[#54657E] dark:text-gray-300 hover:bg-[#F6F9FC] dark:hover:bg-gray-700`}
                       >
-                        {selected().tier === "tier_1"
-                          ? "Demote to Tier 2"
-                          : "Promote to Tier 1"}
+                        Change tier
                       </button>
                     </Show>
                   }
@@ -727,9 +754,9 @@ export default function CmProfiles() {
                 </SectionTitle>
 
                 <p class="text-sm text-[#54657E] dark:text-gray-300 mb-3">
-                  {selected().tier === "tier_1"
-                    ? "This manager may do all of the following:"
-                    : "Tier 2. This manager may do none of the following:"}
+                  {isSeniorTierValue(selected().tier)
+                    ? "Tier 1 and Tier 2 hold the same permissions. This manager may do all of the following:"
+                    : "Tier 3. This manager works their own clients and may do none of the following:"}
                 </p>
                 <TierPowers tier={selected().tier} />
                 <p class="text-xs text-[#8593A8] mt-3">
@@ -737,11 +764,14 @@ export default function CmProfiles() {
                 </p>
               </div>
 
-              {/* ── Team lead = visibility ── */}
+              {/* ── Team lead = visibility ──
+                  Visibility runs down the whole tree: a Tier 1 sees their
+                  Tier 2s AND those Tier 2s' Tier 3s; a Tier 2 sees their Tier
+                  3s; a Tier 3 sees only themselves. */}
               <div class={`${CARD} p-5 sm:p-6`}>
                 <SectionTitle
                   right={
-                    <Show when={canWrite() && selected().tier === "tier_2"}>
+                    <Show when={canWrite()}>
                       <button
                         type="button"
                         onClick={() => ask("lead")}
@@ -749,98 +779,100 @@ export default function CmProfiles() {
                         title={detailReady() ? undefined : "Loading this manager’s clients…"}
                         class={`${actionBtn} border border-[#E2E8F1] dark:border-gray-700 text-[#54657E] dark:text-gray-300 hover:bg-[#F6F9FC] dark:hover:bg-gray-700`}
                       >
-                        Move to another lead
+                        Change lead
                       </button>
                     </Show>
                   }
                 >
-                  Team Member 
+                  Reporting line
                 </SectionTitle>
 
-                <Show
-                  when={selected().tier === "tier_2"}
-                  fallback={
-                    <>
-                      <p class="text-sm text-[#14233A] dark:text-gray-200">
-                        A Tier 1 manager has no team lead. Their dashboard shows
-                        their own clients plus every client held by the tier-2
-                        managers who report to them.
-                      </p>
-                      <div class="mt-4">
-                        <SectionTitle>
-                          Team ({teamOf(selected()).length})
-                        </SectionTitle>
-                        <Show
-                          when={teamOf(selected()).length}
-                          fallback={
-                            <p class="text-sm text-[#8593A8]">
-                              Nobody reports to this manager, so their dashboard
-                              shows only their own clients.
-                            </p>
-                          }
-                        >
-                          <ul class="divide-y divide-[#E2E8F1] dark:divide-gray-700 border border-[#E2E8F1] dark:border-gray-700 rounded-xl overflow-hidden">
-                            <For each={teamOf(selected())}>
-                              {(m) => (
-                                <li class="flex items-center gap-3 px-3.5 py-2.5">
-                                  <Avatar
-                                    name={cmLabel(m)}
-                                    size="w-8 h-8"
-                                    textSize="text-[10px]"
-                                  />
-                                  <span class="min-w-0 flex-1">
-                                    <span class="block text-sm font-medium text-[#14233A] dark:text-gray-100 truncate">
-                                      {cmLabel(m)}
-                                    </span>
-                                    <span class="flex items-center gap-1.5 mt-0.5">
-                                      <TierBadge tier={m.tier} />
-                                      <InactiveBadge isActive={m.isActive} />
-                                      <Show when={m.clientCount != null}>
-                                        <span class="text-xs text-[#8593A8]">
-                                          {m.clientCount} client
-                                          {m.clientCount === 1 ? "" : "s"}
-                                        </span>
-                                      </Show>
-                                    </span>
-                                  </span>
-                                  <Show when={m.id != null}>
-                                    <button
-                                      type="button"
-                                      onClick={() => setSelectedId(m.id)}
-                                      class="flex-none px-2.5 py-1.5 rounded-lg text-xs font-semibold text-[#54657E] dark:text-gray-300 hover:bg-[#F6F9FC] dark:hover:bg-gray-700 transition"
-                                    >
-                                      Open
-                                    </button>
-                                  </Show>
-                                </li>
-                              )}
-                            </For>
-                          </ul>
-                          <p class="text-xs text-[#8593A8] mt-2">
-                            Every client these managers hold is also visible on
-                            this lead's dashboard. Demoting this manager is
-                            refused while any of them are active.
-                          </p>
-                        </Show>
-                      </div>
-                    </>
-                  }
-                >
-                  <p class="text-sm text-[#14233A] dark:text-gray-200">
-                    Reports to{" "}
-                    <span class="font-bold break-all">
-                      {selected().teamLeadEmail ??
-                        resolveLead(selected().teamLeadId) ??
-                        "no lead"}
-                    </span>
-                    .
-                  </p>
+                <p class="text-sm text-[#14233A] dark:text-gray-200">
+                  Reports to{" "}
+                  <span class="font-bold break-all">
+                    {selected().teamLeadEmail ??
+                      resolveLead(selected().teamLeadId) ??
+                      "no lead"}
+                  </span>
+                  .
+                </p>
+                <Show when={selected().teamLeadId != null || selected().teamLeadEmail}>
                   <p class="text-sm text-[#54657E] dark:text-gray-300 mt-1.5">
                     All {selected().clientCount} of this manager's clients appear
-                    on that lead's dashboard. Moving them to another lead moves
-                    every one of those clients with them — at once, and for all
-                    history, not from the change date forward.
+                    on that lead's dashboard (and on the dashboard of whoever that
+                    lead reports to). Changing the lead moves every one of those
+                    clients with them — at once, and for all history, not from
+                    the change date forward.
                   </p>
+                </Show>
+
+                <Show when={selected().tier !== "tier_3"}>
+                  <div class="mt-4">
+                    <SectionTitle>
+                      Team ({treeOf(selected()).length})
+                    </SectionTitle>
+                    <Show
+                      when={treeOf(selected()).length}
+                      fallback={
+                        <p class="text-sm text-[#8593A8]">
+                          Nobody reports to this manager, so their dashboard
+                          shows only their own clients.
+                        </p>
+                      }
+                    >
+                      <ul class="divide-y divide-[#E2E8F1] dark:divide-gray-700 border border-[#E2E8F1] dark:border-gray-700 rounded-xl overflow-hidden">
+                        <For each={treeOf(selected())}>
+                          {({ member: m, depth }) => (
+                            <li
+                              class="flex items-center gap-3 pr-3.5 py-2.5"
+                              style={{ "padding-left": `${0.875 + depth * 1.5}rem` }}
+                            >
+                              <Avatar
+                                name={cmLabel(m)}
+                                size="w-8 h-8"
+                                textSize="text-[10px]"
+                              />
+                              <span class="min-w-0 flex-1">
+                                <span class="block text-sm font-medium text-[#14233A] dark:text-gray-100 truncate">
+                                  {cmLabel(m)}
+                                </span>
+                                <span class="flex flex-wrap items-center gap-1.5 mt-0.5">
+                                  <TierBadge tier={m.tier} />
+                                  <InactiveBadge isActive={m.isActive} />
+                                  <Show when={depth > 0}>
+                                    <span class="text-xs text-[#8593A8] truncate">
+                                      reports to{" "}
+                                      {m.teamLeadEmail ?? resolveLead(m.teamLeadId) ?? "—"}
+                                    </span>
+                                  </Show>
+                                  <Show when={m.clientCount != null}>
+                                    <span class="text-xs text-[#8593A8]">
+                                      {m.clientCount} client
+                                      {m.clientCount === 1 ? "" : "s"}
+                                    </span>
+                                  </Show>
+                                </span>
+                              </span>
+                              <Show when={m.id != null}>
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedId(m.id)}
+                                  class="flex-none px-2.5 py-1.5 rounded-lg text-xs font-semibold text-[#54657E] dark:text-gray-300 hover:bg-[#F6F9FC] dark:hover:bg-gray-700 transition"
+                                >
+                                  Open
+                                </button>
+                              </Show>
+                            </li>
+                          )}
+                        </For>
+                      </ul>
+                      <p class="text-xs text-[#8593A8] mt-2">
+                        Every client these managers hold is also visible on this
+                        manager's dashboard. A tier change is refused while
+                        anyone still reports to them.
+                      </p>
+                    </Show>
+                  </div>
                 </Show>
               </div>
 

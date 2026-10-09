@@ -16,7 +16,7 @@ import { fetchProjectsByClient } from "../services/fetchProjectsByClient"; // �
 import { fetchAllowedBudgetClients } from "../../../services/allowedBudget"; // ← CM-scoped client source
 import {
   isAdmin,
-  isTier1,
+  isSeniorTier,
   isCoordination,
   canWriteConfigs, // ← create/edit/close gate
 } from "../../../stores/currentUser";
@@ -287,9 +287,9 @@ export default function ProjectDisplayConfig() {
     () => !isRetainer() && ruleTypeChoices().length === 1,
   );
 
-  // Who may pick a custom validity window: admins, coordination and Tier-1 CMs.
-  // Tier-2 CMs keep the existing behavior (no date fields → backend auto-stamps
-  // "starts now, open-ended"), and the backend 403s a Tier-2 that sends dates
+  // Who may pick a custom validity window: admins, coordination and Tier-1/Tier-2 CMs.
+  // Tier-3 CMs keep the existing behavior (no date fields → backend auto-stamps
+  // "starts now, open-ended"), and the backend 403s a Tier-3 that sends dates
   // anyway.
   //
   // Coordination is on this list as of 628d344: _is_privileged_for_dates was
@@ -298,11 +298,11 @@ export default function ProjectDisplayConfig() {
   // a config but never backdate one, and backdating valid_from is how a gap in
   // the billing history gets closed.
   const canSetValidity = createMemo(
-    () => isAdmin() || isCoordination() || isTier1(),
+    () => isAdmin() || isCoordination() || isSeniorTier(),
   );
 
-  // Who may create, edit or close a config: admin, coordination, or a tier-1
-  // CM (2f81a1f). READING is open to every CM, so a tier-2 still gets the whole
+  // Who may create, edit or close a config: admin, coordination, or a tier-1/tier-2
+  // CM (2f81a1f). READING is open to every CM, so a tier-3 still gets the whole
   // screen — the list, the filters, the history — minus the three controls that
   // would 403. A plain function, not a memo, so it re-reads currentUser when
   // /auth/me lands and the controls appear without a reload.

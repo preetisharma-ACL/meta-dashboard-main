@@ -31,7 +31,10 @@ const asArray = (v) => (Array.isArray(v) ? v : []);
 // one round trip. Shapes:
 //   organizations           [{ id, name }]   ← pick one, or POST a new name
 //   unassigned_nomens       [{ id, name }]   ← nomens with no client yet
-//   tier1_campaign_managers [{ id, email }]  ← eligible CM team leads
+//   tier1_campaign_managers [{ id, email }]  ← legacy: Tier 1 leads only
+//   lead_options            [{ id, email, tier }] ← every possible lead; tier is
+//                           "admin" | "tier_1" | "tier_2". Filter by the tier
+//                           being created (utils/cmTiers leadTiersFor).
 //   campaign_managers       [{ id, email, tier }]
 //   sales_users             [{ id, email, role }]  ← eligible onboarded_by
 //
@@ -50,6 +53,7 @@ export const fetchOnboardingOptions = async () => {
     organizations: asArray(d.organizations),
     unassignedNomens: asArray(d.unassigned_nomens),
     tier1CampaignManagers: asArray(d.tier1_campaign_managers),
+    leadOptions: asArray(d.lead_options),
     campaignManagers: asArray(d.campaign_managers),
     salesUsers: asArray(d.sales_users),
     creatableRoles: roles.length ? roles : DEFAULT_ROLES,

@@ -6,6 +6,14 @@ import {
   cmLabel,
   clientLabel,
 } from "./cmProfilesFormat";
+import {
+  CM_TIERS,
+  isSeniorTierValue,
+  leadRequiredFor,
+  leadTiersFor,
+  tierLabel,
+  tierShortLabel,
+} from "../../utils/cmTiers";
 
 // ─── Confirming a profile change ──────────────────────────────────────────────
 // One modal for all three writes, because all three are the same kind of event:
@@ -14,9 +22,9 @@ import {
 //
 // What this step exists for is the CONSEQUENCE SENTENCE. None of these fields is
 // a label:
-//   tier      promoting grants five separate powers in one PATCH, so the modal
+//   tier      crossing the Tier 2 / Tier 3 line grants or removes five powers in one PATCH, so the modal
 //             lists them rather than saying "elevated permissions"
-//   lead      moving a tier-2 manager between leads moves every client they hold
+//   lead      moving a manager between leads moves every client they hold
 //             out of one dashboard and into another — at once and for all
 //             history — so the modal NAMES THOSE CLIENTS. "16 clients" asks the
 //             operator to take the number on trust; sixteen names can be read.
@@ -28,30 +36,59 @@ import {
 // the authority on what counts as a reason.
 //
 // Props: pending ({ mode:"tier"|"lead"|"active", profile, leadCandidates }|null),
+//        leadCandidates: [{ sendId (USER id), email, tier: "admin"|"tier_1"|"tier_2" }]
 //        busy, error, reasonError, onConfirm(patch), onClose()
 
-const OTHER_TIER = { tier_1: "tier_2", tier_2: "tier_1" };
+// Rank, highest first. Tier 1 and Tier 2 hold the same powers, so a move
+// between them changes only who the manager reports to; crossing the Tier 2 /
+// Tier 3 line is what grants or removes the senior actions.
+const RANK = { tier_1: 1, tier_2: 2, tier_3: 3 };
 
 export default function ProfileChangeModal(props) {
   const [reason, setReason] = createSignal("");
   const [leadId, setLeadId] = createSignal("");
+  const [targetTier, setTargetTier] = createSignal("");
 
   const p = () => props.pending?.profile ?? null;
   const mode = () => props.pending?.mode ?? null;
 
-  // The tier this change lands on. Always the opposite of the current one —
-  // there are only two, so a picker would be a dropdown with one live option.
-  const nextTier = () => OTHER_TIER[String(p()?.tier)] ?? "tier_1";
-  const promoting = () => mode() === "tier" && nextTier() === "tier_1";
-  const demoting = () => mode() === "tier" && nextTier() === "tier_2";
+  // The tier other than the current one that the picker opens on — usually the
+  // adjacent one, so the most common change is one click.
+  const defaultTarget = (cur) =>
+    cur === "tier_1" ? "tier_2" : cur === "tier_2" ? "tier_1" : "tier_2";
+  const tierChoices = () => CM_TIERS.filter((t) => t !== p()?.tier);
+
+  // The tier this change lands on: the picked one for a tier change, the
+  // current one for a lead move (the lead rules are per tier).
+  const nextTier = () => (mode() === "tier" ? targetTier() : p()?.tier);
+  const gainsPowers = () =>
+    mode() === "tier" &&
+    !isSeniorTierValue(p()?.tier) &&
+    isSeniorTierValue(nextTier());
+  const losesPowers = () =>
+    mode() === "tier" &&
+    isSeniorTierValue(p()?.tier) &&
+    !isSeniorTierValue(nextTier());
+  const goingDown = () =>
+    mode() === "tier" && (RANK[nextTier()] ?? 0) > (RANK[p()?.tier] ?? 0);
   const deactivating = () => mode() === "active" && p()?.isActive !== false;
 
-  // A lead is picked when moving a tier-2 manager, and when DEMOTING — a tier-2
-  // manager always needs an active tier-1 lead, so a demotion that doesn't name
-  // one is a 422 the operator can only find out about by trying.
-  const needsLead = () => mode() === "lead" || demoting();
+  // Every tier change and every lead move picks a lead, because the server
+  // binds the two: tier_1 → an admin or nobody, tier_2 → a Tier 1 CM or an
+  // admin, tier_3 → a Tier 2 CM. Sending the tier alone would leave the
+  // profile in a state the model forbids.
+  const pickLead = () => mode() === "lead" || mode() === "tier";
+  const leadRequired = () => pickLead() && leadRequiredFor(nextTier());
 
-  const candidates = createMemo(() => props.pending?.leadCandidates ?? []);
+  // Filtered to the tiers the landing tier may report to, and never the
+  // manager themselves.
+  const candidates = createMemo(() => {
+    const allowed = leadTiersFor(nextTier());
+    const self = p()?.userId;
+    return (props.pending?.leadCandidates ?? []).filter(
+      (c) => allowed.includes(c.tier) && c.sendId !== self,
+    );
+  });
   const chosenLead = createMemo(() =>
     candidates().find((c) => String(c.sendId) === String(leadId())),
   );
@@ -64,6 +101,13 @@ export default function ProfileChangeModal(props) {
     props.pending;
     setReason("");
     setLeadId("");
+    setTargetTier(defaultTarget(props.pending?.profile?.tier));
+  });
+
+  // A lead that was valid for the previous tier pick may not be for this one.
+  createEffect(() => {
+    nextTier();
+    if (leadId() && !chosenLead()) setLeadId("");
   });
 
   const clients = () => p()?.clients ?? [];
@@ -76,7 +120,8 @@ export default function ProfileChangeModal(props) {
 
   const ready = () => {
     if (!reason().trim()) return false;
-    if (needsLead() && !leadId()) return false;
+    if (mode() === "tier" && !targetTier()) return false;
+    if (leadRequired() && !leadId()) return false;
     return true;
   };
 
@@ -86,13 +131,9 @@ export default function ProfileChangeModal(props) {
 
     if (mode() === "tier") {
       patch.tier = nextTier();
-      // The two fields move together on a tier change, because the server's
-      // rules bind them: a tier-2 manager always has an active tier-1 lead, and
-      // a tier-1 manager never has one. Sending the tier alone would leave the
-      // profile in a state the model forbids.
-      patch.teamLeadId = promoting() ? null : Number(leadId());
+      patch.teamLeadId = leadId() ? Number(leadId()) : null;
     } else if (mode() === "lead") {
-      patch.teamLeadId = Number(leadId());
+      patch.teamLeadId = leadId() ? Number(leadId()) : null;
     } else if (mode() === "active") {
       patch.isActive = p()?.isActive === false;
     }
@@ -101,16 +142,17 @@ export default function ProfileChangeModal(props) {
   };
 
   const title = () => {
-    if (mode() === "tier") return promoting() ? "Promote to Tier 1" : "Demote to Tier 2";
-    if (mode() === "lead") return "Move to another team lead";
+    if (mode() === "tier") return "Change tier";
+    if (mode() === "lead") return "Change who they report to";
     return deactivating() ? "Deactivate this manager" : "Reactivate this manager";
   };
 
   const subtitle = () => {
-    if (mode() === "tier")
-      return promoting()
-        ? "Grants five campaign and payment permissions at once."
-        : "Removes every campaign and payment permission at once.";
+    if (mode() === "tier") {
+      if (gainsPowers()) return "Grants the senior campaign and payment permissions at once.";
+      if (losesPowers()) return "Removes every senior campaign and payment permission at once.";
+      return "Tier 1 and Tier 2 hold the same permissions — this changes the reporting line.";
+    }
     if (mode() === "lead")
       return "Moves this manager's clients between two leads' dashboards.";
     return deactivating()
@@ -120,12 +162,12 @@ export default function ProfileChangeModal(props) {
 
   const cta = () => {
     if (props.busy) return "Saving…";
-    if (mode() === "tier") return promoting() ? "Promote to Tier 1" : "Demote to Tier 2";
-    if (mode() === "lead") return "Move to this lead";
+    if (mode() === "tier") return `Move to ${tierShortLabel(nextTier())}`;
+    if (mode() === "lead") return leadId() ? "Move to this lead" : "Clear lead";
     return deactivating() ? "Deactivate" : "Reactivate";
   };
 
-  const destructive = () => demoting() || deactivating();
+  const destructive = () => losesPowers() || deactivating();
 
   return (
     <Show when={props.pending}>
@@ -173,42 +215,54 @@ export default function ProfileChangeModal(props) {
               </div>
             </div>
 
-            {/* ── TIER: the permissions that move ── */}
+            {/* ── TIER: pick the landing tier, then what moves with it ── */}
             <Show when={mode() === "tier"}>
-              <div class="rounded-xl border border-[#E2E8F1] dark:border-gray-700 px-4 py-3.5">
-                <p class="text-sm font-bold text-[#14233A] dark:text-gray-100 mb-2.5">
-                  {promoting()
-                    ? "This grants all of the following:"
-                    : "This removes all of the following:"}
-                </p>
-                {/* Rendered at the tier being GRANTED when promoting (ticks) and
-                    the tier being LANDED ON when demoting (struck through), so
-                    the list always shows the state after the change. */}
-                <TierPowers tier={promoting() ? "tier_1" : "tier_2"} />
-                <p class="text-xs text-[#54657E] dark:text-gray-400 mt-3">
-                  {promoting()
-                    ? `${TIER_1_POWERS.length} permissions, granted in one change.`
-                    : "Tier 2 may do none of these."}
+              <div>
+                <label class="block text-sm font-semibold text-[#14233A] dark:text-gray-200 mb-1.5">
+                  New tier
+                </label>
+                <select
+                  value={targetTier()}
+                  onInput={(e) => setTargetTier(e.currentTarget.value)}
+                  disabled={props.busy}
+                  class={FIELD}
+                >
+                  <For each={tierChoices()}>
+                    {(t) => <option value={t}>{tierLabel(t)}</option>}
+                  </For>
+                </select>
+                <p class="text-xs text-[#8593A8] mt-1">
+                  Currently {tierLabel(p()?.tier, p()?.tierLabel) || "no tier"}.
                 </p>
               </div>
 
-              <Show when={promoting()}>
-                <p class="text-sm text-[#54657E] dark:text-gray-300">
-                  A Tier 1 manager has no team lead, so this also clears theirs
-                  {p()?.teamLeadEmail ? ` (${p().teamLeadEmail})` : ""}. Their{" "}
-                  {clientCount()} client{clientCount() === 1 ? "" : "s"} leave
-                  that lead's dashboard and sit under this manager instead.
-                </p>
+              <Show when={gainsPowers() || losesPowers()}>
+                <div class="rounded-xl border border-[#E2E8F1] dark:border-gray-700 px-4 py-3.5">
+                  <p class="text-sm font-bold text-[#14233A] dark:text-gray-100 mb-2.5">
+                    {gainsPowers()
+                      ? "This grants all of the following:"
+                      : "This removes all of the following:"}
+                  </p>
+                  {/* Drawn at the tier being LANDED ON, so the list always
+                      shows the state after the change. */}
+                  <TierPowers tier={nextTier()} />
+                  <p class="text-xs text-[#54657E] dark:text-gray-400 mt-3">
+                    {gainsPowers()
+                      ? `${TIER_1_POWERS.length} permissions, granted in one change.`
+                      : "Tier 3 may do none of these."}
+                  </p>
+                </div>
               </Show>
 
               {/* The guard tests ACTIVE members specifically, so the warning
-                  counts those — telling an operator a demotion will be refused
+                  counts those — telling an operator a change will be refused
                   because of a deactivated report would be a false stop. */}
-              <Show when={demoting() && activeTeam() > 0}>
+              <Show when={goingDown() && activeTeam() > 0}>
                 <p class="rounded-lg border border-[#E4B94A]/50 bg-[#FDF6E7] dark:bg-yellow-900/20 dark:border-yellow-700/50 px-3.5 py-2.5 text-xs text-[#8A6410] dark:text-yellow-200">
                   This manager currently leads {activeTeam()} active team member
-                  {activeTeam() === 1 ? "" : "s"}. The server refuses a demotion
-                  while any of them are active — move them to another lead first.
+                  {activeTeam() === 1 ? "" : "s"}. The server refuses a tier
+                  change while anyone still reports to them — move them to
+                  another lead first.
                 </p>
               </Show>
             </Show>
@@ -227,10 +281,10 @@ export default function ProfileChangeModal(props) {
                 </p>
                 <Show when={activeTeam() > 0}>
                   <p class="rounded-lg border border-[#E4B94A]/50 bg-[#FDF6E7] dark:bg-yellow-900/20 dark:border-yellow-700/50 px-3.5 py-2.5 text-xs text-[#8A6410] dark:text-yellow-200">
-                    {activeTeam()} active tier-2 manager
-                    {activeTeam() === 1 ? "" : "s"} report to this lead, and a
-                    tier-2 manager needs an ACTIVE lead — the server may refuse
-                    this until they are moved.
+                    {activeTeam()} active team member
+                    {activeTeam() === 1 ? "" : "s"} report to this manager, and
+                    a report needs an ACTIVE lead — the server may refuse this
+                    until they are moved.
                   </p>
                 </Show>
               </Show>
@@ -243,11 +297,17 @@ export default function ProfileChangeModal(props) {
               </Show>
             </Show>
 
-            {/* ── LEAD PICKER (a move, or the lead a demotion lands under) ── */}
-            <Show when={needsLead()}>
+            {/* ── LEAD PICKER — options follow the landing tier ──
+                tier_1 → an admin or nobody; tier_2 → a Tier 1 CM or an admin;
+                tier_3 → a Tier 2 CM. The server validates the same rule and
+                its 422 lands in the error banner below. */}
+            <Show when={pickLead()}>
               <div>
                 <label class="block text-sm font-semibold text-[#14233A] dark:text-gray-200 mb-1.5">
-                  {demoting() ? "Report to" : "New team lead"}
+                  Reports to
+                  <Show when={!leadRequired()}>
+                    <span class="font-normal text-[#8593A8]"> (optional)</span>
+                  </Show>
                 </label>
                 <select
                   value={leadId()}
@@ -255,19 +315,29 @@ export default function ProfileChangeModal(props) {
                   disabled={props.busy}
                   class={FIELD}
                 >
-                  <option value="">Choose an active Tier 1 lead…</option>
+                  <option value="">
+                    {leadRequired() ? "Choose who they report to…" : "No lead"}
+                  </option>
                   <For each={candidates()}>
-                    {(c) => <option value={c.sendId}>{cmLabel(c)}</option>}
+                    {(c) => (
+                      <option value={c.sendId}>
+                        {c.email ?? cmLabel(c)} ·{" "}
+                        {c.tier === "admin" ? "Admin" : tierShortLabel(c.tier)}
+                      </option>
+                    )}
                   </For>
                 </select>
                 <p class="text-xs text-[#8593A8] mt-1">
-                  {demoting()
-                    ? "A Tier 2 manager always reports to an active Tier 1 lead."
-                    : `Currently ${p()?.teamLeadEmail ?? "no lead"}.`}
+                  {nextTier() === "tier_1"
+                    ? "A Tier 1 manager reports to an admin, or to nobody."
+                    : nextTier() === "tier_2"
+                      ? "A Tier 2 manager reports to a Tier 1 manager or an admin."
+                      : "A Tier 3 manager reports to a Tier 2 manager."}{" "}
+                  Currently {p()?.teamLeadEmail ?? "no lead"}.
                 </p>
-                <Show when={!candidates().length}>
+                <Show when={leadRequired() && !candidates().length}>
                   <p class="text-xs text-[#AC2334] mt-1">
-                    There is no other active Tier 1 manager to report to.
+                    Nobody is eligible to lead a {tierShortLabel(nextTier())} manager.
                   </p>
                 </Show>
               </div>
@@ -278,24 +348,18 @@ export default function ProfileChangeModal(props) {
                 on. The count is the headline, the names are the review — and
                 they are the reason the detail route is fetched before the modal
                 opens. */}
-            <Show when={needsLead() && clients().length}>
+            <Show when={pickLead() && chosenLead() && clients().length}>
               <div class="rounded-xl border border-[#E2E8F1] dark:border-gray-700 overflow-hidden">
-                {/* A MOVE and a DEMOTION are different events for these
-                    clients. A tier-2 manager's clients leave one lead's
-                    dashboard for another's; a demoted tier-1's clients were only
-                    ever theirs, and the change is that a lead can now see them.
-                    Wording them the same way would misdescribe one of the two. */}
                 <div class="px-4 py-2.5 bg-[#F8FAFC] dark:bg-gray-800 border-b border-[#E2E8F1] dark:border-gray-700">
                   <p class="text-sm font-bold text-[#14233A] dark:text-gray-100">
                     {clients().length} client
-                    {clients().length === 1 ? "" : "s"}{" "}
-                    {demoting() ? "become visible to" : "move to"}{" "}
-                    {chosenLead() ? cmLabel(chosenLead()) : "the new lead"}
+                    {clients().length === 1 ? "" : "s"} become visible to{" "}
+                    {chosenLead().email ?? cmLabel(chosenLead())}
                   </p>
                   <p class="text-[11px] text-[#54657E] dark:text-gray-400 mt-0.5">
-                    {demoting()
-                      ? "That lead's dashboard gains this manager's whole book"
-                      : `Out of ${p()?.teamLeadEmail ?? "the current lead"}'s dashboard`}
+                    {p()?.teamLeadEmail
+                      ? `Out of ${p().teamLeadEmail}'s dashboard`
+                      : "That lead's dashboard gains this manager's whole book"}
                     , at once and for all history — not from today forward.
                   </p>
                 </div>
@@ -311,7 +375,7 @@ export default function ProfileChangeModal(props) {
               </div>
             </Show>
 
-            <Show when={needsLead() && !clients().length}>
+            <Show when={pickLead() && !clients().length}>
               <p class="text-sm text-[#8593A8]">
                 This manager holds no clients, so no client data changes hands.
               </p>
@@ -329,9 +393,11 @@ export default function ProfileChangeModal(props) {
                 disabled={props.busy}
                 placeholder={
                   mode() === "tier"
-                    ? promoting()
-                      ? "Why does this manager need Tier 1 permissions?"
-                      : "Why are these permissions being removed?"
+                    ? gainsPowers()
+                      ? "Why does this manager need senior permissions?"
+                      : losesPowers()
+                        ? "Why are these permissions being removed?"
+                        : "Why is this manager changing tier?"
                     : mode() === "lead"
                       ? "Why are these clients moving to another lead?"
                       : deactivating()
@@ -390,8 +456,8 @@ export default function ProfileChangeModal(props) {
               title={
                 !reason().trim()
                   ? "A reason is required."
-                  : needsLead() && !leadId()
-                    ? "Choose a team lead."
+                  : leadRequired() && !leadId()
+                    ? "Choose who they report to."
                     : undefined
               }
               class={`flex-1 px-4 py-2.5 rounded-lg text-white font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition ${

@@ -11,7 +11,7 @@ import {
 } from "solid-js";
 import { handleLogout } from "../pages/login/LoginForm";
 import { clearClientDashboardContext } from "../cacheStore/appStore";
-import { isTier1CM } from "../stores/currentUser";
+import { isSeniorCM } from "../stores/currentUser";
 import {
   budgetGuardPending,
   watchBudgetGuardPending,
@@ -677,22 +677,22 @@ export default function Sidebar() {
         ),
         path: "/billing/additional-services",
       },
-      // ── Tier-1 CM payment entry ───────────────────────────────────────────
-      // TIER-1 ONLY. `roles` can't express this on its own — tier-2 CMs share
+      // ── Senior CM payment entry ────────────────────────────────────────────
+      // TIER-1/TIER-2 ONLY. `roles` can't express this alone — tier-3 CMs share
       // the role and must not see these — so the `when` predicate carries the
       // tier check. It reads the reactive currentUser store, so the entries
       // appear as soon as /auth/me resolves rather than needing a reload.
       {
         name: "Record Payment",
         roles: ["campaign_manager"],
-        when: isTier1CM,
+        when: isSeniorCM,
         icon: () => <Icon d="M12 9v6m3-3H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />,
         path: "/payments/record",
       },
       {
         name: "My Payment Entries",
         roles: ["campaign_manager"],
-        when: isTier1CM,
+        when: isSeniorCM,
         icon: () => (
           <Icon d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
         ),
