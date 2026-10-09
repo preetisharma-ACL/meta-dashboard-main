@@ -1,6 +1,6 @@
 import { createResource, For, Show } from "solid-js";
 import { canSwitch, currentUser } from "../stores/currentUser";
-import { tierShortLabel } from "../utils/cmTiers";
+import { tierLabel } from "../utils/cmTiers";
 import {
   asTeamMemberId,
   ownScope,
@@ -21,8 +21,8 @@ import { fetchTeamMembers } from "../services/cm";
 // The team list runs down the whole tree: a Tier 1 gets their Tier 2s AND
 // those Tier 2s' Tier 3s; a Tier 2 gets their Tier 3s. Each option names the
 // member's tier and, when it isn't the viewer, who they report to.
-// UNVERIFIED: the reports-to key on /cm/team-members/ — read as team_lead_email
-// (the /cm/profiles/ spelling) with reports_to_email behind it.
+// /cm/team-members/ rows: { user_id, email, tier, tier_label, team_lead_email }
+// (confirmed on prod 2026-10-09).
 const ME = "__me__";
 const TEAM = "__team__";
 
@@ -42,12 +42,12 @@ export default function SwitchModeDropdown() {
   );
 
   const reportsTo = (m) => {
-    const lead = m.team_lead_email ?? m.reports_to_email ?? null;
+    const lead = m.team_lead_email ?? null;
     return lead && lead !== currentUser.email ? lead : null;
   };
 
   const optionLabel = (m) =>
-    [m.email, tierShortLabel(m.tier), reportsTo(m) && `reports to ${reportsTo(m)}`]
+    [m.email, tierLabel(m.tier, m.tier_label), reportsTo(m) && `reports to ${reportsTo(m)}`]
       .filter(Boolean)
       .join(" · ");
 
