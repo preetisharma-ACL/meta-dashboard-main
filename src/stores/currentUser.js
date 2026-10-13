@@ -151,6 +151,21 @@ export const isActiveSeniorCM = () => {
   );
 };
 
+// ─── Projects page (/projects-nomen) gates ────────────────────────────────────
+// PATCH /projects/{id}/: admin, coordination, tier-1/tier-2 CMs. Tier 3 and
+// clients read only (403). A senior CM editing outside their clients gets 404.
+// Tier only — the endpoint does not check is_active (see isActiveSeniorCM).
+// Renaming and DELETE are admin only.
+export const canEditProjects = () => {
+  const role = currentUser.loaded ? currentUser.role : readAuth()?.role;
+  return role === "admin" || role === "coordination" || isSeniorCM();
+};
+export const canRenameProjects = () => {
+  const role = currentUser.loaded ? currentUser.role : readAuth()?.role;
+  return role === "admin";
+};
+export const canDeleteProjects = canRenameProjects;
+
 // Who may POST /payments/add-funds/ — the accounts desk and senior (tier-1/tier-2) CMs.
 export const canRecordPayments = () => isAccountsDesk() || isSeniorCM();
 

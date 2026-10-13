@@ -1,7 +1,16 @@
-import { createSignal, createMemo, onMount, For, Show } from "solid-js";
+import { createSignal, onMount, For, Show } from "solid-js";
 import { fetchProjects } from "../services/fetchProjects"; // ← adjust path
+import { updateProject, deleteProject } from "../services/updateProject";
 import Avatar from "../../../components/common/Avatar";
 import RowsPerPageSelect from "../../../components/common/RowsPerPageSelect";
+import {
+  canEditProjects,
+  canRenameProjects,
+  canDeleteProjects,
+} from "../../../stores/currentUser";
+import SuccessToast, {
+  showToast,
+} from "../../../components/common/SuccessToast";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -10,7 +19,48 @@ const PROPERTY_COLORS = {
   commercial: "bg-amber-100 text-amber-700 ring-1 ring-amber-300",
   apartment: "bg-sky-100 text-sky-700 ring-1 ring-sky-300",
   villa: "bg-purple-100 text-purple-700 ring-1 ring-purple-300",
+  plot: "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300",
 };
+
+// What PATCH accepts for property_type; "" = not set.
+const PROPERTY_TYPES = ["residential", "commercial", "plot", "villa", "apartment"];
+
+// The Types filter's "Not set" option. UNVERIFIED: the token the list endpoint
+// matches a blank property_type on was not in the backend note — confirm it.
+const TYPE_NOT_SET = "not_set";
+
+const STATUSES = ["active", "inactive", "paused"];
+const PRIORITIES = ["high", "medium", "low"];
+
+// The fields the edit form owns. Only the ones that changed are PATCHed.
+const EDIT_FIELDS = [
+  "name",
+  "city",
+  "location",
+  "property_type",
+  "rera_number",
+  "status",
+  "priority",
+  "budget",
+  "start_date",
+  "end_date",
+];
+
+const RENAME_WARNING =
+  "Campaigns named with the old project name will create a new project on the next sync unless their names in Meta are changed too.";
+
+// A stored value outside the known list still gets its own option, so the
+// select shows what's really saved instead of silently landing on the first.
+const withCurrent = (list, v) => (!v || list.includes(v) ? list : [v, ...list]);
+
+const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+const isBlank = (v) => v == null || String(v).trim() === "";
+
+// ~330 projects had fake "Delhi / India / Residential" cleared by the sync fix,
+// so blank is common and real: a muted "Not set", never "—" or a guess.
+const NotSet = () => (
+  <span class="text-xs italic text-gray-400 dark:text-gray-500">Not set</span>
+);
 
 const PRIORITY_COLORS = {
   high: "bg-red-100 text-red-700 ring-1 ring-red-300",
@@ -154,6 +204,133 @@ export default function Projects() {
     });
   };
 
+  // ── Edit / delete ─────────────────────────────────────────────────────────
+  // The row being edited, the form, and the rename-confirm step. A PATCH sends
+  // only what changed, so an untouched blank city stays blank and an untouched
+  // name never trips the rename guard.
+  const [editing, setEditing] = createSignal(null);
+  const [form, setForm] = createSignal({});
+  const [saving, setSaving] = createSignal(false);
+  const [editError, setEditError] = createSignal("");
+  const [confirmRename, setConfirmRename] = createSignal(false);
+  const [confirmDelete, setConfirmDelete] = createSignal(null);
+  const [deleting, setDeleting] = createSignal(false);
+
+  const toForm = (p) => {
+    const f = {};
+    for (const k of EDIT_FIELDS) f[k] = p[k] == null ? "" : String(p[k]);
+    // date inputs want YYYY-MM-DD; a datetime string still edits cleanly.
+    f.start_date = f.start_date.slice(0, 10);
+    f.end_date = f.end_date.slice(0, 10);
+    return f;
+  };
+
+  const openEdit = (p) => {
+    if (!canEditProjects()) return;
+    setEditing(p);
+    setForm(toForm(p));
+    setEditError("");
+    setConfirmRename(false);
+  };
+  const closeEdit = () => {
+    setEditing(null);
+    setConfirmRename(false);
+    setEditError("");
+  };
+  const setField = (k, v) => {
+    setForm((f) => ({ ...f, [k]: v }));
+    if (editError()) setEditError("");
+  };
+
+  const changes = () => {
+    const before = toForm(editing() || {});
+    const out = {};
+    for (const k of EDIT_FIELDS) {
+      if (form()[k] === before[k]) continue;
+      if (k === "name" && !canRenameProjects()) continue;
+      let v = form()[k];
+      if (k === "budget") v = v === "" ? null : Number(v);
+      else if (k === "start_date" || k === "end_date") v = v || null;
+      else if (k === "name") v = v.trim();
+      // city / location / rera_number / property_type: "" = not set.
+      out[k] = v;
+    }
+    return out;
+  };
+  const renaming = () => "name" in changes();
+
+  const validate = (c) => {
+    if ("name" in c && !c.name) return "Project name can't be empty.";
+    if ("budget" in c && !(c.budget > 0)) return "Budget must be greater than 0.";
+    const s = form().start_date;
+    const e = form().end_date;
+    if (s && e && e < s) return "End date can't be before the start date.";
+    return "";
+  };
+
+  // A 404 to a CM is scoping, not a missing project.
+  const saveErrorText = (err) => {
+    if (err?.status === 404) return "This project is not in your clients.";
+    if (err?.status === 403) return "You don't have permission to edit projects.";
+    const f = err?.fields;
+    if (f && typeof f === "object") {
+      const parts = Object.entries(f).map(
+        ([k, v]) => `${k}: ${Array.isArray(v) ? v.join(" ") : v}`,
+      );
+      if (parts.length) return parts.join(" · ");
+    }
+    return err?.message || "Couldn't save the project. Please try again.";
+  };
+
+  const submitEdit = async (confirmed = false) => {
+    const c = changes();
+    if (Object.keys(c).length === 0) return closeEdit();
+    const problem = validate(c);
+    if (problem) return setEditError(problem);
+    // Renames go through the warning first; the backend 400s without the flag.
+    if ("name" in c && !confirmed) return setConfirmRename(true);
+    if ("name" in c) c.confirm_rename = true;
+    try {
+      setSaving(true);
+      await updateProject(editing().id, c);
+      const name = c.name ?? editing().name;
+      closeEdit();
+      showToast(`Saved changes to "${name}".`, "Project updated");
+      load(page());
+    } catch (err) {
+      console.error("Failed to update project:", err);
+      setConfirmRename(false);
+      setEditError(saveErrorText(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const submitDelete = async () => {
+    const p = confirmDelete();
+    if (!p || !canDeleteProjects()) return;
+    try {
+      setDeleting(true);
+      await deleteProject(p.id);
+      setConfirmDelete(null);
+      showToast(`Deleted "${p.name}".`, "Project deleted");
+      // The last row on a page leaves an empty page behind — step back.
+      load(projects().length === 1 && page() > 1 ? page() - 1 : page());
+    } catch (err) {
+      console.error("Failed to delete project:", err);
+      setConfirmDelete(null);
+      showToast(err?.message || "Couldn't delete the project.", "Delete failed");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const showActions = () => canEditProjects() || canDeleteProjects();
+
+  const inputCls =
+    "w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-60 disabled:cursor-not-allowed";
+  const labelCls = "block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1";
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -217,10 +394,10 @@ export default function Projects() {
                  focus:outline-none focus:ring-1 focus:ring-purple-400 dark:focus:ring-gray-600 cursor-pointer"
         >
           <option value="all">All Types</option>
-          <option value="residential">Residential</option>
-          <option value="commercial">Commercial</option>
-          <option value="apartment">Apartment</option>
-          <option value="villa">Villa</option>
+          <For each={PROPERTY_TYPES}>
+            {(t) => <option value={t}>{cap(t)}</option>}
+          </For>
+          <option value={TYPE_NOT_SET}>Not set</option>
         </select>
 
         <select
@@ -307,6 +484,9 @@ export default function Projects() {
               >
                 Campaigns {sortIcon("campaign_count")}
               </th>
+              <Show when={showActions()}>
+                <th class="p-3 text-center whitespace-nowrap">Action</th>
+              </Show>
             </tr>
           </thead>
 
@@ -383,15 +563,32 @@ export default function Projects() {
                       </div>
                     </td>
                     <td class="p-3 text-center">
-                      <span
-                        class={`px-2.5 py-0.5 rounded-full text-xs font-semibold
-                        ${PROPERTY_COLORS[project.property_type] ?? "bg-gray-100 text-gray-600"}`}
+                      <Show
+                        when={!isBlank(project.property_type)}
+                        fallback={<NotSet />}
                       >
-                        {String(project.property_type ?? "").toUpperCase()}
-                      </span>
+                        <span
+                          class={`px-2.5 py-0.5 rounded-full text-xs font-semibold
+                          ${PROPERTY_COLORS[project.property_type] ?? "bg-gray-100 text-gray-600"}`}
+                        >
+                          {String(project.property_type).toUpperCase()}
+                        </span>
+                      </Show>
                     </td>
+                    {/* City, with location beneath it — both blank on ~330
+                        projects after the sync stopped writing fake values. */}
                     <td class="p-3 text-gray-600 dark:text-gray-400">
-                      {project.city ?? "—"}
+                      <Show when={!isBlank(project.city)} fallback={<NotSet />}>
+                        {project.city}
+                      </Show>
+                      <span class="block text-xs text-gray-400 dark:text-gray-500">
+                        <Show
+                          when={!isBlank(project.location)}
+                          fallback={<NotSet />}
+                        >
+                          {project.location}
+                        </Show>
+                      </span>
                     </td>
                     <td class="p-3 text-center">
                       <span
@@ -425,6 +622,28 @@ export default function Projects() {
                     <td class="p-3 text-center text-gray-500 dark:text-gray-400">
                       {fmt(project.campaign_count, "0")}
                     </td>
+                    <Show when={showActions()}>
+                      <td class="p-3 text-center whitespace-nowrap">
+                        <Show when={canEditProjects()}>
+                          <button
+                            type="button"
+                            onClick={() => openEdit(project)}
+                            class="px-2.5 py-1 text-xs font-medium rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
+                          >
+                            Edit
+                          </button>
+                        </Show>
+                        <Show when={canDeleteProjects()}>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDelete(project)}
+                            class="ml-2 px-2.5 py-1 text-xs font-medium rounded-md border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
+                          >
+                            Delete
+                          </button>
+                        </Show>
+                      </td>
+                    </Show>
                   </tr>
                 )}
               </For>
@@ -528,6 +747,262 @@ export default function Projects() {
           </button>
         </div>
       </div>
+
+      {/* ── Edit project ── */}
+      <Show when={editing()}>
+        <div
+          class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={(e) => e.target === e.currentTarget && !saving() && closeEdit()}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Edit project"
+            class="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xl"
+          >
+            <div class="px-6 pt-5 pb-3 border-b border-gray-100 dark:border-gray-800">
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                Edit project
+              </h2>
+              <p class="text-xs text-gray-500 dark:text-gray-400">
+                #{editing().id} · {editing().name}
+              </p>
+            </div>
+
+            <div class="px-6 py-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div class="sm:col-span-2">
+                <label class={labelCls}>
+                  Project name
+                  <Show when={!canRenameProjects()}>
+                    <span class="ml-1 text-gray-400">(admin only)</span>
+                  </Show>
+                </label>
+                <input
+                  type="text"
+                  value={form().name}
+                  disabled={!canRenameProjects()}
+                  onInput={(e) => setField("name", e.target.value)}
+                  class={inputCls}
+                />
+                <Show when={renaming()}>
+                  <p class="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                    Renaming — you'll be asked to confirm on save.
+                  </p>
+                </Show>
+              </div>
+
+              <div>
+                <label class={labelCls}>City</label>
+                <input
+                  type="text"
+                  value={form().city}
+                  placeholder="Not set"
+                  onInput={(e) => setField("city", e.target.value)}
+                  class={inputCls}
+                />
+              </div>
+              <div>
+                <label class={labelCls}>Location</label>
+                <input
+                  type="text"
+                  value={form().location}
+                  placeholder="Not set"
+                  onInput={(e) => setField("location", e.target.value)}
+                  class={inputCls}
+                />
+              </div>
+
+              <div>
+                <label class={labelCls}>Property type</label>
+                <select
+                  value={form().property_type}
+                  onChange={(e) => setField("property_type", e.target.value)}
+                  class={inputCls}
+                >
+                  <option value="">Not set</option>
+                  <For each={PROPERTY_TYPES}>
+                    {(t) => <option value={t}>{cap(t)}</option>}
+                  </For>
+                </select>
+              </div>
+              <div>
+                <label class={labelCls}>RERA number</label>
+                <input
+                  type="text"
+                  value={form().rera_number}
+                  placeholder="Not set"
+                  onInput={(e) => setField("rera_number", e.target.value)}
+                  class={inputCls}
+                />
+              </div>
+
+              <div>
+                <label class={labelCls}>Status</label>
+                <select
+                  value={form().status}
+                  onChange={(e) => setField("status", e.target.value)}
+                  class={inputCls}
+                >
+                  <For each={withCurrent(STATUSES, editing().status)}>
+                    {(s) => <option value={s}>{cap(s)}</option>}
+                  </For>
+                </select>
+              </div>
+              <div>
+                <label class={labelCls}>Priority</label>
+                <select
+                  value={form().priority}
+                  onChange={(e) => setField("priority", e.target.value)}
+                  class={inputCls}
+                >
+                  <For each={withCurrent(PRIORITIES, editing().priority)}>
+                    {(s) => <option value={s}>{cap(s)}</option>}
+                  </For>
+                </select>
+              </div>
+
+              <div>
+                <label class={labelCls}>Budget (₹)</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={form().budget}
+                  onInput={(e) => setField("budget", e.target.value)}
+                  class={inputCls}
+                />
+              </div>
+              <div />
+
+              <div>
+                <label class={labelCls}>Start date</label>
+                <input
+                  type="date"
+                  value={form().start_date}
+                  onInput={(e) => setField("start_date", e.target.value)}
+                  class={inputCls}
+                />
+              </div>
+              <div>
+                <label class={labelCls}>End date</label>
+                <input
+                  type="date"
+                  value={form().end_date}
+                  min={form().start_date || undefined}
+                  onInput={(e) => setField("end_date", e.target.value)}
+                  class={inputCls}
+                />
+              </div>
+            </div>
+
+            <Show when={editError()}>
+              <div class="mx-6 mb-4 rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-4 py-2.5 text-sm text-red-700 dark:text-red-300">
+                {editError()}
+              </div>
+            </Show>
+
+            <div class="px-6 py-4 border-t border-gray-100 dark:border-gray-800 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeEdit}
+                disabled={saving()}
+                class="px-4 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => submitEdit(false)}
+                disabled={saving()}
+                class="px-4 py-2 text-sm rounded-lg bg-blue-900 text-white hover:bg-blue-800 disabled:opacity-50"
+              >
+                {saving() ? "Saving…" : "Save"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </Show>
+
+      {/* ── Rename confirm ── */}
+      <Show when={editing() && confirmRename()}>
+        <div class="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-label="Confirm rename"
+            class="w-full max-w-md rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xl p-6"
+          >
+            <h3 class="text-base font-semibold text-gray-900 dark:text-white">
+              Rename project?
+            </h3>
+            <p class="mt-2 text-sm text-gray-600 dark:text-gray-300">
+              <span class="font-medium">{editing().name}</span> →{" "}
+              <span class="font-medium">{form().name.trim()}</span>
+            </p>
+            <p class="mt-3 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
+              {RENAME_WARNING}
+            </p>
+            <div class="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmRename(false)}
+                disabled={saving()}
+                class="px-4 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                onClick={() => submitEdit(true)}
+                disabled={saving()}
+                class="px-4 py-2 text-sm rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
+              >
+                {saving() ? "Saving…" : "Rename and save"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </Show>
+
+      {/* ── Delete confirm (admin) ── */}
+      <Show when={confirmDelete()}>
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-label="Confirm delete"
+            class="w-full max-w-md rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xl p-6"
+          >
+            <h3 class="text-base font-semibold text-gray-900 dark:text-white">
+              Delete project?
+            </h3>
+            <p class="mt-2 text-sm text-gray-600 dark:text-gray-300">
+              <span class="font-medium">{confirmDelete().name}</span> (#
+              {confirmDelete().id}) will be permanently deleted. This can't be
+              undone.
+            </p>
+            <div class="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(null)}
+                disabled={deleting()}
+                class="px-4 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submitDelete}
+                disabled={deleting()}
+                class="px-4 py-2 text-sm rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleting() ? "Deleting…" : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </Show>
+
+      <SuccessToast />
     </div>
   );
 }

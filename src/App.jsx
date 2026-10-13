@@ -587,7 +587,9 @@ function App() {
             <Route
               path="/projects-nomen"
               component={() => (
-                <AdminRoute>
+                // Editable by admin, coordination and T1/T2 CMs; T3 reads only
+                // (canEditProjects gates the controls).
+                <AdminRoute roles={["admin", "coordination", "campaign_manager"]}>
                   <Projects />
                 </AdminRoute>
               )}
