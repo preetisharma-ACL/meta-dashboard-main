@@ -2057,14 +2057,6 @@ export default function MainDashboard() {
             All projects with live marketing campaigns.
           </p>
         </div>
-        {/* <div class="flex items-center gap-2">
-                    <A
-                        href="/add-project"
-                        class="bg-blue-900 hover:bg-blue-800 transition-all text-white px-4 py-2 rounded-lg text-sm font-medium shadow"
-                    >
-                        + Add New Project
-                    </A>
-                </div> */}
         <Show
           when={
             (userRole() === "admin" ||

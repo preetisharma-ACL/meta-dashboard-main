@@ -10,7 +10,6 @@ import CMBanner from "./components/CMBanner";
 import SuspendedAccountsBanner from "./components/SuspendedAccountsBanner";
 import TricolourWash from "./components/common/TricolourWash";
 import MainDashboard from "./pages/ClientDashboard";
-import AddProject from "./pages/AddProjects";
 import Billing from "./pages/Billing";
 import ClientDelivery from "./pages/Client-Delivery";
 import PerformingProjects from "./pages/PerformingProjects";
@@ -454,7 +453,6 @@ function App() {
             />
             <Route path="/activity" component={Activity} />
             <Route path="/:client-nomen-name" component={MainDashboard} />
-            <Route path="/add-project" component={AddProject} />
             <Route path="/billing" component={Billing} />
             <Route path="/daily-reports" component={DailyReports} />
             {/* Client-only; the endpoint 404s for every other role. Static
