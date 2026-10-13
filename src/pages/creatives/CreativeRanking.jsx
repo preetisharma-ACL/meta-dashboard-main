@@ -23,6 +23,10 @@ import {
   SectionTitle,
   ROW,
   NUM,
+  STICKY_TH,
+  STICKY_TD,
+  createTableSort,
+  sortRows,
 } from "../../components/creatives/CreativeUI";
 
 // ─── Creative Ranking (/creatives/ranking) ────────────────────────────────────
@@ -32,19 +36,53 @@ import {
 // winner. Unknown codes are codes found in ad names that the library has never
 // issued, usually a typo by whoever named the ad.
 
+// Rank and Code stay pinned while the table scrolls sideways. Rank has a FIXED
+// width so Code can sit at a matching offset (w-20 ↔ left-20); without Rank
+// (the not-enough-data table) Code pins at left-0.
+const RANK_W = "w-20 min-w-[5rem] max-w-[5rem]";
+const RANK_TH = `${STICKY_TH} ${RANK_W}`;
+const RANK_TD = `${STICKY_TD} ${RANK_W}`;
+const CODE_AFTER_RANK_TH = STICKY_TH.replace("left-0", "left-20");
+const CODE_AFTER_RANK_TD = STICKY_TD.replace("left-0", "left-20");
+
+// Rank is not sortable: it is the API's rank (leads, then CPL) and is shown
+// unchanged whatever the sort, so "#3" still means third by leads.
 const COLS = [
-  { label: "Rank" },
-  { label: "Code" },
-  { label: "Title" },
-  { label: "Type" },
-  { label: "Client (made for)" },
-  { label: "Project" },
-  { label: "Leads", align: "right" },
-  { label: "Spend", align: "right" },
-  { label: "CPL", align: "right" },
-  { label: "Ads", align: "right" },
-  { label: "Clients running", align: "right" },
+  { label: "Rank", sticky: true, stickyClass: RANK_TH },
+  { label: "Code", key: "code", sticky: true, stickyClass: CODE_AFTER_RANK_TH },
+  { label: "Title", key: "title" },
+  { label: "Type", key: "kind" },
+  { label: "Client (made for)", key: "client_nomen" },
+  { label: "Project", key: "project" },
+  { label: "Leads", key: "leads", align: "right" },
+  { label: "Spend", key: "spend", align: "right" },
+  { label: "CPL", key: "cpl", align: "right" },
+  { label: "Ads", key: "ads", align: "right" },
+  { label: "Clients running", key: "clients", align: "right" },
 ];
+const UNRANKED_COLS = [
+  { ...COLS[1], stickyClass: undefined },
+  ...COLS.slice(2),
+];
+
+// Type sorts by the label on screen, not the raw enum.
+const SORT_GET = { kind: (r) => kindLabel(r.kind) };
+
+// Default = Leads high → low, today's order: the API sends rows by leads then
+// CPL, and the sort is stable, so equal-lead rows keep that CPL tiebreak.
+// A new text column opens A→Z, a new number column high→low; re-clicking flips.
+const TEXT_KEYS = new Set(["code", "title", "kind", "client_nomen", "project"]);
+const leadsFirst = () => {
+  const [sort, , setSort] = createTableSort();
+  setSort({ key: "leads", dir: "desc" });
+  const onSort = (key) =>
+    setSort((s) =>
+      s.key === key
+        ? { key, dir: s.dir === "asc" ? "desc" : "asc" }
+        : { key, dir: TEXT_KEYS.has(key) ? "asc" : "desc" },
+    );
+  return [sort, onSort];
+};
 
 export default function CreativeRanking() {
   const navigate = useNavigate();
@@ -83,20 +121,38 @@ export default function CreativeRanking() {
   });
   const minLeads = () => d()?.min_leads ?? 5;
 
+  // One sort per table, held HERE rather than in the tables: the lower tables
+  // unmount while a new range loads, and the choice must survive that — it is
+  // kept across date-range and filter changes.
+  const [rankedSort, onRankedSort] = leadsFirst();
+  const [unrankedSort, onUnrankedSort] = leadsFirst();
+  const [unknownSort, onUnknownSort] = leadsFirst();
+  const ranked = () => sortRows(d()?.ranked ?? [], rankedSort(), SORT_GET);
+  const unranked = () => sortRows(d()?.not_enough_data ?? [], unrankedSort(), SORT_GET);
+
+  // Long names truncate, full name on hover — keeps sideways scrolling down.
+  const Clip = (props) => (
+    <td class="max-w-[12rem]">
+      <span class="block truncate" title={props.text ?? ""}>
+        {props.text ?? "—"}
+      </span>
+    </td>
+  );
+
   const Row = (props) => {
     const r = props.r;
     return (
-      <tr class={ROW + " cursor-pointer"} onClick={() => r.id && navigate(`/creatives/${r.id}`)}>
+      <tr class={ROW + " group cursor-pointer"} onClick={() => r.id && navigate(`/creatives/${r.id}`)}>
         <Show when={props.ranked}>
-          <td class="font-bold text-[#AC2334] tabular-nums">#{r.rank}</td>
+          <td class={`${RANK_TD} font-bold text-[#AC2334] tabular-nums`}>#{r.rank}</td>
         </Show>
-        <td>
+        <td class={props.ranked ? CODE_AFTER_RANK_TD : STICKY_TD}>
           <CodeCell code={r.code} />
         </td>
         <td class="font-medium max-w-[16rem]">{r.title || "—"}</td>
         <td class="whitespace-nowrap">{kindLabel(r.kind)}</td>
-        <td class="whitespace-nowrap">{r.client_nomen ?? "—"}</td>
-        <td class="whitespace-nowrap">{r.project ?? "—"}</td>
+        <Clip text={r.client_nomen} />
+        <Clip text={r.project} />
         <td class={NUM + " font-semibold"}>{fmtInt(r.leads)}</td>
         <td class={NUM}>{fmtMoney(r.spend)}</td>
         <td class={NUM}>{fmtCpl(r.cpl)}</td>
@@ -153,10 +209,12 @@ export default function CreativeRanking() {
       <DataTable
         cols={COLS}
         loading={data.loading}
-        empty={!(d()?.ranked ?? []).length}
+        empty={!ranked().length}
         emptyText={`No creative has ${minLeads()}+ leads in this range.`}
+        sort={rankedSort()}
+        onSort={onRankedSort}
       >
-        <For each={d()?.ranked ?? []}>{(r) => <Row r={r} ranked />}</For>
+        <For each={ranked()}>{(r) => <Row r={r} ranked />}</For>
       </DataTable>
 
       <Show when={!data.loading && d()}>
@@ -164,11 +222,13 @@ export default function CreativeRanking() {
           Not enough data yet (under {minLeads()} leads)
         </SectionTitle>
         <DataTable
-          cols={COLS.slice(1)}
-          empty={!(d().not_enough_data ?? []).length}
+          cols={UNRANKED_COLS}
+          empty={!unranked().length}
           emptyText="None."
+          sort={unrankedSort()}
+          onSort={onUnrankedSort}
         >
-          <For each={d().not_enough_data ?? []}>{(r) => <Row r={r} />}</For>
+          <For each={unranked()}>{(r) => <Row r={r} />}</For>
         </DataTable>
 
         <Show when={Number(d().no_activity_count) > 0}>
@@ -178,7 +238,11 @@ export default function CreativeRanking() {
           </p>
         </Show>
 
-        <UnknownCodesPanel codes={d().unknown_codes ?? []} />
+        <UnknownCodesPanel
+          codes={d().unknown_codes ?? []}
+          sort={unknownSort()}
+          onSort={onUnknownSort}
+        />
       </Show>
     </PageShell>
   );
@@ -186,7 +250,10 @@ export default function CreativeRanking() {
 
 // unknown_codes rows here are per-code aggregates:
 // {code, leads, spend, cpl, ads, clients, campaigns}.
+// Sort state comes from the caller (it must outlive this panel, which unmounts
+// while a new range loads); unsorted when none is passed.
 export function UnknownCodesPanel(props) {
+  const rows = () => sortRows(props.codes, props.sort);
   return (
     <div class="mt-8 rounded-xl border border-[#D89A2B]/40 bg-[#FDF6E9] dark:bg-yellow-900/10 dark:border-yellow-800 p-5">
       <h2 class="text-base font-bold text-[#7A5410] dark:text-yellow-200">Unknown codes</h2>
@@ -195,18 +262,20 @@ export function UnknownCodesPanel(props) {
       </p>
       <DataTable
         cols={[
-          { label: "Code" },
-          { label: "Leads", align: "right" },
-          { label: "Spend", align: "right" },
-          { label: "CPL", align: "right" },
-          { label: "Ads", align: "right" },
-          { label: "Clients", align: "right" },
-          { label: "Campaigns", align: "right" },
+          { label: "Code", key: "code" },
+          { label: "Leads", key: "leads", align: "right" },
+          { label: "Spend", key: "spend", align: "right" },
+          { label: "CPL", key: "cpl", align: "right" },
+          { label: "Ads", key: "ads", align: "right" },
+          { label: "Clients", key: "clients", align: "right" },
+          { label: "Campaigns", key: "campaigns", align: "right" },
         ]}
         empty={!props.codes.length}
         emptyText="None in this range."
+        sort={props.sort}
+        onSort={props.onSort}
       >
-        <For each={props.codes}>
+        <For each={rows()}>
           {(u) => (
             <tr class={ROW}>
               <td class="font-mono font-semibold whitespace-nowrap text-[#7A5410] dark:text-yellow-200">

@@ -450,7 +450,9 @@ export function DataTable(props) {
                 <th
                   class={
                     (c.align === "right" ? "text-right" : "text-left") +
-                    (c.sticky ? " " + STICKY_TH : "")
+                    // stickyClass pins a column at an offset other than
+                    // left-0, for a second pinned column.
+                    (c.sticky ? " " + (c.stickyClass ?? STICKY_TH) : "")
                   }
                 >
                   <Show when={c.key && props.onSort} fallback={c.label}>
@@ -515,14 +517,17 @@ export function createTableSort() {
   return [sort, onSort, setSort];
 }
 
-// Stable, blanks-last sort. Numeric strings ("1234.50") compare as numbers;
-// anything else compares as case-insensitive text.
-export function sortRows(rows, sort) {
+// Stable, blanks-last sort (blanks stay last in BOTH directions). Numeric
+// strings ("1234.50") compare as numbers; anything else compares as
+// case-insensitive text. `get` optionally maps a key to the value actually
+// shown (e.g. a type's label rather than its raw enum), so the order matches
+// what the reader sees.
+export function sortRows(rows, sort, get) {
   const { key, dir } = sort ?? {};
   if (!key) return rows;
   const sign = dir === "asc" ? 1 : -1;
   const val = (r) => {
-    const v = r?.[key];
+    const v = get?.[key] ? get[key](r) : r?.[key];
     if (v == null || v === "") return null;
     const n = typeof v === "number" ? v : Number(v);
     return Number.isFinite(n) ? n : String(v).toLowerCase();
@@ -542,7 +547,8 @@ export function sortRows(rows, sort) {
     .map((x) => x.r);
 }
 
-// Sticky first column: a col with sticky:true pins its <th>; the caller puts
+// Sticky first column: a col with sticky:true pins its <th> (stickyClass to pin
+// it somewhere other than left-0); the caller puts
 // STICKY_TD on the matching <td> and "group" on the <tr>. Sticky cells need an
 // OPAQUE background or the columns scrolling underneath show through, so the
 // row-hover tint is repeated here as a solid colour. The right-edge shadow
