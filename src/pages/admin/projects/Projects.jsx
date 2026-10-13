@@ -1,5 +1,5 @@
 import { createSignal, onMount, For, Show } from "solid-js";
-import { fetchProjects } from "../services/fetchProjects"; // ← adjust path
+import { fetchProjects, fetchProjectCities } from "../services/fetchProjects"; // ← adjust path
 import { updateProject, deleteProject } from "../services/updateProject";
 import Avatar from "../../../components/common/Avatar";
 import RowsPerPageSelect from "../../../components/common/RowsPerPageSelect";
@@ -25,9 +25,10 @@ const PROPERTY_COLORS = {
 // What PATCH accepts for property_type; "" = not set.
 const PROPERTY_TYPES = ["residential", "commercial", "plot", "villa", "apartment"];
 
-// The Types filter's "Not set" option. UNVERIFIED: the token the list endpoint
-// matches a blank property_type on was not in the backend note — confirm it.
+// The Types / City filters' "Not set" option: the list endpoint matches a blank
+// property_type / city on this exact value.
 const TYPE_NOT_SET = "not_set";
+const CITY_NOT_SET = "not_set";
 
 const STATUSES = ["active", "inactive", "paused"];
 const PRIORITIES = ["high", "medium", "low"];
@@ -106,6 +107,10 @@ export default function Projects() {
   const [search, setSearch] = createSignal("");
   const [statusFilter, setStatusFilter] = createSignal("all");
   const [typeFilter, setTypeFilter] = createSignal("all");
+  const [cityFilter, setCityFilter] = createSignal("all");
+  // Distinct cities across every page, for the City dropdown. Loaded once, in
+  // the background — the table never waits on it.
+  const [cities, setCities] = createSignal([]);
   const [priorityFilter, setPriority] = createSignal("all");
   const [sortKey, setSortKey] = createSignal("id");
   const [sortDir, setSortDir] = createSignal("desc");
@@ -124,6 +129,7 @@ export default function Projects() {
         search: overrides.search ?? search(),
         status: overrides.status ?? statusFilter(),
         propertyType: overrides.propertyType ?? typeFilter(),
+        city: overrides.city ?? cityFilter(),
         priority: overrides.priority ?? priorityFilter(),
       });
 
@@ -144,7 +150,15 @@ export default function Projects() {
     }
   };
 
-  onMount(() => load(1));
+  const loadCities = () =>
+    fetchProjectCities()
+      .then(setCities)
+      .catch((err) => console.error("Failed to load project cities:", err));
+
+  onMount(() => {
+    load(1);
+    loadCities();
+  });
 
   const goToPage = (p) => {
     setPage(p);
@@ -192,6 +206,7 @@ export default function Projects() {
     setSearch("");
     setStatusFilter("all");
     setTypeFilter("all");
+    setCityFilter("all");
     setPriority("all");
     setSortKey("id");
     setSortDir("desc");
@@ -200,6 +215,7 @@ export default function Projects() {
       search: "",
       status: "all",
       propertyType: "all",
+      city: "all",
       priority: "all",
     });
   };
@@ -297,6 +313,8 @@ export default function Projects() {
       closeEdit();
       showToast(`Saved changes to "${name}".`, "Project updated");
       load(page());
+      // A new or cleared city changes the dropdown's options.
+      if ("city" in c) loadCities();
     } catch (err) {
       console.error("Failed to update project:", err);
       setConfirmRename(false);
@@ -398,6 +416,20 @@ export default function Projects() {
             {(t) => <option value={t}>{cap(t)}</option>}
           </For>
           <option value={TYPE_NOT_SET}>Not set</option>
+        </select>
+
+        {/* City — exact, case-insensitive match server-side, so each option
+            sends the city as shown. "Not set" matches blank cities. */}
+        <select
+          value={cityFilter()}
+          onChange={(e) => applyFilter(setCityFilter, e.target.value, "city")}
+          class="px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700
+                 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300
+                 focus:outline-none focus:ring-1 focus:ring-purple-400 dark:focus:ring-gray-600 cursor-pointer"
+        >
+          <option value="all">All cities</option>
+          <option value={CITY_NOT_SET}>Not set</option>
+          <For each={cities()}>{(c) => <option value={c}>{c}</option>}</For>
         </select>
 
         <select
