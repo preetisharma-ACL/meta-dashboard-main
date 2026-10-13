@@ -258,10 +258,10 @@ export default function Sidebar() {
         // coordination doesn't get the Clients group at all and they are half
         // this screen's audience; admin + coordination only, matching the
         // endpoint, which 403s everyone else.
-        name: "Command",
+        name: "Campaign Analysis",
         roles: ["admin", "coordination"],
         icon: () => <Icon d="M3 12h4l3 8 4-16 3 8h4" />,
-        path: "/command",
+        path: "/campaign-analysis",
       },
       {
         name: "Clients",

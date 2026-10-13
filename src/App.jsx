@@ -549,17 +549,29 @@ function App() {
                 </AdminRoute>
               )}
             />
-            {/* Command page — every client on one screen over a chosen date
-                range: what's live, what it spends, what it returns, what's owed
-                and who owns it. Admin + coordination ONLY; /clients/command/
-                403s every other role, so this gate only decides whether the
-                screen is offered, never whether the data is safe to serve. */}
+            {/* Campaign Analysis (formerly "Command") — every client on one
+                screen over a chosen date range: what's live, what it spends,
+                what it returns, what's owed and who owns it. Admin +
+                coordination ONLY; /clients/command/ 403s every other role, so
+                this gate only decides whether the screen is offered, never
+                whether the data is safe to serve. */}
             <Route
-              path="/command"
+              path="/campaign-analysis"
               component={() => (
                 <AdminRoute roles={["admin", "coordination"]}>
                   <CommandBoard />
                 </AdminRoute>
+              )}
+            />
+            {/* Old URL — kept so bookmarks and shared links still land. */}
+            <Route
+              path="/command"
+              component={() => (
+                <Navigate
+                  href={({ location }) =>
+                    `/campaign-analysis${location.search}${location.hash}`
+                  }
+                />
               )}
             />
             {/* Value-tier board. Admin + coordination ONLY — deliberately NOT the

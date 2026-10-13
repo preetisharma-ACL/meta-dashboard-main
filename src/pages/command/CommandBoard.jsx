@@ -369,7 +369,7 @@ export default function CommandBoard() {
               </svg>
             </span>
             <span class="inline-block pb-0.5 leading-tight bg-gradient-to-r from-[#7E1522] via-[#AC2334] via-72% to-[#C4802B] dark:from-[#D9455E] dark:via-[#E4566A] dark:to-[#E9AE5C] bg-clip-text text-transparent">
-              Command
+              Campaign Analysis
             </span>
           </h1>
           <p class="pl-[46px] text-sm text-gray-500 dark:text-gray-400 mt-0.5">
@@ -812,7 +812,7 @@ export default function CommandBoard() {
                       {board.error?.status === 403
                         ? "This page is for admin and coordination only."
                         : board.error?.message ||
-                          "Could not load the command page."}
+                          "Could not load Campaign Analysis."}
                     </p>
                     <Show when={board.error?.status !== 403}>
                       <button
