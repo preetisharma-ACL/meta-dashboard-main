@@ -755,9 +755,12 @@ function InvoiceModal(props) {
 // didn't exist yet. Three fields on each row carry the consequences, and none of
 // them means what its name suggests on first reading:
 //
-//   fixed_cpl       is charge / qualified — a BLENDED rate whenever a config was
-//                   closed and replaced mid-month. rates_used lists the distinct
-//                   ones, and more than one entry makes the column an average.
+//   fixed_cpl       the average contracted rate over the month's rated days
+//                   (gross at per-day rates ÷ leads on those days) — a BLENDED
+//                   rate whenever a config was closed and replaced mid-month.
+//                   rates_used lists the distinct ones; more than one entry
+//                   makes the column an average. From Oct 2026
+//                   lead_value = billable × fixed_cpl always holds.
 //   uncovered_leads leads delivered on days no config covered. Never billed.
 //                   ADMIN AND CM ONLY: the key is ABSENT from a client's row,
 //                   and a project with no covered day at all is left out of
@@ -767,6 +770,18 @@ function InvoiceModal(props) {
 //   missing_rate /  fires for real now (it was always present and always empty
 //   missing_cpl_rate  while the fallback existed). Admin and CM only — a client
 //                   gets an empty array, gated server-side.
+// Σ of one money field across cpl_projects rows. A row with no rate in force
+// renders "—" for its money, so it stays out of the totals too — otherwise the
+// footer adds up to more than the cells. null when no row states the field.
+// Shared by the table footer and the statement's CPL charge line, so the two
+// can never disagree.
+const cplRowMoney = (p, key) =>
+  p.missing_rate === true || p[key] == null ? null : p[key];
+const sumCplMoney = (rows, key) => {
+  const vals = (rows || []).map((p) => cplRowMoney(p, key)).filter((v) => v != null);
+  return vals.length ? vals.reduce((s, v) => s + Number(v || 0), 0) : null;
+};
+
 function CplProjectTable(props) {
   const rows = () => props.projects || [];
   const num = (n) => Number(n || 0).toLocaleString("en-IN");
@@ -821,8 +836,8 @@ function CplProjectTable(props) {
   };
 
   // ── Blended rates ──────────────────────────────────────────────────────────
-  // fixed_cpl is no longer A rate: it is charge / qualified, so a month whose
-  // config was closed and replaced mid-month blends two contracted rates into
+  // fixed_cpl is no longer A rate: it averages the per-day contracted rates
+  // over the month's rated days, so a month whose config was closed and replaced mid-month blends two contracted rates into
   // one number. rates_used lists the distinct ones. With a single entry the
   // value IS the contracted rate and reads as before; with more than one it is
   // an average, and an average shown as a contracted rate is a number the
@@ -875,25 +890,9 @@ function CplProjectTable(props) {
   const promiseMode = () => props.promiseMode === true;
   const billable = (p) => Number(p.billable ?? p.qualified ?? 0);
   const totalBillable = () => rows().reduce((s, p) => s + billable(p), 0);
-  // A row with no rate in force renders "—" for its money, so it stays out of
-  // the money totals too — otherwise the footer adds up to more than the cells.
-  const money = (p, key) => (missingRate(p) || p[key] == null ? null : p[key]);
-  const sumMoney = (key) => {
-    const vals = rows().map((p) => money(p, key)).filter((v) => v != null);
-    return vals.length ? vals.reduce((s, v) => s + Number(v || 0), 0) : null;
-  };
+  const money = cplRowMoney;
+  const sumMoney = (key) => sumCplMoney(rows(), key);
   const missingPromise = (p) => p.missing_promise === true;
-  // fixed_cpl is charge / QUALIFIED, which stops being the rate once billable
-  // and qualified differ. A single contracted rate reads off rates_used; a
-  // blended month is lead value ÷ billable — the average of what was billed.
-  const promiseRate = (p) => {
-    if (isBlended(p)) {
-      const b = billable(p);
-      return b > 0 && p.lead_value != null ? Number(p.lead_value) / b : null;
-    }
-    return ratesUsed(p)[0] ?? p.fixed_cpl ?? null;
-  };
-  const rateOf = (p) => (promiseMode() ? promiseRate(p) : p.fixed_cpl);
   const fmtTotal = (v) => (v == null ? <Dash /> : fmt(v));
 
   const Dash = () => (
@@ -1054,9 +1053,9 @@ function CplProjectTable(props) {
                       <Show
                         when={missingRate(p)}
                         fallback={
-                          <Show when={rateOf(p) != null} fallback={<Dash />}>
+                          <Show when={p.fixed_cpl != null} fallback={<Dash />}>
                             {/* One rate → the contracted rate, as before. Several
-                                → charge/qualified, which is an AVERAGE and is
+                                → the rated-day average, which is an AVERAGE and is
                                 labelled as one, with the real rates underneath.
                                 A client reconciling a blended number against their
                                 agreement would otherwise find a rate they never
@@ -1065,12 +1064,12 @@ function CplProjectTable(props) {
                               when={isBlended(p)}
                               fallback={
                                 <span class="text-gray-600 dark:text-gray-300">
-                                  {fmt(rateOf(p))}
+                                  {fmt(p.fixed_cpl)}
                                 </span>
                               }
                             >
                               <span class="block text-gray-600 dark:text-gray-300">
-                                {fmt(rateOf(p))}
+                                {fmt(p.fixed_cpl)}
                                 <span class="ml-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
                                   avg
                                 </span>
@@ -1194,12 +1193,8 @@ function CplProjectTable(props) {
             <p class="text-xs text-gray-500 dark:text-gray-400">
               A rate marked{" "}
               <span class="font-medium uppercase tracking-wide">avg</span> is
-              this month's{" "}
-              {promiseMode()
-                ? "lead value divided by its billable leads"
-                : "charge divided by its qualified leads"}{" "}
-              — that project ran on more than one contracted rate, listed
-              beneath it.
+              the average contracted rate across the month's rated days — that
+              project ran on more than one contracted rate, listed beneath it.
             </p>
           </Show>
         </div>
@@ -2245,6 +2240,19 @@ export default function Billing() {
                         : "ex GST"
                   }
                   value={fmt(billedForClient())}
+                  tone="neg"
+                />
+              </Show>
+
+              {/* CPL from Oct 2026: the balance now moves by the GST-inclusive
+                  per-project charge, so it needs a line. Same sum as the
+                  project table's Total footer; no rows billed nothing. */}
+              <Show when={promiseMode()}>
+                <LedgerRow
+                  op="−"
+                  name="Billed this month"
+                  tag="incl GST"
+                  value={fmt(sumCplMoney(cplProjects(), "total_inc_gst") ?? 0)}
                   tone="neg"
                 />
               </Show>
