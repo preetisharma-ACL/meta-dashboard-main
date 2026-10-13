@@ -8,6 +8,17 @@ export const fetchProjectDisplayConfig = async (projectId) => {
 
 
 
+// GET /clients/admin/configs/missing-promise/ — active CPL (fixed_cpl) configs
+// with no promised_qualification_pct. `data` is a flat ARRAY of
+// { config_id, client_id, client_nomen, project_id, project_name, fixed_cpl,
+//   valid_from }.
+export const fetchConfigsMissingPromise = async () => {
+  const res = await api(`/clients/admin/configs/missing-promise/`, {
+    method: "GET",
+  });
+  return Array.isArray(res?.data) ? res.data : [];
+};
+
 // Create project display config
 export const createProjectDisplayConfig = async (payload) => {
   return await api(`/clients/admin/configs/`, {

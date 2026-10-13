@@ -4,6 +4,7 @@ import {
   createProjectDisplayConfig,
   updateProjectDisplayConfig,
   supersedeProjectDisplayConfig, // ← NEW: resolve a config_overlap 422
+  fetchConfigsMissingPromise,
   fetchClients,
   previewClientCpl, // ← NEW: CPL preview
   resolveConfigRule, // ← NEW: server-side rule resolution
@@ -23,6 +24,9 @@ import {
 import SuccessToast, {
   showToast,
 } from "../../../components/common/SuccessToast";
+
+// The only promised qualification %s the configs API accepts (others 400).
+const PROMISE_PCTS = [30, 35, 40, 50];
 
 const TYPE_COLORS = {
   hybrid: "bg-blue-100 text-blue-800 ring-1 ring-blue-300",
@@ -201,6 +205,8 @@ export default function ProjectDisplayConfig() {
     // open-ended"; blank valid_to → open-ended from valid_from onward.
     valid_from: "",
     valid_to: "",
+    // CPL (fixed_cpl) only: promised qualification %, "" = not set.
+    promised_qualification_pct: "",
   });
   const [clientSearch, setClientSearch] = createSignal("");
   const [showClientDropdown, setShowClientDropdown] = createSignal(false);
@@ -373,6 +379,41 @@ export default function ProjectDisplayConfig() {
     localStorage.setItem("projectDisplayConfigRowsPerPage", String(size));
     setPage(1); // the old page number can be past the end once rows grow
   };
+
+  // ── Active CPL configs with no promise % ──────────────────────────────────
+  // Its own read, so a failure (or a role the endpoint refuses) only hides the
+  // panel — null means "couldn't tell", never "none missing".
+  const [missingPromise, setMissingPromise] = createSignal(null);
+  const [missingOpen, setMissingOpen] = createSignal(false);
+  const loadMissingPromise = async () => {
+    try {
+      setMissingPromise(await fetchConfigsMissingPromise());
+    } catch (err) {
+      console.error("Failed to load configs missing promise %:", err);
+      setMissingPromise(null);
+    }
+  };
+  // A row links to its config's edit. The full row is preferred; when the
+  // list doesn't hold it, the missing-promise row carries everything the edit
+  // form pre-fills from.
+  const editMissing = (m) => {
+    const cfg =
+      configs().find((c) => Number(c.id) === Number(m.config_id)) ?? {
+        id: m.config_id,
+        client_id: m.client_id,
+        client_email: m.client_nomen,
+        client_type: "cpl",
+        project_id: m.project_id,
+        project_name: m.project_name,
+        rule_type: "fixed_cpl",
+        rule_value: m.fixed_cpl,
+        valid_from: m.valid_from,
+        valid_to: null,
+        promised_qualification_pct: null,
+      };
+    handleEdit(cfg);
+  };
+  onMount(loadMissingPromise);
 
   // ── CHANGED: removed fetchProjects() — projects are loaded on demand ──────
   onMount(async () => {
@@ -582,7 +623,7 @@ export default function ProjectDisplayConfig() {
       } else if (sortKey() === "rule_value") {
         va = parseFloat(va ?? 0);
         vb = parseFloat(vb ?? 0);
-      } else if (["id", "client_id", "project_id"].includes(sortKey())) {
+      } else if (["id", "client_id", "project_id", "promised_qualification_pct"].includes(sortKey())) {
         va = Number(va ?? 0);
         vb = Number(vb ?? 0);
       } else {
@@ -656,6 +697,11 @@ export default function ProjectDisplayConfig() {
       // may be null (open-ended) → "".
       valid_from: isoToLocalInput(cfg.valid_from),
       valid_to: isoToLocalInput(cfg.valid_to),
+      // 30 | 35 | 40 | 50 | null — "" in the form means "not set".
+      promised_qualification_pct:
+        cfg.promised_qualification_pct == null
+          ? ""
+          : String(cfg.promised_qualification_pct),
     });
     setClientSearch(cfg.client_email);
     setProjectSearch(cfg.project_name ?? "");
@@ -713,6 +759,7 @@ export default function ProjectDisplayConfig() {
         notes: "",
         valid_from: "",
         valid_to: "",
+        promised_qualification_pct: "",
       });
     }, 300);
   };
@@ -790,7 +837,21 @@ export default function ProjectDisplayConfig() {
       if (formData().valid_to)
         payload.valid_to = localInputToIso(formData().valid_to);
     }
+    attachPromise(payload, isEditMode());
     return payload;
+  };
+
+  // promised_qualification_pct is accepted with rule_type fixed_cpl ONLY — any
+  // other rule type 400s, so it is never sent for one. On an EDIT the form was
+  // pre-filled from the row, so the select's value is sent as-is and an emptied
+  // select is an explicit null (clear). On a CREATE / supersede a blank select
+  // is OMITTED: a supersede carries the old version's promise over when the key
+  // is absent, and a blank new form must not wipe it.
+  const attachPromise = (payload, explicit) => {
+    if (formData().rule_type !== "fixed_cpl") return;
+    const v = formData().promised_qualification_pct;
+    if (v !== "") payload.promised_qualification_pct = Number(v);
+    else if (explicit) payload.promised_qualification_pct = null;
   };
 
   // Save, then hand off to afterSave. Throws on failure so the caller routes
@@ -829,6 +890,7 @@ export default function ProjectDisplayConfig() {
   const afterSave = async (message) => {
     const res = await fetchProjectDisplayConfig();
     setConfigs(res.data ?? []);
+    loadMissingPromise();
     closeSidebar();
     showToast(message, "Configuration saved");
   };
@@ -902,6 +964,7 @@ export default function ProjectDisplayConfig() {
       if (canSetValidity()) {
         payload.valid_from = localInputToIso(formData().valid_from);
       }
+      attachPromise(payload, false);
       const message =
         afterSaveMessage(false) +
         ` Config #${conflict.existing.id} (${describeRule(conflict.existing)}) was closed on ${overlapCloseAtLabel()}.`;
@@ -958,6 +1021,86 @@ export default function ProjectDisplayConfig() {
         </Show>
        
       </div>
+      {/* ── CPL configs missing promise % ──
+          From Oct 2026 an unset promise bills on qualified leads, so each of
+          these is a project billing on the wrong basis until it's set. Collapsed
+          by default — it runs to ~200 rows. */}
+      <Show when={missingPromise()?.length > 0}>
+        <div class="mb-4 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20">
+          <button
+            type="button"
+            onClick={() => setMissingOpen((o) => !o)}
+            aria-expanded={missingOpen()}
+            class="w-full flex items-center justify-between gap-3 px-4 py-3 text-left"
+          >
+            <span class="text-sm font-semibold text-amber-800 dark:text-amber-300">
+              {missingPromise().length} CPL config
+              {missingPromise().length === 1 ? "" : "s"} missing promise %
+              <span class="ml-2 font-normal text-amber-700/80 dark:text-amber-400/80">
+                billed on qualified leads until set
+              </span>
+            </span>
+            <span class="text-xs font-medium text-amber-700 dark:text-amber-400">
+              {missingOpen() ? "Hide" : "Show"}
+            </span>
+          </button>
+          <Show when={missingOpen()}>
+            <div class="max-h-80 overflow-y-auto border-t border-amber-200 dark:border-amber-800">
+              <table class="min-w-full text-sm">
+                <thead class="sticky top-0 bg-amber-50 dark:bg-gray-900 text-xs uppercase tracking-wider text-amber-700 dark:text-amber-400">
+                  <tr>
+                    <th class="px-4 py-2 text-left">Config</th>
+                    <th class="px-4 py-2 text-left">Client</th>
+                    <th class="px-4 py-2 text-left">Project</th>
+                    <th class="px-4 py-2 text-right">CPL rate</th>
+                    <th class="px-4 py-2 text-left">Effective from</th>
+                    <Show when={canWrite()}>
+                      <th class="px-4 py-2" />
+                    </Show>
+                  </tr>
+                </thead>
+                <tbody>
+                  <For each={missingPromise()}>
+                    {(m) => (
+                      <tr class="border-t border-amber-100 dark:border-amber-900/40">
+                        <td class="px-4 py-2 tabular-nums text-gray-500 dark:text-gray-400">
+                          #{m.config_id}
+                        </td>
+                        <td class="px-4 py-2 text-gray-800 dark:text-gray-200">
+                          {m.client_nomen ?? "—"}
+                        </td>
+                        <td class="px-4 py-2 text-gray-800 dark:text-gray-200">
+                          {m.project_name ?? "—"}
+                        </td>
+                        <td class="px-4 py-2 text-right tabular-nums text-gray-700 dark:text-gray-300">
+                          {m.fixed_cpl != null
+                            ? `₹${parseFloat(m.fixed_cpl).toFixed(2)}`
+                            : "—"}
+                        </td>
+                        <td class="px-4 py-2 whitespace-nowrap text-gray-500 dark:text-gray-400">
+                          {formatDate(m.valid_from)}
+                        </td>
+                        <Show when={canWrite()}>
+                          <td class="px-4 py-2 text-right">
+                            <button
+                              type="button"
+                              onClick={() => editMissing(m)}
+                              class="text-xs font-semibold text-blue-800 dark:text-blue-400 hover:underline"
+                            >
+                              Set promise %
+                            </button>
+                          </td>
+                        </Show>
+                      </tr>
+                    )}
+                  </For>
+                </tbody>
+              </table>
+            </div>
+          </Show>
+        </div>
+      </Show>
+
       {/* ── Toggle filters ──
           Two independent axes, one row each: the client's billing type and
           whether the config is live. On one line they read as a single filter
@@ -1120,6 +1263,12 @@ export default function ProjectDisplayConfig() {
               >
                 Markup {sortIcon("rule_value")}
               </th>
+              <th
+                class="p-3 text-center cursor-pointer hover:text-blue-600 whitespace-nowrap"
+                onClick={() => toggleSort("promised_qualification_pct")}
+              >
+                Promise % {sortIcon("promised_qualification_pct")}
+              </th>
               <th class="p-3 text-center whitespace-nowrap">Status</th>
               <th
                 class="p-3 text-left cursor-pointer hover:text-blue-600 whitespace-nowrap"
@@ -1239,6 +1388,25 @@ export default function ProjectDisplayConfig() {
                       {cfg.rule_type === "cpl_markup_pct"
                         ? `+${parseFloat(cfg.rule_value ?? 0).toFixed(2)}%`
                         : `₹${parseFloat(cfg.rule_value ?? 0).toFixed(2)}`}
+                    </td>
+
+                    {/* Promise % — CPL rules only; an unset one on a CPL rule
+                        is "Not set" in amber (it bills on qualified leads). */}
+                    <td class="p-3 text-center tabular-nums">
+                      <Show when={cfg.rule_type === "fixed_cpl"}>
+                        <Show
+                          when={cfg.promised_qualification_pct != null}
+                          fallback={
+                            <span class="text-xs text-amber-600 dark:text-amber-400">
+                              Not set
+                            </span>
+                          }
+                        >
+                          <span class="font-semibold text-gray-700 dark:text-gray-300">
+                            {Number(cfg.promised_qualification_pct)}%
+                          </span>
+                        </Show>
+                      </Show>
                     </td>
 
                     {/* Status — maps to is_active */}
@@ -1735,6 +1903,37 @@ export default function ProjectDisplayConfig() {
                     class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-purple-500 outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                 </div>
+
+                {/* Promise % — CPL (fixed_cpl) only. From Oct 2026 billable =
+                    qualified ÷ this %, capped at generated; unset bills on
+                    qualified leads. */}
+                <Show when={formData().rule_type === "fixed_cpl"}>
+                  <div>
+                    <label class="block text-sm font-medium mb-1.5">
+                      Promise %
+                    </label>
+                    <select
+                      value={formData().promised_qualification_pct}
+                      onChange={(e) =>
+                        handleInputChange(
+                          "promised_qualification_pct",
+                          e.target.value,
+                        )
+                      }
+                      class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-purple-500 outline-none"
+                    >
+                      <option value="">Not set</option>
+                      <For each={PROMISE_PCTS}>
+                        {(v) => <option value={String(v)}>{v}%</option>}
+                      </For>
+                    </select>
+                    <Show when={formData().promised_qualification_pct === ""}>
+                      <p class="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                        Not set: billed on qualified leads.
+                      </p>
+                    </Show>
+                  </div>
+                </Show>
               </div>
 
               {/* ── NEW: Preview client CPL ── */}
