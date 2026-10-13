@@ -865,6 +865,37 @@ function CplProjectTable(props) {
   const billedCharges = () => rows().map((p) => p.charge).filter((c) => c != null);
   const totalCharge = () => billedCharges().reduce((s, c) => s + Number(c || 0), 0);
 
+  // ── Promise % billing (October 2026 onwards) ──────────────────────────────
+  // From October a CPL project bills on BILLABLE leads, not qualified ones:
+  // billable = qualified ÷ promised qualification %, capped at generated, and
+  // 18% GST goes on top of the lead value. The server sends every figure on the
+  // row — billable, lead_value, gst, total_inc_gst — so nothing is re-derived
+  // here; the footer only sums what the rows on screen state. Earlier months
+  // keep the old table exactly (billable = qualified, gst "0.00" there).
+  const promiseMode = () => props.promiseMode === true;
+  const billable = (p) => Number(p.billable ?? p.qualified ?? 0);
+  const totalBillable = () => rows().reduce((s, p) => s + billable(p), 0);
+  // A row with no rate in force renders "—" for its money, so it stays out of
+  // the money totals too — otherwise the footer adds up to more than the cells.
+  const money = (p, key) => (missingRate(p) || p[key] == null ? null : p[key]);
+  const sumMoney = (key) => {
+    const vals = rows().map((p) => money(p, key)).filter((v) => v != null);
+    return vals.length ? vals.reduce((s, v) => s + Number(v || 0), 0) : null;
+  };
+  const missingPromise = (p) => p.missing_promise === true;
+  // fixed_cpl is charge / QUALIFIED, which stops being the rate once billable
+  // and qualified differ. A single contracted rate reads off rates_used; a
+  // blended month is lead value ÷ billable — the average of what was billed.
+  const promiseRate = (p) => {
+    if (isBlended(p)) {
+      const b = billable(p);
+      return b > 0 && p.lead_value != null ? Number(p.lead_value) / b : null;
+    }
+    return ratesUsed(p)[0] ?? p.fixed_cpl ?? null;
+  };
+  const rateOf = (p) => (promiseMode() ? promiseRate(p) : p.fixed_cpl);
+  const fmtTotal = (v) => (v == null ? <Dash /> : fmt(v));
+
   const Dash = () => (
     <span class="font-medium text-gray-400 dark:text-gray-500">—</span>
   );
@@ -949,8 +980,21 @@ function CplProjectTable(props) {
                   <th class={`hidden md:table-cell ${numHead}`}>Uncovered</th>
                 </Show>
                 <th class={numHead}>Qualified</th>
+                <Show when={promiseMode()}>
+                  <th class={numHead}>Promise %</th>
+                  <th class={numHead}>Billable</th>
+                </Show>
                 <th class={numHead}>Rate / lead</th>
-                <th class="px-6 py-2.5 text-right font-medium">Charge</th>
+                <Show
+                  when={promiseMode()}
+                  fallback={
+                    <th class="px-6 py-2.5 text-right font-medium">Charge</th>
+                  }
+                >
+                  <th class={numHead}>Lead value</th>
+                  <th class={`hidden sm:table-cell ${numHead}`}>GST 18%</th>
+                  <th class="px-6 py-2.5 text-right font-medium">Total</th>
+                </Show>
               </tr>
             </thead>
             <tbody>
@@ -959,6 +1003,13 @@ function CplProjectTable(props) {
                   <tr class="border-b border-gray-100 dark:border-gray-700/60">
                     <td class="px-6 py-3 font-medium text-gray-900 dark:text-gray-100">
                       {p.project_name}
+                      {/* The server's flag only — a null promised_pct on its
+                          own is just "—" in its column. */}
+                      <Show when={promiseMode() && missingPromise(p)}>
+                        <span class="block text-[11px] font-normal text-amber-600 dark:text-amber-400">
+                          Promise % not set: billed on qualified leads
+                        </span>
+                      </Show>
                     </td>
                     <td class={`hidden sm:table-cell ${numCell}`}>
                       {num(p.generated)}
@@ -978,16 +1029,32 @@ function CplProjectTable(props) {
                         </Show>
                       </td>
                     </Show>
-                    <td class="px-3 py-3 text-right tabular-nums font-semibold text-gray-900 dark:text-gray-100">
+                    <td
+                      class={`px-3 py-3 text-right tabular-nums ${
+                        promiseMode()
+                          ? "text-gray-500 dark:text-gray-400"
+                          : "font-semibold text-gray-900 dark:text-gray-100"
+                      }`}
+                    >
                       {num(p.qualified)}
                     </td>
+                    <Show when={promiseMode()}>
+                      <td class={numCell}>
+                        <Show when={p.promised_pct != null} fallback={<Dash />}>
+                          {Number(p.promised_pct)}%
+                        </Show>
+                      </td>
+                      <td class="px-3 py-3 text-right tabular-nums font-semibold text-gray-900 dark:text-gray-100">
+                        {num(billable(p))}
+                      </td>
+                    </Show>
                     <td class="px-3 py-3 text-right tabular-nums">
                       {/* Only the server's flag produces "rate not set". A null
                           rate on its own renders "—" and nothing else. */}
                       <Show
                         when={missingRate(p)}
                         fallback={
-                          <Show when={p.fixed_cpl != null} fallback={<Dash />}>
+                          <Show when={rateOf(p) != null} fallback={<Dash />}>
                             {/* One rate → the contracted rate, as before. Several
                                 → charge/qualified, which is an AVERAGE and is
                                 labelled as one, with the real rates underneath.
@@ -998,12 +1065,12 @@ function CplProjectTable(props) {
                               when={isBlended(p)}
                               fallback={
                                 <span class="text-gray-600 dark:text-gray-300">
-                                  {fmt(p.fixed_cpl)}
+                                  {fmt(rateOf(p))}
                                 </span>
                               }
                             >
                               <span class="block text-gray-600 dark:text-gray-300">
-                                {fmt(p.fixed_cpl)}
+                                {fmt(rateOf(p))}
                                 <span class="ml-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
                                   avg
                                 </span>
@@ -1020,16 +1087,37 @@ function CplProjectTable(props) {
                         </span>
                       </Show>
                     </td>
-                    <td class="px-6 py-3 text-right tabular-nums font-semibold text-gray-900 dark:text-gray-100">
-                      {/* Keyed off the charge itself: null is not billed yet,
-                          which is "—" rather than ₹0.00 ("free"). */}
-                      <Show
-                        when={!missingRate(p) && p.charge != null}
-                        fallback={<Dash />}
-                      >
-                        {fmt(p.charge)}
-                      </Show>
-                    </td>
+                    <Show
+                      when={promiseMode()}
+                      fallback={
+                        <td class="px-6 py-3 text-right tabular-nums font-semibold text-gray-900 dark:text-gray-100">
+                          {/* Keyed off the charge itself: null is not billed yet,
+                              which is "—" rather than ₹0.00 ("free"). */}
+                          <Show
+                            when={!missingRate(p) && p.charge != null}
+                            fallback={<Dash />}
+                          >
+                            {fmt(p.charge)}
+                          </Show>
+                        </td>
+                      }
+                    >
+                      <td class={numCell}>
+                        <Show when={money(p, "lead_value") != null} fallback={<Dash />}>
+                          {fmt(p.lead_value)}
+                        </Show>
+                      </td>
+                      <td class={`hidden sm:table-cell ${numCell}`}>
+                        <Show when={money(p, "gst") != null} fallback={<Dash />}>
+                          {fmt(p.gst)}
+                        </Show>
+                      </td>
+                      <td class="px-6 py-3 text-right tabular-nums font-semibold text-gray-900 dark:text-gray-100">
+                        <Show when={money(p, "total_inc_gst") != null} fallback={<Dash />}>
+                          {fmt(p.total_inc_gst)}
+                        </Show>
+                      </td>
+                    </Show>
                   </tr>
                 )}
               </For>
@@ -1048,12 +1136,33 @@ function CplProjectTable(props) {
                 <td class="px-3 py-3 text-right tabular-nums font-bold text-gray-900 dark:text-gray-100">
                   {num(totalQualified())}
                 </td>
+                <Show when={promiseMode()}>
+                  <td />
+                  <td class="px-3 py-3 text-right tabular-nums font-bold text-gray-900 dark:text-gray-100">
+                    {num(totalBillable())}
+                  </td>
+                </Show>
                 <td />
-                <td class="px-6 py-3 text-right tabular-nums font-bold text-gray-900 dark:text-gray-100">
-                  <Show when={billedCharges().length > 0} fallback={<Dash />}>
-                    {fmt(totalCharge())}
-                  </Show>
-                </td>
+                <Show
+                  when={promiseMode()}
+                  fallback={
+                    <td class="px-6 py-3 text-right tabular-nums font-bold text-gray-900 dark:text-gray-100">
+                      <Show when={billedCharges().length > 0} fallback={<Dash />}>
+                        {fmt(totalCharge())}
+                      </Show>
+                    </td>
+                  }
+                >
+                  <td class="px-3 py-3 text-right tabular-nums font-bold text-gray-900 dark:text-gray-100">
+                    {fmtTotal(sumMoney("lead_value"))}
+                  </td>
+                  <td class="hidden sm:table-cell px-3 py-3 text-right tabular-nums font-bold text-gray-900 dark:text-gray-100">
+                    {fmtTotal(sumMoney("gst"))}
+                  </td>
+                  <td class="px-6 py-3 text-right tabular-nums font-bold text-gray-900 dark:text-gray-100">
+                    {fmtTotal(sumMoney("total_inc_gst"))}
+                  </td>
+                </Show>
               </tr>
             </tbody>
           </table>
@@ -1064,8 +1173,14 @@ function CplProjectTable(props) {
           Both explain a number that otherwise looks like a mistake: a rate the
           client never agreed to, and a generated count the charge doesn't
           follow from. */}
-      <Show when={anyUncovered() || anyBlended()}>
+      <Show when={(promiseMode() && hasRows()) || anyUncovered() || anyBlended()}>
         <div class="px-6 py-3 border-t border-gray-100 dark:border-gray-700/60 space-y-1">
+          <Show when={promiseMode() && hasRows()}>
+            <p class="text-xs text-gray-500 dark:text-gray-400">
+              Billable = Qualified / Promise %, capped at leads generated. 18%
+              GST added on the lead value.
+            </p>
+          </Show>
           <Show when={anyUncovered()}>
             <p class="text-xs text-gray-500 dark:text-gray-400">
               <span class="font-medium text-amber-600 dark:text-amber-400">
@@ -1079,8 +1194,12 @@ function CplProjectTable(props) {
             <p class="text-xs text-gray-500 dark:text-gray-400">
               A rate marked{" "}
               <span class="font-medium uppercase tracking-wide">avg</span> is
-              this month's charge divided by its qualified leads — that project
-              ran on more than one contracted rate, listed beneath it.
+              this month's{" "}
+              {promiseMode()
+                ? "lead value divided by its billable leads"
+                : "charge divided by its qualified leads"}{" "}
+              — that project ran on more than one contracted rate, listed
+              beneath it.
             </p>
           </Show>
         </div>
@@ -1547,6 +1666,24 @@ export default function Billing() {
   const showBreakdown = () =>
     showsReplacement(leadBreakdown(), clientTypeKey());
 
+  // From October 2026 a CPL month bills billable = qualified ÷ promise %, plus
+  // 18% GST. The month decides, not the payload: earlier rows carry the same
+  // keys (billable = qualified, gst "0.00") and must keep the old table.
+  const PROMISE_FROM = "2026-10";
+  const promiseMode = () => iscpl() && selectedMonth() >= PROMISE_FROM;
+  // The BILLABLE leg in that mode is Σ of the rows' billable — the leads that
+  // were actually invoiced — not the month's qualified count. With no rows the
+  // server's month figure stands.
+  const cplBreakdown = createMemo(() => {
+    const b = leadBreakdown();
+    if (!b || !promiseMode() || cplProjects().length === 0) return b;
+    const billable = cplProjects().reduce(
+      (s, p) => s + Number(p.billable ?? p.qualified ?? 0),
+      0,
+    );
+    return { ...b, billable };
+  });
+
   // CPL clients are billed on the plain ex-SC, ex-GST figure; everyone else on
   // the fully loaded amount. Used by both the spend card and the statement so
   // the two always agree.
@@ -1868,7 +2005,7 @@ export default function Billing() {
                 <LeadsCard
                   leads={totalLeads()}
                   showCpl={false}
-                  breakdown={showBreakdown() ? leadBreakdown() : null}
+                  breakdown={showBreakdown() ? cplBreakdown() : null}
                 />
               </div>
             </Show>
@@ -1880,7 +2017,12 @@ export default function Billing() {
               <LeadBreakdown
                 class="mt-4"
                 title={`Leads · ${monthLabel()}`}
-                breakdown={leadBreakdown()}
+                breakdown={cplBreakdown()}
+                billableSub={
+                  promiseMode() && cplProjects().length > 0
+                    ? "qualified ÷ promise %, capped at generated"
+                    : undefined
+                }
                 creditNotes={cnMode()}
                 creditSub={
                   cnNum(hybridProjects()?.total_replace_credit_inc_gst) != null
@@ -1926,6 +2068,7 @@ export default function Billing() {
               <CplProjectTable
                 projects={cplProjects()}
                 missing={missingCplRate()}
+                promiseMode={promiseMode()}
                 monthLabel={monthLabel()}
               />
             </Show>

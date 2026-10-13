@@ -83,6 +83,9 @@ function Leg(props) {
 //              shown as INFO — no minus, no arrows — because drawn as a
 //              deduction the row reads 100 → −10 → 100, arithmetic that fails.
 //   creditSub? caption under Replaced in that mode (e.g. the credit amount)
+//   billableSub? caption under Billable, overriding the default. CPL from Oct
+//              2026 bills qualified ÷ promise %, so Billable no longer closes
+//              the arrows and must say what it is instead.
 export default function LeadBreakdown(props) {
   const b = () => props.breakdown || {};
   const size = () => (props.compact ? "text-xl" : "text-2xl");
@@ -159,7 +162,10 @@ export default function LeadBreakdown(props) {
             value={b().billable}
             tone="final"
             size={size()}
-            sub={props.creditNotes ? "= generated" : "charged to the client"}
+            sub={
+              props.billableSub ??
+              (props.creditNotes ? "= generated" : "charged to the client")
+            }
           />
         </div>
       </div>
