@@ -357,7 +357,7 @@ export const fetchProjectLeadBreakdown = async (
 
 // ── Client picker source (CPL / hybrid only) ─────────────────────────────────
 // The form's target_client_id is the CLIENT PK — the same id the fed-leads
-// ("Leed Feeding") form sends, and NOT the client nomen id; the two differ for
+// ("Lead Feeding") form sends, and NOT the client nomen id; the two differ for
 // all but one client, and sending a nomen there resolves to the wrong client or
 // 404s.
 //
