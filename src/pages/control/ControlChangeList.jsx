@@ -33,7 +33,7 @@ const parseOrder = (o) =>
     .split(".")
     .filter(Boolean)
     .map((t) => ({ i: Math.abs(parseInt(t, 10)), desc: t.startsWith("-") }))
-    .filter((x) => Number.isFinite(x.i) && x.i > 0);
+    .filter((x) => Number.isFinite(x.i) && x.i >= 0); // sort_index starts at 0
 const orderString = (list) => list.map((x) => `${x.desc ? "-" : ""}${x.i}`).join(".");
 
 // Actions arrive as [{name, description}] or Django's [[name, label]] pairs.

@@ -163,6 +163,7 @@ export default function ControlAudit() {
           <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Result</label>
           <select value={draft().result} onChange={(e) => set("result", e.target.value)} class={INPUT}>
             <option value="">All</option>
+            <option value="success">Success</option>
             <option value="failure">Failure</option>
           </select>
         </div>
