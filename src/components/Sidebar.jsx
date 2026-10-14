@@ -11,7 +11,7 @@ import {
 } from "solid-js";
 import { handleLogout } from "../pages/login/LoginForm";
 import { clearClientDashboardContext } from "../cacheStore/appStore";
-import { isSeniorCM } from "../stores/currentUser";
+import { isSeniorCM, isSuperuser } from "../stores/currentUser";
 import {
   budgetGuardPending,
   watchBudgetGuardPending,
@@ -824,6 +824,34 @@ export default function Sidebar() {
         roles: ["admin", "campaign_manager"],
         icon: () => <Icon d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />,
         path: "/activity",
+      },
+      // ── Control Centre — super admins only ─────────────────────────────────
+      // Gated on Django is_superuser, not role: `roles` lists every role so the
+      // `when` predicate alone decides. It reads the reactive store, so the
+      // group appears as soon as /auth/me lands.
+      {
+        name: "Control Centre",
+        roles: ["admin", "campaign_manager", "coordination", "accounts", "sales", "creative", "client"],
+        when: isSuperuser,
+        icon: () => (
+          <Icon d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+        ),
+        subMenus: [
+          {
+            name: "Data Console",
+            path: "/control/data",
+            icon: () => (
+              <SmallIcon d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+            ),
+          },
+          {
+            name: "Audit Log",
+            path: "/control/audit",
+            icon: () => (
+              <SmallIcon d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            ),
+          },
+        ],
       },
 
       // {

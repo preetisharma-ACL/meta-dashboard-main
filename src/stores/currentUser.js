@@ -19,6 +19,7 @@ const defaultUser = {
 
   role: null, // admin | campaign_manager | client | sales | coordination | accounts | creative
   cmProfile: null, // { tier, is_active } | null
+  isSuperuser: false, // Django is_superuser — gates the Control Centre
 };
 
 export const [currentUser, setCurrentUser] = createStore(defaultUser);
@@ -149,6 +150,14 @@ export const isActiveSeniorCM = () => {
     isSeniorTierValue(auth?.cmTier) &&
     auth?.cmActive === true
   );
+};
+
+// ─── Control Centre gate ──────────────────────────────────────────────────────
+// Django is_superuser from /auth/me — independent of role. Fails closed: an
+// unknown flag (old session, /auth/me not back yet) is "not a superuser".
+export const isSuperuser = () => {
+  if (currentUser.loaded) return currentUser.isSuperuser === true;
+  return readAuth()?.isSuperuser === true;
 };
 
 // ─── Projects page (/projects-nomen) gates ────────────────────────────────────
@@ -354,6 +363,7 @@ export const loadCurrentUser = async (force = false) => {
         organizationName: u.organization_name ?? null,
         role: u.role ?? null,
         cmProfile: u.cm_profile ?? null,
+        isSuperuser: u.is_superuser === true,
       });
 
       // Mirror tier AND the active flag into localStorage auth so synchronous
@@ -369,6 +379,7 @@ export const loadCurrentUser = async (force = false) => {
           auth.role = u.role ?? auth.role;
           auth.cmTier = u.cm_profile?.tier ?? null;
           auth.cmActive = u.cm_profile?.is_active === true;
+          auth.isSuperuser = u.is_superuser === true;
           localStorage.setItem("auth", JSON.stringify(auth));
         }
       } catch {}

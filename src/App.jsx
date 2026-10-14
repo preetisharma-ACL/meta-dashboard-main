@@ -33,6 +33,11 @@ import EditClients from "./pages/admin/client/EditClients";
 import ClientStatusBoard from "./pages/clients/ClientStatusBoard";
 import ValueTierBoard from "./pages/clients/ValueTierBoard";
 import CommandBoard from "./pages/command/CommandBoard";
+import { SuperuserRoute } from "./pages/control/ControlUI";
+import ControlModels from "./pages/control/ControlModels";
+import ControlChangeList from "./pages/control/ControlChangeList";
+import ControlRecord from "./pages/control/ControlRecord";
+import ControlAudit from "./pages/control/ControlAudit";
 import Campaigns from "./pages/admin/campaigns/Campaigns";
 import AdAccounts from "./pages/admin/client/AdAccounts";
 import AdAccountClients from "./pages/admin/client/AdAccountClients";
@@ -547,6 +552,51 @@ function App() {
                 <AdminRoute roles={["admin", "campaign_manager"]}>
                   <ClientStatusBoard />
                 </AdminRoute>
+              )}
+            />
+            {/* Control Centre — super admins only (is_superuser on /auth/me).
+                Every /api/control/ endpoint 403s anyone else; SuperuserRoute
+                only decides whether the screens are offered. "add" is a static
+                segment, so it outranks the :pk route. */}
+            <Route path="/control" component={() => <Navigate href="/control/data" />} />
+            <Route
+              path="/control/data"
+              component={() => (
+                <SuperuserRoute>
+                  <ControlModels />
+                </SuperuserRoute>
+              )}
+            />
+            <Route
+              path="/control/data/:app/:model"
+              component={() => (
+                <SuperuserRoute>
+                  <ControlChangeList />
+                </SuperuserRoute>
+              )}
+            />
+            <Route
+              path="/control/data/:app/:model/add"
+              component={() => (
+                <SuperuserRoute>
+                  <ControlRecord mode="add" />
+                </SuperuserRoute>
+              )}
+            />
+            <Route
+              path="/control/data/:app/:model/:pk/change"
+              component={() => (
+                <SuperuserRoute>
+                  <ControlRecord mode="change" />
+                </SuperuserRoute>
+              )}
+            />
+            <Route
+              path="/control/audit"
+              component={() => (
+                <SuperuserRoute>
+                  <ControlAudit />
+                </SuperuserRoute>
               )}
             />
             {/* Campaign Analysis (formerly "Command") — every client on one
