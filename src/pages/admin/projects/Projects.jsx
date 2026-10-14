@@ -243,8 +243,10 @@ export default function Projects() {
 
   const openEdit = (p) => {
     if (!canEditProjects()) return;
-    setEditing(p);
+    // Form FIRST: setting `editing` renders the modal synchronously, and it
+    // reads form() as it mounts — an empty form there crashed the render.
     setForm(toForm(p));
+    setEditing(p);
     setEditError("");
     setConfirmRename(false);
   };
@@ -264,7 +266,7 @@ export default function Projects() {
     for (const k of EDIT_FIELDS) {
       if (form()[k] === before[k]) continue;
       if (k === "name" && !canRenameProjects()) continue;
-      let v = form()[k];
+      let v = form()[k] ?? "";
       if (k === "budget") v = v === "" ? null : Number(v);
       else if (k === "start_date" || k === "end_date") v = v || null;
       else if (k === "name") v = v.trim();
@@ -968,7 +970,7 @@ export default function Projects() {
             </h3>
             <p class="mt-2 text-sm text-gray-600 dark:text-gray-300">
               <span class="font-medium">{editing().name}</span> →{" "}
-              <span class="font-medium">{form().name.trim()}</span>
+              <span class="font-medium">{(form().name ?? "").trim()}</span>
             </p>
             <p class="mt-3 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
               {RENAME_WARNING}
