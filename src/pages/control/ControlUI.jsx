@@ -1,19 +1,27 @@
 import { createSignal, createEffect, Show, For } from "solid-js";
+import { useDialog } from "../../utils/useDialog";
 import { Navigate } from "@solidjs/router";
 import { currentUser, isSuperuser } from "../../stores/currentUser";
 
 // ─── Shared bits for the Control Centre screens ───────────────────────────────
 
+// min-h-[40px]: the mobile tap-target floor. focus-visible ring on every
+// control so keyboard focus is always visible, light or dark.
+const FOCUS =
+  "focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-gray-900";
 export const BTN =
-  "inline-flex items-center justify-center gap-1.5 px-3.5 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed";
+  `inline-flex items-center justify-center gap-1.5 min-h-[40px] px-3.5 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed ${FOCUS}`;
 export const BTN_PRIMARY =
-  "inline-flex items-center justify-center gap-1.5 px-3.5 py-2 text-sm font-medium rounded-lg bg-blue-900 text-white hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed";
+  `inline-flex items-center justify-center gap-1.5 min-h-[40px] px-3.5 py-2 text-sm font-medium rounded-lg bg-blue-900 text-white hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed ${FOCUS}`;
 export const BTN_DANGER =
-  "inline-flex items-center justify-center gap-1.5 px-3.5 py-2 text-sm font-medium rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed";
+  `inline-flex items-center justify-center gap-1.5 min-h-[40px] px-3.5 py-2 text-sm font-medium rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed ${FOCUS}`;
 export const INPUT =
-  "w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-60 disabled:cursor-not-allowed";
+  "w-full min-h-[40px] px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-60 disabled:cursor-not-allowed";
+
 export const CARD =
   "bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700";
+
+export { useDialog } from "../../utils/useDialog";
 
 // Route guard. Waits for /auth/me rather than bouncing a superuser during the
 // moment before it lands; then fails closed.
@@ -21,7 +29,7 @@ export function SuperuserRoute(props) {
   return (
     <Show
       when={currentUser.loaded || isSuperuser()}
-      fallback={<p class="p-8 text-sm text-gray-500">Loading…</p>}
+      fallback={<p class="p-8 text-sm text-gray-500 dark:text-gray-400">Loading…</p>}
     >
       <Show when={isSuperuser()} fallback={<Navigate href="/dashboard" />}>
         {props.children}
@@ -33,15 +41,15 @@ export function SuperuserRoute(props) {
 export function PageHead(props) {
   return (
     <div class="mb-5 flex flex-wrap items-end justify-between gap-3">
-      <div>
+      <div class="min-w-0 max-w-full">
         <Show when={props.crumbs}>
-          <p class="mb-1 text-xs text-gray-500 dark:text-gray-400">{props.crumbs}</p>
+          <p class="mb-1 text-xs text-gray-500 dark:text-gray-400 [overflow-wrap:anywhere]">{props.crumbs}</p>
         </Show>
-        <h1 class="text-2xl font-semibold tracking-tight text-gray-900 dark:text-white">
+        <h1 class="text-2xl font-semibold tracking-tight text-gray-900 dark:text-white [overflow-wrap:anywhere]">
           {props.title}
         </h1>
         <Show when={props.subtitle}>
-          <p class="mt-0.5 text-sm text-gray-500 dark:text-gray-400">{props.subtitle}</p>
+          <p class="mt-0.5 text-sm text-gray-500 dark:text-gray-400 [overflow-wrap:anywhere]">{props.subtitle}</p>
         </Show>
       </div>
       <Show when={props.actions}>
@@ -60,7 +68,7 @@ export function Banner(props) {
         : "border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300";
   return (
     <Show when={props.children}>
-      <div class={`mb-4 rounded-lg border px-4 py-2.5 text-sm ${tone()}`}>
+      <div class={`mb-4 rounded-lg border px-4 py-2.5 text-sm [overflow-wrap:anywhere] ${tone()}`}>
         {props.children}
       </div>
     </Show>
@@ -111,21 +119,27 @@ export function ReasonDialog(props) {
     if (props.open) setReason("");
   });
   const ok = () => reason().trim().length > 0 && !props.busy && !props.blocked;
+  let box;
+  useDialog(() => props.open, () => !props.busy && props.onCancel?.(), () => box);
   return (
     <Show when={props.open}>
-      <div class="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
+      <div class="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-3 sm:p-4">
         <div
+          ref={box}
           role="alertdialog"
           aria-modal="true"
           aria-label={props.title}
-          class="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xl p-6"
+          class="w-full max-w-lg max-h-[calc(100dvh-1.5rem)] overflow-y-auto rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xl p-5 sm:p-6"
         >
           <h3 class="text-base font-semibold text-gray-900 dark:text-white">{props.title}</h3>
           <div class="mt-2 text-sm text-gray-600 dark:text-gray-300">{props.children}</div>
-          <label class="mt-4 block text-xs font-medium text-gray-600 dark:text-gray-400">
+          <label for="reason-input" class="mt-4 block text-xs font-medium text-gray-600 dark:text-gray-400">
             Reason <span class="text-red-500">*</span>
           </label>
           <textarea
+            id="reason-input"
+            data-autofocus
+            aria-required="true"
             rows="2"
             value={reason()}
             onInput={(e) => setReason(e.target.value)}

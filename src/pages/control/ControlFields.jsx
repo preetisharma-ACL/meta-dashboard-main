@@ -156,7 +156,7 @@ function RelationPicker(props) {
         <div class="mb-1.5 flex flex-wrap gap-1.5">
           <For each={chosen()}>
             {(c) => (
-              <span class="inline-flex items-center gap-1 rounded-md bg-purple-50 dark:bg-purple-900/30 border border-purple-200 dark:border-purple-800 px-2 py-0.5 text-xs text-purple-800 dark:text-purple-200">
+              <span class="inline-flex max-w-full items-center gap-1 rounded-md [overflow-wrap:anywhere] bg-purple-50 dark:bg-purple-900/30 border border-purple-200 dark:border-purple-800 px-2 py-0.5 text-xs text-purple-800 dark:text-purple-200">
                 {c.label}
                 <Show when={!props.disabled}>
                   <button type="button" onClick={() => remove(c)} aria-label={`Remove ${c.label}`} class="hover:text-red-600">
@@ -171,6 +171,10 @@ function RelationPicker(props) {
       <Show when={!props.disabled}>
         <input
           type="search"
+          id={`f-${props.field.name}`}
+          role="combobox"
+          aria-expanded={open()}
+          aria-autocomplete="list"
           value={q()}
           placeholder={multi() ? "Search to add…" : chosen().length ? "Search to change…" : "Search…"}
           onFocus={() => {
@@ -219,8 +223,8 @@ export function FieldInput(props) {
     f().decimal_places != null ? (f().decimal_places > 0 ? String(10 ** -f().decimal_places) : "1") : "any";
 
   return (
-    <div>
-      <label for={`f-${f().name}`} class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+    <div class="min-w-0">
+      <label for={`f-${f().name}`} class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 [overflow-wrap:anywhere]">
         {f().label ?? f().name}
         <Show when={f().required}>
           <span class="text-red-500"> *</span>

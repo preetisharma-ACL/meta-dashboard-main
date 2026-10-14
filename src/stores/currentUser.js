@@ -20,6 +20,7 @@ const defaultUser = {
   role: null, // admin | campaign_manager | client | sales | coordination | accounts | creative
   cmProfile: null, // { tier, is_active } | null
   isSuperuser: false, // Django is_superuser — gates the Control Centre
+  raw: null, // the /auth/me body as sent, for screens that show profile fields
 };
 
 export const [currentUser, setCurrentUser] = createStore(defaultUser);
@@ -364,6 +365,7 @@ export const loadCurrentUser = async (force = false) => {
         role: u.role ?? null,
         cmProfile: u.cm_profile ?? null,
         isSuperuser: u.is_superuser === true,
+        raw: u,
       });
 
       // Mirror tier AND the active flag into localStorage auth so synchronous

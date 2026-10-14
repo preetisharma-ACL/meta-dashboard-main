@@ -5,29 +5,32 @@ import {
   applyRecomputeOpenings,
   parseControlError,
 } from "../../services/control";
-import { ReasonDialog, showValue, BTN, BTN_PRIMARY, INPUT } from "./ControlUI";
+import { ReasonDialog, useDialog, showValue, BTN, BTN_PRIMARY, INPUT } from "./ControlUI";
 
 // ─── Record-page tools (Data Console) ─────────────────────────────────────────
 // Reset password  → accounts.user record page
 // Recompute openings → clients.client record page
 
 function Modal(props) {
+  let box;
+  useDialog(() => props.open, () => props.onClose?.(), () => box);
   return (
     <Show when={props.open}>
-      <div class="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
+      <div class="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-3 sm:p-4">
         <div
+          ref={box}
           role="dialog"
           aria-modal="true"
           aria-label={props.title}
-          class="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xl"
+          class="w-full max-w-2xl max-h-[calc(100dvh-1.5rem)] overflow-y-auto rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xl"
         >
-          <div class="px-6 pt-5 pb-3 border-b border-gray-100 dark:border-gray-800">
+          <div class="px-5 sm:px-6 pt-5 pb-3 border-b border-gray-100 dark:border-gray-800">
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{props.title}</h2>
             <Show when={props.subtitle}>
-              <p class="text-xs text-gray-500">{props.subtitle}</p>
+              <p class="text-xs text-gray-500 dark:text-gray-400">{props.subtitle}</p>
             </Show>
           </div>
-          <div class="px-6 py-5">{props.children}</div>
+          <div class="px-5 sm:px-6 py-5">{props.children}</div>
         </div>
       </div>
     </Show>
@@ -73,7 +76,7 @@ export function ResetPasswordDialog(props) {
     }
   };
   return (
-    <Modal open={props.open} title="Reset password" subtitle={props.label}>
+    <Modal open={props.open} onClose={() => !busy() && props.onClose?.()} title="Reset password" subtitle={props.label}>
       <Show when={banner()}>
         <p class="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
           {banner()}
@@ -131,7 +134,7 @@ function ResultTable(props) {
     <div class="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
       <table class="min-w-full text-sm">
         <thead>
-          <tr class="bg-gray-50 dark:bg-gray-800/60 text-xs uppercase tracking-wider text-gray-500 text-left">
+          <tr class="bg-gray-50 dark:bg-gray-800/60 text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400 text-left">
             <For each={cols()}>{(c) => <th class="p-2.5 whitespace-nowrap">{c.replace(/_/g, " ")}</th>}</For>
           </tr>
         </thead>
@@ -201,7 +204,7 @@ export function RecomputeOpeningsDialog(props) {
 
   return (
     <>
-      <Modal open={props.open} title="Recompute openings" subtitle={props.label}>
+      <Modal open={props.open} onClose={() => !confirming() && props.onClose?.()} title="Recompute openings" subtitle={props.label}>
         <div class="flex flex-wrap items-end gap-3">
           <div>
             <label class={LABEL} for="rc-from">From month</label>
@@ -211,7 +214,7 @@ export function RecomputeOpeningsDialog(props) {
             {loading() ? "Previewing…" : "Preview"}
           </button>
         </div>
-        <p class="mt-2 text-xs text-gray-500">
+        <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
           Preview writes nothing. Locked openings are never changed.
         </p>
         <Show when={error()}>

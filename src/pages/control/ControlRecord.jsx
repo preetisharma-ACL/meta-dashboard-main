@@ -247,8 +247,8 @@ export default function ControlRecord(props) {
     if (r) {
       return (
         <div>
-          <p class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{r.label ?? r.name}</p>
-          <p class="text-sm text-gray-800 dark:text-gray-200 break-words whitespace-pre-wrap">{showValue(r.value)}</p>
+          <p class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 [overflow-wrap:anywhere]">{r.label ?? r.name}</p>
+          <p class="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap [overflow-wrap:anywhere]">{showValue(r.value)}</p>
         </div>
       );
     }
@@ -256,15 +256,15 @@ export default function ControlRecord(props) {
   };
 
   return (
-    <div class="min-h-screen p-3 lg:p-8">
+    <div class="min-h-screen min-w-0 overflow-x-clip p-3 lg:p-8">
       <PageHead
         crumbs={
           <>
-            <A href="/control/data" class="hover:underline">Data Console</A> ›{" "}
-            <A href={base()} class="hover:underline">{params.app}.{params.model}</A>
+            <A href="/control/data" class="inline-block py-3 sm:py-0 hover:underline">Data Console</A> ›{" "}
+            <A href={base()} class="inline-block py-3 sm:py-0 hover:underline">{params.app}.{params.model}</A>
           </>
         }
-        title={isAdd() ? `Add ${d()?.verbose_name ?? params.model}` : (d()?.str ?? `#${params.pk}`)}
+        title={isAdd() ? `Add ${String(d()?.verbose_name ?? params.model)}` : (d()?.str ?? `#${params.pk}`)}
         subtitle={isAdd() ? undefined : `${params.app}.${params.model} · pk ${params.pk}`}
         actions={
           <>
@@ -279,7 +279,9 @@ export default function ControlRecord(props) {
               </button>
             </Show>
             <Show when={!isAdd() && perms().delete}>
-              <button type="button" class={BTN_DANGER} onClick={openDelete} disabled={delLoading()}>
+              {/* Not disabled while the preview loads: a disabled button drops
+                  keyboard focus, and the dialog returns focus to its opener. */}
+              <button type="button" class={BTN_DANGER} onClick={() => !delLoading() && openDelete()} aria-busy={delLoading()}>
                 {delLoading() ? "Checking…" : "Delete"}
               </button>
             </Show>
@@ -293,7 +295,7 @@ export default function ControlRecord(props) {
         <Banner tone="warn">View only — you don't have permission to change this record.</Banner>
       </Show>
 
-      <Show when={!src.loading} fallback={<p class="text-sm text-gray-500">Loading…</p>}>
+      <Show when={!src.loading} fallback={<p class="text-sm text-gray-500 dark:text-gray-400">Loading…</p>}>
         <Show when={d()}>
           <div class="space-y-4">
             <For each={sections()}>
@@ -304,7 +306,7 @@ export default function ControlRecord(props) {
                       <h2 class="text-sm font-semibold text-gray-900 dark:text-white">{s.title}</h2>
                     </Show>
                     <Show when={s.description}>
-                      <p class="mt-0.5 text-xs text-gray-500">{s.description}</p>
+                      <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{s.description}</p>
                     </Show>
                     <div class={`grid grid-cols-1 md:grid-cols-2 gap-4 ${s.title ? "mt-3" : ""}`}>
                       <For each={s.fields}>{(name) => renderName(name)}</For>

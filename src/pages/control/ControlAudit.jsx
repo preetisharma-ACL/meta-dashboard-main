@@ -48,14 +48,14 @@ function ControlDetails(props) {
         <span class="text-gray-700 dark:text-gray-300">{dt().reason || "—"}</span>
       </p>
       <Show when={dt().model || dt().object}>
-        <p class="text-xs text-gray-500">
+        <p class="text-xs text-gray-500 dark:text-gray-400">
           {dt().model} {dt().object ? `· ${showValue(dt().object)}` : ""}
         </p>
       </Show>
-      <Show when={changed().length} fallback={<p class="text-xs text-gray-500">No field changes recorded.</p>}>
+      <Show when={changed().length} fallback={<p class="text-xs text-gray-500 dark:text-gray-400">No field changes recorded.</p>}>
         <table class="text-xs w-full max-w-3xl">
           <thead>
-            <tr class="text-left text-gray-500 uppercase tracking-wider">
+            <tr class="text-left text-gray-500 dark:text-gray-400 uppercase tracking-wider">
               <th class="py-1 pr-3">Field</th>
               <th class="py-1 pr-3">Before</th>
               <th class="py-1">After</th>
@@ -133,13 +133,13 @@ export default function ControlAudit() {
 
   const text = (k, label, placeholder) => (
     <div>
-      <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{label}</label>
-      <input type="text" value={draft()[k]} placeholder={placeholder} onInput={(e) => set(k, e.target.value)} class={INPUT} />
+      <label for={`au-${k}`} class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{label}</label>
+      <input id={`au-${k}`} type="text" value={draft()[k]} placeholder={placeholder} onInput={(e) => set(k, e.target.value)} class={INPUT} />
     </div>
   );
 
   return (
-    <div class="min-h-screen p-3 lg:p-8">
+    <div class="min-h-screen min-w-0 overflow-x-clip p-3 lg:p-8">
       <PageHead
         title="Audit Log"
         subtitle="Data Console changes (with reasons) and every write made from any screen."
@@ -147,8 +147,8 @@ export default function ControlAudit() {
 
       <form onSubmit={apply} class={`${CARD} p-4 mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3`}>
         <div>
-          <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Category</label>
-          <select value={draft().category} onChange={(e) => set("category", e.target.value)} class={INPUT}>
+          <label for="au-category" class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Category</label>
+          <select id="au-category" value={draft().category} onChange={(e) => set("category", e.target.value)} class={INPUT}>
             <option value="">All</option>
             <option value="control">Control (Data Console)</option>
             <option value="api">API (all screens)</option>
@@ -160,20 +160,20 @@ export default function ControlAudit() {
         {text("target_id", "Target ID", "")}
         {text("q", "Search", "")}
         <div>
-          <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Result</label>
-          <select value={draft().result} onChange={(e) => set("result", e.target.value)} class={INPUT}>
+          <label for="au-result" class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Result</label>
+          <select id="au-result" value={draft().result} onChange={(e) => set("result", e.target.value)} class={INPUT}>
             <option value="">All</option>
             <option value="success">Success</option>
             <option value="failure">Failure</option>
           </select>
         </div>
         <div>
-          <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">From</label>
-          <input type="date" value={draft().date_from} onInput={(e) => set("date_from", e.target.value)} class={INPUT} />
+          <label for="au-date_from" class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">From</label>
+          <input id="au-date_from" type="date" value={draft().date_from} onInput={(e) => set("date_from", e.target.value)} class={INPUT} />
         </div>
         <div>
-          <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">To</label>
-          <input type="date" value={draft().date_to} min={draft().date_from || undefined} onInput={(e) => set("date_to", e.target.value)} class={INPUT} />
+          <label for="au-date_to" class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">To</label>
+          <input id="au-date_to" type="date" value={draft().date_to} min={draft().date_from || undefined} onInput={(e) => set("date_to", e.target.value)} class={INPUT} />
         </div>
         <div class="sm:col-span-2 lg:col-span-4 flex justify-end gap-2">
           <button type="button" class={BTN} onClick={reset}>
@@ -237,7 +237,7 @@ export default function ControlAudit() {
                           </Show>
                         </td>
                         <td class="p-3 text-gray-700 dark:text-gray-300">{showValue(r.result)}</td>
-                        <td class="p-3 text-xs text-purple-700 whitespace-nowrap">{open() === key ? "Hide" : "Details"}</td>
+                        <td class="p-3 text-xs text-purple-700 dark:text-purple-300 whitespace-nowrap">{open() === key ? "Hide" : "Details"}</td>
                       </tr>
                       <Show when={open() === key}>
                         <tr class="bg-gray-50/70 dark:bg-gray-800/30">
@@ -259,12 +259,12 @@ export default function ControlAudit() {
 
       <Show when={d()}>
         <div class="mt-4 flex items-center justify-between gap-3">
-          <span class="text-sm text-gray-500">{d().total ?? 0} entries</span>
+          <span class="text-sm text-gray-500 dark:text-gray-400">{d().total ?? 0} entries</span>
           <div class="flex items-center gap-2">
             <button type="button" class={BTN} disabled={page() <= 1} onClick={() => setPage(page() - 1)}>
               Prev
             </button>
-            <span class="text-sm text-gray-500">
+            <span class="text-sm text-gray-500 dark:text-gray-400">
               Page {page()} of {pages()}
             </span>
             <button type="button" class={BTN} disabled={page() >= pages()} onClick={() => setPage(page() + 1)}>

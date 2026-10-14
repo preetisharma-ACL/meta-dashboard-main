@@ -51,8 +51,9 @@ export default function ControlHealth() {
   // Where a credential is edited: the Data Console's Meta credentials model,
   // found by name so a renamed model still resolves.
   const [models] = createResource(fetchControlModels);
+
   const credModel = createMemo(() =>
-    (models() ?? []).find((m) => m.app === "campaigns" && /credential/i.test(`${m.model} ${m.name}`)),
+    (models.error ? [] : (models() ?? [])).find((m) => m.app === "campaigns" && /credential/i.test(`${m.model} ${m.name}`)),
   );
   const credHref = (id) =>
     credModel() ? `/control/data/${credModel().app}/${credModel().model}/${encodeURIComponent(id)}/change` : null;
@@ -103,7 +104,7 @@ export default function ControlHealth() {
   const stuck = () => lastData().some((x) => x.ms != null && x.ms > 24 * HOUR);
 
   return (
-    <div class="min-h-screen p-3 lg:p-8">
+    <div class="min-h-screen min-w-0 overflow-x-clip p-3 lg:p-8">
       <PageHead
         title="System Health"
         subtitle={h()?.now ? `As of ${fmtWhen(h().now)}` : "Syncs, scheduled tasks, ad accounts and Meta tokens."}
@@ -119,16 +120,16 @@ export default function ControlHealth() {
         <Banner>A data sync hasn't run for over 24 hours — it is likely stuck. Call the developer.</Banner>
       </Show>
 
-      <Show when={h()} fallback={<Show when={health.loading}><p class="text-sm text-gray-500">Loading…</p></Show>}>
+      <Show when={h()} fallback={<Show when={health.loading}><p class="text-sm text-gray-500 dark:text-gray-400">Loading…</p></Show>}>
         {/* ── Top row: last data, ad accounts, failures ── */}
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <section class={`${CARD} p-5 lg:col-span-2`}>
-            <h2 class="text-xs font-bold uppercase tracking-wider text-gray-500">Last data</h2>
+            <h2 class="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Last data</h2>
             <ul class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
               <For each={lastData()}>
                 {(x) => (
                   <li class="rounded-lg border border-gray-100 dark:border-gray-800 p-3">
-                    <p class="text-xs text-gray-500">{x.label}</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">{x.label}</p>
                     <p class={`mt-0.5 text-lg font-semibold ${ageTone(x.ms)}`}>{x.ms == null ? "Never" : ago(x.ms)}</p>
                     <p class="text-xs text-gray-400">{fmtWhen(x.t)}</p>
                   </li>
@@ -140,10 +141,10 @@ export default function ControlHealth() {
 
           <div class="space-y-4">
             <section class={`${CARD} p-5`}>
-              <h2 class="text-xs font-bold uppercase tracking-wider text-gray-500">Ad accounts</h2>
+              <h2 class="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Ad accounts</h2>
               <p class="mt-2 text-2xl font-bold text-gray-900 dark:text-white tabular-nums">
                 {h().ad_accounts?.active ?? "—"}
-                <span class="text-sm font-medium text-gray-500"> active of {h().ad_accounts?.total ?? "—"}</span>
+                <span class="text-sm font-medium text-gray-500 dark:text-gray-400"> active of {h().ad_accounts?.total ?? "—"}</span>
               </p>
               <div class="mt-2 flex flex-wrap gap-1.5">
                 <For each={Object.entries(h().ad_accounts?.by_status ?? {})}>
@@ -159,7 +160,7 @@ export default function ControlHealth() {
               href="/control/audit?result=failure"
               class={`${CARD} block p-5 hover:border-red-300 dark:hover:border-red-800`}
             >
-              <h2 class="text-xs font-bold uppercase tracking-wider text-gray-500">Failures · last 24 h</h2>
+              <h2 class="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Failures · last 24 h</h2>
               <p class={`mt-2 text-2xl font-bold tabular-nums ${Number(h().failures_24h) > 0 ? "text-red-600 dark:text-red-400" : "text-gray-900 dark:text-white"}`}>
                 {h().failures_24h ?? 0}
               </p>
@@ -170,10 +171,10 @@ export default function ControlHealth() {
 
         {/* ── Scheduled tasks ── */}
         <section class={`${CARD} mt-4 overflow-x-auto`}>
-          <h2 class="px-5 pt-4 pb-2 text-xs font-bold uppercase tracking-wider text-gray-500">Scheduled tasks</h2>
+          <h2 class="px-5 pt-4 pb-2 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Scheduled tasks</h2>
           <table class="min-w-full text-sm">
             <thead>
-              <tr class="border-y border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 text-gray-500 text-xs uppercase tracking-wider text-left">
+              <tr class="border-y border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider text-left">
                 <th class="p-3">Name</th>
                 <th class="p-3">Task</th>
                 <th class="p-3">Schedule</th>
@@ -188,14 +189,14 @@ export default function ControlHealth() {
                 {(t) => (
                   <tr class="border-b border-gray-100 dark:border-gray-800">
                     <td class="p-3 font-medium text-gray-800 dark:text-gray-200">{t.name}</td>
-                    <td class="p-3 font-mono text-xs text-gray-500">{t.task}</td>
+                    <td class="p-3 font-mono text-xs text-gray-500 dark:text-gray-400">{t.task}</td>
                     <td class="p-3 text-gray-600 dark:text-gray-400">{showValue(t.schedule)}</td>
                     <td class="p-3 text-gray-600 dark:text-gray-400 whitespace-nowrap">
                       {t.last_run_at ? ago(now() - new Date(t.last_run_at).getTime()) : "Never"}
                     </td>
                     <td class="p-3 text-right tabular-nums text-gray-600 dark:text-gray-400">{t.total_run_count ?? 0}</td>
                     <td class="p-3">
-                      <span class={`px-2 py-0.5 rounded-full text-xs font-semibold ${t.enabled ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                      <span class={`px-2 py-0.5 rounded-full text-xs font-semibold ${t.enabled ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300" : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"}`}>
                         {t.enabled ? "Enabled" : "Disabled"}
                       </span>
                     </td>
@@ -224,10 +225,10 @@ export default function ControlHealth() {
 
         {/* ── Meta credentials ── */}
         <section class={`${CARD} mt-4 overflow-x-auto`}>
-          <h2 class="px-5 pt-4 pb-2 text-xs font-bold uppercase tracking-wider text-gray-500">Meta credentials</h2>
+          <h2 class="px-5 pt-4 pb-2 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Meta credentials</h2>
           <table class="min-w-full text-sm">
             <thead>
-              <tr class="border-y border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 text-gray-500 text-xs uppercase tracking-wider text-left">
+              <tr class="border-y border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider text-left">
                 <th class="p-3">Label</th>
                 <th class="p-3">Kind</th>
                 <th class="p-3">Token</th>
@@ -249,7 +250,7 @@ export default function ControlHealth() {
                         </Show>
                       </td>
                       <td class="p-3 text-gray-600 dark:text-gray-400">{c.kind ?? "—"}</td>
-                      <td class="p-3 font-mono text-xs text-gray-500">{c.access_token ?? "—"}</td>
+                      <td class="p-3 font-mono text-xs text-gray-500 dark:text-gray-400">{c.access_token ?? "—"}</td>
                       <td class="p-3 text-right tabular-nums text-gray-600 dark:text-gray-400">{showValue(c.ad_accounts)}</td>
                       <td class="p-3 max-w-[22rem]">
                         <button

@@ -1552,3 +1552,19 @@
 }
 
 /* Ambient only — nothing here animates, so there is no reduced-motion case. */
+
+/* ── Mobile tap targets ─────────────────────────────────────────────────────
+   Below tablet width every control in the working area is at least 40px
+   tall (a 40px tap is the floor on a phone). Scoped to <main> so the sidebar
+   and header keep their own sizing; switches and anything marked
+   .tap-exempt keep theirs. Icon-only controls also get a 40px width. */
+@media (max-width: 767px) {
+  main button:not([role="switch"]):not(.tap-exempt),
+  main select:not(.tap-exempt),
+  main input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not(.tap-exempt) {
+    min-height: 40px;
+  }
+  main button[aria-label]:not([role="switch"]):not(.tap-exempt) {
+    min-width: 40px;
+  }
+}

@@ -8,12 +8,14 @@ import { PageHead, Banner, INPUT, CARD } from "./ControlUI";
 // is. New models show up on their own — nothing here is hardcoded.
 export default function ControlModels() {
   const [models] = createResource(fetchControlModels);
+  // A resource read while errored throws — read through this instead.
+  const modelList = () => (models.error ? null : models());
   const [q, setQ] = createSignal("");
 
   const groups = createMemo(() => {
     const needle = q().trim().toLowerCase();
     const by = new Map();
-    for (const m of models() ?? []) {
+    for (const m of modelList() ?? []) {
       if (m.perms && m.perms.view === false) continue;
       const hay = `${m.app_name} ${m.app} ${m.verbose_name} ${m.name} ${m.model}`.toLowerCase();
       if (needle && !hay.includes(needle)) continue;
@@ -32,10 +34,10 @@ export default function ControlModels() {
   });
 
   return (
-    <div class="min-h-screen p-3 lg:p-8">
+    <div class="min-h-screen min-w-0 overflow-x-clip p-3 lg:p-8">
       <PageHead
         title="Data Console"
-        subtitle={`Every admin model${models() ? ` · ${models().length} models` : ""}. Super admins only; every change is audited.`}
+        subtitle={`Every admin model${modelList() ? ` · ${modelList().length} models` : ""}. Super admins only; every change is audited.`}
       />
       <Banner>{models.error ? parseControlError(models.error, "Couldn't load models.").message : ""}</Banner>
 
@@ -44,11 +46,12 @@ export default function ControlModels() {
         value={q()}
         onInput={(e) => setQ(e.target.value)}
         placeholder="Search models or apps…"
+        aria-label="Search models or apps"
         class={`${INPUT} mb-5 max-w-md`}
       />
 
-      <Show when={!models.loading} fallback={<p class="text-sm text-gray-500">Loading models…</p>}>
-        <Show when={groups().length} fallback={<p class="text-sm text-gray-500">No models match.</p>}>
+      <Show when={!models.loading} fallback={<p class="text-sm text-gray-500 dark:text-gray-400">Loading models…</p>}>
+        <Show when={groups().length} fallback={<p class="text-sm text-gray-500 dark:text-gray-400">No models match.</p>}>
           <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             <For each={groups()}>
               {([app, list]) => (

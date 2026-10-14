@@ -8,7 +8,7 @@ import {
 } from "solid-js";
 import { useSidebar } from "../context/SidebarContext";
 import { useTheme } from "../context/ThemeContext";
-import { fetchUser } from "../services/userProfile";
+import { loadCurrentUser, currentUser } from "../stores/currentUser";
 import { handleLogout } from "../pages/login/LoginForm";
 import { fetchAlerts } from "../services/alert-service";
 import {
@@ -65,11 +65,13 @@ export default function Header() {
     try {
       setHeaderCache("loading", true);
 
-      const userRes = await fetchUser();
+      // Shares the store's single /auth/me request (it dedupes in-flight
+      // loads) instead of firing a second one of its own.
+      await loadCurrentUser();
 
       setHeaderCache({
         ...headerCache,
-        user: userRes.data,
+        user: currentUser.raw,
         loading: false,
       });
     } catch (err) {
@@ -162,7 +164,15 @@ export default function Header() {
   //  alerts). Permission is requested up front; the bell click re-asks if the
   //  browser deferred the prompt without a user gesture.
   onMount(() => {
-    ensureNotifyPermission();
+    // Ask on the first click / key press, not on load: Safari rejects (and
+    // Chrome quietly demotes) a permission prompt without a user gesture.
+    const askOnce = () => ensureNotifyPermission();
+    ["click", "keydown", "touchend"].forEach((ev) =>
+      window.addEventListener(ev, askOnce, { once: true, passive: true }),
+    );
+    onCleanup(() =>
+      ["click", "keydown", "touchend"].forEach((ev) => window.removeEventListener(ev, askOnce)),
+    );
 
     const POLL_MS = 45_000;
     const tick = () => {
@@ -457,10 +467,10 @@ export default function Header() {
                     </div>
                   }
                 >
-                  <p class="text-sm font-medium text-gray-900 dark:text-white">
+                  <p class="max-w-[16rem] truncate text-sm font-medium text-gray-900 dark:text-white" title={user()?.username}>
                     {user()?.username}
                   </p>
-                  <p class="text-xs text-gray-500 dark:text-gray-400">
+                  <p class="max-w-[16rem] truncate text-xs text-gray-500 dark:text-gray-400" title={user()?.organization_name}>
                     {user()?.organization_name}
                   </p>
                 </Show>
@@ -483,10 +493,10 @@ export default function Header() {
             <Show when={showUserMenu()}>
               <div class="absolute right-0 mt-2 w-70 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden z-50">
                 <div class="p-3 border-b border-gray-200 dark:border-gray-700">
-                  <p class="text-sm font-medium text-gray-900 dark:text-white">
+                  <p class="text-sm font-medium text-gray-900 dark:text-white [overflow-wrap:anywhere]">
                     {user()?.username}
                   </p>
-                  <p class="text-xs text-gray-500 dark:text-gray-400">
+                  <p class="text-xs text-gray-500 dark:text-gray-400 [overflow-wrap:anywhere]">
                     {user()?.organization_name}
                   </p>
                 </div>
