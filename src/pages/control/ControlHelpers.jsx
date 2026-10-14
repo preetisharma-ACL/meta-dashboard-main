@@ -6,53 +6,103 @@ import { callFormHelper, parseControlError } from "../../services/control";
 //   projects — narrow the Project picker to the chosen client's projects
 //   preview  — live computed figures while typing (amounts, budget, CPL)
 //
-// PARAMS follow one convention, the one the payments spec states outright:
-// a relation field X is sent as `X_id=<pk>` (client_nomen → client_nomen_id),
-// any other field under its own name (base_amount, gst_pct, …), booleans as
-// true/false. Only payments' params are spelled out in the backend note; the
-// other three models use the same convention — if one helper wants a
-// different name, it is one line in HELPERS below.
+// PARAMS are exactly what each helper reads (from the backend code, GET
+// only): `params` maps query param → form field. They are NOT derivable from
+// field names — manual lead batches read client_id from a field called
+// target_client. `required` = params that must be filled before the call; a
+// helper fired with half its inputs only answers with an error.
+// rate config's preview_cpl also takes `window` (days); left out on purpose so
+// the helper's own default applies.
 
 const HELPERS = {
   "billing.payment": {
-    projects: { name: "billing_payment_get_projects", target: "project", from: ["client_nomen"] },
+    projects: {
+      name: "billing_payment_get_projects",
+      target: "project",
+      params: { client_nomen_id: "client_nomen" },
+    },
     preview: {
       name: "billing_payment_preview_amounts",
       title: "Amounts",
-      fields: ["base_amount", "gst_pct", "tds_applied", "tds_amount"],
+      params: {
+        base_amount: "base_amount",
+        gst_pct: "gst_pct",
+        tds_applied: "tds_applied",
+        tds_amount: "tds_amount",
+        is_opening_balance: "is_opening_balance",
+      },
+      required: ["base_amount"],
     },
   },
   "billing.projectbudgetallocation": {
-    projects: { name: "billing_projectbudgetallocation_get_projects", target: "project", from: ["client_nomen", "client"] },
-    preview: { name: "billing_projectbudgetallocation_compute_budget", title: "Computed budget", fields: null },
+    projects: {
+      name: "billing_projectbudgetallocation_get_projects",
+      target: "project",
+      params: { client_id: "client" },
+    },
+    preview: {
+      name: "billing_projectbudgetallocation_compute_budget",
+      title: "Computed budget",
+      params: { client_id: "client", project_id: "project", period_year: "period_year", period_month: "period_month" },
+      required: ["client_id", "project_id", "period_year", "period_month"],
+    },
   },
   "clients.projectdisplayconfig": {
-    projects: { name: "clients_projectdisplayconfig_get_projects", target: "project", from: ["client", "client_nomen"] },
-    preview: { name: "clients_projectdisplayconfig_preview_cpl", title: "CPL preview", fields: null },
+    projects: {
+      name: "clients_projectdisplayconfig_get_projects",
+      target: "project",
+      params: { client_id: "client" },
+    },
+    preview: {
+      name: "clients_projectdisplayconfig_preview_cpl",
+      title: "CPL preview",
+      params: { client_id: "client", project_id: "project" },
+      required: ["client_id", "project_id"],
+    },
   },
   "leads.manualleadbatch": {
-    projects: { name: "leads_manualleadbatch_get_projects", target: "project", from: ["client_nomen", "client"] },
+    projects: {
+      name: "leads_manualleadbatch_get_projects",
+      target: "project",
+      params: { client_id: "target_client" },
+    },
   },
 };
 
 export const helpersFor = (app, model) => HELPERS[`${app}.${model}`] ?? null;
 
-// One form value → its query param (name, value), or null when empty.
-const paramOf = (field, fv) => {
+// One form value → its query-param value, or null when empty. Relations send
+// their pk, booleans true/false.
+const valueOf = (field, fv) => {
   switch (field.kind) {
     case "relation":
-      return fv?.id != null ? [`${field.name}_id`, fv.id] : null;
+      return fv?.id ?? null;
     case "multi_relation":
     case "json":
       return null;
     case "boolean":
       if (fv === "" || fv == null) return null;
-      return [field.name, fv === true || fv === "true" ? "true" : "false"];
+      return fv === true || fv === "true" ? "true" : "false";
     case "datetime":
-      return fv ? [field.name, new Date(fv).toISOString()] : null;
+      return fv ? new Date(fv).toISOString() : null;
     default:
-      return fv === "" || fv == null ? null : [field.name, fv];
+      return fv === "" || fv == null ? null : fv;
   }
+};
+
+// A helper spec + the form → { params, ready }. Params whose field isn't on
+// this form are skipped; `ready` = every required param is filled (all of
+// them when the spec names none).
+const buildParams = (spec, byName, form) => {
+  const params = {};
+  for (const [param, fieldName] of Object.entries(spec.params)) {
+    const f = byName.get(fieldName);
+    if (!f) continue;
+    const v = valueOf(f, form[fieldName]);
+    if (v != null) params[param] = v;
+  }
+  const required = spec.required ?? Object.keys(spec.params);
+  return { params, ready: required.every((p) => params[p] != null) };
 };
 
 // Projects list → [{id, label}], whatever envelope it came in.
@@ -85,17 +135,15 @@ export function useFormHelpers(props) {
   createEffect(() => {
     const p = cfg()?.projects;
     if (!p) return;
-    const fromName = p.from.find((n) => byName().has(n));
-    const f = fromName ? byName().get(fromName) : null;
-    const kv = f ? paramOf(f, props.form()[fromName]) : null;
-    const key = kv ? `${kv[0]}=${kv[1]}` : "";
+    const { params, ready } = buildParams(p, byName(), props.form());
+    const key = ready ? JSON.stringify(params) : "";
     if (key === lastProjectKey) return;
     lastProjectKey = key;
-    if (!kv) {
+    if (!ready) {
       setProjectOptions(null);
       return;
     }
-    callFormHelper(props.app(), props.model(), p.name, { [kv[0]]: kv[1] })
+    callFormHelper(props.app(), props.model(), p.name, params)
       .then((res) => {
         if (lastProjectKey === key) setProjectOptions(normProjects(res));
       })
@@ -114,24 +162,12 @@ export function useFormHelpers(props) {
   createEffect(() => {
     const pv = cfg()?.preview;
     if (!pv) return;
-    const names = pv.fields ?? props.fields().map((f) => f.name);
-    const params = {};
-    // A plain checkbox always has a value, so it alone is not "something
-    // typed" — the preview waits for at least one other input.
-    let typed = false;
-    for (const n of names) {
-      const f = byName().get(n);
-      if (!f || f.sensitive) continue;
-      const kv = paramOf(f, props.form()[n]);
-      if (!kv) continue;
-      params[kv[0]] = kv[1];
-      if (f.kind !== "boolean") typed = true;
-    }
-    const key = JSON.stringify(params);
+    const { params, ready } = buildParams(pv, byName(), props.form());
+    const key = ready ? JSON.stringify(params) : "";
     if (key === lastPreviewKey) return;
     lastPreviewKey = key;
     clearTimeout(timer);
-    if (!typed) {
+    if (!ready) {
       setPreview(null);
       return;
     }
@@ -146,14 +182,17 @@ export function useFormHelpers(props) {
     }, 400);
   });
 
-  // Index of the section the preview panel follows: the first one holding any
-  // of its inputs, or the first section when it reads the whole form.
+  // Index of the section the preview panel follows: the LAST one holding any
+  // of its inputs, so it sits under everything it reads.
   const previewAfter = (sections) => {
     const pv = cfg()?.preview;
     if (!pv) return -1;
-    if (!pv.fields) return 0;
-    const i = sections.findIndex((s) => pv.fields.some((n) => s.fields.includes(n)));
-    return i < 0 ? sections.length - 1 : i;
+    const inputs = Object.values(pv.params);
+    let last = -1;
+    sections.forEach((s, i) => {
+      if (inputs.some((n) => s.fields.includes(n))) last = i;
+    });
+    return last < 0 ? sections.length - 1 : last;
   };
 
   return { optionsFor, preview, previewTitle: () => cfg()?.preview?.title, previewAfter };

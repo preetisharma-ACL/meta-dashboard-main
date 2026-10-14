@@ -26,7 +26,8 @@ import {
 // Filter choices are followed by their query_string verbatim — that string
 // already carries the other active params (minus p), exactly as in the admin.
 
-// o = "-3.1" → [{ i: 3, desc: true }, { i: 1, desc: false }] (1-based columns).
+// o = "-3.1" → [{ i: 3, desc: true }, { i: 1, desc: false }]. The numbers are
+// each column's sort_index from the response, never its position on screen.
 const parseOrder = (o) =>
   String(o || "")
     .split(".")
@@ -86,7 +87,14 @@ export default function ControlChangeList() {
     });
   };
 
-  const order = () => parseOrder(query().get("o"));
+  // The current sort comes from the server's ordering[] ({sort_index, dir}) —
+  // it already accounts for Django's row-checkbox column on models with
+  // actions, and reflects a default ordering the URL doesn't carry. The URL's
+  // own o is only the fallback for a response without it.
+  const order = () =>
+    Array.isArray(d()?.ordering)
+      ? d().ordering.map((x) => ({ i: Number(x.sort_index), desc: x.dir === "desc" }))
+      : parseOrder(query().get("o"));
   const sortBy = (i) =>
     setParam((p) => {
       const cur = order();
@@ -244,14 +252,14 @@ export default function ControlChangeList() {
                   <For each={d()?.columns ?? []}>
                     {(c, i) => (
                       <th class="p-3 text-left whitespace-nowrap">
-                        <Show when={c.sortable !== false} fallback={c.label}>
+                        <Show when={c.sortable === true && c.sort_index != null} fallback={c.label}>
                           <button
                             type="button"
-                            onClick={() => sortBy(i() + 1)}
+                            onClick={() => sortBy(Number(c.sort_index))}
                             class="inline-flex items-center uppercase tracking-wider hover:text-blue-600"
                           >
                             {c.label}
-                            {sortMark(i() + 1)}
+                            {sortMark(Number(c.sort_index))}
                           </button>
                         </Show>
                       </th>
