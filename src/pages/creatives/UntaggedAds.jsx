@@ -5,7 +5,7 @@ import {
   fmtMoney,
   fmtInt,
 } from "../../services/creatives";
-import { errorMessage } from "../../utils/apiErrors";
+import { loadErrorMessage } from "../../utils/apiErrors";
 import {
   PageShell,
   ErrorBox,
@@ -50,7 +50,7 @@ export default function UntaggedAds() {
     mine: isCMRole() && mine() ? 1 : "",
   });
 
-  const [data] = createResource(params, (p) => fetchUntagged(p));
+  const [data, { refetch }] = createResource(params, (p) => fetchUntagged(p));
   const d = () => (data.error ? null : data());
 
   // Each table sorts on its own; display-only, API order is the default.
@@ -125,17 +125,20 @@ export default function UntaggedAds() {
         </Show>
       </div>
 
-      <ErrorBox message={data.error ? errorMessage(data.error, "Could not load untagged ads.") : ""} />
+      <ErrorBox
+        message={data.error ? `Could not load untagged ads. ${loadErrorMessage(data.error)}` : ""}
+        onRetry={refetch}
+      />
 
       <div class="mb-2 grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div class="bg-white dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-xl p-5">
           <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
             Tag coverage
           </p>
-          <p class="text-4xl font-bold mt-1.5 tracking-tight text-[#AC2334] tabular-nums">
+          <p class="text-4xl font-bold mt-1.5 tracking-tight text-[#AC2334] dark:text-red-300 tabular-nums">
             {data.loading ? "…" : coverage()}
           </p>
-          <p class="mt-1 text-xs text-[#8593A8]">Spend on coded ads / all ad spend</p>
+          <p class="mt-1 text-xs text-[#8593A8] dark:text-gray-400">Spend on coded ads / all ad spend</p>
         </div>
         <div class="bg-white dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-xl p-5">
           <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
@@ -161,7 +164,7 @@ export default function UntaggedAds() {
         sort={untaggedSort()}
         onSort={onUntaggedSort}
         loading={data.loading}
-        empty={!untagged().length}
+        empty={!data.error && !untagged().length}
         emptyText="Every ad in this range carries a code."
       >
         <For each={untagged()}>{(r) => <AdRow r={r} />}</For>
@@ -175,7 +178,7 @@ export default function UntaggedAds() {
         sort={unknownSort()}
         onSort={onUnknownSort}
         loading={data.loading}
-        empty={!unknownCodes().length}
+        empty={!data.error && !unknownCodes().length}
         emptyText="No unknown codes in this range."
       >
         <For each={unknownCodes()}>

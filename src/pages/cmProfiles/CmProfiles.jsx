@@ -7,7 +7,7 @@ import {
   updateCmProfile,
 } from "../../services/cmProfiles";
 import { fetchOnboardingOptions } from "../../services/onboarding";
-import { collectFieldMessages } from "../../utils/apiErrors";
+import { collectFieldMessages, loadErrorMessage } from "../../utils/apiErrors";
 import {
   CM_TIERS,
   isSeniorTierValue,
@@ -96,7 +96,7 @@ const toast = (title) =>
 function SectionTitle(props) {
   return (
     <div class="flex items-center justify-between gap-3 mb-3">
-      <h3 class="text-sm font-bold uppercase tracking-wider text-[#8593A8]">
+      <h3 class="text-sm font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
         {props.children}
       </h3>
       {props.right}
@@ -116,7 +116,7 @@ function Segmented(props) {
             onClick={() => props.onChange(o.key)}
             class={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
               props.value === o.key
-                ? "bg-white dark:bg-gray-900 text-[#AC2334] shadow-sm"
+                ? "bg-white dark:bg-gray-900 text-[#AC2334] dark:text-red-300 shadow-sm"
                 : "text-[#54657E] dark:text-gray-400 hover:text-[#14233A] dark:hover:text-gray-200"
             }`}
           >
@@ -152,7 +152,7 @@ function EmptyPanel(props) {
       <div>
         <div class="w-12 h-12 mx-auto rounded-xl bg-[#F0F4F9] dark:bg-gray-700 grid place-items-center mb-3">
           <svg
-            class="w-6 h-6 text-[#8593A8]"
+            class="w-6 h-6 text-[#8593A8] dark:text-gray-400"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -203,7 +203,9 @@ export default function CmProfiles() {
   const [reasonError, setReasonError] = createSignal(null);
   const [historyFor, setHistoryFor] = createSignal(null);
 
-  const rows = () => profiles() ?? [];
+  // Guarded: an errored resource THROWS when read, and every memo below reads
+  // rows() — unguarded, a failed load crashed the page past its own banner.
+  const rows = () => (profiles.error ? null : profiles()) ?? [];
   const canWrite = () => canWriteCmProfiles();
 
   // team_lead_id is a USER id — the model's FK is to User and the PATCH resolves
@@ -418,7 +420,7 @@ export default function CmProfiles() {
       {/* ════════ HEADER ════════ */}
       <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 mb-5">
         <div>
-          <p class="text-xs font-bold uppercase tracking-[0.12em] text-[#AC2334] mb-1.5">
+          <p class="text-xs font-bold uppercase tracking-[0.12em] text-[#AC2334] dark:text-red-300 mb-1.5">
             Access
           </p>
           <h1 class="text-2xl font-bold text-[#14233A] dark:text-white mb-1">
@@ -448,7 +450,7 @@ export default function CmProfiles() {
           role="alert"
           class="mb-5 rounded-lg border border-[#AC2334]/30 bg-[#FBEEF0] dark:bg-red-900/20 dark:border-red-800 px-3.5 py-3 text-sm font-medium text-[#AC2334] dark:text-red-300 flex items-center justify-between gap-3"
         >
-          <span>Could not load profiles. {profiles.error?.message ?? ""}</span>
+          <span>Could not load profiles. {loadErrorMessage(profiles.error)}</span>
           <button
             type="button"
             onClick={() => refetchList()}
@@ -519,7 +521,7 @@ export default function CmProfiles() {
                 <h3 class="text-[13px] font-bold uppercase tracking-[.08em] text-[#14233A] dark:text-gray-100 truncate">
                   Campaign managers
                 </h3>
-                <p class="text-[11px] text-[#8593A8] mt-0.5 truncate">
+                <p class="text-[11px] text-[#8593A8] dark:text-gray-400 mt-0.5 truncate">
                   Pick one to see what they may do and who sees their clients
                 </p>
               </div>
@@ -530,7 +532,7 @@ export default function CmProfiles() {
 
             <div class="relative mt-3">
               <svg
-                class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8593A8]"
+                class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8593A8] dark:text-gray-400"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -584,12 +586,12 @@ export default function CmProfiles() {
             <Show when={profiles.loading && !rows().length}>
               <RosterSkeleton />
             </Show>
-            <Show when={!profiles.loading && !filtered().length}>
+            <Show when={!profiles.loading && !profiles.error && !filtered().length}>
               <div class="px-4 py-10 text-center">
                 <p class="text-sm font-semibold text-[#14233A] dark:text-gray-200">
                   No managers match
                 </p>
-                <p class="text-xs text-[#8593A8] mt-1">
+                <p class="text-xs text-[#8593A8] dark:text-gray-400 mt-1">
                   Clear the search or the filters to see everyone.
                 </p>
               </div>
@@ -622,7 +624,7 @@ export default function CmProfiles() {
                         </span>
                         <CountChip count={p.clientCount} label="clients" />
                       </span>
-                      <span class="block text-xs text-[#8593A8] truncate mt-0.5">
+                      <span class="block text-xs text-[#8593A8] dark:text-gray-400 truncate mt-0.5">
                         {`Reports to ${p.teamLeadEmail ?? resolveLead(p.teamLeadId) ?? (p.tier === "tier_1" ? "nobody" : "—")}`}
                         {teamCountOf(p)
                           ? ` · leads ${teamCountOf(p)}`
@@ -653,7 +655,7 @@ export default function CmProfiles() {
                 type="button"
                 onClick={() => setActionError(null)}
                 aria-label="Dismiss"
-                class="flex-none text-[#AC2334] hover:opacity-70"
+                class="flex-none text-[#AC2334] dark:text-red-300 hover:opacity-70"
               >
                 ✕
               </button>
@@ -710,7 +712,7 @@ export default function CmProfiles() {
                         title={detailReady() ? undefined : "Loading this manager’s clients…"}
                         class={`${actionBtn} border ${
                           selected().isActive
-                            ? "border-[#AC2334]/30 text-[#AC2334] hover:bg-[#FBEEF0] dark:hover:bg-red-900/20"
+                            ? "border-[#AC2334]/30 text-[#AC2334] dark:text-red-300 hover:bg-[#FBEEF0] dark:hover:bg-red-900/20"
                             : "border-[#15966A]/40 text-[#0F7A55] hover:bg-[#E7F5EE] dark:hover:bg-green-900/20"
                         }`}
                       >
@@ -759,7 +761,7 @@ export default function CmProfiles() {
                     : "Tier 3. This manager works their own clients and may do none of the following:"}
                 </p>
                 <TierPowers tier={selected().tier} />
-                <p class="text-xs text-[#8593A8] mt-3">
+                <p class="text-xs text-[#8593A8] dark:text-gray-400 mt-3">
                   A tier change grants or removes every one of these at once.
                 </p>
               </div>
@@ -814,7 +816,7 @@ export default function CmProfiles() {
                     <Show
                       when={treeOf(selected()).length}
                       fallback={
-                        <p class="text-sm text-[#8593A8]">
+                        <p class="text-sm text-[#8593A8] dark:text-gray-400">
                           Nobody reports to this manager, so their dashboard
                           shows only their own clients.
                         </p>
@@ -840,13 +842,13 @@ export default function CmProfiles() {
                                   <TierBadge tier={m.tier} />
                                   <InactiveBadge isActive={m.isActive} />
                                   <Show when={depth > 0}>
-                                    <span class="text-xs text-[#8593A8] truncate">
+                                    <span class="text-xs text-[#8593A8] dark:text-gray-400 truncate">
                                       reports to{" "}
                                       {m.teamLeadEmail ?? resolveLead(m.teamLeadId) ?? "—"}
                                     </span>
                                   </Show>
                                   <Show when={m.clientCount != null}>
-                                    <span class="text-xs text-[#8593A8]">
+                                    <span class="text-xs text-[#8593A8] dark:text-gray-400">
                                       {m.clientCount} client
                                       {m.clientCount === 1 ? "" : "s"}
                                     </span>
@@ -866,7 +868,7 @@ export default function CmProfiles() {
                           )}
                         </For>
                       </ul>
-                      <p class="text-xs text-[#8593A8] mt-2">
+                      <p class="text-xs text-[#8593A8] dark:text-gray-400 mt-2">
                         Every client these managers hold is also visible on this
                         manager's dashboard. A tier change is refused while
                         anyone still reports to them.
@@ -881,10 +883,10 @@ export default function CmProfiles() {
                 <SectionTitle>Clients ({selected().clientCount})</SectionTitle>
 
                 <Show when={detail.loading}>
-                  <p class="text-sm text-[#8593A8]">Loading clients…</p>
+                  <p class="text-sm text-[#8593A8] dark:text-gray-400">Loading clients…</p>
                 </Show>
                 <Show when={detail.error}>
-                  <p class="text-sm text-[#AC2334]">
+                  <p class="text-sm text-[#AC2334] dark:text-red-300">
                     Could not load this manager's clients.{" "}
                     {detail.error?.message ?? ""}
                   </p>
@@ -894,7 +896,7 @@ export default function CmProfiles() {
                   <Show
                     when={selected().clients?.length}
                     fallback={
-                      <p class="text-sm text-[#8593A8]">
+                      <p class="text-sm text-[#8593A8] dark:text-gray-400">
                         No clients assigned to this manager.
                       </p>
                     }
@@ -919,7 +921,7 @@ export default function CmProfiles() {
                         )}
                       </For>
                     </ul>
-                    <p class="text-xs text-[#8593A8] mt-2">
+                    <p class="text-xs text-[#8593A8] dark:text-gray-400 mt-2">
                       These are the clients that change dashboards when this
                       manager's tier or team lead changes.
                     </p>

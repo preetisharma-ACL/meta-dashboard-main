@@ -39,7 +39,7 @@ export function PageShell(props) {
     <section class="w-full px-4 sm:px-6 lg:px-8 py-6 bg-gray-50 dark:bg-gray-900 min-h-screen">
       <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 mb-6">
         <div>
-          <p class="text-xs font-bold uppercase tracking-[0.12em] text-[#AC2334] mb-1.5">
+          <p class="text-xs font-bold uppercase tracking-[0.12em] text-[#AC2334] dark:text-red-300 mb-1.5">
             {props.eyebrow ?? "Creatives"}
           </p>
           <h1 class="text-2xl font-bold text-[#14233A] dark:text-white mb-1">
@@ -60,11 +60,24 @@ export function PageShell(props) {
   );
 }
 
+// onRetry (optional) adds a Retry button — pass the page's refetch.
 export function ErrorBox(props) {
   return (
     <Show when={props.message}>
-      <div class="mb-5 rounded-xl border border-[#AC2334]/25 bg-[#FBEEF0] dark:bg-red-900/20 dark:border-red-800 px-4 py-3 text-sm font-medium text-[#AC2334] dark:text-red-300">
-        {props.message}
+      <div
+        role="alert"
+        class="mb-5 flex items-center justify-between gap-3 rounded-xl border border-[#AC2334]/25 bg-[#FBEEF0] dark:bg-red-900/20 dark:border-red-800 px-4 py-3 text-sm font-medium text-[#AC2334] dark:text-red-300"
+      >
+        <span>{props.message}</span>
+        <Show when={props.onRetry}>
+          <button
+            type="button"
+            onClick={() => props.onRetry()}
+            class="flex-none underline font-semibold"
+          >
+            Retry
+          </button>
+        </Show>
       </div>
     </Show>
   );
@@ -144,7 +157,7 @@ export function StatusPill(props) {
         "inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wide " +
         (props.active
           ? "bg-[#E7F5EC] text-[#1E7B45] dark:bg-green-900/30 dark:text-green-300"
-          : "bg-[#F1F4F8] text-[#8593A8] dark:bg-gray-700 dark:text-gray-400")
+          : "bg-[#F1F4F8] text-[#8593A8] dark:bg-gray-700 dark:text-gray-300")
       }
     >
       {props.active ? "Active" : "Inactive"}
@@ -154,7 +167,7 @@ export function StatusPill(props) {
 
 export function OneDriveLink(props) {
   return (
-    <Show when={props.url} fallback={<span class="text-[#8593A8]">—</span>}>
+    <Show when={props.url} fallback={<span class="text-[#8593A8] dark:text-gray-400">—</span>}>
       <a
         href={props.url}
         target="_blank"
@@ -184,7 +197,7 @@ export function DatePresets(props) {
   const btn = (active) =>
     "px-3 py-2 text-sm font-semibold rounded-md transition-colors " +
     (active
-      ? "bg-white dark:bg-gray-700 text-[#AC2334] shadow-sm"
+      ? "bg-white dark:bg-gray-700 text-[#AC2334] dark:text-red-300 shadow-sm"
       : "text-[#54657E] dark:text-gray-300 hover:text-[#14233A]");
   const v = () => props.value;
   const pick = (preset) => {
@@ -304,7 +317,7 @@ export function NomenPicker(props) {
       <Show when={props.value && props.clearable && !props.disabled}>
         <button
           type="button"
-          class="absolute right-2 top-1/2 -translate-y-1/2 text-[#8593A8] hover:text-[#AC2334] text-lg leading-none px-1"
+          class="absolute right-2 top-1/2 -translate-y-1/2 text-[#8593A8] dark:text-gray-400 hover:text-[#AC2334] text-lg leading-none px-1"
           title="Clear"
           onClick={() => choose(null)}
         >
@@ -315,11 +328,11 @@ export function NomenPicker(props) {
         <div class="absolute z-50 mt-1 w-full max-h-72 overflow-y-auto rounded-lg border border-[#E2E8F1] dark:border-gray-700 bg-white dark:bg-gray-900 shadow-xl">
           <Show
             when={!options.loading}
-            fallback={<p class="px-3 py-3 text-sm text-[#8593A8]">Loading…</p>}
+            fallback={<p class="px-3 py-3 text-sm text-[#8593A8] dark:text-gray-400">Loading…</p>}
           >
             <Show
               when={(options() ?? []).length}
-              fallback={<p class="px-3 py-3 text-sm text-[#8593A8]">No clients match.</p>}
+              fallback={<p class="px-3 py-3 text-sm text-[#8593A8] dark:text-gray-400">No clients match.</p>}
             >
               <For each={options()}>
                 {(opt) => (
@@ -437,7 +450,7 @@ export function ProjectFilter(props) {
 // a `key` becomes a clickable header. The caller sorts its own rows (sortRows).
 export function DataTable(props) {
   const sortIcon = (key) => {
-    if (props.sort?.key !== key) return <span class="ml-1 text-[#9DAEC4] dark:text-gray-600">⇅</span>;
+    if (props.sort?.key !== key) return <span class="ml-1 text-[#9DAEC4] dark:text-gray-400">⇅</span>;
     return <span class="ml-1 text-[#AC2334] dark:text-red-300">{props.sort.dir === "asc" ? "↑" : "↓"}</span>;
   };
   return (
@@ -492,7 +505,7 @@ export function DataTable(props) {
               when={!props.empty}
               fallback={
                 <tr>
-                  <td colSpan={props.cols.length} class="!py-10 text-center text-[#8593A8]">
+                  <td colSpan={props.cols.length} class="!py-10 text-center text-[#8593A8] dark:text-gray-400">
                     {props.emptyText ?? "Nothing to show."}
                   </td>
                 </tr>

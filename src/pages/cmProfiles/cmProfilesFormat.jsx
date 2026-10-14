@@ -90,7 +90,7 @@ export function TierPowers(props) {
               class={`flex-none mt-0.5 w-4 h-4 rounded-full grid place-items-center text-[10px] font-bold ${
                 isLead()
                   ? "bg-[#E7F5EE] text-[#0F7A55] dark:bg-green-900/40 dark:text-green-300"
-                  : "bg-[#F0F4F9] text-[#8593A8] dark:bg-gray-700 dark:text-gray-500"
+                  : "bg-[#F0F4F9] text-[#8593A8] dark:bg-gray-700 dark:text-gray-400"
               }`}
             >
               {isLead() ? "✓" : "✕"}
@@ -99,7 +99,7 @@ export function TierPowers(props) {
               class={
                 isLead()
                   ? "text-[#14233A] dark:text-gray-200"
-                  : "text-[#8593A8] line-through decoration-[#C9D3E0]"
+                  : "text-[#8593A8] dark:text-gray-400 line-through decoration-[#C9D3E0]"
               }
             >
               {power}

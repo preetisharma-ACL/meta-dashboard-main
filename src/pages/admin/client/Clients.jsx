@@ -12,6 +12,7 @@ import { useNavigate } from "@solidjs/router";
 import { fetchClients } from "../services/fetchClients";
 import { fetchHierarchyClients } from "../../../services/cm";
 import { fetchAssignmentsByClient } from "../../../services/cmAssignments";
+import { loadErrorMessage } from "../../../utils/apiErrors";
 import { setProjectsCache } from "../../../cacheStore/appStore";
 import Avatar from "../../../components/common/Avatar";
 import RowsPerPageSelect from "../../../components/common/RowsPerPageSelect";
@@ -48,9 +49,9 @@ import FilterPill from "../../../components/filters/FilterPill";
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 const TYPE_COLORS = {
-  hybrid: "bg-purple-100 text-purple-700 ring-1 ring-purple-300",
-  cpl: "bg-amber-100  text-amber-700  ring-1 ring-amber-300",
-  retainer: "bg-sky-100    text-sky-700    ring-1 ring-sky-300",
+  hybrid: "bg-purple-100 dark:bg-purple-900/40 dark:text-purple-300 text-purple-700 ring-1 ring-purple-300",
+  cpl: "bg-amber-100 dark:bg-amber-900/40 dark:text-amber-300  text-amber-700  ring-1 ring-amber-300",
+  retainer: "bg-sky-100 dark:bg-sky-900/40 dark:text-sky-300    text-sky-700    ring-1 ring-sky-300",
 };
 
 const fmtType = (t) =>
@@ -133,6 +134,9 @@ export default function Clients() {
   const navigate = useNavigate();
 
   const [loading, setLoading] = createSignal(true);
+  // The roster load failure (admin or CM path). Secondary boards keep their
+  // own quiet fallbacks — only this one is the page.
+  const [loadError, setLoadError] = createSignal(null);
   const [search, setSearch] = createSignal("");
   const [clientTypes, setClientTypes] = createSignal(DEFAULT_CLIENT_TYPES); // multi-select
   const [assignFilter, setAssignFilter] = createSignal("all"); // all | assigned | unassigned
@@ -449,19 +453,25 @@ export default function Clients() {
       setAllClients(allData);
     } catch (err) {
       console.error("Failed to load all clients:", err);
+      // Shown above the table; without it a failure read as "0 total".
+      setAllClients([]);
+      setLoadError(err);
     }
   };
 
-  onMount(async () => {
+  const loadRoster = async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       await (isCampaignManager() ? loadCmClients() : loadAllClients());
     } catch (err) {
       console.error("Failed to load clients:", err);
+      setLoadError(err);
     } finally {
       setLoading(false);
     }
-  });
+  };
+  onMount(loadRoster);
 
   // Activity is filtered SERVER-side for admins (?activity=running|paused), so
   // changing the chip re-fetches the roster. CMs are sourced from the hierarchy,
@@ -474,6 +484,7 @@ export default function Clients() {
         if (isCampaignManager()) return;
         setLoading(true);
         setSelected(new Set());
+        setLoadError(null);
         try {
           await loadAllClients();
         } finally {
@@ -496,7 +507,7 @@ export default function Clients() {
   const sortIcon = (key) => {
     if (sortKey() !== key) return <span class="text-gray-300 ml-1">⇅</span>;
     return (
-      <span class="ml-1 text-purple-600">
+      <span class="ml-1 text-purple-600 dark:text-purple-300">
         {sortDir() === "asc" ? "↑" : "↓"}
       </span>
     );
@@ -737,7 +748,9 @@ export default function Clients() {
           {/* pl-[46px] = tile (36px) + gap (10px), so this starts under the
               heading text rather than under the icon. */}
           <p class="pl-[46px] text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-            {allClients().length} total
+            <Show when={!loadError()} fallback="Roster unavailable">
+              {allClients().length} total
+            </Show>
             {/* Admins get a server-narrowed roster when an Activity chip is on,
                 so say so — otherwise "total" reads as the whole book. */}
             <Show when={!isCampaignManager() && activityFilter() !== "all"}>
@@ -753,6 +766,22 @@ export default function Clients() {
           </p>
         </div>
       </div>
+
+      <Show when={loadError()}>
+        <div
+          role="alert"
+          class="mb-5 flex items-center justify-between gap-3 rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-4 py-3 text-sm font-medium text-red-700 dark:text-red-300"
+        >
+          <span>Couldn't load clients. {loadErrorMessage(loadError())}</span>
+          <button
+            type="button"
+            onClick={loadRoster}
+            class="underline font-semibold"
+          >
+            Retry
+          </button>
+        </div>
+      </Show>
 
       {/* ─────────────── Control panel ───────────────
           Two decks, matching the Campaign Manager's Clients screen:
@@ -845,7 +874,8 @@ export default function Clients() {
               class="h-11 px-3.5 text-[13px] font-semibold rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 cursor-pointer focus:outline-none focus:border-[#14233A] focus:ring-2 focus:ring-[#14233A]/10 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <option value="all">
-                {cmReady() ? "All Campaign Managers" : "Loading managers…"}
+                {/* A failed assignments read resolves to null — not loading. */}
+                {assignRes.loading ? "Loading managers…" : "All Campaign Managers"}
               </option>
               <For each={managerOptions()}>
                 {(m) => <option value={m.email}>{m.name}</option>}
@@ -869,7 +899,7 @@ export default function Clients() {
         {/* ── Deck 2 · the client axes ── */}
         <div class="border-t border-gray-100 dark:border-gray-800 bg-gradient-to-b from-[#F8F9FC] to-[#F1F3F8] dark:from-gray-800/30 dark:to-gray-800/10 px-4 md:px-5 py-4">
           <div class="flex items-center gap-2.5 mb-3">
-            <span class="text-[10px] font-bold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
+            <span class="text-[10px] font-bold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-400">
               Refine
             </span>
             <span class="h-px flex-1 bg-gradient-to-r from-gray-200 to-transparent dark:from-gray-700" />
@@ -1005,7 +1035,7 @@ export default function Clients() {
                   type="checkbox"
                   checked={allSelected()}
                   onChange={toggleAll}
-                  class="rounded border-gray-300 text-purple-600 focus:ring-purple-500 cursor-pointer"
+                  class="rounded border-gray-300 text-purple-600 dark:text-purple-300 focus:ring-purple-500 cursor-pointer"
                 />
               </th>
               <th
@@ -1145,7 +1175,7 @@ export default function Clients() {
                         type="checkbox"
                         checked={selected().has(client.id)}
                         onChange={() => toggleOne(client.id)}
-                        class="rounded border-gray-300 text-purple-600 focus:ring-purple-500 cursor-pointer"
+                        class="rounded border-gray-300 text-purple-600 dark:text-purple-300 focus:ring-purple-500 cursor-pointer"
                       />
                     </td>
 
@@ -1170,7 +1200,7 @@ export default function Clients() {
                         <Show
                           when={cmReady()}
                           fallback={
-                            <span class="text-gray-300 dark:text-gray-600">—</span>
+                            <span class="text-gray-300 dark:text-gray-400">—</span>
                           }
                         >
                           <Show
@@ -1210,7 +1240,7 @@ export default function Clients() {
                     <td class="p-3 text-center">
                       <span
                         class={`px-2.5 py-0.5 rounded-full text-xs font-semibold
-                                                          ${TYPE_COLORS[client.client_type] ?? "bg-gray-100 text-gray-600"}`}
+                                                          ${TYPE_COLORS[client.client_type] ?? "bg-gray-100 dark:bg-gray-900/40 dark:text-gray-300 text-gray-600"}`}
                       >
                         {fmtType(client.client_type)}
                       </span>
@@ -1273,7 +1303,7 @@ export default function Clients() {
                             })
                           }
                           disabled={pkOf(client) == null}
-                          class="mt-1 block text-[11px] font-semibold text-[#3E6FB0] hover:underline disabled:opacity-40 disabled:no-underline"
+                          class="mt-1 block text-[11px] font-semibold text-[#3E6FB0] dark:text-blue-300 hover:underline disabled:opacity-40 disabled:no-underline"
                         >
                           Tier history
                         </button>
@@ -1283,7 +1313,7 @@ export default function Clients() {
                     {/* Is Active */}
                     <td class="p-3 text-center">
                       {client.is_active ? (
-                        <span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-green-100 text-green-600">
+                        <span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-green-100 dark:bg-green-900/40 dark:text-green-300 text-green-600">
                           <svg
                             class="w-3.5 h-3.5"
                             fill="currentColor"
@@ -1297,7 +1327,7 @@ export default function Clients() {
                           </svg>
                         </span>
                       ) : (
-                        <span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-red-100 text-red-500">
+                        <span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-red-100 dark:bg-red-900/40 dark:text-red-300 text-red-500">
                           <svg
                             class="w-3.5 h-3.5"
                             fill="currentColor"
@@ -1326,7 +1356,7 @@ export default function Clients() {
                       <Show
                         when={pkOf(client) != null}
                         fallback={
-                          <span class="text-gray-300 dark:text-gray-600">—</span>
+                          <span class="text-gray-300 dark:text-gray-400">—</span>
                         }
                       >
                         <button
@@ -1337,7 +1367,7 @@ export default function Clients() {
                                 client.client_nomen_name || client.email,
                             })
                           }
-                          class="text-xs font-semibold text-[#3E6FB0] hover:underline"
+                          class="text-xs font-semibold text-[#3E6FB0] dark:text-blue-300 hover:underline"
                         >
                           View
                         </button>
@@ -1348,14 +1378,14 @@ export default function Clients() {
               </For>
 
               {/* Empty state */}
-              <Show when={filtered().length === 0}>
+              <Show when={!loadError() && filtered().length === 0}>
                 <tr>
                   <td
                     colspan={
                       (isCampaignManager() ? 10 : 11) +
                       (canSeeValueTier() ? 1 : 0)
                     }
-                    class="py-16 text-center text-gray-400 dark:text-gray-500"
+                    class="py-16 text-center text-gray-400 dark:text-gray-400"
                   >
                     <svg
                       class="w-10 h-10 mx-auto mb-3 opacity-30"

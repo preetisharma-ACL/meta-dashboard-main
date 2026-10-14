@@ -1,3 +1,4 @@
+import { useDialog } from "../utils/useDialog";
 import {
   createSignal,
   createMemo,
@@ -11,6 +12,7 @@ import {
   fetchCreditNotes,
 } from "../services/billing-service";
 import { fetchPaymentsDetails } from "../services/payments-service";
+import { loadErrorMessage } from "../utils/apiErrors";
 import useRole, { clientRole } from "../hooks/useRole";
 import LeadBreakdown from "../components/leads/LeadBreakdown";
 import CreditNotesSidebar from "../components/billing/CreditNotesSidebar";
@@ -261,7 +263,7 @@ function PacingCard(props) {
         </Show>
       </div>
 
-      <div class="mt-2.5 flex justify-between text-xs text-gray-400 dark:text-gray-500">
+      <div class="mt-2.5 flex justify-between text-xs text-gray-400 dark:text-gray-400">
         <span>1 {props.monthShort}</span>
         <Show
           when={props.dayOfMonth > 0 && props.dayOfMonth < props.daysInMonth}
@@ -320,7 +322,7 @@ function LedgerRow(props) {
         </Show>
         {props.name}
         <Show when={props.tag}>
-          <span class="text-[11px] font-medium text-gray-400 dark:text-gray-500">
+          <span class="text-[11px] font-medium text-gray-400 dark:text-gray-400">
             {props.tag}
           </span>
         </Show>
@@ -335,7 +337,7 @@ function LedgerRow(props) {
                   props.tone === "neg"
                     ? "text-red-600 dark:text-red-400"
                     : props.tone === "zero"
-                      ? "text-gray-400 dark:text-gray-500"
+                      ? "text-gray-400 dark:text-gray-400"
                       : "text-gray-900 dark:text-gray-100"
                 }`
         }`}
@@ -409,7 +411,7 @@ function PaymentHistory(props) {
                               : `${pay.date} · via ${pay.method} · ${pay.id}`}
                           </span>
                           <Show when={!pay.credit}>
-                            <span class="text-gray-300 dark:text-gray-600">
+                            <span class="text-gray-300 dark:text-gray-400">
                               ·
                             </span>
                             <span class="inline-flex items-center gap-1.5">
@@ -479,14 +481,23 @@ function AddFundsModal(props) {
   const handleBackdrop = (e) => {
     if (e.target === e.currentTarget) props.onClose();
   };
+  // Stays mounted while closed (for the fade); inert keeps it out of the Tab
+  // order then. Esc closes it and focus returns to the opener.
+  let dialogBox;
+  useDialog(() => props.open, () => props.onClose(), () => dialogBox);
 
   return (
     <div
       class={`fixed inset-0 z-50 flex items-center justify-center p-4 transition-all duration-200 ${props.open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
       style={{ background: "rgba(0,0,0,0.45)", "backdrop-filter": "blur(4px)" }}
       onClick={handleBackdrop}
+      inert={props.open ? undefined : true}
+      aria-hidden={props.open ? undefined : "true"}
     >
       <div
+        ref={dialogBox}
+        role="dialog"
+        aria-modal="true"
         class={`w-full max-w-md transition-all duration-200 ${props.open ? "scale-100 translate-y-0" : "scale-95 translate-y-4"}`}
       >
         <Card class="p-6 space-y-5 shadow-sm">
@@ -523,7 +534,7 @@ function AddFundsModal(props) {
               Amount (INR, ex-GST)
             </label>
             <div class="relative">
-              <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-600 font-bold select-none">
+              <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-400 font-bold select-none">
                 ₹
               </span>
               <input
@@ -591,6 +602,10 @@ function InvoiceModal(props) {
   const handleBackdrop = (e) => {
     if (e.target === e.currentTarget) props.onClose();
   };
+  // Stays mounted while closed (for the fade); inert keeps it out of the Tab
+  // order then. Esc closes it and focus returns to the opener.
+  let dialogBox;
+  useDialog(() => props.open, () => props.onClose(), () => dialogBox);
 
   return (
     <div
@@ -601,8 +616,13 @@ function InvoiceModal(props) {
       }`}
       style={{ background: "rgba(0,0,0,0.45)", "backdrop-filter": "blur(4px)" }}
       onClick={handleBackdrop}
+      inert={props.open ? undefined : true}
+      aria-hidden={props.open ? undefined : "true"}
     >
       <div
+        ref={dialogBox}
+        role="dialog"
+        aria-modal="true"
         class={`w-full max-w-md transition-all duration-200 ${
           props.open ? "scale-100 translate-y-0" : "scale-95 translate-y-4"
         }`}
@@ -647,7 +667,7 @@ function InvoiceModal(props) {
               <p class="text-sm font-bold text-gray-900 dark:text-gray-100">
                 Aajneeti Connect Ltd.
               </p>
-              <p class="text-xs text-gray-500 dark:text-gray-500">
+              <p class="text-xs text-gray-500 dark:text-gray-400">
                 Delhi, India
               </p>
             </div>
@@ -896,7 +916,7 @@ function CplProjectTable(props) {
   const fmtTotal = (v) => (v == null ? <Dash /> : fmt(v));
 
   const Dash = () => (
-    <span class="font-medium text-gray-400 dark:text-gray-500">—</span>
+    <span class="font-medium text-gray-400 dark:text-gray-400">—</span>
   );
 
   const numCell =
@@ -1070,11 +1090,11 @@ function CplProjectTable(props) {
                             >
                               <span class="block text-gray-600 dark:text-gray-300">
                                 {fmt(p.fixed_cpl)}
-                                <span class="ml-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                                <span class="ml-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-400">
                                   avg
                                 </span>
                               </span>
-                              <span class="block text-[11px] text-gray-400 dark:text-gray-500">
+                              <span class="block text-[11px] text-gray-400 dark:text-gray-400">
                                 {ratesUsed(p).map((r) => fmt(r)).join(" · ")}
                               </span>
                             </Show>
@@ -1264,7 +1284,7 @@ function AdditionalServicesTable(props) {
                     <Show
                       when={r.description}
                       fallback={
-                        <span class="text-gray-400 dark:text-gray-500">—</span>
+                        <span class="text-gray-400 dark:text-gray-400">—</span>
                       }
                     >
                       {r.description}
@@ -1277,7 +1297,7 @@ function AdditionalServicesTable(props) {
                   <td class={numCell}>
                     {amt(r.gst_amount)}
                     <Show when={asNum(r.gst_pct) != null}>
-                      <span class="block text-[11px] text-gray-400 dark:text-gray-500">
+                      <span class="block text-[11px] text-gray-400 dark:text-gray-400">
                         {asNum(r.gst_pct)}%
                       </span>
                     </Show>
@@ -1425,7 +1445,9 @@ export default function Billing() {
   const { ishybrid, isRetainer, iscpl } = clientRole();
 
   const payments = createMemo(() => {
-    const apiData = paymentsData()?.data || [];
+    // An errored resource THROWS when read; a failed payments list is just an
+    // empty history, not a broken page.
+    const apiData = (paymentsData.error ? null : paymentsData())?.data || [];
 
     return apiData.map((item) => ({
       id: `PAY-${item.id}`,
@@ -1489,7 +1511,9 @@ export default function Billing() {
     fetchBillingOverview,
   );
 
-  const data = () => overviewRes()?.data || {};
+  // Guarded: reading an errored resource throws, which took the whole page
+  // down instead of reaching the error banner below.
+  const data = () => (overviewRes.error ? null : overviewRes())?.data || {};
   // Only show months from launch (June 2026) up to the current month.
   const LAUNCH_KEY = "2026-06";
   const availableMonths = () => {
@@ -1647,7 +1671,7 @@ export default function Billing() {
     () => (ishybrid() ? "cn" : null),
     () => fetchCreditNotes(),
   );
-  const cnData = () => cnRes()?.data ?? null;
+  const cnData = () => (cnRes.error ? null : cnRes())?.data ?? null;
   const cnApplies = () => cnData()?.applies === true;
   const [cnOpen, setCnOpen] = createSignal(false);
 
@@ -1870,7 +1894,7 @@ export default function Billing() {
               }}
             </For>
             {/* <Show when={!iscpl()}>
-              <span class="ml-auto text-xs text-gray-400 dark:text-gray-500">
+              <span class="ml-auto text-xs text-gray-400 dark:text-gray-400">
                 Amounts are{" "}
                 <b class="font-medium text-gray-500 dark:text-gray-400">
                   excluding GST ({Number(gstPct())}%)
@@ -1883,7 +1907,10 @@ export default function Billing() {
           {/* Error state */}
           <Show when={loadError()}>
             <div class="mt-5 flex items-center justify-between gap-3 text-sm font-medium bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800 rounded-lg px-4 py-3">
-              <span>Couldn't load billing data for this month.</span>
+              <span>
+                Couldn't load billing data for this month:{" "}
+                {loadErrorMessage(loadError())}
+              </span>
               <button onClick={() => refetch()} class="underline font-semibold">
                 Retry
               </button>
@@ -1891,7 +1918,11 @@ export default function Billing() {
           </Show>
 
           <div
-            class={`transition-all duration-500 ${isLoading() ? "animate-pulse" : ""}`}
+            class={`transition-all duration-500 ${isLoading() ? "animate-pulse" : ""} ${
+              // A failed month has no figures — hidden, so its ₹0.00 cards
+              // can't read as a real empty month under the banner.
+              loadError() && !isLoading() ? "hidden" : ""
+            }`}
           >
             {/* ════ HYBRID: 4 cards + full statement ════ */}
             <Show when={ishybrid()}>
@@ -2362,14 +2393,14 @@ export default function Billing() {
 
                 <p class="mt-2 text-2xl font-bold tracking-tight tabular-nums text-gray-900 dark:text-gray-100">
                   {fmt(totalReceived())}
-                  <span class="ml-2 align-middle text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                  <span class="ml-2 align-middle text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-400">
                     inc GST
                   </span>
                 </p>
 
                 <p class="mt-1 text-md font-semibold tabular-nums text-gray-600 dark:text-gray-400">
                   {fmt(totalReceivedExGST())}
-                  <span class="ml-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                  <span class="ml-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-400">
                     ex GST
                   </span>
                 </p>

@@ -15,6 +15,7 @@ import RowsPerPageSelect from "../../../components/common/RowsPerPageSelect";
 import DateTimePicker from "../../../components/DateTimePicker";
 import { fetchProjectsByClient } from "../services/fetchProjectsByClient"; // ← NEW
 import { fetchAllowedBudgetClients } from "../../../services/allowedBudget"; // ← CM-scoped client source
+import { loadErrorMessage } from "../../../utils/apiErrors";
 import {
   isAdmin,
   isSeniorTier,
@@ -29,9 +30,9 @@ import SuccessToast, {
 const PROMISE_PCTS = [30, 35, 40, 50];
 
 const TYPE_COLORS = {
-  hybrid: "bg-blue-100 text-blue-800 ring-1 ring-blue-300",
-  cpl: "bg-amber-100 text-amber-700 ring-1 ring-amber-300",
-  retainer: "bg-sky-100 text-sky-700 ring-1 ring-sky-300",
+  hybrid: "bg-blue-100 dark:bg-blue-900/40 dark:text-blue-300 text-blue-800 ring-1 ring-blue-300",
+  cpl: "bg-amber-100 dark:bg-amber-900/40 dark:text-amber-300 text-amber-700 ring-1 ring-amber-300",
+  retainer: "bg-sky-100 dark:bg-sky-900/40 dark:text-sky-300 text-sky-700 ring-1 ring-sky-300",
 };
 
 // ── Filter pills (same control as the Client Status board) ───────────────────
@@ -78,7 +79,7 @@ const PILL = (on) =>
 
 const PILL_COUNT = (on) =>
   `text-[11px] font-bold tabular-nums ${
-    on ? "text-white/70" : "text-gray-400 dark:text-gray-500"
+    on ? "text-white/70" : "text-gray-400 dark:text-gray-400"
   }`;
 
 const formatDate = (iso) => {
@@ -416,17 +417,33 @@ export default function ProjectDisplayConfig() {
   onMount(loadMissingPromise);
 
   // ── CHANGED: removed fetchProjects() — projects are loaded on demand ──────
+  // The configs list is the page; a failure is shown (with Retry) rather than
+  // left to read as "0 total". The client picker loads separately below, so
+  // its failure only empties the picker instead of blanking the list.
+  const [loadError, setLoadError] = createSignal(null);
+  const loadConfigs = async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const configRes = await fetchProjectDisplayConfig();
+      setConfigs(configRes.data ?? []);
+    } catch (err) {
+      console.error("Failed to load configs:", err);
+      setLoadError(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+  onMount(loadConfigs);
+
   onMount(async () => {
     try {
       const cm = isCampaignManager();
-      const [configRes, clientRes] = await Promise.all([
-        fetchProjectDisplayConfig(),
-        // CMs 403 on the admin all-clients endpoint — source their own clients
-        // from the CM-scoped allowed-budget list instead.
-        cm ? fetchAllowedBudgetClients() : fetchClients(1, 500),
-      ]);
-
-      setConfigs(configRes.data ?? []);
+      // CMs 403 on the admin all-clients endpoint — source their own clients
+      // from the CM-scoped allowed-budget list instead.
+      const clientRes = await (cm
+        ? fetchAllowedBudgetClients()
+        : fetchClients(1, 500));
 
       if (cm) {
         // Allowed-budget rows carry the config-compatible client_id + a display
@@ -449,9 +466,7 @@ export default function ProjectDisplayConfig() {
         );
       }
     } catch (err) {
-      console.error("Failed to load configs:", err);
-    } finally {
-      setLoading(false);
+      console.error("Failed to load clients:", err);
     }
   });
 
@@ -553,7 +568,7 @@ export default function ProjectDisplayConfig() {
   const sortIcon = (key) => {
     if (sortKey() !== key) return <span class="text-gray-300 ml-1">⇅</span>;
     return (
-      <span class="ml-1 text-purple-600">
+      <span class="ml-1 text-purple-600 dark:text-purple-300">
         {sortDir() === "asc" ? "↑" : "↓"}
       </span>
     );
@@ -1008,7 +1023,9 @@ export default function ProjectDisplayConfig() {
             </span>
           </h1>
           <p class="pl-[46px] text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-            {configs().length} total · billing rules per project
+            <Show when={!loadError()} fallback="Billing rules per project">
+              {configs().length} total · billing rules per project
+            </Show>
           </p>
         </div>
         <Show when={canWrite()}>
@@ -1021,6 +1038,23 @@ export default function ProjectDisplayConfig() {
         </Show>
        
       </div>
+      <Show when={loadError()}>
+        <div
+          role="alert"
+          class="mb-4 flex items-center justify-between gap-3 rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-4 py-3 text-sm font-medium text-red-700 dark:text-red-300"
+        >
+          <span>
+            Couldn't load project configs. {loadErrorMessage(loadError())}
+          </span>
+          <button
+            type="button"
+            onClick={loadConfigs}
+            class="underline font-semibold"
+          >
+            Retry
+          </button>
+        </div>
+      </Show>
       {/* ── CPL configs missing promise % ──
           From Oct 2026 an unset promise bills on qualified leads, so each of
           these is a project billing on the wrong basis until it's set. Collapsed
@@ -1114,7 +1148,7 @@ export default function ProjectDisplayConfig() {
         role="group"
         aria-label="Filter by client type"
       >
-        <span class="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mr-1 w-12">
+        <span class="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-400 mr-1 w-12">
           Type
         </span>
         <For each={typeFilters()}>
@@ -1143,7 +1177,7 @@ export default function ProjectDisplayConfig() {
         role="group"
         aria-label="Filter by status"
       >
-        <span class="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mr-1 w-12">
+        <span class="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-400 mr-1 w-12">
           Status
         </span>
         <For each={ACTIVE_FILTERS}>
@@ -1201,7 +1235,7 @@ export default function ProjectDisplayConfig() {
         >
           Clear All
         </button>
-        <span class="ml-auto text-sm text-gray-400 dark:text-gray-500 whitespace-nowrap">
+        <span class="ml-auto text-sm text-gray-400 dark:text-gray-400 whitespace-nowrap">
           {filtered().length} result{filtered().length !== 1 ? "s" : ""}
         </span>
       </div>
@@ -1365,7 +1399,7 @@ export default function ProjectDisplayConfig() {
                     <td class="p-3 text-center">
                       <span
                         class={`px-2.5 py-0.5 rounded-full text-xs font-semibold
-                                    ${TYPE_COLORS[cfg.client_type] ?? "bg-gray-100 text-gray-600"}`}
+                                    ${TYPE_COLORS[cfg.client_type] ?? "bg-gray-100 dark:bg-gray-900/40 dark:text-gray-300 text-gray-600"}`}
                       >
                         {String(cfg.client_type ?? "").toUpperCase()}
                       </span>
@@ -1414,7 +1448,7 @@ export default function ProjectDisplayConfig() {
                       {cfg.is_active ? (
                         <span
                           class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full
-                                     bg-green-100 text-green-700 text-xs font-semibold"
+                                     bg-green-100 dark:bg-green-900/40 dark:text-green-300 text-green-700 text-xs font-semibold"
                         >
                           <span class="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
                           Active
@@ -1422,7 +1456,7 @@ export default function ProjectDisplayConfig() {
                       ) : (
                         <span
                           class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full
-                                     bg-red-100 text-red-600 text-xs font-semibold"
+                                     bg-red-100 dark:bg-red-900/40 dark:text-red-300 text-red-600 text-xs font-semibold"
                         >
                           <span class="w-1.5 h-1.5 rounded-full bg-red-400 inline-block" />
                           Inactive
@@ -1467,11 +1501,11 @@ export default function ProjectDisplayConfig() {
               </For>
 
               {/* Empty State */}
-              <Show when={filtered().length === 0}>
+              <Show when={!loadError() && filtered().length === 0}>
                 <tr>
                   <td
                     colspan="8"
-                    class="py-16 text-center text-gray-400 dark:text-gray-500"
+                    class="py-16 text-center text-gray-400 dark:text-gray-400"
                   >
                     <svg
                       class="w-10 h-10 mx-auto mb-3 opacity-30"
@@ -2075,7 +2109,7 @@ export default function ProjectDisplayConfig() {
                     </div>
                   </div>
 
-                  <p class="text-xs text-gray-400 dark:text-gray-500">
+                  <p class="text-xs text-gray-400 dark:text-gray-400">
                     {!formData().valid_from
                       ? "A start date/time is required."
                       : formData().valid_to

@@ -119,3 +119,11 @@ export const specificError = (err) => {
 // message would otherwise never be seen at all.
 export const errorMessage = (err, fallback = "Request failed.") =>
   specificError(err) ?? err?.message ?? fallback;
+
+// The line a screen shows when its MAIN read fails. A 403 body is only DRF's
+// generic "You do not have permission to perform this action." — reworded for
+// a read; every other status shows what the server said.
+export const loadErrorMessage = (err, fallback = "Couldn't load this page.") =>
+  err?.status === 403
+    ? "You don't have permission to view this."
+    : errorMessage(err, fallback);

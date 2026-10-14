@@ -198,7 +198,7 @@ export default function ProfileChangeModal(props) {
                 list when they clicked, so the manager is named again here. */}
             <div class="rounded-xl border border-[#E2E8F1] dark:border-gray-700 bg-[#F8FAFC] dark:bg-gray-800/60 px-4 py-3">
               <div class="flex items-baseline justify-between gap-3">
-                <span class="text-xs font-bold uppercase tracking-wider text-[#8593A8]">
+                <span class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
                   Campaign manager
                 </span>
                 <span class="text-sm font-semibold text-[#14233A] dark:text-gray-100 text-right break-all">
@@ -206,7 +206,7 @@ export default function ProfileChangeModal(props) {
                 </span>
               </div>
               <div class="flex items-baseline justify-between gap-3 mt-1.5">
-                <span class="text-xs font-bold uppercase tracking-wider text-[#8593A8]">
+                <span class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
                   Holds
                 </span>
                 <span class="text-sm font-semibold text-[#14233A] dark:text-gray-100">
@@ -231,7 +231,7 @@ export default function ProfileChangeModal(props) {
                     {(t) => <option value={t}>{tierLabel(t)}</option>}
                   </For>
                 </select>
-                <p class="text-xs text-[#8593A8] mt-1">
+                <p class="text-xs text-[#8593A8] dark:text-gray-400 mt-1">
                   Currently {tierLabel(p()?.tier, p()?.tierLabel) || "no tier"}.
                 </p>
               </div>
@@ -306,7 +306,7 @@ export default function ProfileChangeModal(props) {
                 <label class="block text-sm font-semibold text-[#14233A] dark:text-gray-200 mb-1.5">
                   Reports to
                   <Show when={!leadRequired()}>
-                    <span class="font-normal text-[#8593A8]"> (optional)</span>
+                    <span class="font-normal text-[#8593A8] dark:text-gray-400"> (optional)</span>
                   </Show>
                 </label>
                 <select
@@ -327,7 +327,7 @@ export default function ProfileChangeModal(props) {
                     )}
                   </For>
                 </select>
-                <p class="text-xs text-[#8593A8] mt-1">
+                <p class="text-xs text-[#8593A8] dark:text-gray-400 mt-1">
                   {nextTier() === "tier_1"
                     ? "A Tier 1 manager reports to an admin, or to nobody."
                     : nextTier() === "tier_2"
@@ -336,7 +336,7 @@ export default function ProfileChangeModal(props) {
                   Currently {p()?.teamLeadEmail ?? "no lead"}.
                 </p>
                 <Show when={leadRequired() && !candidates().length}>
-                  <p class="text-xs text-[#AC2334] mt-1">
+                  <p class="text-xs text-[#AC2334] dark:text-red-300 mt-1">
                     Nobody is eligible to lead a {tierShortLabel(nextTier())} manager.
                   </p>
                 </Show>
@@ -376,7 +376,7 @@ export default function ProfileChangeModal(props) {
             </Show>
 
             <Show when={pickLead() && !clients().length}>
-              <p class="text-sm text-[#8593A8]">
+              <p class="text-sm text-[#8593A8] dark:text-gray-400">
                 This manager holds no clients, so no client data changes hands.
               </p>
             </Show>
@@ -384,7 +384,7 @@ export default function ProfileChangeModal(props) {
             {/* ── REASON ── */}
             <div>
               <label class="block text-sm font-semibold text-[#14233A] dark:text-gray-200 mb-1.5">
-                Reason <span class="font-normal text-[#AC2334]">(required)</span>
+                Reason <span class="font-normal text-[#AC2334] dark:text-red-300">(required)</span>
               </label>
               <textarea
                 rows="3"
@@ -413,13 +413,13 @@ export default function ProfileChangeModal(props) {
               <Show
                 when={props.reasonError}
                 fallback={
-                  <p class="text-xs text-[#8593A8] mt-1">
+                  <p class="text-xs text-[#8593A8] dark:text-gray-400 mt-1">
                     Recorded on this profile's history, next to what changed and
                     how many clients it moved.
                   </p>
                 }
               >
-                <p class="text-xs font-medium text-[#AC2334] mt-1">
+                <p class="text-xs font-medium text-[#AC2334] dark:text-red-300 mt-1">
                   {props.reasonError}
                 </p>
               </Show>

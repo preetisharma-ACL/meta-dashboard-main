@@ -130,7 +130,7 @@ export default function FilterGroup(props) {
                 readable on hover rather than silently clipped. */}
             <p
               title={props.caption}
-              class="mt-0.5 text-[11px] leading-tight text-gray-400 dark:text-gray-500 truncate"
+              class="mt-0.5 text-[11px] leading-tight text-gray-400 dark:text-gray-400 truncate"
             >
               {props.caption}
             </p>

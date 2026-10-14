@@ -68,7 +68,7 @@ export default function ProfileHistoryDrawer(props) {
 
           <div class="flex-1 overflow-y-auto px-6 py-5">
             <Show when={entries.loading}>
-              <p class="text-sm text-[#8593A8]">Loading history…</p>
+              <p class="text-sm text-[#8593A8] dark:text-gray-400">Loading history…</p>
             </Show>
 
             <Show when={entries.error}>
@@ -84,7 +84,7 @@ export default function ProfileHistoryDrawer(props) {
               <Show
                 when={entries()?.length}
                 fallback={
-                  <p class="text-sm text-[#8593A8]">
+                  <p class="text-sm text-[#8593A8] dark:text-gray-400">
                     Nothing has changed on this profile yet.
                   </p>
                 }
@@ -97,7 +97,7 @@ export default function ProfileHistoryDrawer(props) {
                           <span class="text-[10px] font-bold uppercase tracking-[.07em] px-2 py-[3px] rounded-full ring-1 ring-inset bg-[#F0F4F9] text-[#33465F] ring-[#DCE4EF] dark:bg-gray-700 dark:text-gray-200 dark:ring-gray-600">
                             {fieldLabel(e.field)}
                           </span>
-                          <span class="text-xs text-[#8593A8]">
+                          <span class="text-xs text-[#8593A8] dark:text-gray-400">
                             {fmtDateTime(e.at)}
                           </span>
                         </div>
@@ -106,10 +106,10 @@ export default function ProfileHistoryDrawer(props) {
                             new value can't answer "what was it before?", which
                             is most of why anyone opens this. */}
                         <p class="mt-2 text-sm text-[#14233A] dark:text-gray-100 break-all">
-                          <span class="text-[#8593A8] line-through decoration-[#C9D3E0]">
+                          <span class="text-[#8593A8] dark:text-gray-400 line-through decoration-[#C9D3E0]">
                             {historyValue(e.field, e.fromValue, resolve)}
                           </span>
-                          <span aria-hidden="true" class="mx-2 text-[#8593A8]">
+                          <span aria-hidden="true" class="mx-2 text-[#8593A8] dark:text-gray-400">
                             →
                           </span>
                           <span class="font-semibold">
@@ -124,7 +124,7 @@ export default function ProfileHistoryDrawer(props) {
                             class={`mt-1.5 text-xs font-semibold ${
                               e.clientsAffected > 0
                                 ? "text-[#8A6410] dark:text-yellow-300"
-                                : "text-[#8593A8]"
+                                : "text-[#8593A8] dark:text-gray-400"
                             }`}
                           >
                             {e.clientsAffected > 0
@@ -159,7 +159,7 @@ export default function ProfileHistoryDrawer(props) {
           </div>
 
           <div class="px-6 py-4 border-t border-[#E2E8F1] dark:border-gray-700 bg-[#F8FAFC] dark:bg-gray-800">
-            <p class="text-xs text-[#8593A8]">
+            <p class="text-xs text-[#8593A8] dark:text-gray-400">
               A lead change applies to all history, so a client's whole record
               moves with it — this log is where the date it happened survives.
             </p>

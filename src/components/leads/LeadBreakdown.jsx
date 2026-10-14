@@ -27,7 +27,7 @@ const n = (v) => (v == null ? "—" : Number(v).toLocaleString("en-IN"));
 const Arrow = () => (
   <span
     aria-hidden="true"
-    class="hidden sm:flex items-center justify-center text-[#C8D2E0] dark:text-gray-600 select-none px-1"
+    class="hidden sm:flex items-center justify-center text-[#C8D2E0] dark:text-gray-400 select-none px-1"
   >
     <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
       <path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5-5 5M6 7l5 5-5 5" />
@@ -66,7 +66,7 @@ function Leg(props) {
         {n(props.value)}
       </p>
       <Show when={props.sub}>
-        <p class="text-xs text-[#8593A8] dark:text-gray-500 mt-0.5">{props.sub}</p>
+        <p class="text-xs text-[#8593A8] dark:text-gray-400 mt-0.5">{props.sub}</p>
       </Show>
     </div>
   );

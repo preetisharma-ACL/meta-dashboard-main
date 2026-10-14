@@ -127,7 +127,7 @@ export default function CreativeDetail() {
         <Show
           when={(p()?.daily ?? []).length}
           fallback={
-            <p class="py-10 text-center text-sm text-[#8593A8]">
+            <p class="py-10 text-center text-sm text-[#8593A8] dark:text-gray-400">
               {perf.loading ? "Loading…" : "No activity in this range."}
             </p>
           }

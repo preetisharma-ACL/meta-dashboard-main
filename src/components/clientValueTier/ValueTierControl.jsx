@@ -205,7 +205,7 @@ export default function ValueTierControl(props) {
               aria-haspopup="dialog"
               aria-expanded={open()}
               title="Set the internal value tier"
-              class={`inline-flex items-center gap-1 rounded-[4px] border border-dashed border-gray-300 dark:border-gray-600 text-gray-400 dark:text-gray-500 font-semibold hover:border-[#14233A]/50 hover:text-[#14233A] dark:hover:text-gray-300 transition ${
+              class={`inline-flex items-center gap-1 rounded-[4px] border border-dashed border-gray-300 dark:border-gray-600 text-gray-400 dark:text-gray-400 font-semibold hover:border-[#14233A]/50 hover:text-[#14233A] dark:hover:text-gray-300 transition ${
                 props.compact
                   ? "px-1.5 py-[2px] text-[9.5px]"
                   : "px-2 py-[3px] text-[10px]"
@@ -277,7 +277,7 @@ export default function ValueTierControl(props) {
             class={`mt-0.5 text-[11px] leading-snug max-w-[260px] truncate ${
               mismatched()
                 ? "text-[#B07A14] dark:text-amber-400 font-medium"
-                : "text-gray-400 dark:text-gray-500"
+                : "text-gray-400 dark:text-gray-400"
             }`}
             title={hint()}
           >
@@ -299,10 +299,10 @@ export default function ValueTierControl(props) {
             }}
             class="z-[60] rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-xl p-3.5 text-left"
           >
-            <p class="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-1">
+            <p class="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-400 mb-1">
               Value tier
             </p>
-            <p class="text-[11px] text-gray-400 dark:text-gray-500 mb-2.5">
+            <p class="text-[11px] text-gray-400 dark:text-gray-400 mb-2.5">
               Internal only — never shown to the client.
             </p>
 
@@ -358,7 +358,7 @@ export default function ValueTierControl(props) {
 
             {/* Reason is OPTIONAL on this endpoint — say so, so nobody hunts for
                 a validation error that will never come. */}
-            <label class="block text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mt-3 mb-1">
+            <label class="block text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-400 mt-3 mb-1">
               Reason{" "}
               <span class="font-medium normal-case tracking-normal text-gray-400">
                 (optional)

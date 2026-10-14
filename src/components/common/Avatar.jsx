@@ -1,11 +1,11 @@
 export default function Avatar(props) {
   const AVATAR_PALETTE = [
-    "bg-purple-600",
-    "bg-blue-600",
-    "bg-emerald-600",
-    "bg-amber-500",
-    "bg-rose-500",
-    "bg-indigo-600",
+    "bg-purple-700",
+    "bg-blue-700",
+    "bg-emerald-700",
+    "bg-amber-700",
+    "bg-rose-700",
+    "bg-indigo-700",
   ];
 
   const getInitials = (name) => {

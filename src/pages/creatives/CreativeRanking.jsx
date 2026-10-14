@@ -8,7 +8,7 @@ import {
   fmtCpl,
   fmtInt,
 } from "../../services/creatives";
-import { errorMessage } from "../../utils/apiErrors";
+import { loadErrorMessage } from "../../utils/apiErrors";
 import {
   PageShell,
   ErrorBox,
@@ -101,7 +101,7 @@ export default function CreativeRanking() {
 
   // Tag each response with the project filter it was fetched under, so the
   // dropdown below knows whether it is looking at a full or a narrowed list.
-  const [data] = createResource(params, async (p) => {
+  const [data, { refetch }] = createResource(params, async (p) => {
     const res = await fetchRanking(p);
     return res ? { ...res, _forProject: p.project_id || "" } : res;
   });
@@ -144,7 +144,7 @@ export default function CreativeRanking() {
     return (
       <tr class={ROW + " group cursor-pointer"} onClick={() => r.id && navigate(`/creatives/${r.id}`)}>
         <Show when={props.ranked}>
-          <td class={`${RANK_TD} font-bold text-[#AC2334] tabular-nums`}>#{r.rank}</td>
+          <td class={`${RANK_TD} font-bold text-[#AC2334] dark:text-red-300 tabular-nums`}>#{r.rank}</td>
         </Show>
         <td class={props.ranked ? CODE_AFTER_RANK_TD : STICKY_TD}>
           <CodeCell code={r.code} />
@@ -198,7 +198,10 @@ export default function CreativeRanking() {
         </div>
       </div>
 
-      <ErrorBox message={data.error ? errorMessage(data.error, "Could not load the ranking.") : ""} />
+      <ErrorBox
+        message={data.error ? `Could not load the ranking. ${loadErrorMessage(data.error)}` : ""}
+        onRetry={refetch}
+      />
 
       <Show when={d()}>
         <p class="mb-3 text-sm text-[#54657E] dark:text-gray-400">
@@ -209,7 +212,7 @@ export default function CreativeRanking() {
       <DataTable
         cols={COLS}
         loading={data.loading}
-        empty={!ranked().length}
+        empty={!data.error && !ranked().length}
         emptyText={`No creative has ${minLeads()}+ leads in this range.`}
         sort={rankedSort()}
         onSort={onRankedSort}

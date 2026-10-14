@@ -38,6 +38,7 @@ import {
 } from "../../services/commandRules";
 import Avatar from "../../components/common/Avatar";
 import RowsPerPageSelect from "../../components/common/RowsPerPageSelect";
+import { loadErrorMessage } from "../../utils/apiErrors";
 
 // ─── Command ──────────────────────────────────────────────────────────────────
 // One row per client, every operational number the desk works from in the
@@ -86,7 +87,7 @@ const COLS = 13;
 // and both are facts about the records rather than failures of the page.
 function Missing(props) {
   return (
-    <span class="text-[12px] italic text-gray-300 dark:text-gray-600">
+    <span class="text-[12px] italic text-gray-300 dark:text-gray-400">
       {props.children ?? "Not recorded"}
     </span>
   );
@@ -446,7 +447,7 @@ export default function CommandBoard() {
               rather than as a restatement of the chip that's lit. */}
           <Show when={rangeLabel()}>
             <span class="ml-auto inline-flex items-center gap-2 text-[13px] whitespace-nowrap">
-              <span class="text-gray-400 dark:text-gray-500">Computed over</span>
+              <span class="text-gray-400 dark:text-gray-400">Computed over</span>
               <span class="font-semibold tabular-nums text-gray-700 dark:text-gray-200">
                 {rangeLabel()}
               </span>
@@ -460,6 +461,30 @@ export default function CommandBoard() {
           </p>
         </Show>
       </div>
+
+      {/* ══ Load failure ══ — up here, not only in the table, so a failure
+          can't read as a page of dashes and "0 shown". */}
+      <Show when={board.error && !parked()}>
+        <div
+          role="alert"
+          class="mb-4 flex items-center justify-between gap-3 rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-4 py-3 text-sm font-medium text-[#AC2334] dark:text-red-300"
+        >
+          <span>
+            {board.error?.status === 403
+              ? "This page is for admin and coordination only."
+              : `Could not load Campaign Analysis. ${loadErrorMessage(board.error)}`}
+          </span>
+          <Show when={board.error?.status !== 403}>
+            <button
+              type="button"
+              onClick={() => refetch()}
+              class="flex-none underline font-semibold"
+            >
+              Retry
+            </button>
+          </Show>
+        </div>
+      </Show>
 
       {/* ══ Totals ══ */}
       <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
@@ -605,13 +630,13 @@ export default function CommandBoard() {
           </span>
         </button>
 
-        <span class="ml-auto text-sm text-gray-400 dark:text-gray-500 whitespace-nowrap">
+        <span class="ml-auto text-sm text-gray-400 dark:text-gray-400 whitespace-nowrap">
           {visible().length} shown
           {/* The count lives on the toggle, not here as well. This only names
               the scope, which is otherwise invisible: the page is filtered
               before anyone touches a control. */}
           <Show when={!includeDormant()}>
-            <span class="text-gray-300 dark:text-gray-600"> · </span>
+            <span class="text-gray-300 dark:text-gray-400"> · </span>
             <span title={`No leads and no spend in the ${DELIVERY_WINDOW_LABEL}`}>
               dormant hidden
             </span>
@@ -755,7 +780,7 @@ export default function CommandBoard() {
                   <td colspan={COLS} class="p-12 text-center">
                     <div class="inline-flex flex-col items-center gap-3">
                       <svg
-                        class="w-6 h-6 animate-spin text-[#AC2334]"
+                        class="w-6 h-6 animate-spin text-[#AC2334] dark:text-red-300"
                         viewBox="0 0 24 24"
                         fill="none"
                       >
@@ -794,7 +819,7 @@ export default function CommandBoard() {
                         </div>
                       </Show>
                       <Show when={elapsed() > 0}>
-                        <p class="text-[12px] tabular-nums text-gray-400 dark:text-gray-500">
+                        <p class="text-[12px] tabular-nums text-gray-400 dark:text-gray-400">
                           {elapsed()}s
                         </p>
                       </Show>
@@ -807,21 +832,12 @@ export default function CommandBoard() {
             <Match when={board.error}>
               <tbody>
                 <tr>
-                  <td colspan={COLS} class="p-10 text-center">
-                    <p class="text-sm font-medium text-[#AC2334]">
-                      {board.error?.status === 403
-                        ? "This page is for admin and coordination only."
-                        : board.error?.message ||
-                          "Could not load Campaign Analysis."}
-                    </p>
-                    <Show when={board.error?.status !== 403}>
-                      <button
-                        onClick={() => refetch()}
-                        class="mt-2 text-sm underline text-gray-500"
-                      >
-                        Retry
-                      </button>
-                    </Show>
+                  {/* The reason and Retry sit in the banner above the totals. */}
+                  <td
+                    colspan={COLS}
+                    class="p-10 text-center text-sm text-gray-500 dark:text-gray-400"
+                  >
+                    Nothing loaded — see the error above.
                   </td>
                 </tr>
               </tbody>
@@ -850,7 +866,7 @@ export default function CommandBoard() {
                         <button
                           type="button"
                           onClick={toggleDormant}
-                          class="font-semibold text-[#3E6FB0] hover:underline"
+                          class="font-semibold text-[#3E6FB0] dark:text-blue-300 hover:underline"
                         >
                           Include dormant clients
                         </button>
@@ -910,7 +926,7 @@ export default function CommandBoard() {
                                   disabled={!r.client}
                                   class={`block max-w-[200px] truncate text-left font-medium hover:text-[#AC2334] dark:hover:text-[#E4566A] disabled:hover:text-inherit disabled:cursor-default ${
                                     isDormant(r)
-                                      ? "text-gray-400 dark:text-gray-500"
+                                      ? "text-gray-400 dark:text-gray-400"
                                       : "text-gray-800 dark:text-gray-100"
                                   }`}
                                 >
@@ -962,7 +978,7 @@ export default function CommandBoard() {
                             <Show
                               when={r.projects.length > 0}
                               fallback={
-                                <span class="text-gray-300 dark:text-gray-600">
+                                <span class="text-gray-300 dark:text-gray-400">
                                   {count(r.project_count)}
                                 </span>
                               }
@@ -971,7 +987,7 @@ export default function CommandBoard() {
                                 type="button"
                                 onClick={() => toggleExpand(key)}
                                 aria-expanded={open()}
-                                class="inline-flex items-center gap-1.5 text-[13px] font-semibold text-[#3E6FB0] hover:underline"
+                                class="inline-flex items-center gap-1.5 text-[13px] font-semibold text-[#3E6FB0] dark:text-blue-300 hover:underline"
                               >
                                 {count(r.project_count)}
                                 <span
@@ -992,7 +1008,7 @@ export default function CommandBoard() {
                               {count(r.active_campaigns)}
                             </span>
                             <span
-                              class="text-xs text-gray-400 dark:text-gray-500"
+                              class="text-xs text-gray-400 dark:text-gray-400"
                               title="Ad accounts"
                             >
                               {" "}
@@ -1151,14 +1167,14 @@ export default function CommandBoard() {
       </Show>
 
       {/* ══ Footnotes ══ */}
-      <p class="mt-5 text-[12px] text-gray-400 dark:text-gray-500">
+      <p class="mt-5 text-[12px] text-gray-400 dark:text-gray-400">
         The dated columns are computed in Asia/Kolkata by the server, and the
         header shows the window it resolved — not this browser's arithmetic.
         Balance is always the current month, so it matches what the client sees
         on their billing page and what accounts would quote. Hover a balance to
         see where it came from.
       </p>
-      <p class="mt-1.5 text-[12px] text-gray-400 dark:text-gray-500">
+      <p class="mt-1.5 text-[12px] text-gray-400 dark:text-gray-400">
         <b class="font-semibold">
           This page opens on delivering clients only
         </b>{" "}
@@ -1170,7 +1186,7 @@ export default function CommandBoard() {
         not campaign state: clients still producing leads from since-paused
         campaigns count as delivering.
       </p>
-      <p class="mt-1.5 text-[12px] text-gray-400 dark:text-gray-500">
+      <p class="mt-1.5 text-[12px] text-gray-400 dark:text-gray-400">
         Balance is deliberately not totalled: a CPL client bills per qualified
         lead with no service charge and no GST, a hybrid bills on spend plus
         both. Adding the column would produce a number that means nothing.
@@ -1178,13 +1194,13 @@ export default function CommandBoard() {
       {/* Only once the backend sends the field — before the release this would
           describe a change no row on screen reflects. */}
       <Show when={rows().some((r) => r.credit_notes_inc_gst != null)}>
-      <p class="mt-1.5 text-[12px] text-gray-400 dark:text-gray-500">
+      <p class="mt-1.5 text-[12px] text-gray-400 dark:text-gray-400">
         From September 2026 a hybrid client's replaced leads go into Credit
         Notes instead of reducing the bill. Their balance is the main balance
         after this month's charge, with any Replaced Credit Notes left shown beneath it.
       </p>
       </Show>
-      <p class="mt-1.5 text-[12px] text-gray-400 dark:text-gray-500">
+      <p class="mt-1.5 text-[12px] text-gray-400 dark:text-gray-400">
         A blank premium spend means two different things.{" "}
         <b class="font-semibold">n/a</b> on a retainer is by design — retainers
         carry no pricing configs.{" "}
@@ -1256,7 +1272,7 @@ function PremiumSpend(props) {
       {/* Retainer: no configs by design. Nothing is wrong, so nothing shouts. */}
       <Match when={state() === PREMIUM.NA}>
         <span
-          class="text-gray-300 dark:text-gray-600"
+          class="text-gray-300 dark:text-gray-400"
           title="Retainers carry no pricing configs, so there is no premium spend to show. Nothing is wrong."
         >
           n/a
@@ -1290,7 +1306,7 @@ function PremiumSpend(props) {
           hiding a real one. */}
       <Match when={state() === PREMIUM.UNKNOWN}>
         <span
-          class="text-gray-400 dark:text-gray-500 cursor-help"
+          class="text-gray-400 dark:text-gray-400 cursor-help"
           title="No client type on this row, so we can't tell whether the blank is a retainer (expected) or a missing pricing config (a problem)."
         >
           ?
@@ -1317,7 +1333,7 @@ function People(props) {
       </Show>
       <Show when={props.leads.length > 0}>
         <p
-          class="max-w-[170px] truncate text-xs text-gray-400 dark:text-gray-500"
+          class="max-w-[170px] truncate text-xs text-gray-400 dark:text-gray-400"
           title={props.leads.join(", ")}
         >
           TL: {props.leads.join(", ")}
@@ -1359,14 +1375,14 @@ function Destination(props) {
               href={r.sheet_url}
               target="_blank"
               rel="noopener noreferrer"
-              class="text-xs font-semibold text-[#3E6FB0] hover:underline"
+              class="text-xs font-semibold text-[#3E6FB0] dark:text-blue-300 hover:underline"
             >
               Sheet ↗
             </a>
           </Show>
           <Show when={!isUnrecorded(r.destination_contact)}>
             <span
-              class="max-w-[140px] truncate text-xs text-gray-400 dark:text-gray-500"
+              class="max-w-[140px] truncate text-xs text-gray-400 dark:text-gray-400"
               title={r.destination_contact}
             >
               {r.destination_contact}

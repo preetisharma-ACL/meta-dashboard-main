@@ -8,6 +8,8 @@ import {
   canRenameProjects,
   canDeleteProjects,
 } from "../../../stores/currentUser";
+import { useDialog } from "../../../utils/useDialog";
+import { loadErrorMessage } from "../../../utils/apiErrors";
 import SuccessToast, {
   showToast,
 } from "../../../components/common/SuccessToast";
@@ -15,11 +17,11 @@ import SuccessToast, {
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const PROPERTY_COLORS = {
-  residential: "bg-blue-100 text-blue-800 ring-1 ring-blue-300",
-  commercial: "bg-amber-100 text-amber-700 ring-1 ring-amber-300",
-  apartment: "bg-sky-100 text-sky-700 ring-1 ring-sky-300",
-  villa: "bg-purple-100 text-purple-700 ring-1 ring-purple-300",
-  plot: "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300",
+  residential: "bg-blue-100 dark:bg-blue-900/40 dark:text-blue-300 text-blue-800 ring-1 ring-blue-300",
+  commercial: "bg-amber-100 dark:bg-amber-900/40 dark:text-amber-300 text-amber-700 ring-1 ring-amber-300",
+  apartment: "bg-sky-100 dark:bg-sky-900/40 dark:text-sky-300 text-sky-700 ring-1 ring-sky-300",
+  villa: "bg-purple-100 dark:bg-purple-900/40 dark:text-purple-300 text-purple-700 ring-1 ring-purple-300",
+  plot: "bg-emerald-100 dark:bg-emerald-900/40 dark:text-emerald-300 text-emerald-700 ring-1 ring-emerald-300",
 };
 
 // What PATCH accepts for property_type; "" = not set.
@@ -60,13 +62,13 @@ const isBlank = (v) => v == null || String(v).trim() === "";
 // ~330 projects had fake "Delhi / India / Residential" cleared by the sync fix,
 // so blank is common and real: a muted "Not set", never "—" or a guess.
 const NotSet = () => (
-  <span class="text-xs italic text-gray-400 dark:text-gray-500">Not set</span>
+  <span class="text-xs italic text-gray-400 dark:text-gray-400">Not set</span>
 );
 
 const PRIORITY_COLORS = {
-  high: "bg-red-100 text-red-700 ring-1 ring-red-300",
-  medium: "bg-yellow-100 text-yellow-700 ring-1 ring-yellow-300",
-  low: "bg-green-100 text-green-700 ring-1 ring-green-300",
+  high: "bg-red-100 dark:bg-red-900/40 dark:text-red-300 text-red-700 ring-1 ring-red-300",
+  medium: "bg-yellow-100 dark:bg-yellow-900/40 dark:text-yellow-300 text-yellow-700 ring-1 ring-yellow-300",
+  low: "bg-green-100 dark:bg-green-900/40 dark:text-green-300 text-green-700 ring-1 ring-green-300",
 };
 
 const STATUS_DOT = {
@@ -117,8 +119,13 @@ export default function Projects() {
 
   // ── Data loading (server-side pagination) ─────────────────────────────────
 
+  // The failed request, shown above the table — otherwise a failure reads as
+  // "0 total · No projects match".
+  const [loadError, setLoadError] = createSignal(null);
+
   const load = async (p = 1, overrides = {}) => {
     setLoading(true);
+    setLoadError(null);
 
     try {
       const size = overrides.pageSize ?? rowsPerPage();
@@ -145,6 +152,8 @@ export default function Projects() {
       setPage(p);
     } catch (err) {
       console.error("Failed to load projects:", err);
+      setProjects([]);
+      setLoadError(err);
     } finally {
       setLoading(false);
     }
@@ -196,7 +205,7 @@ export default function Projects() {
   const sortIcon = (key) => {
     if (sortKey() !== key) return <span class="text-gray-300 ml-1">⇅</span>;
     return (
-      <span class="ml-1 text-purple-600">
+      <span class="ml-1 text-purple-600 dark:text-purple-300">
         {sortDir() === "asc" ? "↑" : "↓"}
       </span>
     );
@@ -347,6 +356,12 @@ export default function Projects() {
 
   const showActions = () => canEditProjects() || canDeleteProjects();
 
+  // Keyboard: Esc closes the top dialog, focus moves in and comes back.
+  let editBox, renameBox, delBox;
+  useDialog(() => !!editing(), () => !saving() && closeEdit(), () => editBox);
+  useDialog(() => !!editing() && confirmRename(), () => !saving() && setConfirmRename(false), () => renameBox);
+  useDialog(() => !!confirmDelete(), () => !deleting() && setConfirmDelete(null), () => delBox);
+
   const inputCls =
     "w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-60 disabled:cursor-not-allowed";
   const labelCls = "block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1";
@@ -361,9 +376,27 @@ export default function Projects() {
           Projects
         </h1>
         <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-          {totalCount()} total · all client projects
+          <Show when={!loadError()} fallback="All client projects">
+            {totalCount()} total · all client projects
+          </Show>
         </p>
       </div>
+
+      <Show when={loadError()}>
+        <div
+          role="alert"
+          class="mb-4 flex items-center justify-between gap-3 rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-4 py-3 text-sm font-medium text-red-700 dark:text-red-300"
+        >
+          <span>Couldn't load projects. {loadErrorMessage(loadError())}</span>
+          <button
+            type="button"
+            onClick={() => load(page())}
+            class="underline font-semibold"
+          >
+            Retry
+          </button>
+        </div>
+      </Show>
 
       {/* Filters Bar */}
       <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-4 mb-4 flex flex-wrap items-center gap-3">
@@ -456,9 +489,11 @@ export default function Projects() {
           Clear All
         </button>
 
-        <span class="ml-auto text-sm text-gray-400 dark:text-gray-500 whitespace-nowrap">
-          {totalCount()} total
-        </span>
+        <Show when={!loadError()}>
+          <span class="ml-auto text-sm text-gray-400 dark:text-gray-400 whitespace-nowrap">
+            {totalCount()} total
+          </span>
+        </Show>
       </div>
 
       {/* Table */}
@@ -603,7 +638,7 @@ export default function Projects() {
                       >
                         <span
                           class={`px-2.5 py-0.5 rounded-full text-xs font-semibold
-                          ${PROPERTY_COLORS[project.property_type] ?? "bg-gray-100 text-gray-600"}`}
+                          ${PROPERTY_COLORS[project.property_type] ?? "bg-gray-100 dark:bg-gray-900/40 dark:text-gray-300 text-gray-600"}`}
                         >
                           {String(project.property_type).toUpperCase()}
                         </span>
@@ -615,7 +650,7 @@ export default function Projects() {
                       <Show when={!isBlank(project.city)} fallback={<NotSet />}>
                         {project.city}
                       </Show>
-                      <span class="block text-xs text-gray-400 dark:text-gray-500">
+                      <span class="block text-xs text-gray-400 dark:text-gray-400">
                         <Show
                           when={!isBlank(project.location)}
                           fallback={<NotSet />}
@@ -629,10 +664,10 @@ export default function Projects() {
                         class={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold
                         ${
                           project.status === "active"
-                            ? "bg-green-100 text-green-700"
+                            ? "bg-green-100 dark:bg-green-900/40 dark:text-green-300 text-green-700"
                             : project.status === "paused"
-                              ? "bg-yellow-100 text-yellow-700"
-                              : "bg-red-100 text-red-600"
+                              ? "bg-yellow-100 dark:bg-yellow-900/40 dark:text-yellow-300 text-yellow-700"
+                              : "bg-red-100 dark:bg-red-900/40 dark:text-red-300 text-red-600"
                         }`}
                       >
                         <span
@@ -645,7 +680,7 @@ export default function Projects() {
                     <td class="p-3 text-center">
                       <span
                         class={`px-2.5 py-0.5 rounded-full text-xs font-semibold
-                        ${PRIORITY_COLORS[project.priority] ?? "bg-gray-100 text-gray-600"}`}
+                        ${PRIORITY_COLORS[project.priority] ?? "bg-gray-100 dark:bg-gray-900/40 dark:text-gray-300 text-gray-600"}`}
                       >
                         {project.priority_label ?? project.priority}
                       </span>
@@ -682,11 +717,11 @@ export default function Projects() {
                 )}
               </For>
 
-              <Show when={projects().length === 0}>
+              <Show when={!loadError() && projects().length === 0}>
                 <tr>
                   <td
                     colspan="12"
-                    class="py-16 text-center text-gray-400 dark:text-gray-500"
+                    class="py-16 text-center text-gray-400 dark:text-gray-400"
                   >
                     <svg
                       class="w-10 h-10 mx-auto mb-3 opacity-30"
@@ -785,14 +820,15 @@ export default function Projects() {
       {/* ── Edit project ── */}
       <Show when={editing()}>
         <div
-          class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 sm:p-4"
           onClick={(e) => e.target === e.currentTarget && !saving() && closeEdit()}
         >
           <div
+            ref={editBox}
             role="dialog"
             aria-modal="true"
             aria-label="Edit project"
-            class="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xl"
+            class="w-full max-w-2xl max-h-[calc(100dvh-1.5rem)] overflow-y-auto rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xl"
           >
             <div class="px-6 pt-5 pb-3 border-b border-gray-100 dark:border-gray-800">
               <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
@@ -803,7 +839,7 @@ export default function Projects() {
               </p>
             </div>
 
-            <div class="px-6 py-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div class="px-5 sm:px-6 py-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div class="sm:col-span-2">
                 <label class={labelCls}>
                   Project name
@@ -960,6 +996,7 @@ export default function Projects() {
       <Show when={editing() && confirmRename()}>
         <div class="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
           <div
+            ref={renameBox}
             role="alertdialog"
             aria-modal="true"
             aria-label="Confirm rename"
@@ -1001,6 +1038,7 @@ export default function Projects() {
       <Show when={confirmDelete()}>
         <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div
+            ref={delBox}
             role="alertdialog"
             aria-modal="true"
             aria-label="Confirm delete"

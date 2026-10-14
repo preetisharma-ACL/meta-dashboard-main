@@ -7,7 +7,7 @@ import {
   kindLabel,
   fmtDateTimeIST,
 } from "../../services/creatives";
-import { errorMessage } from "../../utils/apiErrors";
+import { loadErrorMessage } from "../../utils/apiErrors";
 import CreativeModal from "../../components/creatives/CreativeModal";
 import {
   PageShell,
@@ -126,11 +126,15 @@ export default function CreativeLibrary() {
         </div>
       </div>
 
-      <ErrorBox message={rows.error ? errorMessage(rows.error, "Could not load creatives.") : ""} />
+      <ErrorBox
+        message={rows.error ? `Could not load creatives. ${loadErrorMessage(rows.error)}` : ""}
+        onRetry={refetch}
+      />
 
+      {/* A failed load is not "no creatives": the empty line waits for a real answer. */}
       <DataTable
         loading={rows.loading && !list().length}
-        empty={!list().length}
+        empty={!rows.error && !list().length}
         emptyText="No creatives match these filters."
         cols={[
           { label: "Code", sticky: true },
