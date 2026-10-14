@@ -456,6 +456,7 @@ export default function ProjectDisplayConfig() {
             .map((c) => ({
               id: c.client_id,
               email: c.name ?? `Client #${c.client_id}`,
+              client_type: c.client_type ?? null,
             })),
         );
       } else {
@@ -496,6 +497,25 @@ export default function ProjectDisplayConfig() {
       setProjects([]);
     } finally {
       setProjectsLoading(false);
+    }
+  };
+
+  // The client's billing type as soon as the client is picked, so a CPL client
+  // gets fixed_cpl (its only valid rule) and the Promise % select right away
+  // instead of after a project is chosen. From the client row when it carries
+  // client_type, else from any config already on that client; unknown stays
+  // unknown — /resolve/ settles it once a project is picked.
+  const applyClientType = (client) => {
+    const t = String(
+      client?.client_type ??
+        configs().find((c) => Number(c.client_id) === Number(client?.id))?.client_type ??
+        "",
+    ).toLowerCase();
+    if (!t) return;
+    setResolvedClientType(t);
+    if (t === "cpl") {
+      setFormData((prev) => ({ ...prev, rule_type: "fixed_cpl" }));
+      setResolvedUnit(unitForRuleType("fixed_cpl"));
     }
   };
 
@@ -540,6 +560,23 @@ export default function ProjectDisplayConfig() {
             ? String(resolved.rule_value ?? "")
             : "",
       }));
+      // An existing CPL pair: show its promise (the backend carries it over
+      // when omitted, but the form shouldn't look unset).
+      if (ruleType === "fixed_cpl" && resolved.source === "existing") {
+        const cur = configs().find(
+          (c) =>
+            Number(c.client_id) === Number(clientId) &&
+            Number(c.project_id) === Number(projectId) &&
+            c.rule_type === "fixed_cpl" &&
+            c.is_active,
+        );
+        if (cur?.promised_qualification_pct != null) {
+          setFormData((prev) => ({
+            ...prev,
+            promised_qualification_pct: String(cur.promised_qualification_pct),
+          }));
+        }
+      }
       setRuleSource(resolved.source ?? null);
       setResolvedClientType(clientType);
       // Unit follows the type we actually pre-filled, not the one the server
@@ -761,6 +798,7 @@ export default function ProjectDisplayConfig() {
     clearPreview(); // ← NEW: drop any stale CPL preview
     setPreviewLoading(false);
     setSubmitError(""); // drop any stale save error
+    setPromiseError("");
     setOverlapConflict(null); // …and any stale overlap conflict
     setClosingOverlap(false);
 
@@ -787,6 +825,7 @@ export default function ProjectDisplayConfig() {
     }
     // Editing the form clears a prior save error — the user is retrying.
     if (submitError()) setSubmitError("");
+    if (field === "promised_qualification_pct" && promiseError()) setPromiseError("");
     // Same for an overlap conflict: it names a blocking row for the dates that
     // were submitted, so any edit (a later start date included) makes it stale.
     if (overlapConflict()) setOverlapConflict(null);
@@ -914,6 +953,7 @@ export default function ProjectDisplayConfig() {
   // blocks the save, so it renders as its own panel with the blocking rate,
   // its effective date, and a one-click close. Everything else (a CM's
   // out-of-scope 403, a validation 400) stays a plain red line.
+  const [promiseError, setPromiseError] = createSignal("");
   const handleSaveError = (err) => {
     console.error("Failed to save config:", err);
     const existing =
@@ -932,6 +972,20 @@ export default function ProjectDisplayConfig() {
       });
       setSubmitError("");
       return;
+    }
+
+    // Promise % is compulsory on a CPL rate's first config (and on editing one
+    // that has none): a 422 names the field, and the message goes beside it.
+    const pf =
+      err?.fields?.promised_qualification_pct ??
+      err?.data?.errors?.promised_qualification_pct ??
+      err?.data?.error?.fields?.promised_qualification_pct;
+    if (pf) {
+      const txt = (Array.isArray(pf) ? pf : [pf])
+        .map((x) => (typeof x === "string" ? x : (x?.message ?? "")))
+        .filter(Boolean)
+        .join(" ");
+      setPromiseError(txt || "Choose the promised qualification %.");
     }
 
     // Surface the backend message (e.g. a CM's out-of-scope 403) instead of
@@ -1676,6 +1730,7 @@ export default function ProjectDisplayConfig() {
                                 setClientSearch(client.email);
                                 setShowClientDropdown(false);
                                 loadProjectsForClient(client.id); // ← NEW
+                                applyClientType(client);
                               }}
                               class="w-full text-left px-3 py-2 text-sm hover:bg-purple-50 dark:hover:bg-gray-800 transition-colors"
                             >
@@ -1943,10 +1998,13 @@ export default function ProjectDisplayConfig() {
                     qualified leads. */}
                 <Show when={formData().rule_type === "fixed_cpl"}>
                   <div>
-                    <label class="block text-sm font-medium mb-1.5">
+                    <label class="block text-sm font-medium mb-1.5" for="promise-pct">
                       Promise %
+                      <span class="text-red-500"> *</span>
                     </label>
                     <select
+                      id="promise-pct"
+                      aria-invalid={!!promiseError()}
                       value={formData().promised_qualification_pct}
                       onChange={(e) =>
                         handleInputChange(
@@ -1961,9 +2019,18 @@ export default function ProjectDisplayConfig() {
                         {(v) => <option value={String(v)}>{v}%</option>}
                       </For>
                     </select>
-                    <Show when={formData().promised_qualification_pct === ""}>
-                      <p class="mt-1 text-xs text-amber-600 dark:text-amber-400">
-                        Not set: billed on qualified leads.
+                    <Show
+                      when={promiseError()}
+                      fallback={
+                        <Show when={formData().promised_qualification_pct === ""}>
+                          <p class="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                            Required for a CPL rate.
+                          </p>
+                        </Show>
+                      }
+                    >
+                      <p class="mt-1 text-xs text-red-600 dark:text-red-400" role="alert">
+                        {promiseError()}
                       </p>
                     </Show>
                   </div>

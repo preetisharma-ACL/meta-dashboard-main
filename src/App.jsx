@@ -39,6 +39,7 @@ import ControlChangeList from "./pages/control/ControlChangeList";
 import ControlRecord from "./pages/control/ControlRecord";
 import ControlAudit from "./pages/control/ControlAudit";
 import ControlHealth from "./pages/control/ControlHealth";
+import CplPromiseBackfill from "./pages/admin/client/CplPromiseBackfill";
 import Campaigns from "./pages/admin/campaigns/Campaigns";
 import AdAccounts from "./pages/admin/client/AdAccounts";
 import AdAccountClients from "./pages/admin/client/AdAccountClients";
@@ -489,6 +490,16 @@ function App() {
                 is never handed a control that 403s. Coordination is here
                 because 2f81a1f gave them read AND write; before that they
                 could not even open the screen. */}
+            {/* CPL Promise % backfill — temporary. Rows are scoped server-side (CM:
+                own + team); can_edit on the response decides writing (tier 3 reads). */}
+            <Route
+              path="/cpl-promise"
+              component={() => (
+                <AdminRoute roles={["admin", "coordination", "campaign_manager"]}>
+                  <CplPromiseBackfill />
+                </AdminRoute>
+              )}
+            />
             <Route
               path="/project-display-config"
               component={() => (

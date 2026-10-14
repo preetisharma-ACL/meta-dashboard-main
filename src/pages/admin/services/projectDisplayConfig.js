@@ -163,3 +163,31 @@ export const supersedeProjectDisplayConfig = async (id, payload) => {
     body: JSON.stringify(payload),
   });
 };
+
+// ── CPL Promise % backfill ────────────────────────────────────────────────────
+// GET /clients/admin/configs/promise-backfill/[?missing=1] →
+//   { rows[{config_id, client_id, client_nomen, project_id, project_name,
+//           fixed_cpl, promised_qualification_pct, valid_from}],
+//     missing_count, done_count, can_edit }
+// Rows are already limited to the caller's own clients (CM: own + team) and
+// come missing-first.
+export const fetchPromiseBackfill = async (missingOnly = true) => {
+  const res = await api(
+    `/clients/admin/configs/promise-backfill/${missingOnly ? "?missing=1" : ""}`,
+    { method: "GET" },
+  );
+  return res?.data ?? res;
+};
+
+// POST /clients/admin/configs/{config_id}/promise/ {promised_qualification_pct,
+// reason?}. 409 = already set (change it in Project Display Config), 404 = not
+// in your clients, 403 = no permission (tier 3), 422 = validation message.
+export const savePromise = async (configId, pct, reason) => {
+  const body = { promised_qualification_pct: pct };
+  if (reason && reason.trim()) body.reason = reason.trim();
+  const res = await api(`/clients/admin/configs/${configId}/promise/`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return res?.data ?? res;
+};
