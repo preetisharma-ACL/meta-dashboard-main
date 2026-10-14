@@ -1,4 +1,5 @@
 import { createResource, createSignal, For, Show } from "solid-js";
+import { useLocation } from "@solidjs/router";
 import { fetchAuditLog, parseControlError } from "../../services/control";
 import { PageHead, Banner, showValue, BTN, BTN_PRIMARY, INPUT, CARD } from "./ControlUI";
 
@@ -16,6 +17,7 @@ const EMPTY = {
   model: "",
   action: "",
   target_id: "",
+  result: "",
   q: "",
   date_from: "",
   date_to: "",
@@ -92,7 +94,17 @@ function ApiDetails(props) {
 
 export default function ControlAudit() {
   const [draft, setDraft] = createSignal({ ...EMPTY });
-  const [applied, setApplied] = createSignal({ ...EMPTY });
+  // Filters can arrive in the URL (System Health links here with
+  // ?result=failure); any EMPTY key present in the query seeds both.
+  const location = useLocation();
+  const fromUrl = () => {
+    const p = new URLSearchParams(location.search);
+    const out = { ...EMPTY };
+    for (const k of Object.keys(EMPTY)) if (p.get(k)) out[k] = p.get(k);
+    return out;
+  };
+  setDraft(fromUrl());
+  const [applied, setApplied] = createSignal(fromUrl());
   const [page, setPage] = createSignal(1);
   const [open, setOpen] = createSignal(null);
 
@@ -147,6 +159,13 @@ export default function ControlAudit() {
         {text("action", "Action", "e.g. update")}
         {text("target_id", "Target ID", "")}
         {text("q", "Search", "")}
+        <div>
+          <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Result</label>
+          <select value={draft().result} onChange={(e) => set("result", e.target.value)} class={INPUT}>
+            <option value="">All</option>
+            <option value="failure">Failure</option>
+          </select>
+        </div>
         <div>
           <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">From</label>
           <input type="date" value={draft().date_from} onInput={(e) => set("date_from", e.target.value)} class={INPUT} />

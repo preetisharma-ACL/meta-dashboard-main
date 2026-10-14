@@ -101,6 +101,67 @@ export const fetchAuditLog = async (filters = {}) => {
   return unwrap(await api(`/control/audit/?${params.toString()}`, { method: "GET" }));
 };
 
+// ── Part 2: dedicated tools ──────────────────────────────────────────────────
+
+// GET /control/health/ → { now, scheduled_tasks[], last_data{}, ad_accounts{},
+// credentials[], failures_24h }.
+export const fetchControlHealth = async () =>
+  unwrap(await api(`/control/health/`, { method: "GET" }));
+
+// POST /control/credentials/{id}/test/ → { ok, meta_user_name } | { ok:false, error }.
+// A failed token can come back as 200 {ok:false} or as an HTTP error; both
+// resolve to the same { ok:false, error } here so the row shows Meta's text.
+export const testCredential = async (id) => {
+  try {
+    const d = unwrap(await api(`/control/credentials/${enc(id)}/test/`, { method: "POST" }));
+    return d ?? { ok: false, error: "No response." };
+  } catch (err) {
+    const body = err?.data ?? {};
+    return {
+      ok: false,
+      error: body.error && typeof body.error === "string" ? body.error : parseControlError(err, "Test failed.").message,
+    };
+  }
+};
+
+// POST /control/users/{id}/password/ {password1, password2, reason} → {ok:true};
+// 400 carries Django's password-rule field errors.
+export const resetUserPassword = async (id, password1, password2, reason) =>
+  unwrap(
+    await api(`/control/users/${enc(id)}/password/`, {
+      method: "POST",
+      body: JSON.stringify({ password1, password2, reason }),
+    }),
+  );
+
+// Recompute a client's monthly openings from `from` (YYYY-MM). GET previews
+// (nothing written); POST applies. Locked openings are never changed.
+export const previewRecomputeOpenings = async (clientId, from) =>
+  unwrap(
+    await api(`/control/clients/${enc(clientId)}/recompute-openings/?from=${enc(from)}`, {
+      method: "GET",
+    }),
+  );
+export const applyRecomputeOpenings = async (clientId, from, reason) =>
+  unwrap(
+    await api(`/control/clients/${enc(clientId)}/recompute-openings/`, {
+      method: "POST",
+      body: JSON.stringify({ from, reason }),
+    }),
+  );
+
+// Django admin's dynamic-form helpers: GET /control/m/{app}/{model}/helper/{name}/
+// with the same query params the admin page sends. Returns the JSON as-is.
+export const callFormHelper = async (app, model, name, params = {}) => {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v != null && v !== "") qs.set(k, String(v));
+  }
+  return unwrap(
+    await api(`${modelPath(app, model)}/helper/${enc(name)}/?${qs.toString()}`, { method: "GET" }),
+  );
+};
+
 // ── Errors ───────────────────────────────────────────────────────────────────
 // A 400 comes in one of two shapes, and both are read:
 //   { detail, errors: { field: [{message}] }, fields: {} }

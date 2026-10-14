@@ -838,6 +838,11 @@ export default function Sidebar() {
         ),
         subMenus: [
           {
+            name: "System Health",
+            path: "/control/health",
+            icon: () => <SmallIcon d="M3 12h4l3 8 4-16 3 8h4" />,
+          },
+          {
             name: "Data Console",
             path: "/control/data",
             icon: () => (

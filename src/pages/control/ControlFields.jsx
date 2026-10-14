@@ -114,6 +114,14 @@ function RelationPicker(props) {
   onCleanup(() => clearTimeout(timer));
   const rel = () => props.field.related ?? {};
   const search = (text) => {
+    // A form helper can pin the options (e.g. projects of the chosen client):
+    // filter those locally instead of hitting the generic lookup.
+    if (Array.isArray(props.options)) {
+      const t = text.trim().toLowerCase();
+      setOpts(t ? props.options.filter((o) => o.label.toLowerCase().includes(t)) : props.options);
+      setLoading(false);
+      return;
+    }
     clearTimeout(timer);
     timer = setTimeout(async () => {
       const mine = ++seq;
@@ -285,7 +293,7 @@ export function FieldInput(props) {
           </select>
         </Match>
         <Match when={f().kind === "relation" || f().kind === "multi_relation"}>
-          <RelationPicker field={f()} value={props.value} disabled={props.disabled} onChange={set} />
+          <RelationPicker field={f()} value={props.value} options={props.options} disabled={props.disabled} onChange={set} />
         </Match>
       </Switch>
       <Show when={f().help_text}>

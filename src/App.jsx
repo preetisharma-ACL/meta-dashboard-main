@@ -38,6 +38,7 @@ import ControlModels from "./pages/control/ControlModels";
 import ControlChangeList from "./pages/control/ControlChangeList";
 import ControlRecord from "./pages/control/ControlRecord";
 import ControlAudit from "./pages/control/ControlAudit";
+import ControlHealth from "./pages/control/ControlHealth";
 import Campaigns from "./pages/admin/campaigns/Campaigns";
 import AdAccounts from "./pages/admin/client/AdAccounts";
 import AdAccountClients from "./pages/admin/client/AdAccountClients";
@@ -558,7 +559,15 @@ function App() {
                 Every /api/control/ endpoint 403s anyone else; SuperuserRoute
                 only decides whether the screens are offered. "add" is a static
                 segment, so it outranks the :pk route. */}
-            <Route path="/control" component={() => <Navigate href="/control/data" />} />
+            <Route path="/control" component={() => <Navigate href="/control/health" />} />
+            <Route
+              path="/control/health"
+              component={() => (
+                <SuperuserRoute>
+                  <ControlHealth />
+                </SuperuserRoute>
+              )}
+            />
             <Route
               path="/control/data"
               component={() => (

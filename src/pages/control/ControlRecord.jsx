@@ -10,6 +10,8 @@ import {
   parseControlError,
 } from "../../services/control";
 import { FieldInput, toFormValue, toApiValue } from "./ControlFields";
+import { useFormHelpers, HelperPreview } from "./ControlHelpers";
+import { ResetPasswordDialog, RecomputeOpeningsDialog } from "./ControlTools";
 import {
   PageHead,
   Banner,
@@ -97,6 +99,20 @@ export default function ControlRecord(props) {
     setInitial(next);
     setFieldErrors({});
   });
+  // Django admin's dynamic-form helpers (project narrowing, live previews).
+  const helpers = useFormHelpers({
+    app: () => params.app,
+    model: () => params.model,
+    fields,
+    form,
+  });
+
+  // Record-page tools, by model.
+  const isUser = () => params.app === "accounts" && params.model === "user";
+  const isClient = () => params.app === "clients" && params.model === "client";
+  const [pwOpen, setPwOpen] = createSignal(false);
+  const [rcOpen, setRcOpen] = createSignal(false);
+
   const setField = (name, v) => {
     setForm((s) => ({ ...s, [name]: v }));
     if (fieldErrors()[name]) setFieldErrors((e) => ({ ...e, [name]: undefined }));
@@ -220,6 +236,7 @@ export default function ControlRecord(props) {
           field={f}
           value={form()[name]}
           masked={f.sensitive ? values()[name] : undefined}
+          options={helpers.optionsFor(name)}
           disabled={ro}
           error={fieldErrors()[name]}
           onChange={(v) => setField(name, v)}
@@ -250,11 +267,23 @@ export default function ControlRecord(props) {
         title={isAdd() ? `Add ${d()?.verbose_name ?? params.model}` : (d()?.str ?? `#${params.pk}`)}
         subtitle={isAdd() ? undefined : `${params.app}.${params.model} · pk ${params.pk}`}
         actions={
-          <Show when={!isAdd() && perms().delete}>
-            <button type="button" class={BTN_DANGER} onClick={openDelete} disabled={delLoading()}>
-              {delLoading() ? "Checking…" : "Delete"}
-            </button>
-          </Show>
+          <>
+            <Show when={!isAdd() && isUser()}>
+              <button type="button" class={BTN} onClick={() => setPwOpen(true)}>
+                Reset password
+              </button>
+            </Show>
+            <Show when={!isAdd() && isClient()}>
+              <button type="button" class={BTN} onClick={() => setRcOpen(true)}>
+                Recompute openings
+              </button>
+            </Show>
+            <Show when={!isAdd() && perms().delete}>
+              <button type="button" class={BTN_DANGER} onClick={openDelete} disabled={delLoading()}>
+                {delLoading() ? "Checking…" : "Delete"}
+              </button>
+            </Show>
+          </>
         }
       />
 
@@ -268,18 +297,23 @@ export default function ControlRecord(props) {
         <Show when={d()}>
           <div class="space-y-4">
             <For each={sections()}>
-              {(s) => (
-                <section class={`${CARD} p-5`}>
-                  <Show when={s.title}>
-                    <h2 class="text-sm font-semibold text-gray-900 dark:text-white">{s.title}</h2>
+              {(s, i) => (
+                <>
+                  <section class={`${CARD} p-5`}>
+                    <Show when={s.title}>
+                      <h2 class="text-sm font-semibold text-gray-900 dark:text-white">{s.title}</h2>
+                    </Show>
+                    <Show when={s.description}>
+                      <p class="mt-0.5 text-xs text-gray-500">{s.description}</p>
+                    </Show>
+                    <div class={`grid grid-cols-1 md:grid-cols-2 gap-4 ${s.title ? "mt-3" : ""}`}>
+                      <For each={s.fields}>{(name) => renderName(name)}</For>
+                    </div>
+                  </section>
+                  <Show when={i() === helpers.previewAfter(sections())}>
+                    <HelperPreview preview={helpers.preview()} title={helpers.previewTitle()} />
                   </Show>
-                  <Show when={s.description}>
-                    <p class="mt-0.5 text-xs text-gray-500">{s.description}</p>
-                  </Show>
-                  <div class={`grid grid-cols-1 md:grid-cols-2 gap-4 ${s.title ? "mt-3" : ""}`}>
-                    <For each={s.fields}>{(name) => renderName(name)}</For>
-                  </div>
-                </section>
+                </>
               )}
             </For>
           </div>
@@ -323,6 +357,23 @@ export default function ControlRecord(props) {
       >
         <DeletePreview preview={delPreview()} label={d()?.str ?? `#${params.pk}`} />
       </ReasonDialog>
+
+      <ResetPasswordDialog
+        open={pwOpen()}
+        userId={params.pk}
+        label={d()?.str}
+        onClose={() => setPwOpen(false)}
+        onDone={() => {
+          setPwOpen(false);
+          setBanner({ tone: "success", text: `Password reset for ${d()?.str ?? `#${params.pk}`}.` });
+        }}
+      />
+      <RecomputeOpeningsDialog
+        open={rcOpen()}
+        clientId={params.pk}
+        label={d()?.str ?? `#${params.pk}`}
+        onClose={() => setRcOpen(false)}
+      />
     </div>
   );
 }
