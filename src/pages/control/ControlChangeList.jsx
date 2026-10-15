@@ -4,6 +4,7 @@ import {
   fetchControlList,
   fetchControlMeta,
   runControlAction,
+  deleteControlRecord,
   parseControlError,
 } from "../../services/control";
 import {
@@ -264,18 +265,114 @@ export default function ControlChangeList() {
   const goPage = (n) => setParam((p) => (n > 1 ? p.set("p", String(n)) : p.delete("p")));
 
   // ── Selection + bulk actions ──
-  const [selected, setSelected] = createSignal(new Set());
-  createEffect(on(() => location.search, () => setSelected(new Set())));
+  // Every list page has row checkboxes. The selection is a Map pk → row and
+  // survives Prev/Next and re-sorting (p, o), so rows can be picked from
+  // several pages; a new search or filter is a different list and starts over.
+  // Shift-click ticks / unticks the range from the last box clicked.
+  // A memo, so it only notifies when the key's VALUE changes — `on` over the
+  // raw function would fire on every location.search change, paging included.
+  const scopeKey = createMemo(() => {
+    const p = query();
+    p.delete("p");
+    p.delete("o");
+    p.sort();
+    return `${params.app}/${params.model}?${p}`;
+  });
+  const [selected, setSelected] = createSignal(new Map());
+  createEffect(on(scopeKey, () => setSelected(new Map())));
   const rows = () => d()?.rows ?? [];
+  let anchor = null; // index on this page of the last box clicked
+  createEffect(on(() => location.search, () => (anchor = null)));
   const allOnPage = () => rows().length > 0 && rows().every((r) => selected().has(r.pk));
-  const toggle = (pk) =>
+  const someOnPage = () => rows().some((r) => selected().has(r.pk));
+  const toggle = (i, shift) => {
+    const list = rows();
+    const tick = !selected().has(list[i].pk);
+    const range =
+      shift && anchor != null && anchor < list.length
+        ? list.slice(Math.min(anchor, i), Math.max(anchor, i) + 1)
+        : [list[i]];
+    anchor = i;
     setSelected((s) => {
-      const n = new Set(s);
-      n.has(pk) ? n.delete(pk) : n.add(pk);
+      const n = new Map(s);
+      range.forEach((r) => (tick ? n.set(r.pk, r) : n.delete(r.pk)));
       return n;
     });
+  };
   const toggleAll = () =>
-    setSelected(allOnPage() ? new Set() : new Set(rows().map((r) => r.pk)));
+    setSelected((s) => {
+      const n = new Map(s);
+      const untick = allOnPage();
+      rows().forEach((r) => (untick ? n.delete(r.pk) : n.set(r.pk, r)));
+      return n;
+    });
+  const clearSelection = () => setSelected(new Map());
+  let headBox;
+  createEffect(() => {
+    if (headBox) headBox.indeterminate = someOnPage() && !allOnPage();
+  });
+
+  // Selected rows as CSV (the list's columns, as shown), in the order picked.
+  const exportCsv = () => {
+    const cols = d()?.columns ?? [];
+    const esc = (v) => {
+      const t = showValue(v);
+      const s = t === "—" ? "" : t;
+      return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const lines = [
+      ["id", ...cols.map((c) => c.label)].map(esc).join(","),
+      ...[...selected().values()].map((r) =>
+        [r.pk, ...cols.map((c, i) => (i === 0 ? (r.cells?.[c.name] ?? r.str ?? r.pk) : r.cells?.[c.name]))]
+          .map(esc)
+          .join(","),
+      ),
+    ];
+    const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${params.model}-selected-${selected().size}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 0);
+  };
+
+  // Bulk delete for models whose admin offers no delete action: one reason,
+  // then the record DELETE per row (each one audited), one at a time.
+  const canBulkDelete = () =>
+    perms().delete === true && !actions().some((a) => a.name === "delete_selected");
+  const [deleting, setDeleting] = createSignal(false);
+  const [progress, setProgress] = createSignal(null); // { done, total }
+  const runBulkDelete = async (reason) => {
+    const pks = [...selected().keys()];
+    setBusy(true);
+    setActionError("");
+    const failed = []; // [pk, message]
+    for (let i = 0; i < pks.length; i++) {
+      setProgress({ done: i, total: pks.length });
+      try {
+        await deleteControlRecord(params.app, params.model, pks[i], reason);
+      } catch (err) {
+        failed.push([pks[i], parseControlError(err, "failed").message]);
+      }
+    }
+    const ok = pks.length - failed.length;
+    const name = (pk) => showValue(selected().get(pk)?.str ?? pk);
+    setProgress(null);
+    setBusy(false);
+    setDeleting(false);
+    setResult({
+      tone: failed.length ? (ok ? "warn" : "error") : "success",
+      text:
+        `Deleted ${ok} of ${pks.length} record(s).` +
+        (failed.length ? ` Not deleted — ${failed.map(([pk, m]) => `${name(pk)}: ${m}`).join("; ")}` : ""),
+    });
+    // Only the rows that failed stay ticked, so they can be looked at or retried.
+    const keep = new Set(failed.map(([pk]) => pk));
+    setSelected((s) => new Map([...s].filter(([pk]) => keep.has(pk))));
+    refetch();
+  };
 
   const [action, setAction] = createSignal("");
   const [confirming, setConfirming] = createSignal(false);
@@ -288,14 +385,14 @@ export default function ControlChangeList() {
     setBusy(true);
     setActionError("");
     try {
-      const res = await runControlAction(params.app, params.model, action(), [...selected()], reason);
+      const res = await runControlAction(params.app, params.model, action(), [...selected().keys()], reason);
       const msgs = (res?.messages ?? []).map((m) => (typeof m === "string" ? m : (m.message ?? showValue(m))));
       setResult({
         tone: "success",
         text: msgs.length ? msgs.join(" ") : `${actionLabel()}: ${res?.count ?? 0} record(s).`,
       });
       setConfirming(false);
-      setSelected(new Set());
+      clearSelection();
       setAction("");
       refetch();
     } catch (err) {
@@ -315,7 +412,7 @@ export default function ControlChangeList() {
 
   const changeHref = (pk) => `${base()}/${encodeURIComponent(pk)}/change`;
   const hasActions = () => actions().length > 0;
-  const colCount = () => (d()?.columns?.length ?? 0) + (hasActions() ? 1 : 0);
+  const colCount = () => (d()?.columns?.length ?? 0) + 1; // + checkbox column
 
   return (
     <div class="min-h-screen min-w-0 overflow-x-clip p-3 lg:p-8">
@@ -377,8 +474,8 @@ export default function ControlChangeList() {
                 </Show>
               </button>
             </Show>
-            <Show when={hasActions()}>
-              <div class="flex flex-wrap items-center gap-2">
+            <div class="flex flex-wrap items-center gap-2">
+              <Show when={hasActions()}>
                 <select
                   aria-label="Bulk action"
                   value={action()}
@@ -399,10 +496,43 @@ export default function ControlChangeList() {
                 >
                   Go
                 </button>
-                <span class="text-xs text-gray-500 dark:text-gray-400">{selected().size} selected</span>
-              </div>
-            </Show>
+              </Show>
+              <Show when={canBulkDelete()}>
+                <button
+                  type="button"
+                  class={BTN}
+                  disabled={selected().size === 0}
+                  onClick={() => {
+                    setActionError("");
+                    setDeleting(true);
+                  }}
+                >
+                  Delete selected
+                </button>
+              </Show>
+              <button type="button" class={BTN} disabled={selected().size === 0} onClick={exportCsv}>
+                Export CSV
+              </button>
+              <span class="text-xs text-gray-500 dark:text-gray-400" aria-live="polite">
+                {selected().size} selected
+                <Show when={selected().size > 0 && selected().size !== rows().filter((r) => selected().has(r.pk)).length}>
+                  {" "}({rows().filter((r) => selected().has(r.pk)).length} on this page)
+                </Show>
+              </span>
+              <Show when={selected().size > 0}>
+                <button
+                  type="button"
+                  class="min-h-[32px] px-1 text-xs text-purple-700 dark:text-purple-300 hover:underline rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+                  onClick={clearSelection}
+                >
+                  Clear selection
+                </button>
+              </Show>
+            </div>
           </div>
+          <p class="-mt-1 mb-3 text-xs text-gray-500 dark:text-gray-400">
+            Tick rows to select them; Shift-click ticks a range. Ticks are kept across pages.
+          </p>
           <Show when={d()?.search && d()?.search_help}>
             <p class="-mt-1 mb-3 text-xs text-gray-500 dark:text-gray-400">{d().search_help}</p>
           </Show>
@@ -415,17 +545,21 @@ export default function ControlChangeList() {
             <table class="min-w-full text-sm border-separate border-spacing-0">
               <thead>
                 <tr class="text-gray-500 dark:text-gray-400 uppercase text-xs tracking-wider">
-                  <Show when={hasActions()}>
-                    <th class={`${TH} ${PIN_TH} left-0 w-12 min-w-[3rem] !p-0`}>
-                      <label class="flex h-10 w-12 items-center justify-center cursor-pointer">
-                        <input type="checkbox" checked={allOnPage()} onChange={toggleAll} aria-label="Select all on page" />
-                      </label>
-                    </th>
-                  </Show>
+                  <th class={`${TH} ${PIN_TH} left-0 w-12 min-w-[3rem] !p-0`}>
+                    <label class="flex h-10 w-12 items-center justify-center cursor-pointer">
+                      <input
+                        ref={headBox}
+                        type="checkbox"
+                        checked={allOnPage()}
+                        onChange={toggleAll}
+                        aria-label="Select all on this page"
+                      />
+                    </label>
+                  </th>
                   <For each={d()?.columns ?? []}>
                     {(c, i) => (
                       <th
-                        class={`${TH} ${i() === 0 ? `${PIN_TH} ${hasActions() ? "left-12" : "left-0"} ${EDGE}` : ""}`}
+                        class={`${TH} ${i() === 0 ? `${PIN_TH} left-12 ${EDGE}` : ""}`}
                         aria-sort={ariaSort(c)}
                       >
                         <Show when={c.sortable === true && c.sort_index != null} fallback={c.label}>
@@ -464,23 +598,22 @@ export default function ControlChangeList() {
                       </tr>
                     }
                   >
-                    {(r) => (
-                      <tr class="group">
-                        <Show when={hasActions()}>
-                          <td class={`${TD} ${PIN_TD} left-0 w-12 min-w-[3rem] !p-0`}>
-                            <label class="flex h-10 w-12 items-center justify-center cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={selected().has(r.pk)}
-                                onChange={() => toggle(r.pk)}
-                                aria-label={`Select ${r.str ?? r.pk}`}
-                              />
-                            </label>
-                          </td>
-                        </Show>
+                    {(r, ri) => (
+                      <tr class="group" aria-selected={selected().has(r.pk)}>
+                        <td class={`${TD} ${PIN_TD} left-0 w-12 min-w-[3rem] !p-0`}>
+                          <label class="flex h-10 w-12 items-center justify-center cursor-pointer">
+                            {/* onClick, not onChange: only the click carries shiftKey. */}
+                            <input
+                              type="checkbox"
+                              checked={selected().has(r.pk)}
+                              onClick={(e) => toggle(ri(), e.shiftKey)}
+                              aria-label={`Select ${showValue(r.str ?? r.pk)}`}
+                            />
+                          </label>
+                        </td>
                         <For each={d().columns}>
                           {(c, i) => (
-                            <td class={`${TD} ${i() === 0 ? `${PIN_TD} ${hasActions() ? "left-12" : "left-0"} ${EDGE}` : ""}`}>
+                            <td class={`${TD} ${i() === 0 ? `${PIN_TD} left-12 ${EDGE}` : ""}`}>
                               {/* First column opens the record, as list_display_links does.
                                   Long text cuts off at 22rem; the full value is on hover. */}
                               <span class="block max-w-[22rem] truncate" title={showValue(i() === 0 ? (r.cells?.[c.name] ?? r.str ?? r.pk) : r.cells?.[c.name])}>
@@ -553,6 +686,29 @@ export default function ControlChangeList() {
         onConfirm={runAction}
       >
         On {selected().size} selected record{selected().size === 1 ? "" : "s"}.
+      </ReasonDialog>
+
+      <ReasonDialog
+        open={deleting()}
+        title={`Delete ${selected().size} record${selected().size === 1 ? "" : "s"}?`}
+        confirmLabel="Delete"
+        danger
+        busy={busy()}
+        error={actionError()}
+        onCancel={() => setDeleting(false)}
+        onConfirm={runBulkDelete}
+      >
+        <Show
+          when={progress()}
+          fallback={
+            <>
+              Each record is deleted on its own, with this reason in the audit log. A
+              record that other data depends on is skipped and stays ticked.
+            </>
+          }
+        >
+          Deleting {progress().done + 1} of {progress().total}…
+        </Show>
       </ReasonDialog>
     </div>
   );
