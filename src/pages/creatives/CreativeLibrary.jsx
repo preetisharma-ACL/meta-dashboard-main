@@ -4,11 +4,13 @@ import {
   fetchCreatives,
   distinctProjects,
   canWriteCreatives,
+  canFixCreatives,
   kindLabel,
   fmtDateTimeIST,
 } from "../../services/creatives";
 import { loadErrorMessage } from "../../utils/apiErrors";
 import CreativeModal from "../../components/creatives/CreativeModal";
+import DeleteCreativeDialog from "../../components/creatives/DeleteCreativeDialog";
 import {
   PageShell,
   ErrorBox,
@@ -24,6 +26,7 @@ import {
   OneDriveLink,
   ROW,
   STICKY_TD,
+  RowMenu,
 } from "../../components/creatives/CreativeUI";
 
 // ─── Creative Library (/creatives) ────────────────────────────────────────────
@@ -32,7 +35,8 @@ import {
 // distinct project_id / project of those same rows (no extra call), and
 // filtering server-side would shrink that list to the one project picked.
 // Row opens the detail page. "Add creative" is admin, coordination and creative
-// (canWriteCreatives); a CM reads it.
+// (canWriteCreatives); a CM reads it. The row "⋯" menu has Edit for writers and
+// Delete for admin / coordination (canFixCreatives).
 
 export default function CreativeLibrary() {
   const navigate = useNavigate();
@@ -43,6 +47,8 @@ export default function CreativeLibrary() {
   const [search, setSearch] = createSignal("");
   const [q, setQ] = createSignal("");
   const [modalOpen, setModalOpen] = createSignal(false);
+  const [editing, setEditing] = createSignal(null); // row in the edit modal
+  const [deleting, setDeleting] = createSignal(null); // row in the delete dialog
 
   let timer;
   createEffect(
@@ -60,7 +66,7 @@ export default function CreativeLibrary() {
     q: q(),
   });
 
-  const [rows, { refetch }] = createResource(params, (p) => fetchCreatives(p));
+  const [rows, { refetch, mutate }] = createResource(params, (p) => fetchCreatives(p));
 
   const loaded = () => (rows.error ? [] : rows() ?? []);
   const projects = createMemo(() => distinctProjects(loaded()));
@@ -146,6 +152,7 @@ export default function CreativeLibrary() {
           { label: "Status" },
           { label: "Created by" },
           { label: "Created at" },
+          ...(canWriteCreatives() ? [{ label: "" }] : []),
         ]}
       >
         <For each={list()}>
@@ -177,6 +184,18 @@ export default function CreativeLibrary() {
               <td class="whitespace-nowrap text-[#54657E] dark:text-gray-400">
                 {fmtDateTimeIST(c.created_at)}
               </td>
+              <Show when={canWriteCreatives()}>
+                <td class="!py-1 text-right" onClick={(e) => e.stopPropagation()}>
+                  <RowMenu
+                    items={[
+                      { label: "Edit", onClick: () => setEditing(c) },
+                      ...(canFixCreatives()
+                        ? [{ label: "Delete", danger: true, onClick: () => setDeleting(c) }]
+                        : []),
+                    ]}
+                  />
+                </td>
+              </Show>
             </tr>
           )}
         </For>
@@ -186,6 +205,22 @@ export default function CreativeLibrary() {
         open={modalOpen()}
         onClose={() => setModalOpen(false)}
         onSaved={() => refetch()}
+      />
+      <CreativeModal
+        open={!!editing()}
+        creative={editing()}
+        onClose={() => setEditing(null)}
+        onSaved={() => refetch()}
+      />
+      <DeleteCreativeDialog
+        open={!!deleting()}
+        creative={deleting()}
+        onClose={() => setDeleting(null)}
+        onDeleted={() => {
+          const id = deleting()?.id;
+          mutate((xs) => (xs ?? []).filter((x) => x.id !== id));
+        }}
+        onDeactivated={() => refetch()}
       />
     </PageShell>
   );

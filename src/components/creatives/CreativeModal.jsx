@@ -1,14 +1,15 @@
-import { createSignal, createResource, createEffect, For, Show } from "solid-js";
+import { createSignal, createResource, createEffect, on, untrack, For, Show } from "solid-js";
 import {
   createCreative,
   updateCreative,
   fetchCodePreview,
   kindLabel,
   canWriteCreatives,
+  canFixCreatives,
   campaignStyleName,
   createProject,
 } from "../../services/creatives";
-import { errorBanner } from "../../utils/apiErrors";
+import { errorBanner, errorMessage } from "../../utils/apiErrors";
 import {
   FIELD,
   LABEL,
@@ -30,14 +31,19 @@ import {
 // 409 needs_confirmation = this OneDrive link is already in the library
 // (existing_code names it). Confirm, then resend the SAME body with confirm:true.
 //
-// EDIT: only title / link / notes / active. Code, type, client and project are
-// fixed once created (the backend 400s if they are sent) and are shown read
-// only with the note telling people what to do instead.
+// EDIT: title / link / notes / active for everyone who can write. Admin,
+// coordination and super admins (canFixCreatives) can also correct type,
+// client and project, with the same dropdowns as Add; changing any of them
+// needs a Reason. The code may then change: a code not used in any Meta ad is
+// regenerated (shown big, like Add), a code already in ads is kept and
+// row.warning explains why (yellow notice). The creative desk sees those three
+// read only.
 //
 // Props: open, creative? (edit mode), onClose(), onSaved(row)
 
 export default function CreativeModal(props) {
   const isEdit = () => !!props.creative;
+  const fixing = () => isEdit() && canFixCreatives();
 
   const [kind, setKind] = createSignal("video");
   const [nomen, setNomen] = createSignal(null);
@@ -55,14 +61,20 @@ export default function CreativeModal(props) {
   const [extraProjects, setExtraProjects] = createSignal([]); // injected into the dropdown
   const [newOpen, setNewOpen] = createSignal(false);
   const [newProject, setNewProject] = createSignal(null); // made via "+ New project"
+  const [reason, setReason] = createSignal("");
+  const [fixResult, setFixResult] = createSignal(null); // { code, oldCode, warning }
 
-  // Reset whenever the modal opens.
-  createEffect(() => {
-    if (!props.open) return;
-    const c = props.creative;
+  // Reset whenever the modal opens — on the open edge only: the detail page
+  // merges the saved row into props.creative, and re-running then would wipe
+  // the "new code" / warning screen.
+  createEffect(on(() => props.open, (open) => {
+    if (!open) return;
+    const c = untrack(() => props.creative);
     setKind(c?.kind ?? "video");
-    setNomen(null);
-    setProjectId("");
+    // client_nomen_id can be missing on an older row: the name still shows,
+    // and the project list waits for a client to be picked.
+    setNomen(c ? { id: c.client_nomen_id ?? null, name: c.client_nomen ?? "" } : null);
+    setProjectId(c?.project_id != null ? String(c.project_id) : "");
     setShowAll(false);
     setTitle(c?.title ?? "");
     setUrl(c?.onedrive_url ?? "");
@@ -75,7 +87,9 @@ export default function CreativeModal(props) {
     setExtraProjects([]);
     setNewOpen(false);
     setNewProject(null);
-  });
+    setReason("");
+    setFixResult(null);
+  }));
 
   const [preview] = createResource(
     () =>
@@ -85,11 +99,33 @@ export default function CreativeModal(props) {
     (p) => fetchCodePreview(p).catch(() => null),
   );
 
+  // ── Fix (edit of type / client / project) ──
+  const orig = () => props.creative ?? {};
+  const kindChanged = () => fixing() && kind() !== orig().kind;
+  const nomenChanged = () =>
+    fixing() && nomen()?.id != null && String(nomen().id) !== String(orig().client_nomen_id);
+  const projectChanged = () =>
+    fixing() && String(projectId() ?? "") !== String(orig().project_id ?? "");
+  const fixChanged = () => kindChanged() || nomenChanged() || projectChanged();
+
+  // The creative's own project may not be in its client's default list (no
+  // campaign yet); keep it selectable while the client is unchanged.
+  const projectExtra = () => {
+    const o = orig();
+    const own =
+      fixing() && !nomenChanged() && o.project_id != null
+        ? [{ id: o.project_id, name: o.project ?? `#${o.project_id}` }]
+        : [];
+    return [...extraProjects(), ...own];
+  };
+
   const canSubmit = () =>
     !saving() &&
     title().trim() &&
     url().trim() &&
-    (isEdit() || (nomen()?.id && projectId()));
+    (isEdit()
+      ? !fixChanged() || (reason().trim() && projectId())
+      : nomen()?.id && projectId());
 
   const submit = async (confirm = false) => {
     if (!canSubmit()) return;
@@ -97,13 +133,27 @@ export default function CreativeModal(props) {
     setError("");
     try {
       if (isEdit()) {
-        const row = await updateCreative(props.creative.id, {
+        const oldCode = props.creative.code;
+        const fixed = fixChanged();
+        const patch = {
           title: title().trim(),
           onedrive_url: url().trim(),
           notes: notes(),
           is_active: active(),
-        });
+        };
+        if (fixed) {
+          if (kindChanged()) patch.kind = kind();
+          if (nomenChanged()) patch.client_nomen_id = nomen().id;
+          if (projectChanged()) patch.project_id = Number(projectId()) || projectId();
+          patch.reason = reason().trim();
+        }
+        const row = await updateCreative(props.creative.id, patch);
         props.onSaved?.(row);
+        const codeChanged = !!row?.code && row.code !== oldCode;
+        if (fixed && (row?.warning || codeChanged)) {
+          setFixResult({ code: row.code, oldCode, codeChanged, warning: row.warning || "" });
+          return;
+        }
         props.onClose();
         return;
       }
@@ -126,6 +176,13 @@ export default function CreativeModal(props) {
       const info = d.needs_confirmation ? d : d.error?.needs_confirmation ? d.error : d.data;
       if (err?.status === 409 && info?.needs_confirmation) {
         setDupe(info.existing_code || "an existing creative");
+      } else if (isEdit()) {
+        // A 400 names the field (e.g. reason) — show what the server said.
+        setError(
+          err?.status === 403
+            ? "You don't have permission to make this change."
+            : errorMessage(err, "Could not save the creative."),
+        );
       } else {
         setError(errorBanner(err, {}, "Could not save the creative."));
       }
@@ -152,7 +209,13 @@ export default function CreativeModal(props) {
         <div class="w-full max-w-xl rounded-2xl bg-white dark:bg-gray-900 shadow-2xl border border-[#E2E8F1] dark:border-gray-700">
           <div class="flex items-center justify-between px-6 py-4 border-b border-[#E2E8F1] dark:border-gray-700">
             <h2 class="text-lg font-bold text-[#14233A] dark:text-white">
-              {savedCode() != null ? "Creative saved" : isEdit() ? "Edit creative" : "Add creative"}
+              {savedCode() != null
+                ? "Creative saved"
+                : fixResult()
+                  ? "Creative updated"
+                  : isEdit()
+                    ? "Edit creative"
+                    : "Add creative"}
             </h2>
             <button
               type="button"
@@ -186,8 +249,41 @@ export default function CreativeModal(props) {
             </div>
           </Show>
 
+          {/* ── Fixed: new code, or the kept-code warning ── */}
+          <Show when={fixResult()}>
+            <div class="px-6 py-8 text-center">
+              <Show when={fixResult().codeChanged}>
+                <p class="text-xs font-bold uppercase tracking-[0.12em] text-[#8593A8]">New creative code</p>
+                <p class="mt-2 font-mono text-4xl sm:text-5xl font-bold tracking-tight text-[#AC2334] break-all">
+                  {fixResult().code}
+                </p>
+                <div class="mt-5">
+                  <CopyButton text={fixResult().code} big />
+                </div>
+                <p class="mt-6 text-sm text-[#54657E] dark:text-gray-300">
+                  Replaces <span class="font-mono font-semibold">{fixResult().oldCode}</span>. New Meta
+                  ads must start with{" "}
+                  <span class="font-mono font-semibold text-[#14233A] dark:text-white">
+                    {fixResult().code} | short description
+                  </span>
+                </p>
+              </Show>
+              <Show when={fixResult().warning}>
+                <div
+                  role="status"
+                  class="mt-2 rounded-lg border border-[#D89A2B]/40 bg-[#FDF6E9] dark:bg-yellow-900/20 px-4 py-3 text-left text-sm text-[#7A5410] dark:text-yellow-200"
+                >
+                  {fixResult().warning}
+                </div>
+              </Show>
+              <button type="button" class={GHOST_BTN + " mt-6"} onClick={() => props.onClose()}>
+                Done
+              </button>
+            </div>
+          </Show>
+
           {/* ── Form ── */}
-          <Show when={savedCode() == null}>
+          <Show when={savedCode() == null && !fixResult()}>
             <form
               class="px-6 py-5 space-y-4"
               onSubmit={(e) => {
@@ -196,7 +292,7 @@ export default function CreativeModal(props) {
               }}
             >
               <Show
-                when={!isEdit()}
+                when={!isEdit() || fixing()}
                 fallback={
                   <div class="space-y-3">
                     <div class="grid grid-cols-2 gap-3">
@@ -212,11 +308,14 @@ export default function CreativeModal(props) {
                       />
                     </div>
                     <p class="text-xs text-[#8593A8] dark:text-gray-400">
-                      Fixed once created. Add a new creative instead.
+                      Only admin or coordination can correct these.
                     </p>
                   </div>
                 }
               >
+                <Show when={fixing()}>
+                  <ReadOnly label="Code" value={props.creative.code} />
+                </Show>
                 <div>
                   <label class={LABEL}>Type</label>
                   <KindSelect value={kind()} onChange={setKind} />
@@ -263,7 +362,7 @@ export default function CreativeModal(props) {
                   <ProjectSelect
                     nomenId={nomen()?.id}
                     showAll={showAll()}
-                    extra={extraProjects()}
+                    extra={projectExtra()}
                     value={projectId()}
                     onChange={setProjectId}
                   />
@@ -294,7 +393,23 @@ export default function CreativeModal(props) {
                     </div>
                   </Show>
                 </div>
-                <Show when={nomen()?.id && projectId()}>
+                <Show when={fixChanged()}>
+                  <div>
+                    <label class={LABEL}>Reason</label>
+                    <textarea
+                      class={FIELD}
+                      rows={2}
+                      value={reason()}
+                      onInput={(e) => setReason(e.target.value)}
+                      placeholder="Why the client / project / type is being corrected"
+                    />
+                    <p class="mt-1 text-xs text-[#8593A8] dark:text-gray-400">
+                      Required. Logged with the change. If the code isn't used in any
+                      Meta ad yet, a new code is generated.
+                    </p>
+                  </div>
+                </Show>
+                <Show when={!isEdit() && nomen()?.id && projectId()}>
                   <div class="rounded-lg border border-dashed border-[#D4DDE9] dark:border-gray-600 px-4 py-3">
                     <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8]">Code preview</p>
                     <p class="font-mono text-lg font-bold text-[#14233A] dark:text-white">

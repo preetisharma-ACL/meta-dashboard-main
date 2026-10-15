@@ -1,4 +1,5 @@
 import { api } from "../api/api";
+import { currentUser, isSuperuser } from "../stores/currentUser";
 
 // ─── Creative Library + Ranking ───────────────────────────────────────────────
 // Every creative gets a CODE at save time. CMs start the Meta ad name with that
@@ -10,7 +11,7 @@ import { api } from "../api/api";
 // { success, data } envelope. Verified live (OPTIONS) on 2026-10-08:
 //   /                 GET, POST        /ranking/        GET
 //   /untagged/        GET              /options/nomens/ GET
-//   /code-preview/    GET
+//   /code-preview/    GET              /{id}/           GET, PATCH, DELETE
 //
 // Money is RAW Meta spend (no markup) — shown as ₹ with 2 decimals. A null cpl
 // (0 leads) prints "n/a", never ₹0.
@@ -20,7 +21,11 @@ import { api } from "../api/api";
 // /auth/*. Read access is the creative desk plus the four internal roles below;
 // accounts, sales and clients are 403ed. WRITE (add / edit / new project) is
 // admin, coordination and creative; a CM sees the library read only.
+// FIX (change client / project / type on an existing creative) and DELETE are
+// admin, coordination and super admins only; the creative desk keeps title /
+// link / notes / active.
 const readRole = () => {
+  if (currentUser.loaded) return currentUser.role ?? null;
   try {
     return JSON.parse(localStorage.getItem("auth") || "null")?.role ?? null;
   } catch {
@@ -40,6 +45,9 @@ export const UNTAGGED_ROLES = ["admin", "campaign_manager", "coordination"];
 export const isCreativeRole = () => readRole() === "creative";
 export const canWriteCreatives = () => CREATIVE_WRITE_ROLES.includes(readRole());
 export const isCMRole = () => readRole() === "campaign_manager";
+export const CREATIVE_FIX_ROLES = ["admin", "coordination"];
+export const canFixCreatives = () =>
+  CREATIVE_FIX_ROLES.includes(readRole()) || isSuperuser();
 
 // ── Kinds ─────────────────────────────────────────────────────────────────────
 export const KINDS = [
@@ -172,12 +180,18 @@ export const createCreative = async (body) =>
   (await api(`/creatives/`, { method: "POST", body: JSON.stringify(body) }))
     ?.data ?? null;
 
-// PATCH — only title, onedrive_url, notes, is_active. code / kind / client /
-// project are fixed once created and the backend 400s if they are sent.
+// PATCH. Everyone who can write sends title, onedrive_url, notes, is_active.
+// Admin / coordination (canFixCreatives) may also send client_nomen_id,
+// project_id and kind, and must then send a reason. The response data is the
+// updated row; when client / project / type change, the code may change:
+//   code not in any Meta ad  -> new code generated (row.code differs)
+//   code already in ads      -> code kept, row.warning says so
+// 400 detail (e.g. reason missing), 403 no permission.
 export const EDITABLE_FIELDS = ["title", "onedrive_url", "notes", "is_active"];
+export const FIX_FIELDS = ["client_nomen_id", "project_id", "kind", "reason"];
 export const updateCreative = async (id, patch) => {
   const body = {};
-  EDITABLE_FIELDS.forEach((k) => {
+  [...EDITABLE_FIELDS, ...FIX_FIELDS].forEach((k) => {
     if (k in patch) body[k] = patch[k];
   });
   return (
@@ -188,6 +202,21 @@ export const updateCreative = async (id, patch) => {
       })
     )?.data ?? null
   );
+};
+
+// DELETE {reason, confirm?} (admin / coordination). Every edit and delete is
+// logged server side (creative audit log + Control Centre Audit Log).
+//   200 {deleted: true, code}
+//   409 {needs_confirm, ads_using_code, detail}  the code is in Meta ads;
+//       resend with confirm: true (those ads then show as an unknown code)
+export const deleteCreative = async (id, { reason, confirm }) => {
+  const body = { reason };
+  if (confirm) body.confirm = true;
+  const res = await api(`/creatives/${id}/`, {
+    method: "DELETE",
+    body: JSON.stringify(body),
+  });
+  return res?.data ?? res ?? null;
 };
 
 // ── Options ───────────────────────────────────────────────────────────────────

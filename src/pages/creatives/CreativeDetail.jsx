@@ -6,12 +6,13 @@ import {
   For,
   Show,
 } from "solid-js";
-import { useParams, A } from "@solidjs/router";
+import { useParams, useNavigate, A } from "@solidjs/router";
 import ApexCharts from "apexcharts";
 import {
   fetchCreative,
   fetchCreativePerformance,
   canWriteCreatives,
+  canFixCreatives,
   kindLabel,
   fmtMoney,
   fmtCpl,
@@ -21,6 +22,7 @@ import {
 } from "../../services/creatives";
 import { errorMessage } from "../../utils/apiErrors";
 import CreativeModal from "../../components/creatives/CreativeModal";
+import DeleteCreativeDialog from "../../components/creatives/DeleteCreativeDialog";
 import {
   PageShell,
   ErrorBox,
@@ -45,7 +47,9 @@ import {
 export default function CreativeDetail() {
   const params = useParams();
   const [range, setRange] = createSignal(defaultRange());
+  const navigate = useNavigate();
   const [editOpen, setEditOpen] = createSignal(false);
+  const [deleteOpen, setDeleteOpen] = createSignal(false);
 
   const [creative, { mutate }] = createResource(() => params.id, fetchCreative);
   const [perf] = createResource(
@@ -76,6 +80,15 @@ export default function CreativeDetail() {
           <button type="button" class={GHOST_BTN} onClick={() => setEditOpen(true)}>
             Edit
           </button>
+          <Show when={canFixCreatives()}>
+            <button
+              type="button"
+              class={GHOST_BTN + " !text-[#AC2334] dark:!text-red-300"}
+              onClick={() => setDeleteOpen(true)}
+            >
+              Delete
+            </button>
+          </Show>
         </Show>
       }
     >
@@ -227,6 +240,13 @@ export default function CreativeDetail() {
         creative={c()}
         onClose={() => setEditOpen(false)}
         onSaved={(row) => row && mutate({ ...c(), ...row })}
+      />
+      <DeleteCreativeDialog
+        open={deleteOpen()}
+        creative={c()}
+        onClose={() => setDeleteOpen(false)}
+        onDeleted={() => navigate("/creatives", { replace: true })}
+        onDeactivated={(row) => mutate({ ...c(), ...(row ?? {}), is_active: false })}
       />
     </PageShell>
   );
