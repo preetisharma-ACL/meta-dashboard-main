@@ -41,7 +41,7 @@ const NEVER_EDITABLE = new Set([
 //
 // The three that write a ClientCommercialHistory row are exactly the three that
 // need one. NOT is_active (no row, no reason) and NOT data_visible_from, which
-// only delays a retainer's own view of its data and bills nothing.
+// only delays the client's own view of its data and bills nothing.
 const REASON_REQUIRED_BY = ["client_type", "service_charge"];
 
 export const isReasonField = (name) =>
@@ -108,7 +108,7 @@ const FIELD_META = {
   },
   data_visible_from: {
     label: "Data visible from",
-    hint: "Retainer clients only: the date this client's reporting starts. It only delays the client's own view and bills nothing, which is why it needs no reason.",
+    hint: "The client sees nothing before this date (dashboard, reports, billing tabs). Billing amounts and admin/CM views are not affected. For a fresh start, use the 1st of a month.",
   },
   is_active: {
     label: "Login active",

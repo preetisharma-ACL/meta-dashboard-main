@@ -364,17 +364,10 @@ export default function EditClientDrawer(props) {
   const clearsRateServerSide = () =>
     String(values().client_type ?? "").toLowerCase() === "cpl";
 
-  // `data_visible_from` follows the same shape (R1, 52576ab): retainer-only, and
-  // cleared server-side the moment the type stops being retainer. So it is
-  // dropped from the payload and disabled for any non-retainer type — one PATCH
-  // does the whole switch, and we never send a value the serializer would have
-  // to reject or overwrite.
-  const clearsVisibilityServerSide = () =>
-    String(values().client_type ?? "").toLowerCase() !== "retainer";
-
-  const serverClears = (f) =>
-    (f.name === "service_charge" && clearsRateServerSide()) ||
-    (f.name === "data_visible_from" && clearsVisibilityServerSide());
+  // `data_visible_from` used to follow the same shape (retainer-only, cleared on
+  // a type switch). It now applies to every client type and survives a switch,
+  // so it is an ordinary field: never disabled, sent whenever it changed.
+  const serverClears = (f) => f.name === "service_charge" && clearsRateServerSide();
 
   const rateDisabled = (f) => serverClears(f);
 
@@ -859,21 +852,11 @@ export default function EditClientDrawer(props) {
                   <Show when={serverClears(f)}>
                     <Show
                       when={String(record()?.[f.name] ?? "") !== ""}
-                      fallback={
-                        <p class={HINT}>
-                          {f.name === "service_charge"
-                            ? "CPL clients carry no rate."
-                            : "Retainer clients only."}
-                        </p>
-                      }
+                      fallback={<p class={HINT}>CPL clients carry no rate.</p>}
                     >
                       <p class={CALLOUT}>
                         <span aria-hidden="true">⚠</span>
-                        <span>
-                          {f.name === "service_charge"
-                            ? "This rate is cleared automatically when the switch saves."
-                            : "This reporting start date is cleared automatically when the switch saves."}
-                        </span>
+                        <span>This rate is cleared automatically when the switch saves.</span>
                       </p>
                     </Show>
                   </Show>

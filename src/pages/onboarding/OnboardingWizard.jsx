@@ -282,26 +282,20 @@ export default function OnboardingWizard() {
   const showsStaffProfile = () => isStaffRole() || isCampaignManager();
 
   // ── Client type consequences ───────────────────────────────────────────────
-  // service_charge must be ABSENT for CPL and PRESENT for hybrid/retainer;
-  // data_visible_from is retainer-only. The fields are hidden AND their values
-  // dropped on a type change, so a value typed under one type can never leak
-  // into a payload for another.
+  // service_charge must be ABSENT for CPL and PRESENT for hybrid/retainer. The
+  // field is hidden AND its value dropped on a type change, so a rate typed
+  // under one type can never leak into a CPL payload. data_visible_from applies
+  // to every type, so it is kept across a switch.
   const needsServiceCharge = () =>
     client().client_type === "hybrid" || client().client_type === "retainer";
-  const isRetainer = () => client().client_type === "retainer";
 
   const pickClientType = (t) => {
     setClient((prev) => ({
       ...prev,
       client_type: t,
       service_charge: t === "cpl" ? "" : prev.service_charge,
-      data_visible_from: t === "retainer" ? prev.data_visible_from : "",
     }));
-    clearErr(
-      "client.client_type",
-      "client.service_charge",
-      "client.data_visible_from",
-    );
+    clearErr("client.client_type", "client.service_charge");
   };
 
   const pickTier = (t) => {
@@ -587,7 +581,7 @@ export default function OnboardingWizard() {
       out.campaign_manager_ids = c.campaign_manager_ids.map(Number);
 
     // Retainer-only.
-    if (isRetainer() && trimmed(c.data_visible_from))
+    if (trimmed(c.data_visible_from))
       out.data_visible_from = c.data_visible_from;
 
     return out;
@@ -1560,9 +1554,8 @@ export default function OnboardingWizard() {
                     </Show>
                   </div>
 
-                  {/* Data visible from — retainer only */}
-                  <Show when={isRetainer()}>
-                    <div>
+                  {/* Data visible from — any client type */}
+                  <div>
                       <label class={LABEL}>
                         Data visible from{" "}
                         <span class="font-normal text-[#8593A8]">
@@ -1579,15 +1572,16 @@ export default function OnboardingWizard() {
                         when={errFor("client.data_visible_from")}
                         fallback={
                           <p class={HINT}>
-                            Retainer clients only — the client sees no reporting
-                            before this date.
+                            The client sees nothing before this date (dashboard,
+                            reports, billing tabs). Billing amounts and admin/CM
+                            views are not affected. For a fresh start, use the
+                            1st of a month.
                           </p>
                         }
                       >
                         <ErrorText message={errFor("client.data_visible_from")} />
                       </Show>
                     </div>
-                  </Show>
                 </Show>
 
                 {/* ── CAMPAIGN MANAGER ── */}
