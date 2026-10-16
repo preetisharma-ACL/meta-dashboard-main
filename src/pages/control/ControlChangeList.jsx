@@ -221,6 +221,11 @@ export default function ControlChangeList() {
     go(p.toString());
   };
 
+  // The search flag can arrive on the list response or on meta — either one
+  // turns the box on. An active ?q= keeps it showing, so a search is never
+  // stranded without the box to clear it.
+  const searchable = () => !!(d()?.search || m()?.search || query().get("q"));
+  const searchHelp = () => d()?.search_help || m()?.search_help || "";
   const [search, setSearch] = createSignal(query().get("q") ?? "");
   createEffect(on(() => location.search, () => setSearch(query().get("q") ?? "")));
   const submitSearch = (e) => {
@@ -445,7 +450,7 @@ export default function ControlChangeList() {
         <div class="flex-1 min-w-0 w-full">
           {/* Search + bulk action bar */}
           <div class={`${CARD} p-3 mb-3 flex flex-wrap items-center gap-2`}>
-            <Show when={d()?.search}>
+            <Show when={searchable()}>
               <form onSubmit={submitSearch} role="search" class="flex gap-2 flex-1 min-w-[14rem]">
                 <input
                   type="search"
@@ -533,8 +538,8 @@ export default function ControlChangeList() {
           <p class="-mt-1 mb-3 text-xs text-gray-500 dark:text-gray-400">
             Tick rows to select them; Shift-click ticks a range. Ticks are kept across pages.
           </p>
-          <Show when={d()?.search && d()?.search_help}>
-            <p class="-mt-1 mb-3 text-xs text-gray-500 dark:text-gray-400">{d().search_help}</p>
+          <Show when={searchable() && searchHelp()}>
+            <p class="-mt-1 mb-3 text-xs text-gray-500 dark:text-gray-400">{searchHelp()}</p>
           </Show>
 
           {/* Table — its own scroll area (both axes), so the header row can
