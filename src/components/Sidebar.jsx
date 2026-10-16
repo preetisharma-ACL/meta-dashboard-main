@@ -1109,7 +1109,16 @@ export default function Sidebar() {
         <span class="pointer-events-none absolute inset-y-0 right-0 w-px bg-gradient-to-b from-[#AC2334]/40 via-[#AC2334]/10 to-transparent" />
 
         {/* Logo — AAJneeti wordmark + gold "Reporting Dashboard" (all screens) */}
-        <div class="relative flex-shrink-0 px-4 py-5 flex items-center justify-center">
+        <div class="sb-logo-hd relative isolate flex-shrink-0 px-4 py-5 flex items-center justify-center">
+          {/* Dussehra backdrop — Ravana artwork washed out behind the wordmark
+              (-z-10 inside this isolated box, so it never covers the logo). */}
+          <img
+            src="/images/sidebar-ravana.webp"
+            alt=""
+            aria-hidden="true"
+            draggable="false"
+            class="sb-ravana"
+          />
           <Show
             when={!isCollapsed()}
             fallback={
@@ -1181,7 +1190,7 @@ export default function Sidebar() {
         <div class="flex-shrink-0 h-px mx-4 bg-gradient-to-r from-transparent via-[#D4DDE9] to-transparent dark:via-gray-700" />
 
         {/* Navigation */}
-        <nav class="sidebar-scroll p-3 space-y-1 flex-1 min-h-0 overflow-y-auto">
+        <nav class="sidebar-scroll relative z-[1] p-3 space-y-1 flex-1 min-h-0 overflow-y-auto">
           <For each={menuItems()}>
             {(item) => (
               <Show
@@ -1321,6 +1330,28 @@ export default function Sidebar() {
             )}
           </For>
         </nav>
+
+        {/* Dussehra archer — the bow draws and looses on a 2.4s loop, and each
+            release sends one small arrow rising up the sidebar BEHIND the links
+            (nav is z-[1], the volley is z-0). Four arrows staggered one bow
+            cycle apart, so they leave one by one. Decorative only; all of it
+            stops under prefers-reduced-motion (see .sb-archery in index.css). */}
+        <div class="sb-archery flex-shrink-0" aria-hidden="true">
+          <div class="sb-volley">
+            <For each={[0, 1, 2, 3]}>
+              {(i) => (
+                <span class="sb-arrow" style={{ "--i": i }}>
+                  <svg viewBox="0 0 10 40" fill="none">
+                    <path d="M5 1 8.6 9H1.4Z" fill="#C9822A" />
+                    <path d="M5 8v26" stroke="#D89A2B" stroke-width="1.4" stroke-linecap="round" />
+                    <path d="M5 30 1.6 35.5V39L5 35.5 8.4 39v-3.5Z" fill="#AC2334" opacity=".8" />
+                  </svg>
+                </span>
+              )}
+            </For>
+          </div>
+          <img src="/images/sidebar-bow.webp" alt="" class="sb-bow" draggable="false" />
+        </div>
 
         {/* Footer */}
         <div

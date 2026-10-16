@@ -279,6 +279,16 @@ export default function Login() {
           <div class="rp-logo">
             <img src="/logo.webp" alt="Company Logo" class="rp-logo-img" />
           </div>
+          {/* Festive corner artwork — bottom-right, behind the form (z-index:-1
+              inside .login-right's isolated stack). Cut from dussehra.png with
+              the white paper keyed out, so it sits on the cream panel cleanly.
+              Purely decorative: empty alt + aria-hidden. */}
+          <img
+            src="/images/dussehra-corner.webp"
+            alt=""
+            aria-hidden="true"
+            class="rp-festive"
+          />
           <div class="form-wrapper">
             {/* Logo */}
             {/* <div class="form-logo">
