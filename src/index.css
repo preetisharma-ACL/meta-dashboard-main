@@ -764,6 +764,83 @@
   isolation: isolate;   /* lets .rp-festive sit at z-index:-1 above the panel bg */
 }
 
+/* ── Dussehra theme on the login artwork panel ── */
+.ll-theme {
+  position: absolute;
+  inset: 0;
+  z-index: 1;            /* over .login-left::after art, under .left-glass-card (z 2) */
+  pointer-events: none;
+  overflow: hidden;
+}
+.ll-theme img { user-select: none; }
+
+/* Top-left: half mandala tucked into the corner */
+.ll-mandala {
+  position: absolute;
+  top: 0;
+  left: -30px;
+  width: 210px;
+  height: auto;
+  opacity: 0.85;
+  filter: saturate(1.5) contrast(1.25) brightness(0.92);
+}
+
+/* Hanging bead strands — each sways from its own top point */
+.ll-strands {
+  position: absolute;
+  top: 0;
+  left: 124px;           /* clear of the back button at top-left */
+  width: 90px;
+  height: auto;
+}
+.ll-strand {
+  transform-box: fill-box;
+  transform-origin: 50% 0;
+  animation: llSway 4.5s ease-in-out infinite alternate;
+  animation-delay: var(--d);
+}
+@keyframes llSway {
+  from { transform: rotate(-2.5deg); }
+  to   { transform: rotate(2.5deg); }
+}
+
+/* Gold leaves drifting down from the top-left */
+.ll-leaf {
+  position: absolute;
+  top: -30px;
+  left: calc(150px + var(--i) * 40px);
+  width: 13px;
+  height: 13px;
+  opacity: 0;
+  animation: llLeaf 12s linear infinite;
+  animation-delay: calc(var(--i) * -2.2s);
+}
+.ll-leaf:nth-of-type(odd) { width: 10px; height: 10px; }
+@keyframes llLeaf {
+  0%   { opacity: 0;   transform: translate(0, 0) rotate(0deg); }
+  8%   { opacity: .85; }
+  50%  { transform: translate(26px, 150px) rotate(120deg); }
+  80%  { opacity: .6; }
+  100% { opacity: 0;   transform: translate(-10px, 300px) rotate(260deg); }
+}
+
+/* Top-right: mirror of the top-left corner */
+.ll-mandala--right {
+  left: auto;
+  right: -30px;
+  transform: scaleX(-1);
+}
+.ll-strands--right {
+  left: auto;
+  right: 124px;
+  transform: scaleX(-1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ll-strand { animation: none; }
+  .ll-leaf { display: none; }
+}
+
 /* ── Festive corner artwork — bottom-right, under the form ── */
 .rp-festive {
   position: absolute;
