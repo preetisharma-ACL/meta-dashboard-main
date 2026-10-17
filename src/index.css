@@ -324,12 +324,10 @@
   content: '';
   position: absolute;
   inset: 0;
-  background-image: url('/login-imgss.png');
-  background-size: cover;          /* real pixel size — no upscaling */
-  background-position: center center;
-  background-repeat: no-repeat;
-
-  animation: bgFloat 8s ease-in-out infinite alternate;
+  /* Orb artwork retired — the rama-divine scene (.ll-theme / .ll-stage) now
+     paints this panel. Kept as an empty layer so the z-stack reads the same. */
+  background: none;
+  animation: none;
   will-change: transform;
   z-index: 0;
 }
@@ -762,6 +760,194 @@
 .login-right {
   position: relative;   /* ADD — anchors the absolutely-positioned children */
   isolation: isolate;   /* lets .rp-festive sit at z-index:-1 above the panel bg */
+}
+
+/* ── Rama-divine scene on the login artwork panel ────────────────────────────
+   .login-left is a size container so .ll-stage can be sized in cq units: it
+   keeps the painting's 1283:1226 ratio and always covers the panel, so the
+   overlays placed in % of the stage stay locked to the painting.
+   Sun 34.5% / 65.5%; its river reflection 36.6% / 84.5%. */
+@media (min-width: 900px) {
+  /* No padding may be added here: cq units resolve against the CONTENT box. */
+  .login-left { container-type: size; }
+}
+
+.ll-theme {
+  position: absolute;
+  inset: 0;
+  z-index: 1;            /* over .login-left::before, under .left-glass-card (z 2) */
+  pointer-events: none;
+  overflow: hidden;
+  background: #f7c48c;   /* warm fill while the painting loads */
+}
+
+.ll-stage {
+  --w: max(100cqw, 104.65cqh);   /* 1283 / 1226 */
+  --h: max(100cqh, 95.56cqw);    /* 1226 / 1283 */
+  position: absolute;
+  width: var(--w);
+  height: var(--h);
+  left: calc((100cqw - var(--w)) * 0.2);   /* bias left: Ram + diyas live there */
+  top: calc((100cqh - var(--h)) * 0.5);
+  background: url('/images/rama-divine.webp') center / 100% 100% no-repeat;
+  transform-origin: 34.5% 65.5%;  /* zoom toward the sun */
+  animation: llKen 40s ease-in-out infinite alternate;
+  /* Soft pastel look: lower contrast and slightly muted, so with the milky
+     wash in .ll-vignette it reads as a warm hazy evening, not a hard photo. */
+  filter: contrast(0.88) saturate(0.92) brightness(1.03);
+  will-change: transform;
+}
+@keyframes llKen {
+  from { transform: scale(1); }
+  to   { transform: scale(1.08); }
+}
+
+/* Sun: breathing glow */
+.ll-sun {
+  position: absolute;
+  left: 34.5%;
+  top: 65.5%;
+  width: 16%;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(closest-side,
+    rgba(255, 220, 160, 0.8), rgba(255, 170, 80, 0.4) 32%, rgba(230, 120, 50, 0.14) 62%, transparent);
+  mix-blend-mode: screen;
+  animation: llSun 6s ease-in-out infinite alternate;
+}
+@keyframes llSun {
+  from { opacity: 0.3;  transform: translate(-50%, -50%) scale(0.9); }
+  to   { opacity: 0.6;  transform: translate(-50%, -50%) scale(1.1); }
+}
+
+/* Light rays from the sun, turning very slowly */
+.ll-rays {
+  position: absolute;
+  left: 34.5%;
+  top: 65.5%;
+  width: 120%;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  background: repeating-conic-gradient(from 0deg,
+    rgba(255, 240, 205, 0.55) 0deg 3deg, transparent 3deg 14deg);
+  -webkit-mask-image: radial-gradient(closest-side, #000 5%, rgba(0,0,0,.3) 35%, transparent 70%);
+          mask-image: radial-gradient(closest-side, #000 5%, rgba(0,0,0,.3) 35%, transparent 70%);
+  mix-blend-mode: soft-light;
+  opacity: 0.4;
+  animation: llRays 120s linear infinite;
+}
+@keyframes llRays {
+  to { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+/* Sun's reflection on the river — soft flicker */
+.ll-shimmer {
+  position: absolute;
+  left: 36.6%;
+  top: 84.5%;
+  width: 4%;
+  height: 9%;
+  transform: translate(-50%, -50%);
+  background: linear-gradient(to bottom, transparent, rgba(255, 244, 210, 0.9) 35%, rgba(255, 230, 170, 0.6) 70%, transparent);
+  filter: blur(3px);
+  mix-blend-mode: screen;
+  animation: llShimmer 2.6s ease-in-out infinite alternate;
+}
+@keyframes llShimmer {
+  0%   { opacity: 0.35; transform: translate(-50%, -50%) scaleX(0.7); }
+  50%  { opacity: 0.85; transform: translate(-50%, -50%) scaleX(1.3); }
+  100% { opacity: 0.5;  transform: translate(-50%, -50%) scaleX(0.9); }
+}
+
+/* Mist drifting low over the river */
+.ll-mist {
+  position: absolute;
+  left: 30%;
+  top: 76%;
+  width: 75%;
+  height: 12%;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(255, 240, 230, 0.5), rgba(255, 230, 220, 0.18) 60%, transparent);
+  filter: blur(10px);
+  animation: llMist 26s ease-in-out infinite alternate;
+}
+@keyframes llMist {
+  from { transform: translateX(-6%); opacity: 0.5; }
+  to   { transform: translateX(8%);  opacity: 0.9; }
+}
+
+/* Diya flames — a warm flicker on each hanging lamp */
+.ll-flame {
+  position: absolute;
+  width: 2.6%;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(255, 236, 170, 0.95), rgba(255, 170, 60, 0.45) 45%, transparent);
+  mix-blend-mode: screen;
+  animation: llFlame 1.4s ease-in-out infinite alternate;
+}
+@keyframes llFlame {
+  0%   { opacity: 0.55; transform: translate(-50%, -50%) scale(0.85); }
+  40%  { opacity: 1;    transform: translate(-50%, -52%) scale(1.15); }
+  70%  { opacity: 0.7;  transform: translate(-50%, -50%) scale(0.95); }
+  100% { opacity: 0.95; transform: translate(-50%, -51%) scale(1.1); }
+}
+
+/* Gold dust rising */
+.ll-mote {
+  position: absolute;
+  bottom: -8px;
+  border-radius: 50%;
+  background: #ffe7a8;
+  box-shadow: 0 0 6px 2px rgba(255, 210, 120, 0.6);
+  opacity: 0;
+  animation-name: llMote;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+@keyframes llMote {
+  0%   { opacity: 0;   transform: translate(0, 0); }
+  12%  { opacity: 0.9; }
+  50%  { transform: translate(14px, -50cqh); }
+  85%  { opacity: 0.5; }
+  100% { opacity: 0;   transform: translate(-8px, -95cqh); }
+}
+
+/* Saffron petals drifting across, like the ones in the painting */
+.ll-petal {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  opacity: 0;
+  filter: drop-shadow(0 1px 1px rgba(120, 50, 10, 0.25));
+  animation-name: llPetal;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+@keyframes llPetal {
+  0%   { opacity: 0;    transform: translate(0, 0) rotate(0deg) scale(var(--s)); }
+  8%   { opacity: 0.95; }
+  35%  { transform: translate(18cqw, 22cqh) rotate(160deg) scale(var(--s)); }
+  65%  { transform: translate(34cqw, 40cqh) rotate(330deg) scale(var(--s)); }
+  90%  { opacity: 0.8; }
+  100% { opacity: 0;    transform: translate(55cqw, 62cqh) rotate(520deg) scale(var(--s)); }
+}
+
+/* Milky peach-pink haze over the whole scene — the soft, warm pastel look
+   (no dark vignette). Slightly stronger toward the top-right sky. */
+.ll-vignette {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 75% 20%, rgba(255, 228, 225, 0.32), transparent 60%),
+    linear-gradient(rgba(255, 236, 226, 0.30), rgba(255, 226, 205, 0.18));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ll-stage, .ll-sun, .ll-rays, .ll-shimmer, .ll-mist, .ll-flame { animation: none; }
+  .ll-mote, .ll-petal { display: none; }
 }
 
 /* ── Festive corner artwork — bottom-right, under the form ── */
