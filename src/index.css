@@ -324,11 +324,12 @@
   content: '';
   position: absolute;
   inset: 0;
-  /* Orb artwork retired — the Divine Ram scene (.ll-theme / .ll-stage) now
-     paints this panel. Kept as an empty layer rather than deleted so the
-     z-stack (::after 0, ::before 1, card 2) reads the same. */
-  background: none;
-  animation: none;
+  background-image: url('/login-imgss.png');
+  background-size: cover;          /* real pixel size — no upscaling */
+  background-position: center center;
+  background-repeat: no-repeat;
+
+  animation: bgFloat 8s ease-in-out infinite alternate;
   will-change: transform;
   z-index: 0;
 }
@@ -761,174 +762,6 @@
 .login-right {
   position: relative;   /* ADD — anchors the absolutely-positioned children */
   isolation: isolate;   /* lets .rp-festive sit at z-index:-1 above the panel bg */
-}
-
-/* ── Divine Ram scene on the login artwork panel ─────────────────────────────
-   .login-left is a size container so the stage can be sized in cq units:
-   it keeps the painting's 1500:713 ratio and always covers the panel, which
-   means anything placed in % of the stage (sun glow, rays, haze)
-   stays on the painted sun at every panel shape. Sun sits at 8.5% / 64.5%. */
-@media (min-width: 900px) {
-  .login-left {
-    container-type: size;
-    /* Card stays centred (the panel's own flex centring). No padding may be
-       added here: cq units resolve against the CONTENT box, so padding would
-       shrink the stage and leave bare strips. */
-  }
-  .login-left .left-glass-card {
-    background: rgb(255 255 255 / 62%);
-    box-shadow:
-      0 12px 48px rgba(120, 60, 40, 0.18),
-      inset 0 1px 0 rgba(255, 255, 255, 0.70);
-  }
-}
-
-.ll-theme {
-  position: absolute;
-  inset: 0;
-  z-index: 1;            /* over .login-left::before, under .left-glass-card (z 2) */
-  pointer-events: none;
-  overflow: hidden;
-  background: #fbe8d0;   /* warm fill while the painting loads */
-}
-
-.ll-stage {
-  --w: max(100cqw, 210.38cqh);   /* 1500 / 713 */
-  --h: max(100cqh, 47.53cqw);    /* 713 / 1500 */
-  position: absolute;
-  width: var(--w);
-  height: var(--h);
-  /* Anchored at the left edge: the archer, sun and hanging ornaments all sit in
-     the painting's left third, which is what a tall panel shows. */
-  left: 0;
-  top: calc((100cqh - var(--h)) * 0.5);
-  background: url('/images/divine-rama.webp') center / 100% 100% no-repeat;
-  transform-origin: 8.5% 64.5%;  /* zoom toward the sun */
-  animation: llKen 38s ease-in-out infinite alternate;
-  will-change: transform;
-}
-@keyframes llKen {
-  from { transform: scale(1.04); }
-  to   { transform: scale(1.12) translate(-0.6%, -0.4%); }
-}
-
-/* Sun: a breathing glow over the painted sun */
-.ll-sun {
-  position: absolute;
-  left: 8.5%;
-  top: 64.5%;
-  width: 12%;
-  aspect-ratio: 1;
-  transform: translate(-50%, -50%);
-  border-radius: 50%;
-  background: radial-gradient(closest-side,
-    rgba(255, 246, 214, 0.95), rgba(255, 214, 140, 0.5) 30%, rgba(255, 170, 90, 0.18) 60%, transparent);
-  mix-blend-mode: screen;
-  animation: llSun 6s ease-in-out infinite alternate;
-}
-@keyframes llSun {
-  from { opacity: 0.55; transform: translate(-50%, -50%) scale(0.92); }
-  to   { opacity: 0.95; transform: translate(-50%, -50%) scale(1.08); }
-}
-
-/* Light rays fanning out from the sun, turning very slowly */
-.ll-rays {
-  position: absolute;
-  left: 8.5%;
-  top: 64.5%;
-  width: 90%;
-  aspect-ratio: 1;
-  transform: translate(-50%, -50%);
-  background: repeating-conic-gradient(from 0deg,
-    rgba(255, 240, 205, 0.55) 0deg 3deg, transparent 3deg 14deg);
-  -webkit-mask-image: radial-gradient(closest-side, #000 5%, rgba(0,0,0,.35) 35%, transparent 70%);
-          mask-image: radial-gradient(closest-side, #000 5%, rgba(0,0,0,.35) 35%, transparent 70%);
-  mix-blend-mode: soft-light;
-  opacity: 0.7;
-  animation: llRays 120s linear infinite;
-}
-@keyframes llRays {
-  to { transform: translate(-50%, -50%) rotate(360deg); }
-}
-
-/* Haze drifting low over the hills and waves */
-.ll-mist {
-  position: absolute;
-  left: 8%;
-  top: 80%;
-  width: 60%;
-  height: 16%;
-  border-radius: 50%;
-  background: radial-gradient(closest-side, rgba(255, 245, 240, 0.55), rgba(255, 235, 230, 0.2) 60%, transparent);
-  filter: blur(10px);
-  animation: llMist 26s ease-in-out infinite alternate;
-}
-.ll-mist--2 {
-  left: 0;
-  top: 86%;
-  width: 70%;
-  height: 12%;
-  opacity: 0.8;
-  animation-duration: 34s;
-  animation-direction: alternate-reverse;
-}
-@keyframes llMist {
-  from { transform: translateX(-6%); opacity: 0.55; }
-  to   { transform: translateX(8%);  opacity: 0.95; }
-}
-
-/* Gold dust rising through the panel */
-.ll-mote {
-  position: absolute;
-  bottom: -8px;
-  border-radius: 50%;
-  background: #ffe7a8;
-  box-shadow: 0 0 6px 2px rgba(255, 210, 120, 0.6);
-  opacity: 0;
-  animation-name: llMote;
-  animation-timing-function: linear;
-  animation-iteration-count: infinite;
-}
-@keyframes llMote {
-  0%   { opacity: 0;   transform: translate(0, 0); }
-  12%  { opacity: 0.9; }
-  50%  { transform: translate(14px, -50cqh); }
-  85%  { opacity: 0.5; }
-  100% { opacity: 0;   transform: translate(-8px, -95cqh); }
-}
-
-/* Saffron petals drifting across, like the ones in the painting */
-.ll-petal {
-  position: absolute;
-  width: 16px;
-  height: 16px;
-  opacity: 0;
-  filter: drop-shadow(0 1px 1px rgba(120, 50, 10, 0.25));
-  animation-name: llPetal;
-  animation-timing-function: linear;
-  animation-iteration-count: infinite;
-}
-@keyframes llPetal {
-  0%   { opacity: 0;   transform: translate(0, 0) rotate(0deg) scale(var(--s)); }
-  8%   { opacity: 0.95; }
-  35%  { transform: translate(18cqw, 22cqh) rotate(160deg) scale(var(--s)); }
-  65%  { transform: translate(34cqw, 40cqh) rotate(330deg) scale(var(--s)); }
-  90%  { opacity: 0.8; }
-  100% { opacity: 0;   transform: translate(55cqw, 62cqh) rotate(520deg) scale(var(--s)); }
-}
-
-/* Soft warm vignette — frames the scene and lifts the back button off it */
-.ll-vignette {
-  position: absolute;
-  inset: 0;
-  background:
-    linear-gradient(to bottom, rgba(70, 30, 50, 0.16), transparent 18%),
-    radial-gradient(ellipse at 50% 55%, transparent 58%, rgba(80, 35, 45, 0.24) 100%);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .ll-stage, .ll-sun, .ll-rays, .ll-mist { animation: none; }
-  .ll-mote, .ll-petal { display: none; }
 }
 
 /* ── Festive corner artwork — bottom-right, under the form ── */
@@ -1902,43 +1735,4 @@
 
 @media (prefers-reduced-motion: reduce) {
   .hd-arrow { display: none; }
-}
-
-
-/* ── Divine Ram palette for the form side (desktop split-screen) ────────────
-   Sunset tones lifted from the painting: saffron, peach, soft lavender, with
-   a deep maroon for type. Mobile keeps its own glass-card design. */
-@media (min-width: 900px) {
-  .login-root .login-right {
-    background:
-      radial-gradient(circle at 88% 8%, rgba(255, 196, 130, 0.35), transparent 42%),
-      radial-gradient(circle at 10% 100%, rgba(214, 190, 235, 0.35), transparent 45%),
-      linear-gradient(170deg, #fdf3e7 0%, #fbe7d7 48%, #f1e5f2 100%);
-  }
-  .login-root .form-heading    { color: #4a1d2a; }
-  .login-root .form-subheading { color: #a27c6e; }
-  .login-root .input-label     { color: #7a4636; }
-  .login-root .input-field {
-    background: rgba(255, 255, 255, 0.72);
-    border-color: #f0d9c6;
-    color: #3a1d22;
-  }
-  .login-root .input-field:focus {
-    border-color: #e9a25c;
-    box-shadow: 0 0 0 3px rgba(233, 140, 60, 0.18);
-  }
-  .login-root .submit-btn {
-    background-image: linear-gradient(110deg, #b8410f 0%, #e8742a 42%, #f29b3c 78%, #b8410f 100%);
-    background-color: #c2410c;
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.22),
-      0 6px 22px rgba(194, 65, 12, 0.32);
-  }
-  .login-root .submit-btn:hover:not(:disabled) {
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.26),
-      0 10px 28px rgba(194, 65, 12, 0.4);
-  }
-  .login-root .form-footer { color: #b2907f; }
-  .login-root .rp-powered-label { color: #c09a86; }
 }
