@@ -27,37 +27,23 @@ export const handleLogout = () => {
   window.location.href = "/login";
 };
 
-// Gold bead strands for the login theme — drawn once, used top-left (hanging)
-// and top-right (mirrored in CSS).
-const Strands = (p) => (
-  <svg class={p.class} viewBox="0 0 160 230" fill="none">
-    <g class="ll-strand" style={{ "--d": "0s" }}>
-      <path d="M30 0v150" stroke="#D89A2B" stroke-width="1" />
-      <circle cx="30" cy="40" r="2.6" fill="#E0A63A" />
-      <circle cx="30" cy="85" r="2.6" fill="#E0A63A" />
-      <circle cx="30" cy="128" r="3" fill="#E0A63A" />
-      <path d="M30 150c-5 0-7 4-7 7 0 5 7 10 7 10s7-5 7-10c0-3-2-7-7-7Z" fill="#D89A2B" />
-    </g>
-    <g class="ll-strand" style={{ "--d": "-1.3s" }}>
-      <path d="M62 0v95" stroke="#D89A2B" stroke-width="1" />
-      <circle cx="62" cy="35" r="2.4" fill="#E0A63A" />
-      <circle cx="62" cy="72" r="2.6" fill="#E0A63A" />
-      <circle cx="62" cy="99" r="4" fill="#E6B04A" />
-    </g>
-    <g class="ll-strand" style={{ "--d": "-2.4s" }}>
-      <path d="M92 0v190" stroke="#D89A2B" stroke-width="1" />
-      <circle cx="92" cy="60" r="2.4" fill="#E0A63A" />
-      <circle cx="92" cy="120" r="2.6" fill="#E0A63A" />
-      <circle cx="92" cy="165" r="2.6" fill="#E0A63A" />
-      <path d="M92 190c-5 0-7 4-7 7 0 5 7 10 7 10s7-5 7-10c0-3-2-7-7-7Z" fill="#D89A2B" />
-    </g>
-    <g class="ll-strand" style={{ "--d": "-0.7s" }}>
-      <path d="M124 0v70" stroke="#D89A2B" stroke-width="1" />
-      <circle cx="124" cy="30" r="2.2" fill="#E0A63A" />
-      <circle cx="124" cy="74" r="3.6" fill="#E6B04A" />
-    </g>
-  </svg>
-);
+// Divine Ram panel — drifting petals and rising gold dust. Positions/timings
+// are fixed (not random) so the scene is identical on every load.
+// x/y = start point (% of panel), dur = seconds per pass, delay = phase.
+const PETALS = [
+  { x: 4, y: 18, dur: 16, delay: 0, s: 1 },
+  { x: 18, y: 6, dur: 19, delay: -5, s: 0.8 },
+  { x: 2, y: 46, dur: 17, delay: -9, s: 0.9 },
+  { x: 30, y: 2, dur: 21, delay: -13, s: 0.7 },
+  { x: 10, y: 30, dur: 18, delay: -3, s: 1.1 },
+  { x: 40, y: 10, dur: 20, delay: -16, s: 0.75 },
+];
+const MOTES = [8, 17, 26, 35, 44, 53, 62, 71, 80, 89].map((x, i) => ({
+  x,
+  dur: 9 + (i % 4) * 2.5,
+  delay: -(i * 1.7) % 11,
+  size: 2 + (i % 3),
+}));
 
 export default function Login() {
   const [email, setEmail] = createSignal("");
@@ -282,23 +268,53 @@ export default function Login() {
           <div class="blob blob-2" />
           <div class="blob blob-3" />
 
-          {/* ── Dussehra theme layer (z 1: over the artwork, under the card) ──
-              Top-left: mandala + hanging gold bead strands that sway, and a
-              few leaves drifting down. Top-right mirrors it. All decorative. */}
+          {/* ── Divine Ram scene (z 1: replaces the orb artwork, under the card) ──
+              .ll-stage keeps the painting's own 1492:1054 proportions while
+              covering the panel (container-query sizing in index.css), so the
+              sun glow / rays / haze placed in % of the stage stay
+              locked onto the painted sun however the panel is shaped. The
+              stage itself drifts slowly (Ken Burns). Petals + gold dust move
+              in panel space on top. All decorative. */}
           <div class="ll-theme" aria-hidden="true">
-            <img src="/images/login-mandala.webp" alt="" class="ll-mandala" draggable="false" />
-            <Strands class="ll-strands" />
-            <For each={[0, 1, 2]}>
-              {(i) => (
-                <svg class="ll-leaf" style={{ "--i": i }} viewBox="0 0 24 24">
-                  <path d="M3 21C3 11 10 4 21 3c-1 11-8 18-18 18Z" fill="#E0A23A" />
-                  <path d="M3 21 15 9" stroke="#B9781F" stroke-width="1" />
+            <div class="ll-stage">
+              <div class="ll-rays" />
+              <div class="ll-sun" />
+              <div class="ll-mist" />
+              <div class="ll-mist ll-mist--2" />
+            </div>
+            <For each={MOTES}>
+              {(m) => (
+                <span
+                  class="ll-mote"
+                  style={{
+                    left: m.x + "%",
+                    width: m.size + "px",
+                    height: m.size + "px",
+                    "animation-duration": m.dur + "s",
+                    "animation-delay": m.delay + "s",
+                  }}
+                />
+              )}
+            </For>
+            <For each={PETALS}>
+              {(p) => (
+                <svg
+                  class="ll-petal"
+                  viewBox="0 0 24 24"
+                  style={{
+                    left: p.x + "%",
+                    top: p.y + "%",
+                    "--s": p.s,
+                    "animation-duration": p.dur + "s",
+                    "animation-delay": p.delay + "s",
+                  }}
+                >
+                  <path d="M3 21C3 11 10 4 21 3c-1 11-8 18-18 18Z" fill="#F08A24" />
+                  <path d="M3 21 15 9" stroke="#C25E10" stroke-width="0.9" opacity=".7" />
                 </svg>
               )}
             </For>
-            {/* Top-right mirrors the top-left (flipped sideways). */}
-            <img src="/images/login-mandala.webp" alt="" class="ll-mandala ll-mandala--right" draggable="false" />
-            <Strands class="ll-strands ll-strands--right" />
+            <div class="ll-vignette" />
           </div>
           <div class="left-glass-card">
             {/* Colours live in CSS (.brand-dot:nth-child) rather than inline,
