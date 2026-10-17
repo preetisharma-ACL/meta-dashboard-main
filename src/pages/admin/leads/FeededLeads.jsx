@@ -1,4 +1,12 @@
-import { createSignal, createMemo, onMount, For, Show } from "solid-js";
+import {
+  createSignal,
+  createMemo,
+  createEffect,
+  on,
+  onMount,
+  For,
+  Show,
+} from "solid-js";
 import { fetchManualBatches, createManualBatch } from "../services/feededLeads";
 import { fetchClients } from "../services/fetchClients";
 import { fetchProjectDisplayConfig } from "../services/projectDisplayConfig";
@@ -70,6 +78,12 @@ export default function ManualBatches() {
     Number(localStorage.getItem("feededLeadsRowsPerPage")) || 20,
   );
   const [appliedPageSize, setAppliedPageSize] = createSignal(pageSize());
+  // Search/status filtering runs over EVERY batch, not just the loaded page:
+  // the first filter keystroke pulls all pages once (cached until a reload),
+  // and the filtered rows are then paged client-side.
+  const [allBatches, setAllBatches] = createSignal(null);
+  const [allLoading, setAllLoading] = createSignal(false);
+  const [filterPage, setFilterPage] = createSignal(1);
   const [formData, setFormData] = createSignal({
     target_client_id: "",
     project_id: "",
@@ -115,8 +129,44 @@ export default function ManualBatches() {
     if (size === pageSize()) return;
     setPageSize(size);
     localStorage.setItem("feededLeadsRowsPerPage", String(size));
+    setFilterPage(1);
     loadBatches(1, size);
   };
+
+  const loadAllBatches = async () => {
+    if (allBatches() || allLoading()) return;
+    try {
+      setAllLoading(true);
+      const rows = [];
+      for (let p = 1; p <= 500; p++) {
+        const res = await fetchManualBatches(p, 100);
+        const raw = Array.isArray(res.data)
+          ? res.data
+          : (res.data?.results ?? []);
+        rows.push(...raw);
+        const pg = res.meta?.pagination;
+        const more = pg ? (pg.has_next ?? p < (pg.total_pages ?? 1)) : false;
+        if (!more || raw.length === 0) break;
+      }
+      setAllBatches(rows);
+    } catch (err) {
+      console.error(err);
+      setError("Failed to load all batches for search. Please try again.");
+    } finally {
+      setAllLoading(false);
+    }
+  };
+
+  const filterActive = createMemo(
+    () => !!search().trim() || revokedFilter() !== "all",
+  );
+
+  createEffect(
+    on([search, revokedFilter], () => {
+      setFilterPage(1);
+      if (filterActive()) loadAllBatches();
+    }),
+  );
 
   onMount(async () => {
     await loadBatches(1);
@@ -173,10 +223,10 @@ export default function ManualBatches() {
     );
   };
 
-  // ── Client-side filter + sort on current page ─────────────────────────────
+  // ── Client-side filter + sort (all batches while a filter is active) ──────
 
   const filtered = createMemo(() => {
-    let data = [...batches()];
+    let data = [...(filterActive() ? (allBatches() ?? []) : batches())];
 
     // Search
     const q = search().trim().toLowerCase();
@@ -223,6 +273,18 @@ export default function ManualBatches() {
     });
 
     return data;
+  });
+
+  const filterTotalPages = createMemo(() =>
+    Math.max(1, Math.ceil(filtered().length / pageSize())),
+  );
+
+  // Rows actually rendered: the server page, or one client-side page of the
+  // filtered set.
+  const visible = createMemo(() => {
+    if (!filterActive()) return filtered();
+    const start = (filterPage() - 1) * pageSize();
+    return filtered().slice(start, start + pageSize());
   });
 
   // ── Clear filters ─────────────────────────────────────────────────────────
@@ -332,7 +394,9 @@ export default function ManualBatches() {
       const projectName =
         projects().find((p) => p.id === Number(formData().project_id))?.name ||
         projectSearch();
+      setAllBatches(null);
       await loadBatches(page());
+      if (filterActive()) await loadAllBatches();
       closeSidebar();
       showToast(
         `Successfully feeded ${leadCount} leads to the "${projectName}" project.`,
@@ -562,7 +626,7 @@ export default function ManualBatches() {
 
           {/* Loading Skeleton */}
           <Show
-            when={!loading()}
+            when={!loading() && !(filterActive() && allLoading())}
             fallback={
               <tbody>
                 <For each={Array(8).fill(0)}>
@@ -585,7 +649,7 @@ export default function ManualBatches() {
             }
           >
             <tbody>
-              <For each={filtered()}>
+              <For each={visible()}>
                 {(b, i) => (
                   <tr
                     class={`border-b border-gray-100 dark:border-gray-800
@@ -707,7 +771,7 @@ export default function ManualBatches() {
                 colspan="10"
                 class="px-4 py-2.5 text-xs text-gray-500 dark:text-gray-400"
               >
-                {filtered().length} batch{filtered().length !== 1 ? "es" : ""}{" "}
+                {visible().length} batch{visible().length !== 1 ? "es" : ""}{" "}
                 on this page
               </td>
             </tr>
@@ -719,12 +783,19 @@ export default function ManualBatches() {
       <div class="flex items-center justify-between mt-5 flex-wrap gap-3">
         <div class="flex items-center gap-3">
           <span class="text-sm text-gray-500 dark:text-gray-400">
-            {total() === 0
-              ? "No results"
-              : `Showing ${(page() - 1) * appliedPageSize() + 1}–${Math.min(
-                  page() * appliedPageSize(),
-                  total(),
-                )} of ${total()} batches`}
+            {filterActive()
+              ? filtered().length === 0
+                ? "No results"
+                : `Showing ${(filterPage() - 1) * pageSize() + 1}–${Math.min(
+                    filterPage() * pageSize(),
+                    filtered().length,
+                  )} of ${filtered().length} matching batches`
+              : total() === 0
+                ? "No results"
+                : `Showing ${(page() - 1) * appliedPageSize() + 1}–${Math.min(
+                    page() * appliedPageSize(),
+                    total(),
+                  )} of ${total()} batches`}
           </span>
 
           <RowsPerPageSelect value={pageSize()} onChange={changeRowsPerPage} />
@@ -732,8 +803,14 @@ export default function ManualBatches() {
 
         <div class="flex items-center gap-2">
           <button
-            onClick={() => loadBatches(page() - 1)}
-            disabled={!hasPrev() || loading()}
+            onClick={() =>
+              filterActive()
+                ? setFilterPage(filterPage() - 1)
+                : loadBatches(page() - 1)
+            }
+            disabled={
+              filterActive() ? filterPage() <= 1 : !hasPrev() || loading()
+            }
             class="flex items-center gap-1.5 px-4 h-9 text-sm rounded-lg border
                    border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900
                    text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800
@@ -752,12 +829,21 @@ export default function ManualBatches() {
           </button>
 
           <span class="text-sm text-gray-500 dark:text-gray-400 px-1">
-            Page {page()} of {totalPages()}
+            Page {filterActive() ? filterPage() : page()} of{" "}
+            {filterActive() ? filterTotalPages() : totalPages()}
           </span>
 
           <button
-            onClick={() => loadBatches(page() + 1)}
-            disabled={!hasNext() || loading()}
+            onClick={() =>
+              filterActive()
+                ? setFilterPage(filterPage() + 1)
+                : loadBatches(page() + 1)
+            }
+            disabled={
+              filterActive()
+                ? filterPage() >= filterTotalPages()
+                : !hasNext() || loading()
+            }
             class="flex items-center gap-1.5 px-4 h-9 text-sm rounded-lg
                    bg-red-800 border border-red-800 text-white
                    hover:bg-red-700 disabled:opacity-35 disabled:cursor-default transition-colors"
