@@ -1,4 +1,5 @@
 import { createSignal, createMemo, onMount, For, Show } from "solid-js";
+import { A } from "@solidjs/router";
 import { fetchCampaigns, resolveDateRange } from "../services/campaigns";
 import Avatar from "../../../components/common/Avatar";
 import RowsPerPageSelect from "../../../components/common/RowsPerPageSelect";
@@ -402,7 +403,7 @@ export default function Campaigns() {
 
     let rows = allCampaigns().filter((c) => {
       if (q) {
-        const hay = `${c.name ?? ""} ${c.project_name ?? ""} ${c.client_nomen_name ?? ""} ${c.ad_account_name ?? ""}`.toLowerCase();
+        const hay = `${c.id ?? ""} ${c.name ?? ""} ${c.project_name ?? ""} ${c.client_nomen_name ?? ""} ${c.ad_account_name ?? ""}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
       if (status && status !== "all" && c.status !== status) return false;
@@ -497,7 +498,7 @@ export default function Campaigns() {
           </svg>
           <input
             type="text"
-            placeholder="Search by name, project or client…"
+            placeholder="Search by ID, name, project or client…"
             value={search()}
             onInput={(e) => applyFilter(setSearch, e.target.value, "search")}
             class="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-gray-200
@@ -731,12 +732,13 @@ export default function Campaigns() {
                           <div class="flex-shrink-0">
                             <Avatar name={c.name} />
                           </div>
-                          <span
-                            class="text-purple-700 dark:text-gray-300 font-medium line-clamp-2"
+                          <A
+                            href={`/campaign/${c.id}`}
+                            class="text-purple-700 dark:text-gray-300 font-medium line-clamp-2 hover:underline"
                             title={c.name}
                           >
                             {c.name}
-                          </span>
+                          </A>
                         </div>
                       </td>
                       <td class="p-3 text-gray-600 dark:text-gray-400 whitespace-nowrap">
