@@ -1,0 +1,667 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   LOGIN v3 — "Warm Ivory" glass theme
+   Everything is scoped under .lg3 so nothing here leaks into the app.
+
+   Palette
+     ivory      #fff8ef   page base
+     peach      #fde3cc   warm wash
+     amber      #f0a845   line accent (spiral, silk)
+     terracotta #c8614a   deep accent (button end, emphasis)
+     espresso   #3b2417   headings
+     cocoa      #6e5444   body text
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.lg3 {
+  --amber: #f0a845;
+  --amber-deep: #e0893a;
+  --terracotta: #c8614a;
+  --espresso: #3b2417;
+  --cocoa: #5e4536;
+  --cocoa-soft: rgba(94, 69, 54, 0.75);
+  --glass: rgba(255, 255, 255, 0.42);
+  --glass-edge: rgba(255, 255, 255, 0.75);
+
+  position: relative;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow: hidden;
+  font-family: 'DM Sans', sans-serif;
+  color: var(--espresso);
+  background:
+    radial-gradient(70% 80% at 12% 40%, #ffe9d2 0%, transparent 60%),
+    radial-gradient(60% 70% at 92% 85%, #fbd3b4 0%, transparent 60%),
+    linear-gradient(115deg, #fff9f1 0%, #fdf0e1 40%, #fbe2c9 72%, #f6cfae 100%);
+  isolation: isolate;
+}
+
+/* ── Backdrop ─────────────────────────────────────────────────────────────── */
+.lg3-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.lg3-aurora {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.6;
+  will-change: transform;
+}
+.lg3-aurora--1 {
+  width: 44vw; height: 44vw;
+  left: -12vw; top: -14vw;
+  background: radial-gradient(circle, #ffd59a 0%, rgba(255, 213, 154, 0) 70%);
+  animation: lg3-drift-a 26s ease-in-out infinite alternate;
+}
+.lg3-aurora--2 {
+  width: 48vw; height: 48vw;
+  right: -14vw; top: 6vh;
+  background: radial-gradient(circle, #f8b9a0 0%, rgba(248, 185, 160, 0) 70%);
+  opacity: 0.5;
+  animation: lg3-drift-b 32s ease-in-out infinite alternate;
+}
+.lg3-aurora--3 {
+  width: 38vw; height: 38vw;
+  left: 34vw; bottom: -20vw;
+  background: radial-gradient(circle, #ffcf8a 0%, rgba(255, 207, 138, 0) 70%);
+  opacity: 0.45;
+  animation: lg3-drift-a 38s ease-in-out infinite alternate-reverse;
+}
+
+/* Soft vertical shaft of light down the middle, as in the reference. */
+.lg3-beam {
+  position: absolute;
+  top: -20%;
+  left: 44%;
+  width: 16%;
+  height: 140%;
+  transform: rotate(-8deg);
+  background: linear-gradient(90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.45) 45%,
+    rgba(255, 255, 255, 0.6) 50%,
+    rgba(255, 255, 255, 0.45) 55%,
+    rgba(255, 255, 255, 0) 100%);
+  filter: blur(14px);
+  animation: lg3-beam 14s ease-in-out infinite alternate;
+}
+
+.lg3-silk {
+  position: absolute;
+  left: 0;
+  bottom: -4%;
+  width: 100%;
+  height: 58%;
+  opacity: 0.4;
+  transform-origin: 50% 70%;
+  animation: lg3-silk 18s ease-in-out infinite alternate;
+}
+
+/* Floating golden motes (rise slowly, like pollen in sunlight). */
+.lg3-ember {
+  position: absolute;
+  bottom: -12px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff3c4 0%, #f2b33d 60%, rgba(242, 179, 61, 0) 100%);
+  box-shadow: 0 0 10px 2px rgba(242, 179, 61, 0.45);
+  opacity: 0;
+  animation-name: lg3-ember;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+.lg3-ember:nth-child(3n) { width: 4px; height: 4px; }
+.lg3-ember:nth-child(4n) { width: 8px; height: 8px; }
+
+/* Fine paper grain keeps the big gradients from banding. */
+.lg3-grain {
+  position: absolute;
+  inset: -50%;
+  opacity: 0.06;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+/* ── Top bar: back button + logo ──────────────────────────────────────────── */
+.lg3-back {
+  position: absolute;
+  top: 24px;
+  left: 24px;
+  z-index: 5;
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  color: var(--espresso);
+  background: var(--glass);
+  border: 1px solid var(--glass-edge);
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  box-shadow: 0 8px 24px rgba(160, 90, 40, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  cursor: pointer;
+  transition: transform 0.3s ease, color 0.3s ease, box-shadow 0.3s ease;
+}
+.lg3-back svg { width: 24px; height: 20px; transition: transform 0.3s ease; }
+.lg3-back:hover {
+  color: var(--terracotta);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 30px rgba(160, 90, 40, 0.22), 0 0 0 4px rgba(240, 168, 69, 0.15);
+}
+.lg3-back:hover svg { transform: translateX(-2px); }
+.lg3-back:focus-visible { outline: 2px solid var(--amber-deep); outline-offset: 3px; }
+
+.lg3-logo {
+  position: absolute;
+  top: 22px;
+  right: 24px;
+  z-index: 5;
+  padding: 8px 16px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid var(--glass-edge);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 10px 28px rgba(160, 90, 40, 0.14);
+}
+.lg3-logo img { height: 34px; width: auto; display: block; }
+
+/* ── Stage ────────────────────────────────────────────────────────────────── */
+.lg3-stage {
+  position: relative;
+  z-index: 2;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  align-items: center;
+  gap: 2rem;
+  padding: 96px clamp(24px, 5vw, 80px) 48px;
+  max-width: 1360px;
+  margin: 0 auto;
+}
+
+/* ── Hero ─────────────────────────────────────────────────────────────────── */
+.lg3-hero {
+  position: relative;
+  min-height: 520px;
+  display: flex;
+  align-items: center;
+}
+
+.lg3-spiro-wrap {
+  position: absolute;
+  left: -22%;
+  top: 50%;
+  width: min(700px, 54vw);
+  aspect-ratio: 1;
+  transform: translateY(-50%);
+}
+.lg3-spiro {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  filter: drop-shadow(0 2px 6px rgba(224, 137, 58, 0.25));
+}
+/* Hub is the svg's (0,0) — the centre of the viewBox. */
+.lg3-spiro-spin {
+  transform-origin: 0 0;
+  transform-box: view-box;
+  animation: lg3-spin 120s linear infinite, lg3-sway 9s ease-in-out infinite alternate;
+}
+
+.lg3-spiro-line {
+  stroke-width: 1.1;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  opacity: 0.8;
+  vector-effect: non-scaling-stroke;
+  animation: lg3-draw 1.6s cubic-bezier(.6, .05, .25, 1) forwards;
+}
+
+/* Warm glow breathing at the shell's hub. */
+.lg3-spiro-core {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 22%;
+  height: 22%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 236, 190, 0.95) 0%, rgba(255, 200, 120, 0.35) 45%, transparent 70%);
+  filter: blur(6px);
+  animation: lg3-breathe 5s ease-in-out infinite;
+}
+
+.lg3-hero-copy {
+  position: relative;
+  z-index: 1;
+  isolation: isolate;
+  margin-left: clamp(90px, 14vw, 220px);
+  max-width: 470px;
+  animation: lg3-rise 1s 0.9s cubic-bezier(.2, .7, .2, 1) both;
+}
+/* Frosted ivory wash behind the copy so the spiral lines never fight the
+   text: a blurred, mostly-opaque cream ellipse that fades out at its edges. */
+.lg3-hero-copy::before {
+  content: '';
+  position: absolute;
+  inset: -50px -60px -50px -70px;
+  z-index: -1;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(255, 249, 241, 0.92), rgba(255, 249, 241, 0.7) 55%, rgba(255, 249, 241, 0) 100%);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  -webkit-mask: radial-gradient(closest-side, #000 60%, transparent);
+  mask: radial-gradient(closest-side, #000 60%, transparent);
+}
+
+.lg3-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--terracotta);
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 4px 14px rgba(160, 90, 40, 0.1);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+.lg3-eyebrow-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--amber-deep);
+  animation: lg3-ping 2.4s ease-out infinite;
+}
+
+.lg3-welcome {
+  margin: 18px 0 8px;
+  font-family: 'DM Serif Display', serif;
+  font-weight: 400;
+  font-size: clamp(3.4rem, 6.4vw, 6rem);
+  line-height: 0.95;
+  letter-spacing: -0.02em;
+  background: linear-gradient(100deg, #4a2412 0%, #a84a26 28%, #d97a2e 46%, #a84a26 64%, #4a2412 100%);
+  background-size: 220% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: lg3-shimmer 8s linear infinite;
+}
+
+.lg3-tagline {
+  font-family: 'DM Serif Display', serif;
+  font-size: clamp(1.25rem, 1.9vw, 1.6rem);
+  color: var(--espresso);
+  margin: 0 0 14px;
+}
+.lg3-tagline em { color: var(--terracotta); font-style: italic; }
+
+.lg3-desc {
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 1.7;
+  color: var(--cocoa);
+  max-width: 420px;
+  margin: 0;
+}
+
+/* ── Login form — open on the backdrop (no card) ──────────────────────────
+   The form floats straight on the background; only the fields and the
+   button carry glass. A warm hairline on the left separates it from the
+   hero on desktop. */
+.lg3-panel {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  padding-left: clamp(16px, 3vw, 48px);
+}
+.lg3-panel::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8%;
+  bottom: 8%;
+  width: 1px;
+  background: linear-gradient(180deg, transparent, rgba(224, 137, 58, 0.45) 30%, rgba(200, 97, 74, 0.35) 70%, transparent);
+  animation: lg3-fade-in 1.6s 0.6s ease-out both;
+}
+
+.lg3-card {
+  position: relative;
+  width: 100%;
+  max-width: 400px;
+  animation: lg3-rise 1s 0.35s cubic-bezier(.2, .7, .2, 1) both;
+}
+
+.lg3-title {
+  font-family: 'DM Serif Display', serif;
+  font-weight: 400;
+  font-size: 2.1rem;
+  line-height: 1.15;
+  color: var(--espresso);
+  margin: 0;
+}
+.lg3-sub {
+  margin: 8px 0 26px;
+  font-size: 0.95rem;
+  color: var(--cocoa-soft);
+}
+
+.lg3-error {
+  margin-bottom: 18px;
+  padding: 11px 14px;
+  border-radius: 12px;
+  font-size: 0.88rem;
+  color: #9b2c2c;
+  background: rgba(255, 228, 225, 0.7);
+  border: 1px solid rgba(220, 100, 90, 0.35);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  animation: lg3-shake 0.4s ease;
+}
+
+.lg3-group { margin-bottom: 18px; }
+.lg3-label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--cocoa);
+}
+
+.lg3-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  box-shadow: 0 8px 24px rgba(160, 90, 40, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, background 0.25s ease;
+}
+.lg3-field:hover { background: rgba(255, 255, 255, 0.6); }
+.lg3-field:focus-within {
+  border-color: rgba(224, 137, 58, 0.7);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 0 0 4px rgba(240, 168, 69, 0.18), 0 10px 28px rgba(160, 90, 40, 0.14);
+}
+
+.lg3-field-ico {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-left: 15px;
+  color: rgba(94, 69, 54, 0.6);
+  transition: color 0.25s ease;
+}
+.lg3-field:focus-within .lg3-field-ico { color: var(--amber-deep); }
+
+.lg3-input {
+  flex: 1;
+  min-width: 0;
+  height: 50px;
+  padding: 0 14px 0 12px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  font-size: 0.97rem;
+  color: var(--espresso);
+  caret-color: var(--amber-deep);
+}
+.lg3-input::placeholder { color: rgba(94, 69, 54, 0.45); }
+
+/* Browser autofill paints its own blue-ish background; repaint it warm. */
+.lg3-input:-webkit-autofill,
+.lg3-input:-webkit-autofill:hover,
+.lg3-input:-webkit-autofill:focus,
+.lg3-input:-webkit-autofill:active {
+  -webkit-text-fill-color: var(--espresso);
+  -webkit-box-shadow: 0 0 0 1000px #fff6ec inset;
+  box-shadow: 0 0 0 1000px #fff6ec inset;
+  caret-color: var(--amber-deep);
+  border-radius: 0 14px 14px 0;
+  transition: background-color 9999s ease-out 0s;
+}
+
+.lg3-eye {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  margin-right: 4px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: rgba(94, 69, 54, 0.6);
+  cursor: pointer;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+.lg3-eye:hover { color: var(--terracotta); background: rgba(240, 168, 69, 0.12); }
+.lg3-eye:focus-visible { outline: 2px solid var(--amber-deep); outline-offset: -2px; }
+
+.lg3-submit {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  height: 52px;
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: 0;
+  border-radius: 14px;
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: #fff;
+  background: linear-gradient(135deg, #f2b33d 0%, #e0893a 45%, #c8614a 100%);
+  box-shadow:
+    0 12px 28px rgba(200, 97, 74, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  text-shadow: 0 1px 2px rgba(120, 50, 20, 0.3);
+  cursor: pointer;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, filter 0.25s ease;
+}
+/* Sheen that sweeps across on hover. */
+.lg3-submit::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -60%;
+  width: 45%;
+  height: 100%;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.5), transparent);
+  transform: skewX(-20deg);
+  transition: left 0.7s ease;
+}
+.lg3-submit:hover:not(:disabled) {
+  transform: translateY(-2px);
+  filter: brightness(1.04);
+  box-shadow:
+    0 18px 38px rgba(200, 97, 74, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+.lg3-submit:hover:not(:disabled)::after { left: 120%; }
+.lg3-submit:active:not(:disabled) { transform: translateY(0) scale(0.99); }
+.lg3-submit:focus-visible { outline: 2px solid var(--terracotta); outline-offset: 3px; }
+.lg3-submit:disabled { cursor: not-allowed; opacity: 0.75; }
+
+.lg3-spinner {
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  animation: spin 0.75s linear infinite;
+}
+
+.lg3-logout {
+  width: 100%;
+  height: 48px;
+  border-radius: 14px;
+  border: 1px solid rgba(200, 97, 74, 0.45);
+  background: rgba(255, 255, 255, 0.45);
+  color: var(--terracotta);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.lg3-footer {
+  margin-top: 26px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(160, 90, 40, 0.15);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+  font-size: 0.76rem;
+  color: var(--cocoa-soft);
+}
+.lg3-secure {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--cocoa);
+}
+.lg3-secure svg { width: 14px; height: 14px; color: var(--amber-deep); }
+
+.lg3-powered {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--cocoa-soft);
+}
+.lg3-powered img {
+  height: 26px;
+  padding: 4px 9px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+}
+
+/* ── Keyframes ────────────────────────────────────────────────────────────── */
+@keyframes lg3-draw { to { stroke-dashoffset: 0; } }
+@keyframes lg3-spin { to { rotate: 360deg; } }
+@keyframes lg3-sway {
+  from { scale: 0.97; }
+  to   { scale: 1.03; }
+}
+@keyframes lg3-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes lg3-rise {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes lg3-breathe {
+  0%, 100% { opacity: 0.7; transform: translate(-50%, -50%) scale(0.9); }
+  50%      { opacity: 1;   transform: translate(-50%, -50%) scale(1.1); }
+}
+@keyframes lg3-shimmer { to { background-position: 220% center; } }
+@keyframes lg3-ping {
+  0%   { box-shadow: 0 0 0 0 rgba(224, 137, 58, 0.6); }
+  80%, 100% { box-shadow: 0 0 0 10px rgba(224, 137, 58, 0); }
+}
+@keyframes lg3-drift-a {
+  from { transform: translate(0, 0) scale(1); }
+  to   { transform: translate(8vw, 6vh) scale(1.15); }
+}
+@keyframes lg3-drift-b {
+  from { transform: translate(0, 0) scale(1.05); }
+  to   { transform: translate(-7vw, -5vh) scale(0.95); }
+}
+@keyframes lg3-beam {
+  from { transform: rotate(-8deg) translateX(-3vw); opacity: 0.7; }
+  to   { transform: rotate(-4deg) translateX(3vw);  opacity: 1; }
+}
+@keyframes lg3-silk {
+  from { transform: translateY(0) scaleY(1) skewX(0deg); }
+  to   { transform: translateY(-3%) scaleY(1.12) skewX(-4deg); }
+}
+@keyframes lg3-ember {
+  0%   { transform: translate(0, 0); opacity: 0; }
+  10%  { opacity: 0.9; }
+  70%  { opacity: 0.6; }
+  100% { transform: translate(30px, -105vh); opacity: 0; }
+}
+@keyframes lg3-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
+}
+
+/* ── Tablet / mobile (<900px) ─────────────────────────────────────────────── */
+@media (max-width: 899px) {
+  .lg3-stage {
+    grid-template-columns: 1fr;
+    gap: 0;
+    padding: 92px 16px 32px;
+    align-content: start;
+  }
+  .lg3-hero {
+    min-height: 0;
+    justify-content: center;
+    text-align: center;
+    padding: 12px 0 26px;
+  }
+  .lg3-spiro-wrap {
+    left: 50%;
+    top: 50%;
+    width: min(560px, 140vw);
+    transform: translate(-50%, -50%);
+    opacity: 0.4;
+  }
+  .lg3-hero-copy { margin: 0 auto; }
+  .lg3-hero-copy::before { inset: -24px -16px; }
+  .lg3-welcome { font-size: clamp(2.8rem, 13vw, 4rem); }
+  .lg3-tagline { font-size: 1.15rem; margin-bottom: 0; }
+  .lg3-desc { display: none; }
+  .lg3-panel { padding-left: 0; }
+  .lg3-panel::before { display: none; }
+  .lg3-title { font-size: 1.6rem; }
+  .lg3-title, .lg3-sub { text-align: center; }
+  .lg3-back { top: 18px; left: 16px; width: 42px; height: 42px; }
+  .lg3-logo { top: 16px; right: 16px; padding: 6px 12px; }
+  .lg3-logo img { height: 28px; }
+  .lg3-aurora { filter: blur(60px); }
+  .lg3-aurora--1 { width: 90vw; height: 90vw; }
+  .lg3-aurora--2 { width: 100vw; height: 100vw; }
+  .lg3-beam { left: 20%; width: 50%; }
+}
+
+/* ── Reduced motion: keep the look, drop the movement ─────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .lg3 *,
+  .lg3 *::before,
+  .lg3 *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0s !important;
+    transition: none !important;
+  }
+  .lg3-ember { display: none; }
+}
