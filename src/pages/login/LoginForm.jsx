@@ -2,47 +2,6 @@ import { createSignal, onMount } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { loginUser } from "../../services/login-service";
 import { clearAllCache } from "../../cacheStore/appStore";
-import "./login-v3.css";
-
-// ── v3 decorative geometry (built once at module load, never re-computed) ──
-// Nautilus spiral: ellipses anchored at one shared centre, each turned a
-// little further round and drawn a little larger than the last, so together
-// they fan out into a shell. The staggered delay makes the shell draw itself
-// in one sweeping turn on load.
-const NAUTILUS = Array.from({ length: 96 }, (_, i) => {
-  const t = i / 95;
-  const a = -110 + t * 410;                // a little over one full turn
-  const s = 0.1 + 0.9 * Math.pow(t, 1.25); // grow from a seed to full size
-  const rx = 240 * s;
-  const ry = 92 * s;
-  const rad = (a * Math.PI) / 180;
-  return {
-    a: +a.toFixed(2),
-    rx: +rx.toFixed(2),
-    ry: +ry.toFixed(2),
-    // shift the centre out along the turn so one end sits on the shared hub
-    cx: +(rx * 0.78 * Math.cos(rad)).toFixed(2),
-    cy: +(rx * 0.78 * Math.sin(rad)).toFixed(2),
-    delay: `${(i * 0.028).toFixed(3)}s`,
-  };
-});
-
-// Silk ribbon: one cubic curve repeated with a small drift per strand, so the
-// bundle fans open and pinches like a sheet of thread.
-const SILK_PATHS = Array.from({ length: 34 }, (_, i) =>
-  `M-60 ${430 + i * 4} C 260 ${250 + i * 9}, 640 ${650 - i * 8}, 1260 ${300 + i * 6}`,
-);
-
-// Rising embers — fixed positions/timings so the layout is stable per load.
-const EMBERS = [
-  [6, 0, 14], [14, -5, 18], [23, -9, 16], [31, -2, 20], [42, -12, 17],
-  [55, -6, 19], [63, -14, 15], [71, -3, 21], [80, -8, 16], [88, -11, 18],
-  [94, -4, 22], [48, -16, 20],
-].map(([left, delay, dur]) => ({
-  left: `${left}%`,
-  delay: `${delay}s`,
-  dur: `${dur}s`,
-}));
 
 // ✅ Decode JWT expiry
 const getTokenExpiry = (token) => {
@@ -200,140 +159,155 @@ export default function Login() {
   };
 
   return (
-    <div class="lg3">
-      {/* ── Ambient backdrop ──
-          Ivory-to-apricot wash, three drifting aurora glows, a diagonal light
-          shaft, a bundle of silk lines along the bottom, rising embers and a
-          film-grain overlay. Purely decorative: aria-hidden, no content. */}
-      <div class="lg3-bg" aria-hidden="true">
-        <div class="lg3-aurora lg3-aurora--1" />
-        <div class="lg3-aurora lg3-aurora--2" />
-        <div class="lg3-aurora lg3-aurora--3" />
-        <div class="lg3-beam" />
-        <svg
-          class="lg3-silk"
-          viewBox="0 0 1200 600"
-          preserveAspectRatio="none"
-          fill="none"
+    <>
+      <div class="login-root">
+        {/* ── Ambient backdrop (mobile only; display:none from 900px up) ──
+            The >=900px layout gets its atmosphere from the artwork image on
+            .login-left. Below that the artwork panel is gone, so these drawn
+            layers — gradient wash, two orbit rings, four drifting bubbles —
+            carry the whole screen behind the hero and the form card. Purely
+            decorative, hence aria-hidden and no content of its own. */}
+        <div class="login-bg" aria-hidden="true">
+          <div class="lb-ring lb-ring-1" />
+          <div class="lb-ring lb-ring-2" />
+          <div class="lb-bubble lb-b1" />
+          <div class="lb-bubble lb-b2" />
+          <div class="lb-bubble lb-b3" />
+          <div class="lb-bubble lb-b4" />
+        </div>
+
+        {/* ── Back to the landing page — top-left, over the gradient panel ──
+            Always "/" rather than history.back(): /login is often opened
+            directly (bookmark, session expiry, logout redirect), where going
+            back would leave the app entirely. Mounted on .login-root rather
+            than inside .login-left so it survives the <900px breakpoint that
+            hides that panel (the CSS re-parks it on the form side there).
+
+            Saturated gradient tile holding a curved return arrow. There is no
+            visible label, so aria-label is the control's ONLY accessible name —
+            it has to stay, and the svg stays decorative beneath it. */}
+        <button
+          type="button"
+          class="lp-back"
+          onClick={() => navigate("/")}
+          aria-label="Back to home"
+          title="Back to home"
         >
-          <defs>
-            <linearGradient id="lg3-silk-grad" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0" stop-color="#f2b33d" stop-opacity="0" />
-              <stop offset="0.35" stop-color="#f0a845" />
-              <stop offset="0.7" stop-color="#e07a5f" />
-              <stop offset="1" stop-color="#c8614a" stop-opacity="0" />
-            </linearGradient>
-          </defs>
-          <g stroke="url(#lg3-silk-grad)" stroke-width="0.8">
-            {SILK_PATHS.map((d) => (
-              <path d={d} />
-            ))}
-          </g>
-        </svg>
-        {EMBERS.map((e) => (
-          <span
-            class="lg3-ember"
-            style={{
-              left: e.left,
-              "animation-delay": e.delay,
-              "animation-duration": e.dur,
-            }}
-          />
-        ))}
-        <div class="lg3-grain" />
-      </div>
+          {/* Clip layer for the travelling glare — exactly the button's shape.
+              Putting the clip on the button itself would work now that nothing
+              overhangs, but this keeps the glare independent of any future
+              padding change. */}
+          <span class="lp-back__sheen" aria-hidden="true" />
+          {/* The RETURN arrow from the reference, traced rather than
+              approximated. Two independent contours:
 
-      {/* ── Back to the landing page ──
-          Always "/" rather than history.back(): /login is often opened
-          directly (bookmark, session expiry, logout redirect), where going
-          back would leave the app entirely. No visible label, so aria-label
-          is the control's only accessible name. */}
-      <button
-        type="button"
-        class="lg3-back"
-        onClick={() => navigate("/")}
-        aria-label="Back to home"
-        title="Back to home"
-      >
-        <svg
-          viewBox="0 0 25 20"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.3"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M12.99 5.52h7.83a2.16 2.16 0 0 1 2.16 2.16v7.24a2.16 2.16 0 0 1-2.16 2.16H7.77a2.16 2.16 0 0 1-2.16-2.16V14.2" />
-          <path d="M1.6 8.15 7.87 2.3v3.1c2.43.3 7.73 2.4 9.33 9.2-1.5-2.7-5.5-3.7-9.33-3.7v3.1Z" />
-        </svg>
-      </button>
+              1. A big OUTLINED arrow — not a stroked chevron. It's one closed
+                 path: triangular head on the left, then a crescent swoosh that
+                 leaves the head's shaft and sweeps down to a single point at
+                 the lower right. Outer edge of the crescent runs long and
+                 shallow, inner edge cuts back short and steep, and the two
+                 meet at that point — which is what gives the swoosh its taper.
+                 fill="none" on a closed path is what makes it read as an
+                 outline drawing, exactly as in the reference.
 
-      {/* ── Company logo — top-right, on a frosted glass pill. */}
-      <div class="lg3-logo">
-        <img src="/logo.webp" alt="Company Logo" />
-      </div>
+              2. A rounded frame BEHIND it, open along its whole upper-left,
+                 where the arrow sits.
 
-      <div class="lg3-stage">
-        {/* ── HERO: animated spirograph + welcome copy ── */}
-        <section class="lg3-hero">
-          <div class="lg3-spiro-wrap" aria-hidden="true">
-            <svg class="lg3-spiro" viewBox="-430 -430 860 860" fill="none">
-              <defs>
-                <linearGradient id="lg3-spiro-grad" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0" stop-color="#f2b33d" />
-                  <stop offset="0.55" stop-color="#e0893a" />
-                  <stop offset="1" stop-color="#c8614a" />
-                </linearGradient>
-              </defs>
-              <g class="lg3-spiro-spin">
-                {NAUTILUS.map((r) => (
-                  <ellipse
-                    class="lg3-spiro-line"
-                    cx={r.cx}
-                    cy={r.cy}
-                    rx={r.rx}
-                    ry={r.ry}
-                    transform={`rotate(${r.a} ${r.cx} ${r.cy})`}
-                    pathLength="1"
-                    stroke="url(#lg3-spiro-grad)"
-                    style={{ "animation-delay": r.delay }}
-                  />
-                ))}
-              </g>
-            </svg>
-            <div class="lg3-spiro-core" />
-          </div>
+              Coordinates come from measuring the reference and mapping its
+              bounding box onto this 25x20 viewBox at uniform scale, so the
+              proportions — head roughly twice the shaft's thickness, frame
+              about 17 units wide by 11.5 tall, corner radius ~2.2 — are the
+              reference's own, not invented.
 
-          <div class="lg3-hero-copy">
-            <h2 class="lg3-welcome">Welcome</h2>
-            <p class="lg3-tagline">
-              Campaigns that <em>convert.</em> Insights that matter.
-            </p>
-            <p class="lg3-desc">
+              Three clearances were then opened up, because the reference is a
+              large illustration and this renders at 37px, where its strokes
+              merge into blobs. Each is ~1 unit of daylight, ~1.3px on screen:
+              the frame's top edge starts at x=13, right of where the swoosh
+              has already dived past it; the swoosh's point stops at y=14.6,
+              above the frame's bottom edge rather than on it; and the frame's
+              left edge stops at y=14.2, below the arrow's lower head edge.
+              Without those three the glyph reads as one congested mass. */}
+          <svg
+            viewBox="0 0 25 20"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.3"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            {/* Frame first, so the arrow paints over it if they ever meet. */}
+            <path d="M12.99 5.52h7.83a2.16 2.16 0 0 1 2.16 2.16v7.24a2.16 2.16 0 0 1-2.16 2.16H7.77a2.16 2.16 0 0 1-2.16-2.16V14.2" />
+            {/* Arrow: tip → head top → shaft top → outer swoosh → point →
+                inner swoosh → shaft bottom → head bottom → close to tip. */}
+            <path d="M1.6 8.15 7.87 2.3v3.1c2.43.3 7.73 2.4 9.33 9.2-1.5-2.7-5.5-3.7-9.33-3.7v3.1Z" />
+          </svg>
+        </button>
+
+        {/* ── LEFT DECORATIVE PANEL ── */}
+        <div class="login-left">
+          <div class="blob blob-1" />
+          <div class="blob blob-2" />
+          <div class="blob blob-3" />
+          <div class="left-glass-card">
+            {/* Colours live in CSS (.brand-dot:nth-child) rather than inline,
+                so the mobile design can restate them — an inline style would
+                have needed !important to override. */}
+            <div class="brand-dots">
+              <div class="brand-dot" />
+              <div class="brand-dot" />
+              <div class="brand-dot" />
+            </div>
+            <h2 class="left-tagline">
+              Campaigns that
+              <br />
+              <em>convert.</em>
+              <br />
+              Insights that matter.
+            </h2>
+            <p class="left-desc">
               Your all-in-one marketing dashboard to track projects, manage
               campaigns, and measure real ROI — all in one place.
             </p>
+            <div class="orb-ring" />
           </div>
-        </section>
+        </div>
 
-        {/* ── LOGIN FORM — sits open on the backdrop; only the fields are glass ── */}
-        <section class="lg3-panel">
-          <div class="lg3-card">
-            <h1 class="lg3-title">Aajneeti Reporting Dashboard</h1>
-            <p class="lg3-sub">Login to your account to continue</p>
+        {/* ── RIGHT LOGIN PANEL ── */}
+        <div class="login-right">
+          {/* ── Company logo — top-left ── */}
+          <div class="rp-logo">
+            <img src="/logo.webp" alt="Company Logo" class="rp-logo-img" />
+          </div>
+          <div class="form-wrapper">
+            {/* Logo */}
+            {/* <div class="form-logo">
+                            <div class="form-logo-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                                </svg>
+                            </div>
+                            <span class="form-logo-text">Aajneeti Reporting Dashboard</span>
+                        </div> */}
 
+            <h1 class="form-heading">Aajneeti Reporting Dashboard</h1>
+            <p class="form-subheading mt-2">
+              Login to your account to continue
+            </p>
             {/* Error */}
-            {error() && <div class="lg3-error">{error()}</div>}
+            {error() && <div class="error-box">{error()}</div>}
 
             {/* Login Form */}
             {!isLoggedIn() && (
-              <form onSubmit={handleSubmit} class="lg3-form">
-                <div class="lg3-group">
-                  <label class="lg3-label">Email</label>
-                  <div class="lg3-field">
+              <form onSubmit={handleSubmit}>
+                <div class="input-group">
+                  <label class="input-label">Email</label>
+                  {/* The wrapper carries no styling above 900px — it exists so
+                      the mobile layout can put the border on the row and the
+                      leading icon inside it. .field-ico is display:none there. */}
+                  <div class="input-wrapper">
                     <svg
-                      class="lg3-field-ico"
+                      class="field-ico"
                       viewBox="0 0 24 24"
                       fill="none"
                       stroke="currentColor"
@@ -347,18 +321,18 @@ export default function Login() {
                       type="email"
                       value={email()}
                       onInput={(e) => setEmail(e.target.value)}
-                      class="lg3-input"
+                      class="input-field"
                       placeholder="you@company.com"
                       required
                     />
                   </div>
                 </div>
 
-                <div class="lg3-group">
-                  <label class="lg3-label">Password</label>
-                  <div class="lg3-field">
+                <div class="input-group">
+                  <label class="input-label">Password</label>
+                  <div class="input-wrapper input-wrapper--eye">
                     <svg
-                      class="lg3-field-ico"
+                      class="field-ico"
                       viewBox="0 0 24 24"
                       fill="none"
                       stroke="currentColor"
@@ -372,13 +346,13 @@ export default function Login() {
                       type={showPassword() ? "text" : "password"}
                       value={password()}
                       onInput={(e) => setPassword(e.target.value)}
-                      class="lg3-input"
+                      class="input-field"
                       placeholder="••••••••••"
                       required
                     />
                     <button
                       type="button"
-                      class="lg3-eye"
+                      class="eye-btn"
                       onClick={() => setShowPassword(!showPassword())}
                       aria-label={
                         showPassword() ? "Hide password" : "Show password"
@@ -422,8 +396,8 @@ export default function Login() {
                   </div>
                 </div>
 
-                <button type="submit" disabled={loading()} class="lg3-submit">
-                  {loading() && <span class="lg3-spinner" />}
+                <button type="submit" disabled={loading()} class="submit-btn">
+                  {loading() && <span class="spinner" />}
                   {loading() ? "Logging in..." : "Login "}
                 </button>
               </form>
@@ -431,14 +405,19 @@ export default function Login() {
 
             {/* Logout */}
             {isLoggedIn() && (
-              <button onClick={handleLogout} class="lg3-logout">
+              <button onClick={handleLogout} class="logout-btn">
                 Sign out
               </button>
             )}
 
-            <div class="lg3-footer">
-              <span class="lg3-secure">
+            {/* Both lines were bare text either side of a <br>. They're wrapped
+                now so the mobile card can lay the security line out as an
+                icon + label row; above 900px the spans stay inline and the
+                shield is display:none, so it renders exactly as before. */}
+            <p class="form-footer">
+              <span class="ff-secure">
                 <svg
+                  class="ff-shield"
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
@@ -449,19 +428,26 @@ export default function Login() {
                 </svg>
                 Protected by enterprise-grade security.
               </span>
-              <span class="lg3-copy">
+              <br />
+              <span class="ff-copy">
                 &copy; {new Date().getFullYear()} Aajneeti Connect Limited. All
                 rights reserved.
               </span>
-            </div>
+            </p>
 
-            <div class="lg3-powered">
-              <span>Powered by</span>
-              <img src="/logo.webp" alt="Company Logo" />
+            {/* ── Powered by ──
+                Moved inside .form-wrapper so the mobile card can carry it as
+                its last line. This does NOT move it above 900px: it stays
+                position:absolute and .form-wrapper is static, so its containing
+                block is still .login-right and it renders bottom-right exactly
+                as before. */}
+            <div class="rp-powered ">
+              <span class="rp-powered-label">Powered by</span>
+              <img src="/logo.webp" alt="Company Logo" class="logo-imgs" />
             </div>
           </div>
-        </section>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
