@@ -1,4 +1,4 @@
-import { createSignal, onMount, For } from "solid-js";
+import { createSignal, onMount } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { loginUser } from "../../services/login-service";
 import { clearAllCache } from "../../cacheStore/appStore";
@@ -26,29 +26,6 @@ export const handleLogout = () => {
   localStorage.removeItem("sidebarOpenMenu");
   window.location.href = "/login";
 };
-
-// Rama-divine panel: fixed (not random) positions/timings so the scene is the
-// same on every load. Petals: start point in % of the panel + speed/phase.
-// Diya flames: measured from rama-divine.jpeg, in % of the painting.
-const PETALS = [
-  { x: 6, y: 10, dur: 17, delay: 0, s: 1 },
-  { x: 30, y: 2, dur: 20, delay: -6, s: 0.8 },
-  { x: 2, y: 40, dur: 18, delay: -10, s: 0.9 },
-  { x: 48, y: 4, dur: 22, delay: -14, s: 0.7 },
-  { x: 16, y: 26, dur: 19, delay: -3, s: 1.1 },
-];
-const MOTES = [10, 22, 34, 46, 58, 70, 82, 92].map((x, i) => ({
-  x,
-  dur: 10 + (i % 4) * 2.5,
-  delay: -((i * 1.9) % 12),
-  size: 2 + (i % 3),
-}));
-const FLAMES = [
-  { x: 11.8, y: 20.4, d: 0 },
-  { x: 20.7, y: 16.7, d: -0.4 },
-  { x: 7.8, y: 29.2, d: -0.9 },
-  { x: 3.9, y: 37.9, d: -0.2 },
-];
 
 export default function Login() {
   const [email, setEmail] = createSignal("");
@@ -272,63 +249,6 @@ export default function Login() {
           <div class="blob blob-1" />
           <div class="blob blob-2" />
           <div class="blob blob-3" />
-
-          {/* ── Rama-divine scene (z 1: replaces the orb artwork, under the card) ──
-              .ll-stage keeps the painting's own proportions while covering the
-              panel (container-query sizing in index.css), so the sun glow,
-              rays, river shimmer and diya flames placed in % of the stage stay
-              on their spots in the painting at any panel shape. The stage
-              zooms very slowly toward the sun. Petals + gold dust drift in
-              panel space on top. All decorative. */}
-          <div class="ll-theme" aria-hidden="true">
-            <div class="ll-stage">
-              <div class="ll-rays" />
-              <div class="ll-sun" />
-              <div class="ll-shimmer" />
-              <div class="ll-mist" />
-              <For each={FLAMES}>
-                {(f) => (
-                  <span
-                    class="ll-flame"
-                    style={{ left: f.x + "%", top: f.y + "%", "animation-delay": f.d + "s" }}
-                  />
-                )}
-              </For>
-            </div>
-            <For each={MOTES}>
-              {(m) => (
-                <span
-                  class="ll-mote"
-                  style={{
-                    left: m.x + "%",
-                    width: m.size + "px",
-                    height: m.size + "px",
-                    "animation-duration": m.dur + "s",
-                    "animation-delay": m.delay + "s",
-                  }}
-                />
-              )}
-            </For>
-            <For each={PETALS}>
-              {(p) => (
-                <svg
-                  class="ll-petal"
-                  viewBox="0 0 24 24"
-                  style={{
-                    left: p.x + "%",
-                    top: p.y + "%",
-                    "--s": p.s,
-                    "animation-duration": p.dur + "s",
-                    "animation-delay": p.delay + "s",
-                  }}
-                >
-                  <path d="M3 21C3 11 10 4 21 3c-1 11-8 18-18 18Z" fill="#F08A24" />
-                  <path d="M3 21 15 9" stroke="#C25E10" stroke-width="0.9" opacity=".7" />
-                </svg>
-              )}
-            </For>
-            <div class="ll-vignette" />
-          </div>
           <div class="left-glass-card">
             {/* Colours live in CSS (.brand-dot:nth-child) rather than inline,
                 so the mobile design can restate them — an inline style would
@@ -359,16 +279,6 @@ export default function Login() {
           <div class="rp-logo">
             <img src="/logo.webp" alt="Company Logo" class="rp-logo-img" />
           </div>
-          {/* Festive corner artwork — bottom-right, behind the form (z-index:-1
-              inside .login-right's isolated stack). Cut from dussehra.png with
-              the white paper keyed out, so it sits on the cream panel cleanly.
-              Purely decorative: empty alt + aria-hidden. */}
-          <img
-            src="/images/dussehra-corner.webp"
-            alt=""
-            aria-hidden="true"
-            class="rp-festive"
-          />
           <div class="form-wrapper">
             {/* Logo */}
             {/* <div class="form-logo">

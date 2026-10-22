@@ -254,31 +254,6 @@ export default function Header() {
 
         {/* Right Section */}
         <div class="flex items-center gap-3">
-          {/* Dussehra strip — middle band of dussehra-strip.jpeg (blank paper
-              above/below cropped, cream keyed out). Sits left of the controls
-              so it never lies under a button; hidden below md where the bar
-              is too narrow. Decorative only. */}
-          <span class="hd-archer hidden md:block" aria-hidden="true">
-            <img
-              src="/images/header-dussehra.webp"
-              alt=""
-              draggable="false"
-              class="h-14 w-auto select-none pointer-events-none dark:brightness-125"
-            />
-            {/* Arrows loosed from the archer's bow, flying right → left along
-                the bar. Launch point is the drawn arrow's head in the art. */}
-            <For each={[0, 1, 2, 3]}>
-              {(i) => (
-                <span class="hd-arrow" style={{ "--i": i }}>
-                  <svg viewBox="0 0 40 10" fill="none">
-                    <path d="M1 5 9 1.4v7.2Z" fill="#C9822A" />
-                    <path d="M8 5h26" stroke="#D89A2B" stroke-width="1.4" stroke-linecap="round" />
-                    <path d="M30 5l5.5-3.4H39L35.5 5 39 8.4h-3.5Z" fill="#AC2334" opacity=".8" />
-                  </svg>
-                </span>
-              )}
-            </For>
-          </span>
           {/* CM Tier-1 switch-mode dropdown (renders only for team leads) */}
           <SwitchModeDropdown />
 
