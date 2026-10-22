@@ -306,10 +306,6 @@ export default function Login() {
           </div>
 
           <div class="lg3-hero-copy">
-            <span class="lg3-eyebrow">
-              <span class="lg3-eyebrow-dot" />
-              Aajneeti Reporting Suite
-            </span>
             <h2 class="lg3-welcome">Welcome</h2>
             <p class="lg3-tagline">
               Campaigns that <em>convert.</em> Insights that matter.
