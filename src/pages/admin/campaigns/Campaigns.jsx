@@ -169,6 +169,70 @@ export default function Campaigns() {
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal(null);
 
+  // Campaign Name column is drag-resizable from its right-edge divider so
+  // long names can be read in full; width is remembered per browser.
+  const NAME_COL_KEY = "campaigns.nameColWidth";
+  const NAME_COL_MIN = 160;
+  const NAME_COL_MAX = 900;
+  const NAME_COL_DEFAULT = 220;
+  const readNameColWidth = () => {
+    try {
+      const v = Number(localStorage.getItem(NAME_COL_KEY));
+      return v >= NAME_COL_MIN && v <= NAME_COL_MAX ? v : NAME_COL_DEFAULT;
+    } catch {
+      return NAME_COL_DEFAULT;
+    }
+  };
+  const [nameColWidth, setNameColWidth] = createSignal(readNameColWidth());
+  const [resizingName, setResizingName] = createSignal(false);
+  const saveNameColWidth = (w) => {
+    try {
+      localStorage.setItem(NAME_COL_KEY, String(w));
+    } catch {
+      /* storage unavailable — width just won't persist */
+    }
+  };
+  const startNameColResize = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startW = nameColWidth();
+    setResizingName(true);
+    const onMove = (ev) => {
+      const w = Math.min(
+        NAME_COL_MAX,
+        Math.max(NAME_COL_MIN, startW + ev.clientX - startX),
+      );
+      setNameColWidth(w);
+    };
+    const onUp = () => {
+      setResizingName(false);
+      saveNameColWidth(nameColWidth());
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
+  // Double-click the divider: toggle between default and wide.
+  const toggleNameColWidth = (e) => {
+    e.stopPropagation();
+    const w = nameColWidth() > NAME_COL_DEFAULT ? NAME_COL_DEFAULT : 520;
+    setNameColWidth(w);
+    saveNameColWidth(w);
+  };
+  const nameColStyle = () => ({
+    width: `${nameColWidth()}px`,
+    "min-width": `${nameColWidth()}px`,
+    "max-width": `${nameColWidth()}px`,
+  });
+  const NAME_COL_DIVIDER =
+    "border-r border-gray-200 dark:border-gray-700 shadow-[6px_0_8px_-6px_rgba(0,0,0,0.18)]";
+
   // Filters
   const [search, setSearch] = createSignal("");
   const [statusFilter, setStatusFilter] = createSignal("all");
@@ -600,10 +664,24 @@ export default function Campaigns() {
                 ID {sortIcon("id")}
               </th>
               <th
-                class="p-3 text-left cursor-pointer hover:text-purple-600 whitespace-nowrap min-w-[200px]"
+                class={`p-3 text-left cursor-pointer hover:text-purple-600 whitespace-nowrap relative ${NAME_COL_DIVIDER}`}
+                style={nameColStyle()}
                 onClick={() => toggleSort("name")}
               >
                 Campaign Name {sortIcon("name")}
+                <span
+                  role="separator"
+                  aria-orientation="vertical"
+                  title="Drag to resize · double-click to toggle width"
+                  class={`absolute top-0 -right-1.5 h-full w-3 z-10 cursor-col-resize group flex justify-center`}
+                  onPointerDown={startNameColResize}
+                  onClick={(e) => e.stopPropagation()}
+                  onDblClick={toggleNameColWidth}
+                >
+                  <span
+                    class={`h-full w-0.5 transition-colors ${resizingName() ? "bg-purple-500" : "bg-transparent group-hover:bg-purple-400"}`}
+                  />
+                </span>
               </th>
               <th
                 class="p-3 text-left cursor-pointer hover:text-purple-600 whitespace-nowrap"
@@ -700,7 +778,8 @@ export default function Campaigns() {
                             showActions() && idx === arr.length - 1;
                           return (
                             <td
-                              class={`p-3 ${isActions ? "sticky right-0 z-10 bg-white dark:bg-gray-900 shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.18)]" : ""}`}
+                              class={`p-3 ${isActions ? "sticky right-0 z-10 bg-white dark:bg-gray-900 shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.18)]" : ""} ${idx === 1 ? NAME_COL_DIVIDER : ""}`}
+                              style={idx === 1 ? nameColStyle() : undefined}
                             >
                               <div
                                 class={`h-3 bg-gray-200 dark:bg-gray-700 rounded ${idx === 1 ? "w-48" : idx === 5 ? "w-16" : "w-20"} ${isActions ? "mx-auto" : ""}`}
@@ -727,7 +806,7 @@ export default function Campaigns() {
                         {c.id}
                       </td>
 
-                      <td class="p-3 max-w-[220px]">
+                      <td class={`p-3 ${NAME_COL_DIVIDER}`} style={nameColStyle()}>
                         <div class="flex items-center gap-4">
                           <div class="flex-shrink-0">
                             <Avatar name={c.name} />
