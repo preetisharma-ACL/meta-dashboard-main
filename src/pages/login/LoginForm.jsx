@@ -79,7 +79,7 @@ export default function Login() {
     clearAllCache();
 
     try {
-      const res = await loginUser(email(), password());
+      const res = await loginUser(email().trim().toLowerCase(), password());
       const accessToken = res?.data?.access_token;
       const refreshToken = res?.data?.refresh_token;
 
@@ -319,6 +319,10 @@ export default function Login() {
                     </svg>
                     <input
                       type="email"
+                      autocapitalize="none"
+                      autocorrect="off"
+                      spellcheck="false"
+                      autocomplete="username"
                       value={email()}
                       onInput={(e) => setEmail(e.target.value)}
                       class="input-field"
