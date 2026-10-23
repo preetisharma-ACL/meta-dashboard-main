@@ -599,7 +599,7 @@ export default function OnboardingWizard() {
   const buildPayload = () => {
     const a = account();
     const payload = {
-      email: trimmed(a.email),
+      email: trimmed(a.email).toLowerCase(),
       password: a.password,
       role: role(),
     };
@@ -766,7 +766,7 @@ export default function OnboardingWizard() {
                   {roleLabel(result().role)} created
                 </p>
                 <p class="text-xs text-[#54657E] dark:text-gray-400 mt-0.5">
-                  {trimmed(account().email)} can sign in with the password you
+                  {trimmed(account().email).toLowerCase()} can sign in with the password you
                   set.
                 </p>
               </div>
@@ -1019,6 +1019,9 @@ export default function OnboardingWizard() {
                   <label class={LABEL}>Email <Req /></label>
                   <input
                     type="email"
+                    autocapitalize="none"
+                    autocorrect="off"
+                    spellcheck="false"
                     autocomplete="off"
                     value={account().email}
                     onInput={(e) => setA("email", e.target.value)}
