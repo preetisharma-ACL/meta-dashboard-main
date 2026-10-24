@@ -682,54 +682,79 @@ export default function Sidebar() {
         path: "/cm-daily-report",
       },
       {
-        // CM + coordination — admin reaches the same page from inside
-        // "Payments Desk" and accounts from its flat list, neither of which
-        // these two roles get. Coordination's old "Payment & Billing" entry
+        // Coordination only — admin reaches the same page from inside its
+        // "Payments Desk", accounts from its flat list, CMs from their own
+        // "Payments Desk" below. Coordination's old "Payment & Billing" entry
         // pointed at the retired duplicate screen and is gone.
         name: "Client Payments",
-        roles: ["campaign_manager", "coordination"],
+        roles: ["coordination"],
         icon: () => (
           <Icon d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
         ),
         path: "/client-payments",
       },
       {
-        // ONE top-level row for all four staff roles. It cannot live inside
-        // "Payments Desk" (admin-only) or the accounts flat list: a sub-item's
-        // `roles` never widen past its parent group's, so nesting it would hide
-        // it from coordination and the CMs however the child's roles read.
-        //
-        // Campaign managers are listed at ROLE level on purpose — a tier-2 CM
-        // gets the row and lands on a read-only list, which is how they answer
-        // "why did this client's balance drop". Sales are out: they onboard
-        // clients, they don't bill them. CLIENTS ARE NEVER HERE.
+        // Top-level for admin/accounts/coordination. It cannot live inside the
+        // admin "Payments Desk" or the accounts flat list: a sub-item's `roles`
+        // never widen past its parent group's. CMs get it inside their own
+        // "Payments Desk" group below. Sales are out: they onboard clients,
+        // they don't bill them. CLIENTS ARE NEVER HERE.
         name: "Additional Services",
-        roles: ["admin", "accounts", "coordination", "campaign_manager"],
+        roles: ["admin", "accounts", "coordination"],
         icon: () => (
           <Icon d="M10 21h4M7 3h10a2 2 0 012 2v4a7 7 0 01-7 7 7 7 0 01-7-7V5a2 2 0 012-2zm5 13v5" />
         ),
         path: "/billing/additional-services",
       },
-      // ── Senior CM payment entry ────────────────────────────────────────────
-      // TIER-1/TIER-2 ONLY. `roles` can't express this alone — tier-3 CMs share
-      // the role and must not see these — so the `when` predicate carries the
-      // tier check. It reads the reactive currentUser store, so the entries
-      // appear as soon as /auth/me resolves rather than needing a reload.
       {
-        name: "Record Payment",
+        // ── Campaign Manager payments desk ─────────────────────────────────
+        // The four CM payment screens folded into one group. Additional
+        // Services is listed at ROLE level on purpose — a tier-2 CM lands on a
+        // read-only list, which is how they answer "why did this client's
+        // balance drop". Record Payment / My Payment Entries are TIER-1/TIER-2
+        // ONLY: tier-3 CMs share the role, so the sub-item `when` carries the
+        // tier check (reactive, so they appear once /auth/me resolves).
+        name: "Payments Desk",
         roles: ["campaign_manager"],
-        when: isSeniorCM,
-        icon: () => <Icon d="M12 9v6m3-3H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />,
-        path: "/payments/record",
-      },
-      {
-        name: "My Payment Entries",
-        roles: ["campaign_manager"],
-        when: isSeniorCM,
         icon: () => (
-          <Icon d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+          <Icon d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
         ),
-        path: "/payments/my-entries",
+        subMenus: [
+          {
+            name: "Client Payments",
+            path: "/client-payments",
+            roles: ["campaign_manager"],
+            icon: () => (
+              <SmallIcon d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+            ),
+          },
+          {
+            name: "Additional Services",
+            path: "/billing/additional-services",
+            roles: ["campaign_manager"],
+            icon: () => (
+              <SmallIcon d="M10 21h4M7 3h10a2 2 0 012 2v4a7 7 0 01-7 7 7 7 0 01-7-7V5a2 2 0 012-2zm5 13v5" />
+            ),
+          },
+          {
+            name: "Record Payment",
+            path: "/payments/record",
+            roles: ["campaign_manager"],
+            when: isSeniorCM,
+            icon: () => (
+              <SmallIcon d="M12 9v6m3-3H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+            ),
+          },
+          {
+            name: "My Payment Entries",
+            path: "/payments/my-entries",
+            roles: ["campaign_manager"],
+            when: isSeniorCM,
+            icon: () => (
+              <SmallIcon d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+            ),
+          },
+        ],
       },
       //  {
       //   name: "Client Billing",
@@ -1300,7 +1325,9 @@ export default function Sidebar() {
                     <div class="mt-1 ml-4 pl-3 border-l border-[#E2E8F1] dark:border-gray-700 space-y-0.5 pb-1">
                       <For
                         each={item.subMenus.filter(
-                          (sub) => !sub.roles || sub.roles.includes(userRole()),
+                          (sub) =>
+                            (!sub.roles || sub.roles.includes(userRole())) &&
+                            (sub.when ? sub.when() : true),
                         )}
                       >
                         {(sub) => (
