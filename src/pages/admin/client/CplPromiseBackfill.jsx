@@ -1,5 +1,6 @@
 import { createSignal, createMemo, onMount, For, Show } from "solid-js";
 import { A } from "@solidjs/router";
+import Avatar from "../../../components/common/Avatar";
 import {
   fetchPromiseBackfill,
   savePromise,
@@ -141,8 +142,30 @@ export default function CplPromiseBackfill() {
   return (
     <div class="min-h-screen min-w-0 p-3 lg:p-8">
       <div class="mb-5">
-        <h1 class="text-2xl font-semibold tracking-tight text-gray-900 dark:text-white">CPL Promise %</h1>
-        <p class="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
+        {/* Same heading treatment as Client Nomenclatures / Campaigns:
+            crimson→gold tile, gradient wordmark, description indented by
+            tile (36px) + gap (10px). */}
+        <h1 class="flex items-center gap-2.5 text-2xl font-semibold tracking-tight">
+          <span class="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#7E1522] via-[#AC2334] via-70% to-[#C4802B] text-white shadow-[0_2px_8px_rgba(126,21,34,.32)]">
+            <svg
+              class="w-5 h-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <line x1="19" y1="5" x2="5" y2="19" />
+              <circle cx="6.5" cy="6.5" r="2.5" />
+              <circle cx="17.5" cy="17.5" r="2.5" />
+            </svg>
+          </span>
+          <span class="inline-block pb-0.5 leading-tight bg-gradient-to-r from-[#7E1522] via-[#AC2334] via-72% to-[#C4802B] dark:from-[#D9455E] dark:via-[#E4566A] dark:to-[#E9AE5C] bg-clip-text text-transparent">
+            CPL Promise %
+          </span>
+        </h1>
+        <p class="pl-[46px] mt-0.5 text-sm text-gray-500 dark:text-gray-400">
           Every active CPL rate needs a promised qualification %. Until it's set, the project bills on
           qualified leads.
         </p>
@@ -263,9 +286,14 @@ export default function CplPromiseBackfill() {
                   return (
                     <tr class={`border-b border-gray-100 dark:border-gray-800 align-top ${done() ? "bg-gray-50/60 dark:bg-gray-800/30" : ""}`}>
                       <td class="p-3 max-w-[16rem]">
-                        <span class="block truncate font-medium text-gray-800 dark:text-gray-200" title={r.client_nomen ?? ""}>
-                          {r.client_nomen ?? `Client #${r.client_id}`}
-                        </span>
+                        <div class="flex items-center gap-2.5 min-w-0">
+                          <span class="flex-none">
+                            <Avatar name={r.client_nomen ?? `Client ${r.client_id}`} />
+                          </span>
+                          <span class="block truncate font-medium text-gray-800 dark:text-gray-200" title={r.client_nomen ?? ""}>
+                            {r.client_nomen ?? `Client #${r.client_id}`}
+                          </span>
+                        </div>
                       </td>
                       <td class="p-3 max-w-[18rem]">
                         <span class="block truncate text-gray-700 dark:text-gray-300" title={r.project_name ?? ""}>

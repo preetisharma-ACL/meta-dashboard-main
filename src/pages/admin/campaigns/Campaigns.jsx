@@ -512,10 +512,30 @@ export default function Campaigns() {
       {/* Page Header */}
       <div class="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div>
-          <h1 class="text-2xl font-semibold text-gray-900 dark:text-white tracking-tight">
-            Campaigns
+          {/* Same heading treatment as Client Nomenclatures / the dashboard:
+              crimson→gold tile, gradient wordmark, description indented by
+              tile (36px) + gap (10px). */}
+          <h1 class="flex items-center gap-2.5 text-2xl font-semibold tracking-tight">
+            <span class="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#7E1522] via-[#AC2334] via-70% to-[#C4802B] text-white shadow-[0_2px_8px_rgba(126,21,34,.32)]">
+              <svg
+                class="w-5 h-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z"
+                />
+              </svg>
+            </span>
+            <span class="inline-block pb-0.5 leading-tight bg-gradient-to-r from-[#7E1522] via-[#AC2334] via-72% to-[#C4802B] dark:from-[#D9455E] dark:via-[#E4566A] dark:to-[#E9AE5C] bg-clip-text text-transparent">
+              Campaigns
+            </span>
           </h1>
-          <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+          <p class="pl-[46px] text-sm text-gray-500 dark:text-gray-400 mt-0.5">
             {total()} matching campaigns
           </p>
         </div>
@@ -650,9 +670,9 @@ export default function Campaigns() {
       </Show>
 
       {/* Table */}
-      <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 overflow-x-auto">
+      <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 overflow-auto max-h-[calc(100vh-14rem)]">
         <table class="min-w-full text-sm">
-          <thead>
+          <thead class="sticky top-0 z-30 bg-gray-50 dark:bg-gray-800 shadow-[0_1px_0_0_rgb(229,231,235)] dark:shadow-[0_1px_0_0_rgb(55,65,81)]">
             <tr
               class="border-b border-gray-200 dark:border-gray-700 bg-gray-50
                        dark:bg-gray-800/60 text-gray-500 dark:text-gray-400 uppercase text-xs tracking-wider"
