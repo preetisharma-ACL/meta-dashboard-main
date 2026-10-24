@@ -97,26 +97,38 @@ export default function SwitchModeDropdown() {
       </div>
     </Show>
     <Show when={canSwitch()}>
-      <div class="hidden sm:flex items-center gap-2">
-        <span class="text-xs font-medium text-gray-400 dark:text-gray-500 whitespace-nowrap">
+      {/* Shown at every width: the saved choice is sent on every GET, so a
+          phone must be able to see and change it too. Compact below sm. */}
+      <div class="flex items-center gap-2 min-w-0">
+        <span class="hidden sm:inline text-xs font-medium text-gray-400 dark:text-gray-500 whitespace-nowrap">
           Viewing
         </span>
         <div class="relative">
           <select
             value={currentValue()}
             onChange={onChange}
-            class="appearance-none pl-3 pr-8 py-1.5 text-sm rounded-lg border border-gray-200
-                   dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200
-                   focus:outline-none focus:ring-2 focus:ring-purple-400 cursor-pointer max-w-[220px]"
+            aria-label="Viewing"
+            class={`appearance-none pl-2.5 sm:pl-3 pr-7 sm:pr-8 py-1.5 text-xs sm:text-sm rounded-lg border focus:outline-none focus:ring-2 focus:ring-purple-400 cursor-pointer max-w-[130px] sm:max-w-[220px] truncate ${
+              currentValue() === TEAM
+                ? "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200"
+                : "border-[#B07A14]/60 bg-[#FBF3E2] text-[#8A6410] font-semibold dark:bg-yellow-900/30 dark:border-yellow-700 dark:text-yellow-100"
+            }`}
             title="Switch which CM's data you're viewing"
           >
-            <option value={ME}>Just me</option>
-            <option value={TEAM}>My team (everyone)</option>
+            {/* selected on each option, not just value on the select: the member
+                options arrive after the select mounts, and a value set before
+                its option exists falls back to the first one ("Just me"). */}
+            <option value={ME} selected={currentValue() === ME}>Just me</option>
+            <option value={TEAM} selected={currentValue() === TEAM}>My team (everyone)</option>
             <Show when={!members.loading && (members() ?? []).length > 0}>
               <optgroup label="Team members">
                 <For each={members() ?? []}>
                   {(m) => (
-                    <option value={String(m.user_id)} title={optionLabel(m)}>
+                    <option
+                      value={String(m.user_id)}
+                      title={optionLabel(m)}
+                      selected={currentValue() === String(m.user_id)}
+                    >
                       {optionLabel(m)}
                     </option>
                   )}
