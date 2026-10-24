@@ -51,6 +51,7 @@ import {
 import Avatar from "../../components/common/Avatar";
 import DeadToggle from "../../components/common/DeadToggle";
 import { isTier1CM } from "../../stores/currentUser";
+import { isSwitched, scopeKey } from "../../stores/cmScope";
 import { openClientPage } from "../../utils/openClientPage";
 import RowsPerPageSelect from "../../components/common/RowsPerPageSelect";
 import { loadErrorMessage } from "../../utils/apiErrors";
@@ -146,10 +147,12 @@ export default function CommandBoard() {
   // steps aside while this is on.
   const [dead, setDead] = createSignal(false);
 
-  // Tier 1 CMs only: null = all clients (default, no param) | "team" | "own".
+  // Tier 1 CMs only: null = all clients (default, no param) | "team".
   // Survives range, filters, search and paging — only page resets on change.
+  // The global "Viewing" switcher wins: on Just me or a member, api.js sends
+  // that scope and this toggle is hidden; it only exists on "My team".
   const [scope, setScope] = createSignal(null);
-  const showScope = () => isTier1CM();
+  const showScope = () => isTier1CM() && !isSwitched();
 
   // ── View-only state ────────────────────────────────────────────────────────
   const [gapOnly, setGapOnly] = createSignal(false);
@@ -187,6 +190,9 @@ export default function CommandBoard() {
       includeDormant: includeDormant(),
       dead: dead(),
       scope: showScope() ? scope() : null,
+      // Not sent by fetchCommandBoard — api.js adds the switcher. Here only so
+      // a switch re-keys the resource.
+      viewing: scopeKey(),
       sort: sort(),
       dir: dir(),
       page: page(),
@@ -333,7 +339,7 @@ export default function CommandBoard() {
   // count learned under one must never be shown under another.
   const dormantRows = createMemo(() => rows().filter(isDormant));
   const narrowKey = () =>
-    `${type() ?? ""}|${q()}|${showScope() ? (scope() ?? "") : ""}`;
+    `${type() ?? ""}|${q()}|${showScope() ? (scope() ?? "") : ""}|${scopeKey()}`;
   const [knownDormant, setKnownDormant] = createSignal({});
 
   createEffect(() => {

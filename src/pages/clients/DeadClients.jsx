@@ -22,6 +22,7 @@ import { inr, count, humanise, DASH } from "../../services/commandRules";
 import Avatar from "../../components/common/Avatar";
 import { loadErrorMessage } from "../../utils/apiErrors";
 import { openClientPage } from "../../utils/openClientPage";
+import { scopeKey } from "../../stores/cmScope";
 
 // ─── Dead clients ─────────────────────────────────────────────────────────────
 // GET /clients/dead/ — clients the hourly job has marked dead: CM status hold or
@@ -107,7 +108,7 @@ export default function DeadClients() {
 
   // Object source — a bare "" would read as "don't fetch" to createResource.
   const [list, { refetch }] = createResource(
-    () => ({ q: q() }),
+    () => ({ q: q(), viewing: scopeKey() }), // viewing: re-key on a switch
     ({ q }) => fetchDeadClients({ q }),
   );
 

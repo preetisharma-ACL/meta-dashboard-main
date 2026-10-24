@@ -11,6 +11,7 @@ import {
 import { useNavigate } from "@solidjs/router";
 import { fetchClients } from "../services/fetchClients";
 import DeadToggle from "../../../components/common/DeadToggle";
+import { scopeKey } from "../../../stores/cmScope";
 import { fetchHierarchyClients } from "../../../services/cm";
 import { fetchAssignmentsByClient } from "../../../services/cmAssignments";
 import { loadErrorMessage } from "../../../utils/apiErrors";
@@ -507,11 +508,11 @@ export default function Clients() {
     ),
   );
 
-  // The dead toggle is the one server param the hierarchy takes, so for CMs
-  // it (and only it) re-fetches the roster.
+  // The dead toggle and the "Viewing" switcher are the server params the
+  // hierarchy takes, so for CMs they (and only they) re-fetch the roster.
   createEffect(
     on(
-      deadOnly,
+      [deadOnly, scopeKey],
       async () => {
         if (!isCampaignManager()) return;
         setLoading(true);

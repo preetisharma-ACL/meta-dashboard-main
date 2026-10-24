@@ -1,4 +1,5 @@
-import { createSignal, createMemo, createEffect, onMount, For, Show } from "solid-js";
+import { createSignal, createMemo, createEffect, on, onMount, For, Show } from "solid-js";
+import { scopeKey } from "../../../stores/cmScope";
 import { useNavigate, useSearchParams, A } from "@solidjs/router";
 import { fetchAdAccounts } from "../services/adAccount";
 import { fetchAllAdminCampaigns, normAccountId } from "../services/campaigns";
@@ -94,6 +95,12 @@ export default function AdAccounts() {
     loadAccounts();
     loadCounts();
   });
+
+  // The "Viewing" switcher rides on every GET (api.js); re-read on a switch.
+  createEffect(on(scopeKey, () => {
+    loadAccounts();
+    loadCounts();
+  }, { defer: true }));
 
   const campaignCount = (account) => {
     const { byId, byName } = countsByKey();

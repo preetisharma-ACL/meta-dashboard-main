@@ -136,7 +136,8 @@ export default function CMDashboard() {
   // aggregates stay whole while the ledger shows one status: narrowing this
   // request would empty the paused-campaign signal and rescope every KPI.
   const source = createMemo(() => ({
-    scope: asTeamMemberId(),
+    // scopeKey, not asTeamMemberId: Just me ↔ My team must refetch too.
+    scope: scopeKey(),
     startDate: fromDate() || undefined,
     endDate: toDate() || undefined,
     status: "all",

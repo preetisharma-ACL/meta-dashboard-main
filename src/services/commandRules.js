@@ -380,12 +380,12 @@ export const fmtRange = (since, until) => {
 };
 
 // ── Tier 1 scope ──────────────────────────────────────────────────────────────
-// A Tier 1 CM can widen this page past their team. `scope` is sent only for the
-// two narrower choices; "All clients" is the default and sends nothing.
+// A Tier 1 CM can widen this page past their team. "All clients" is the
+// default and sends nothing; "My team" sends scope=team. No "Just me" here —
+// the global "Viewing" switcher owns that, and hides this toggle when used.
 export const CM_SCOPES = [
   { key: null, label: "All clients" },
   { key: "team", label: "My team" },
-  { key: "own", label: "Just me" },
 ];
 
 // Rows a Tier 1 CM sees outside their team carry in_my_team === false, and the

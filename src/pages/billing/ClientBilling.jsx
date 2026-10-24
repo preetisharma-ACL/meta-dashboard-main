@@ -3,6 +3,7 @@ import { A } from "@solidjs/router";
 
 import { fetchSalesPayments } from "../../services/sales";
 import DeadToggle from "../../components/common/DeadToggle";
+import { scopeKey } from "../../stores/cmScope";
 import {
   fmtMoney,
   isMissing,
@@ -95,7 +96,8 @@ export default function ClientBilling() {
   // Refresh button calls refetch(true); the fetcher reads info.refetching to
   // append refresh=1 (bypasses the server's 10-min cache).
   const [payload, { refetch }] = createResource(
-    () => ({ m: month(), dead: deadOnly() }),
+    // viewing: re-key on a "Viewing" switch (api.js sends the param itself).
+    () => ({ m: month(), dead: deadOnly(), viewing: scopeKey() }),
     async ({ m, dead }, info) => {
     const refresh = info?.refetching === true;
     const res = await fetchSalesPayments(m, refresh, dead);

@@ -1,3 +1,10 @@
+import {
+    switchParams,
+    asTeamMemberId,
+    setTeamScope,
+    SCOPE_REVOKED_EVENT,
+} from "../stores/cmScope";
+
 const BASE_URL = "https://metadashboard.aajneeticonnectltd.com/api";
 
 const DEPLOY_STAMP = "v1.0.1";
@@ -115,8 +122,37 @@ const buildHeaders = (token, options) => {
     return headers;
 };
 
-export async function api(endpoint, options = {}) {
+// ── CM switcher ("Viewing: Just me / My team / a member") ──
+// Appended here, once, to every GET a campaign manager makes, so no page can
+// forget it. Never on writes. Endpoints that define the switcher itself (who
+// am I, who is on my team) are left alone. A param the caller already set wins.
+const SWITCH_EXEMPT = ["/auth/", "/cm/team-members/"];
+
+const isGet = (options) => !options.method || options.method.toUpperCase() === "GET";
+
+const withSwitch = (endpoint, auth, options) => {
+    if (auth?.role !== "campaign_manager" || !isGet(options)) return endpoint;
+    if (SWITCH_EXEMPT.some((p) => endpoint.startsWith(p))) return endpoint;
+    const add = Object.entries(switchParams()).filter(
+        ([k]) => !new RegExp(`[?&]${k}=`).test(endpoint),
+    );
+    if (!add.length) return endpoint;
+    const qs = add.map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&");
+    return `${endpoint}${endpoint.includes("?") ? "&" : "?"}${qs}`;
+};
+
+// The same URL with the switcher stripped — used to tell "this member is no
+// longer viewable" apart from an ordinary 403.
+const withoutSwitch = (endpoint) => {
+    const u = new URL(endpoint, "http://x");
+    u.searchParams.delete("as_team_member_id");
+    if (u.searchParams.get("scope") === "own") u.searchParams.delete("scope");
+    return `${u.pathname}${u.search}`;
+};
+
+export async function api(rawEndpoint, options = {}) {
     let auth = JSON.parse(localStorage.getItem("auth") || "null");
+    let endpoint = withSwitch(rawEndpoint, auth, options);
 
     if (isTokenExpiredOrExpiringSoon(auth) && auth?.refreshToken) {
         try {
@@ -127,8 +163,8 @@ export async function api(endpoint, options = {}) {
         }
     }
 
-    const makeRequest = (token) =>
-        fetch(`${BASE_URL}${endpoint}`, {
+    const makeRequest = (token, ep = endpoint) =>
+        fetch(`${BASE_URL}${ep}`, {
             ...options,
             headers: buildHeaders(token, options),
         });
@@ -150,6 +186,24 @@ export async function api(endpoint, options = {}) {
                 console.error("[api] Still 401 after refresh — logging out");
                 softLogout("401_after_refresh");
                 return;
+            }
+        }
+
+        // A stale / out-of-team member id now 403s. Retry once without the
+        // switch: if THAT succeeds the member was the problem, so drop back
+        // to "My team" and say so. If it 403s too, it's an ordinary 403.
+        if (
+            res.status === 403 &&
+            isGet(options) &&
+            auth?.role === "campaign_manager" &&
+            asTeamMemberId() != null &&
+            /[?&]as_team_member_id=/.test(endpoint)
+        ) {
+            const retry = await makeRequest(auth?.token, withoutSwitch(endpoint));
+            if (retry.ok) {
+                setTeamScope();
+                window.dispatchEvent(new CustomEvent(SCOPE_REVOKED_EVENT));
+                res = retry;
             }
         }
 

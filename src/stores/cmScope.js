@@ -144,6 +144,24 @@ export const scopeQuery = ({ supportsOwn = false } = {}) => {
   return q;
 };
 
+// ─── Global injection (backend 7273698) ───────────────────────────────────────
+// Every endpoint a CM reads now honours the switcher, so api() appends it to
+// EVERY GET a campaign manager makes — no page has to remember. Writes never
+// carry it (they always act as the logged-in user). Admin is excluded: its
+// "Campaign Managers" screen threads setManagerScope() explicitly per call.
+//
+// Returns the params to add: { as_team_member_id } | { scope: "own" } | {}.
+export const switchParams = () => {
+  const id = asTeamMemberId();
+  if (id != null) return { as_team_member_id: id };
+  if (ownScope()) return { scope: "own" };
+  return {};
+};
+
+// Fired by api() when a selected member is no longer viewable (403 that clears
+// when the switch is dropped). SwitchModeDropdown shows the notice.
+export const SCOPE_REVOKED_EVENT = "cm-scope-revoked";
+
 // Capture meta.viewing_as from any response so the "Viewing as…" banner stays in
 // sync with what the server actually scoped to.
 export const applyMeta = (meta) => {

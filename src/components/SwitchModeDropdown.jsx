@@ -1,4 +1,4 @@
-import { createResource, For, Show } from "solid-js";
+import { createResource, createSignal, onMount, onCleanup, For, Show } from "solid-js";
 import { canSwitch, currentUser } from "../stores/currentUser";
 import { tierLabel } from "../utils/cmTiers";
 import {
@@ -7,6 +7,7 @@ import {
   setAsTeamMemberId,
   setOwnScope,
   setTeamScope,
+  SCOPE_REVOKED_EVENT,
 } from "../stores/cmScope";
 import { fetchTeamMembers } from "../services/cm";
 
@@ -41,6 +42,23 @@ export default function SwitchModeDropdown() {
     },
   );
 
+  // api() resets the switch to My team when a picked member 403s (left the
+  // team, stale id); this just tells the user why the view changed.
+  const [revoked, setRevoked] = createSignal(false);
+  let revokedTimer;
+  onMount(() => {
+    const onRevoked = () => {
+      setRevoked(true);
+      clearTimeout(revokedTimer);
+      revokedTimer = setTimeout(() => setRevoked(false), 6000);
+    };
+    window.addEventListener(SCOPE_REVOKED_EVENT, onRevoked);
+    onCleanup(() => {
+      window.removeEventListener(SCOPE_REVOKED_EVENT, onRevoked);
+      clearTimeout(revokedTimer);
+    });
+  });
+
   const reportsTo = (m) => {
     const lead = m.team_lead_email ?? null;
     return lead && lead !== currentUser.email ? lead : null;
@@ -64,6 +82,20 @@ export default function SwitchModeDropdown() {
   };
 
   return (
+    <>
+    <Show when={revoked()}>
+      <div
+        role="alert"
+        class="fixed top-20 right-4 left-4 sm:left-auto z-[100] sm:max-w-sm flex items-start gap-3 rounded-xl border border-[#B07A14]/40 bg-[#FBF3E2] dark:bg-yellow-900/40 dark:border-yellow-700 px-4 py-3 text-sm text-[#8A6410] dark:text-yellow-100 shadow-lg"
+      >
+        <span aria-hidden="true">⚠</span>
+        <span class="flex-1">
+          <b class="font-semibold">You can no longer view as this member.</b>{" "}
+          Switched back to My team.
+        </span>
+        <button type="button" onClick={() => setRevoked(false)} aria-label="Dismiss" class="flex-none font-bold">✕</button>
+      </div>
+    </Show>
     <Show when={canSwitch()}>
       <div class="hidden sm:flex items-center gap-2">
         <span class="text-xs font-medium text-gray-400 dark:text-gray-500 whitespace-nowrap">
@@ -104,5 +136,6 @@ export default function SwitchModeDropdown() {
         </div>
       </div>
     </Show>
+    </>
   );
 }

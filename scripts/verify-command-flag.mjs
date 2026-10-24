@@ -536,7 +536,7 @@ console.log("\nTier 1 view-only rows");
   check("null in_my_team is openable", canOpenClient({ client: "X", in_my_team: null }) === true);
   check("no client name is not openable", canOpenClient({ in_my_team: true }) === false);
   check("All clients sends no scope", CM_SCOPES[0].key === null);
-  check("scopes are team / own", CM_SCOPES[1].key === "team" && CM_SCOPES[2].key === "own");
+  check("page scopes are All / team only (Just me lives in the switcher)", CM_SCOPES.length === 2 && CM_SCOPES[1].key === "team");
 }
 
 console.log("\nad accounts");

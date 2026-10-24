@@ -1,5 +1,6 @@
 import { createResource, createSignal, createMemo, For, Show } from "solid-js";
 import DeadToggle from "../../components/common/DeadToggle";
+import { scopeKey } from "../../stores/cmScope";
 import {
   fetchStatusBoard,
   STATUS_FILTERS,
@@ -69,7 +70,7 @@ export default function ClientStatusBoard() {
   // within the hour.
   const [deadOnly, setDeadOnly] = createSignal(false);
 
-  const [board, { mutate, refetch }] = createResource(() => ({ dead: deadOnly() }), ({ dead }) =>
+  const [board, { mutate, refetch }] = createResource(() => ({ dead: deadOnly(), viewing: scopeKey() }), ({ dead }) =>
     fetchStatusBoard(undefined, { dead }),
   );
 

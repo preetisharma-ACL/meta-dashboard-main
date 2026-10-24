@@ -1,4 +1,5 @@
 import { createSignal, createResource, For, Show } from "solid-js";
+import { isSwitched, scopeKey } from "../../stores/cmScope";
 import {
   fetchUntagged,
   isCMRole,
@@ -47,10 +48,16 @@ export default function UntaggedAds() {
     start: range().start,
     end: range().end,
     nomen_id: nomen()?.id,
-    mine: isCMRole() && mine() ? 1 : "",
+    // The endpoint shows ALL ads unless mine=1, so a "Viewing" switch (Just me
+    // / a member) only applies with mine=1 — forced on while switched.
+    mine: isCMRole() && (mine() || isSwitched()) ? 1 : "",
+    viewing: scopeKey(),
   });
 
-  const [data, { refetch }] = createResource(params, (p) => fetchUntagged(p));
+  // viewing only re-keys the resource; the switcher itself is added by api.js.
+  const [data, { refetch }] = createResource(params, ({ viewing, ...p }) =>
+    fetchUntagged(p),
+  );
   const d = () => (data.error ? null : data());
 
   // Each table sorts on its own; display-only, API order is the default.
@@ -117,7 +124,13 @@ export default function UntaggedAds() {
             <input
               type="checkbox"
               class="w-4 h-4 accent-[#AC2334] cursor-pointer"
-              checked={mine()}
+              checked={mine() || isSwitched()}
+              disabled={isSwitched()}
+              title={
+                isSwitched()
+                  ? "On while the Viewing switcher is on Just me or a team member"
+                  : undefined
+              }
               onChange={(e) => setMine(e.target.checked)}
             />
             Only my clients

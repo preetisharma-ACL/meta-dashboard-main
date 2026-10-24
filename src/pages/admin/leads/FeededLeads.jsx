@@ -8,6 +8,7 @@ import {
   Show,
 } from "solid-js";
 import { fetchManualBatches, createManualBatch } from "../services/feededLeads";
+import { scopeKey } from "../../../stores/cmScope";
 import { fetchClients } from "../services/fetchClients";
 import { fetchProjectDisplayConfig } from "../services/projectDisplayConfig";
 import { fetchProjectsByClient } from "../services/fetchProjectsByClient";
@@ -167,6 +168,14 @@ export default function ManualBatches() {
       if (filterActive()) loadAllBatches();
     }),
   );
+
+
+  // The "Viewing" switcher rides on every GET (api.js); re-read on a switch.
+  createEffect(on(scopeKey, () => {
+    setFilterPage(1);
+    if (filterActive()) loadAllBatches();
+    else loadBatches(1);
+  }, { defer: true }));
 
   onMount(async () => {
     await loadBatches(1);

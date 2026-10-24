@@ -1,4 +1,5 @@
-import { createSignal, createMemo, onMount, For, Show } from "solid-js";
+import { createSignal, createMemo, createEffect, on, onMount, For, Show } from "solid-js";
+import { scopeKey } from "../../stores/cmScope";
 import {
   listDisqualificationBatches,
   revokeDisqualificationBatch,
@@ -136,6 +137,9 @@ export default function LeadDisqualifications() {
   };
 
   onMount(() => load(1));
+
+  // The "Viewing" switcher rides on every GET (api.js); re-read on a switch.
+  createEffect(on(scopeKey, () => load(1), { defer: true }));
 
   const changeRowsPerPage = (size) => {
     if (size === pageSize()) return;
