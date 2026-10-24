@@ -269,16 +269,7 @@ export default function Sidebar() {
         icon: () => <Icon d="M3 12h4l3 8 4-16 3 8h4" />,
         path: "/campaign-analysis",
       },
-      {
-        // Top-level: coordination has no Clients group, and every CM tier gets
-        // it (the server scopes Tier 2/3 to their own clients).
-        name: "Dead Clients",
-        roles: ["admin", "coordination", "campaign_manager"],
-        icon: () => (
-          <Icon d="M12 3a7 7 0 00-7 7v3l-1 3h4v3h2v-3h4v3h2v-3h4l-1-3v-3a7 7 0 00-7-7zM9.5 11h.01M14.5 11h.01" />
-        ),
-        path: "/dead-clients",
-      },
+     
       {
         name: "Clients",
         roles: ["admin", "campaign_manager"],
@@ -400,6 +391,16 @@ export default function Sidebar() {
             ),
           },
         ],
+      },
+       {
+        // Top-level: coordination has no Clients group, and every CM tier gets
+        // it (the server scopes Tier 2/3 to their own clients).
+        name: "Dead Clients",
+        roles: ["admin", "coordination", "campaign_manager"],
+        icon: () => (
+          <Icon d="M12 3a7 7 0 00-7 7v3l-1 3h4v3h2v-3h4v3h2v-3h4l-1-3v-3a7 7 0 00-7-7zM9.5 11h.01M14.5 11h.01" />
+        ),
+        path: "/dead-clients",
       },
       {
         // Sits next to Clients because creating a client login is the common
