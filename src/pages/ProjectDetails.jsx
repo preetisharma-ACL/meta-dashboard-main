@@ -1457,12 +1457,12 @@ export default function ProjectDetails() {
               <th class="p-3" onClick={() => handleSort("totalLeads")}>
                 {rangeLabel()} Leads {getSortIcon("totalLeads")}
               </th>
-              {userRole() === "client" && (
+              {(userRole() === "client" || userRole() === "admin") && (
                 <th class="p-3" onClick={() => handleSort("totalClicks")}>
                   {rangeLabel()} Clicks {getSortIcon("totalClicks")}
                 </th>
               )}
-              {userRole() === "client" && (
+              {(userRole() === "client" || userRole() === "admin") && (
                 <th class="p-3" onClick={() => handleSort("totalReach")}>
                   {rangeLabel()} Impression {getSortIcon("totalReach")}
                 </th>
@@ -1539,10 +1539,10 @@ export default function ProjectDetails() {
                     </span>
                   </td>
                   <td class="p-3 font-semibold">{row.totalLeads}</td>
-                  {userRole() === "client" && (
+                  {(userRole() === "client" || userRole() === "admin") && (
                     <td class="p-3">{row.totalClicks}</td>
                   )}
-                  {userRole() === "client" && (
+                  {(userRole() === "client" || userRole() === "admin") && (
                     <td class="p-3">{row.totalReach}</td>
                   )}
                   <Show when={!iscpl()}>
@@ -1607,14 +1607,14 @@ export default function ProjectDetails() {
               </td>
 
               {/* Clicks */}
-              {userRole() === "client" && (
+              {(userRole() === "client" || userRole() === "admin") && (
                 <td class="text-blue-700 dark:text-blue-300 font-bold">
                   {showTotal(footerTotals().totalClicks)}
                 </td>
               )}
 
               {/* Reach */}
-              {userRole() === "client" && (
+              {(userRole() === "client" || userRole() === "admin") && (
                 <td class="text-indigo-700 dark:text-indigo-300 font-bold">
                   {showTotal(footerTotals().totalReach)}
                 </td>
