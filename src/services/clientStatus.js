@@ -75,9 +75,16 @@ export const statusLabel = (s) => {
 //                   latest_change: { from_status, to_status, reason,
 //                                    changed_by_email, changed_at } | null }]
 // Server-scoped: admin sees everything, a CM only their assigned clients.
-export const fetchStatusBoard = async (status) => {
-  const qs =
-    status && status !== "all" ? `?status=${encodeURIComponent(status)}` : "";
+// Dead clients are hidden unless `dead` is true (then ONLY dead ones come back).
+// `status` must be a string — createResource(fetchStatusBoard) hands it
+// `true`, which used to go out as ?status=true.
+export const fetchStatusBoard = async (status, { dead = false } = {}) => {
+  const sp = new URLSearchParams();
+  if (typeof status === "string" && status && status !== "all") {
+    sp.set("status", status);
+  }
+  if (dead === true) sp.set("dead", "only");
+  const qs = sp.toString() ? `?${sp}` : "";
   const res = await api(`/clients/status-board/${qs}`, { method: "GET" });
   const data = res?.data ?? {};
   return {

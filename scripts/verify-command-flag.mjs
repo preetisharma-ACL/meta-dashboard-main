@@ -35,6 +35,10 @@ import {
   count,
   asList,
   DASH,
+  canOpenClient,
+  adAccountStatus,
+  adAccountBalance,
+  CM_SCOPES,
 } from "../src/services/commandRules.js";
 
 let failures = 0;
@@ -521,6 +525,35 @@ console.log("\npeople lists survive whichever shape they arrive in");
   }
   check("nothing is an empty list", asList(null).length === 0);
   check('"Not recorded yet" is an empty list', asList("Not recorded yet").length === 0);
+}
+
+console.log("\nTier 1 view-only rows");
+{
+  check("in_my_team false is not openable", canOpenClient({ client: "X", in_my_team: false }) === false);
+  check("in_my_team true is openable", canOpenClient({ client: "X", in_my_team: true }) === true);
+  // Admin/coordination rows don't carry the key — they must keep their link.
+  check("no in_my_team key is openable", canOpenClient({ client: "X" }) === true);
+  check("null in_my_team is openable", canOpenClient({ client: "X", in_my_team: null }) === true);
+  check("no client name is not openable", canOpenClient({ in_my_team: true }) === false);
+  check("All clients sends no scope", CM_SCOPES[0].key === null);
+  check("scopes are team / own", CM_SCOPES[1].key === "team" && CM_SCOPES[2].key === "own");
+}
+
+console.log("\nad accounts");
+{
+  check("status 1 is Active and ok", adAccountStatus(1).label === "Active" && adAccountStatus(1).ok);
+  check('status "1" string is ok', adAccountStatus("1").ok === true);
+  for (const [c, l] of [[2, "Disabled"], [3, "Unsettled"], [7, "Pending risk review"], [8, "Pending settlement"], [9, "In grace period"], [100, "Pending closure"], [101, "Closed"]]) {
+    check(`status ${c} is ${l} and a warning`, adAccountStatus(c).label === l && adAccountStatus(c).ok === false);
+  }
+  check("unknown code is a warning, not Active", adAccountStatus(55).ok === false);
+  check("missing code is a warning", adAccountStatus(null).ok === false);
+  // The rule the ticket names: never ₹0 for a postpaid account.
+  check("postpaid null balance is Not prepaid", adAccountBalance({ is_prepay: false, available_balance: null }) === "Not prepaid");
+  check("missing is_prepay is Not prepaid", adAccountBalance({ available_balance: null }) === "Not prepaid");
+  check("prepaid 0 is ₹0", adAccountBalance({ is_prepay: true, available_balance: 0 }) === "₹0");
+  check("prepaid null is a dash, not ₹0", adAccountBalance({ is_prepay: true, available_balance: null }) === DASH);
+  check("prepaid 12500 formats", adAccountBalance({ is_prepay: true, available_balance: 12500 }) === "₹12,500");
 }
 
 console.log(

@@ -1,4 +1,5 @@
 import { createResource, createSignal, createMemo, For, Show } from "solid-js";
+import DeadToggle from "../../components/common/DeadToggle";
 import {
   fetchStatusBoard,
   STATUS_FILTERS,
@@ -63,7 +64,14 @@ export default function ClientStatusBoard() {
   const [query, setQuery] = createSignal("");
   const [historyFor, setHistoryFor] = createSignal(null);
 
-  const [board, { mutate, refetch }] = createResource(fetchStatusBoard);
+  // Dead clients are hidden server-side; ON shows ONLY them (?dead=only). This
+  // is where a CM revives one — moving it off hold/completed brings it back
+  // within the hour.
+  const [deadOnly, setDeadOnly] = createSignal(false);
+
+  const [board, { mutate, refetch }] = createResource(() => ({ dead: deadOnly() }), ({ dead }) =>
+    fetchStatusBoard(undefined, { dead }),
+  );
 
   const clients = () => board()?.clients ?? [];
 
@@ -195,13 +203,21 @@ export default function ClientStatusBoard() {
             reason on every change.
           </p>
         </div>
-        <button
-          onClick={() => refetch()}
-          disabled={board.loading}
-          class="px-3.5 py-2 text-sm font-semibold rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:border-[#AC2334]/40 disabled:opacity-50 transition"
-        >
-          {board.loading ? "Refreshing…" : "Refresh"}
-        </button>
+        <div class="flex items-center gap-2 flex-wrap">
+          {/* Dead = hold/completed with nothing for 10 days. Changing the status here revives it within the hour. */}
+          <DeadToggle
+            value={deadOnly()}
+            onChange={setDeadOnly}
+            disabled={board.loading}
+          />
+          <button
+            onClick={() => refetch()}
+            disabled={board.loading}
+            class="px-3.5 py-2 text-sm font-semibold rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:border-[#AC2334]/40 disabled:opacity-50 transition"
+          >
+            {board.loading ? "Refreshing…" : "Refresh"}
+          </button>
+        </div>
       </div>
 
       {/* ── Tabs ── */}

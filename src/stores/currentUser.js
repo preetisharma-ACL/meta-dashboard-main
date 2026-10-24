@@ -327,6 +327,22 @@ export const canWriteConfigs = () => {
   return isActiveSeniorCM();
 };
 
+// ─── Tier 1 only ──────────────────────────────────────────────────────────────
+// Deliberately NOT isSeniorCM(): Tier 1 and Tier 2 share every power EXCEPT
+// Campaign Analysis (/clients/command/), which opens to Tier 1 alone and 403s
+// Tier 2/3. Use this for that page and nothing else.
+export const isTier1CM = () => {
+  if (currentUser.loaded) return isCM() && cmTier() === "tier_1";
+  const auth = readAuth();
+  return auth?.role === "campaign_manager" && auth?.cmTier === "tier_1";
+};
+
+// Campaign Analysis: admin + coordination, plus Tier 1 CMs.
+export const canSeeCampaignAnalysis = () => {
+  const role = currentUser.loaded ? currentUser.role : readAuth()?.role;
+  return role === "admin" || role === "coordination" || isTier1CM();
+};
+
 // True once the tier is actually known. A campaign_manager's tier arrives with
 // /auth/me, so a route guard must WAIT on this rather than treat "tier not
 // loaded yet" as "not senior" and bounce a legitimate tier-1/tier-2 CM.

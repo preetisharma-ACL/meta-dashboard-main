@@ -10,6 +10,7 @@ import {
 } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { fetchClients } from "../services/fetchClients";
+import DeadToggle from "../../../components/common/DeadToggle";
 import { fetchHierarchyClients } from "../../../services/cm";
 import { fetchAssignmentsByClient } from "../../../services/cmAssignments";
 import { loadErrorMessage } from "../../../utils/apiErrors";
@@ -148,6 +149,9 @@ export default function Clients() {
   // engagement label above, and filtered differently: admins get a server-side
   // ?activity=, CMs read the hierarchy, which has no such param.
   const [activityFilter, setActivityFilter] = createSignal("all");
+  // Dead clients are hidden server-side; ON asks for ONLY dead ones
+  // (?dead=only). Admin path only — the CM hierarchy takes no such param.
+  const [deadOnly, setDeadOnly] = createSignal(false);
   // Value tier (MANUAL, commercial, INTERNAL) — a fourth label, and the only one
   // of the four that a client must never see. Admin + coordination only.
   const [tierFilter, setTierFilter] = createSignal("all");
@@ -160,9 +164,11 @@ export default function Clients() {
   // which carries neither. The status board serves both, scoped server-side to
   // whatever the caller may see, so ONE call fills the column for admin and CM
   // alike and gives us the reason caption the badge needs.
-  const [statusBoard, { mutate: mutateBoard }] = createResource(async () => {
+  // Keyed on the dead toggle: the board hides dead clients too, so with the
+  // toggle on it must be asked for them or their badges fall back to the row.
+  const [statusBoard, { mutate: mutateBoard }] = createResource(() => ({ dead: deadOnly() }), async ({ dead }) => {
     try {
-      return await fetchStatusBoard();
+      return await fetchStatusBoard(undefined, { dead });
     } catch (err) {
       console.error("Clients: status board failed", err);
       return { counts: {}, clients: [] };
@@ -225,10 +231,10 @@ export default function Clients() {
   // at all, which keeps an internal classification off the wire for people who
   // must not see it — not merely un-rendered.
   const [tierBoard, { mutate: mutateTierBoard }] = createResource(
-    () => (canSeeValueTier() ? "load" : null),
-    async () => {
+    () => (canSeeValueTier() ? { dead: deadOnly() } : null),
+    async ({ dead }) => {
       try {
-        return await fetchValueTierBoard();
+        return await fetchValueTierBoard({ dead });
       } catch (err) {
         console.error("Clients: value tier board failed", err);
         return { counts: {}, clients: [] };
@@ -439,7 +445,13 @@ export default function Clients() {
       let allData = [];
 
       while (hasMore) {
-        const res = await fetchClients(currentPage, 1000, undefined, activity);
+        const res = await fetchClients(
+          currentPage,
+          1000,
+          undefined,
+          activity,
+          deadOnly(),
+        );
         const clientsData = res.data || [];
 
         allData = [...allData, ...clientsData];
@@ -479,7 +491,7 @@ export default function Clients() {
   // locally in filtered() below, so no refetch there.
   createEffect(
     on(
-      activityFilter,
+      [activityFilter, deadOnly],
       async () => {
         if (isCampaignManager()) return;
         setLoading(true);
@@ -762,6 +774,11 @@ export default function Clients() {
                   : `campaigns ${activityFilter()}`}
               </span>
             </Show>
+            <Show when={!isCampaignManager() && deadOnly()}>
+              <span class="font-semibold text-gray-700 dark:text-gray-200">
+                {" "}dead clients only
+              </span>
+            </Show>
             {" "}· click a row to open that client's dashboard
           </p>
         </div>
@@ -881,6 +898,15 @@ export default function Clients() {
                 {(m) => <option value={m.email}>{m.name}</option>}
               </For>
             </select>
+          </Show>
+
+          <Show when={!isCampaignManager()}>
+            <DeadToggle
+              value={deadOnly()}
+              onChange={setDeadOnly}
+              disabled={loading()}
+              class="h-11 rounded-xl"
+            />
           </Show>
 
           <div class="ml-auto flex items-center gap-3">

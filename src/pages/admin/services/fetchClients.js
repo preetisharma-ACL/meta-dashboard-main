@@ -1,4 +1,5 @@
 import { api } from "../../../api/api";
+import { withDead } from "../../../services/deadClients";
 
 // Fetch paginated clients list. The trailing slash before the query matches the
 // convention of every other endpoint here (`/path/?query`) and avoids an
@@ -11,7 +12,15 @@ import { api } from "../../../api/api";
 // DIFFERENT AXIS from `status`: that one is the manual engagement label, this one
 // is derived from live campaigns (see services/campaignActivity.js). They compose
 // — passing both asks for "marked Active but nothing running".
-export const fetchClients = async (page = 1, pageSize = 20, status, activity) => {
+// `dead` true sends ?dead=only — dead clients ONLY. Omitted, the server hides
+// them (see services/deadClients.js).
+export const fetchClients = async (
+  page = 1,
+  pageSize = 20,
+  status,
+  activity,
+  dead = false,
+) => {
   let url = `/clients/admin/clients/?page=${page}&page_size=${pageSize}`;
   if (status && status !== "all") {
     url += `&status=${encodeURIComponent(status)}`;
@@ -19,14 +28,15 @@ export const fetchClients = async (page = 1, pageSize = 20, status, activity) =>
   if (activity && activity !== "all") {
     url += `&activity=${encodeURIComponent(activity)}`;
   }
-  return await api(url, { method: "GET" });
+  return await api(withDead(url, dead), { method: "GET" });
 };
 
 // Sweep every page and return the flat client list. Used where we need the whole
 // roster in one shot (e.g. the authoritative is_active / client_type set that the
 // admin "Campaign Managers' Clients" section joins against the per-CM own-client
 // lists). Large page size keeps this to as few round-trips as possible.
-export const fetchAllAdminClients = async ({ status, activity } = {}) => {
+// The server hides dead clients from this roster; `dead: true` sweeps ONLY them.
+export const fetchAllAdminClients = async ({ status, activity, dead } = {}) => {
   let page = 1;
   let all = [];
   let total = Infinity;
@@ -49,7 +59,7 @@ export const fetchAllAdminClients = async ({ status, activity } = {}) => {
   // because reading the applied page_size costs nothing when it matches the
   // requested one. Guards: stop on an empty page, and a hard page cap.
   while (all.length < total) {
-    const res = await fetchClients(page, pageSize, status, activity);
+    const res = await fetchClients(page, pageSize, status, activity, dead === true);
     const batch = Array.isArray(res?.data) ? res.data : [];
     if (batch.length === 0) break;
     all = [...all, ...batch];

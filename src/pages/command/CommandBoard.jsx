@@ -43,15 +43,25 @@ import {
   isoDate,
   fmtRange,
   DASH,
+  CM_SCOPES,
+  canOpenClient,
+  adAccountStatus,
+  adAccountBalance,
 } from "../../services/commandRules";
 import Avatar from "../../components/common/Avatar";
+import DeadToggle from "../../components/common/DeadToggle";
+import { isTier1CM } from "../../stores/currentUser";
+import { openClientPage } from "../../utils/openClientPage";
 import RowsPerPageSelect from "../../components/common/RowsPerPageSelect";
 import { loadErrorMessage } from "../../utils/apiErrors";
 
 // ─── Command ──────────────────────────────────────────────────────────────────
 // One row per client, every operational number the desk works from in the
 // morning: what's live, what it's spending, what it's returning, what's owed and
-// who owns it. Admin + coordination; the endpoint 403s everyone else.
+// who owns it. Admin + coordination + Tier 1 CMs; the endpoint 403s everyone
+// else. A Tier 1 CM sees ALL clients by default (with a team/own toggle), but
+// rows outside their team (in_my_team === false) are view-only — the client
+// page itself refuses them.
 //
 // SORT, FILTER, SEARCH AND PAGE ARE ALL SERVER PARAMS. The response is one page
 // of a larger set, so narrowing the rows in hand would search a fraction of the
@@ -65,12 +75,8 @@ import { loadErrorMessage } from "../../utils/apiErrors";
 // being delivered leads nobody has priced, and gets a warning. See
 // premiumSpendState() — the distinction lives there, not in this file.
 
-// A client route is "/:client-nomen-name" — nomen name lowercased, whitespace
-// runs collapsed to "-" (matches SalesClients and ClientDashboard's slugify).
-const slugify = (name) =>
-  String(name ?? "")
-    .toLowerCase()
-    .replace(/\s+/g, "-");
+// Client click-through goes via openClientPage, which sets the dashboard's
+// client context first — CMs and coordination don't re-derive it from the URL.
 
 const TYPE_CHIP = {
   hybrid:
@@ -134,6 +140,17 @@ export default function CommandBoard() {
   // This toggle ADDS them back; it does not take them away.
   const [includeDormant, setIncludeDormant] = createSignal(false);
 
+  // Dead clients (status hold/completed, nothing for 10 days, no live
+  // campaign) are hidden server-side. ON sends dead=only — ONLY dead clients —
+  // and the server skips the dormant filter by itself, so the dormant toggle
+  // steps aside while this is on.
+  const [dead, setDead] = createSignal(false);
+
+  // Tier 1 CMs only: null = all clients (default, no param) | "team" | "own".
+  // Survives range, filters, search and paging — only page resets on change.
+  const [scope, setScope] = createSignal(null);
+  const showScope = () => isTier1CM();
+
   // ── View-only state ────────────────────────────────────────────────────────
   const [gapOnly, setGapOnly] = createSignal(false);
   const [expanded, setExpanded] = createSignal(null);
@@ -168,6 +185,8 @@ export default function CommandBoard() {
       type: type(),
       q: q(),
       includeDormant: includeDormant(),
+      dead: dead(),
+      scope: showScope() ? scope() : null,
       sort: sort(),
       dir: dir(),
       page: page(),
@@ -313,13 +332,14 @@ export default function CommandBoard() {
   // true on Last 30. Type and search DO change which clients are in scope, so a
   // count learned under one must never be shown under another.
   const dormantRows = createMemo(() => rows().filter(isDormant));
-  const narrowKey = () => `${type() ?? ""}|${q()}`;
+  const narrowKey = () =>
+    `${type() ?? ""}|${q()}|${showScope() ? (scope() ?? "") : ""}`;
   const [knownDormant, setKnownDormant] = createSignal({});
 
   createEffect(() => {
     // Only record a COMPLETE count. A paged response knows its own page's
     // dormant rows and nothing about the rest.
-    if (!includeDormant() || !wholeSetInView()) return;
+    if (dead() || !includeDormant() || !wholeSetInView()) return;
     const key = narrowKey();
     const n = dormantRows().length;
     setKnownDormant((prev) => (prev[key] === n ? prev : { ...prev, [key]: n }));
@@ -337,6 +357,18 @@ export default function CommandBoard() {
     setIncludeDormant((v) => !v);
   };
 
+  const toggleDead = (on) => {
+    setPage(1);
+    setGapOnly(false);
+    setDead(on);
+  };
+
+  const pickScope = (key) => {
+    if (scope() === key) return;
+    setPage(1);
+    setScope(key);
+  };
+
   const gotoPage = (n) => {
     const tp = pagination().totalPages;
     const target = Math.max(1, n);
@@ -348,7 +380,11 @@ export default function CommandBoard() {
   const rangeEnd = () => rangeStart() + rows().length - (rows().length ? 1 : 0);
 
   const rowKey = (r, i) => r.client ?? r.email ?? `row-${i}`;
-  const toggleExpand = (key) => setExpanded((c) => (c === key ? null : key));
+  // One drawer open at a time, per row AND kind ("projects" | "accounts").
+  const toggleExpand = (key, kind) => {
+    const id = `${kind}:${key}`;
+    setExpanded((c) => (c === id ? null : id));
+  };
 
   // The date range narrows the FIGURES, not the roster — a client with no spend
   // in the window still has a row. So only type and search can empty the table,
@@ -394,6 +430,40 @@ export default function CommandBoard() {
           {board.loading ? "Loading…" : "Refresh"}
         </button>
       </div>
+
+      {/* ══ Tier 1 scope ══ — CMs only; admin and coordination always see
+          everything and never get this control. */}
+      <Show when={showScope()}>
+        <div class="mb-4 flex flex-wrap items-center gap-3">
+          <div
+            role="group"
+            aria-label="Which clients"
+            class="inline-flex items-center gap-1 bg-white dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-600 rounded-full p-1"
+          >
+            <For each={CM_SCOPES}>
+              {(s) => (
+                <button
+                  type="button"
+                  onClick={() => pickScope(s.key)}
+                  aria-pressed={scope() === s.key}
+                  class={`px-4 py-1.5 rounded-full text-[13px] font-semibold transition-colors whitespace-nowrap ${
+                    scope() === s.key
+                      ? "bg-[#AC2334] text-white"
+                      : "text-[#54657E] dark:text-gray-300 hover:text-[#14233A] dark:hover:text-white"
+                  }`}
+                >
+                  {s.label}
+                </button>
+              )}
+            </For>
+          </div>
+          <Show when={scope() === null}>
+            <span class="text-[12px] text-gray-400 dark:text-gray-400">
+              Clients outside your team are view-only.
+            </span>
+          </Show>
+        </div>
+      </Show>
 
       {/* ══ Date range ══ */}
       <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-4 mb-4">
@@ -479,7 +549,7 @@ export default function CommandBoard() {
         >
           <span>
             {board.error?.status === 403
-              ? "This page is for admin and coordination only."
+              ? "This page is for admin, coordination and Tier 1 campaign managers only."
               : `Could not load Campaign Analysis. ${loadErrorMessage(board.error)}`}
           </span>
           <Show when={board.error?.status !== 403}>
@@ -506,7 +576,9 @@ export default function CommandBoard() {
           tone="navy"
           value={count(totals().clients)}
           note={
-            includeDormant()
+            dead()
+              ? "Dead clients only — every total here covers just them."
+              : includeDormant()
               ? undefined
               : `Delivering clients only. Dormant clients — no leads and no spend in the ${DELIVERY_WINDOW_LABEL} — are excluded by default, and every total here excludes them too.`
           }
@@ -586,6 +658,9 @@ export default function CommandBoard() {
             already running/paused in this codebase, and the 14 clients that
             delivered this week off since-paused campaigns are precisely where
             those two answers diverge. */}
+        <DeadToggle value={dead()} onChange={toggleDead} />
+
+        <Show when={!dead()}>
         <button
           type="button"
           onClick={toggleDormant}
@@ -619,6 +694,7 @@ export default function CommandBoard() {
             </span>
           </Show>
         </button>
+        </Show>
 
         {/* The flag, as a filter. Its label always names the set it counted —
             there is no server param for the gap, so this narrows the page in
@@ -662,11 +738,21 @@ export default function CommandBoard() {
           {/* The count lives on the toggle, not here as well. This only names
               the scope, which is otherwise invisible: the page is filtered
               before anyone touches a control. */}
-          <Show when={!includeDormant()}>
-            <span class="text-gray-300 dark:text-gray-400"> · </span>
-            <span title={`No leads and no spend in the ${DELIVERY_WINDOW_LABEL}`}>
-              dormant hidden
-            </span>
+          <Show
+            when={!dead()}
+            fallback={
+              <>
+                <span class="text-gray-300 dark:text-gray-400"> · </span>
+                dead clients only
+              </>
+            }
+          >
+            <Show when={!includeDormant()}>
+              <span class="text-gray-300 dark:text-gray-400"> · </span>
+              <span title={`No leads and no spend in the ${DELIVERY_WINDOW_LABEL}`}>
+                dormant hidden
+              </span>
+            </Show>
           </Show>
         </span>
       </div>
@@ -882,6 +968,10 @@ export default function CommandBoard() {
                         Every client in view has a pricing config for these
                         dates.
                       </Match>
+                      <Match when={dead()}>
+                        No dead clients
+                        {hasFilters() ? " match these filters" : ""}.
+                      </Match>
                       {/* Named separately so the reader isn't left hunting for
                           a range filter that had nothing to do with it — this
                           one is a fixed 7-day window, and it is on before
@@ -914,7 +1004,10 @@ export default function CommandBoard() {
                   {(r, i) => {
                     const key = rowKey(r, i());
                     const gap = () => isConfigGap(r);
-                    const open = () => expanded() === key;
+                    const open = () => expanded() === `projects:${key}`;
+                    const acctsOpen = () => expanded() === `accounts:${key}`;
+                    const openable = () => canOpenClient(r);
+                    const viewOnly = () => r.in_my_team === false;
                     return (
                       <>
                         <tr
@@ -945,20 +1038,47 @@ export default function CommandBoard() {
                                 <Avatar name={r.client || r.email} />
                               </span>
                               <div class="min-w-0">
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    r.client && navigate(`/${slugify(r.client)}`)
+                                {/* Outside a Tier 1 CM's team: no link — the
+                                    client page would refuse them. */}
+                                <Show
+                                  when={openable()}
+                                  fallback={
+                                    <span
+                                      class="flex items-center gap-1.5 max-w-[200px]"
+                                      title={
+                                        viewOnly()
+                                          ? "Not in your team — view only. The client page is open to that client's own team."
+                                          : undefined
+                                      }
+                                    >
+                                      <span class="truncate font-medium text-gray-400 dark:text-gray-500 cursor-default">
+                                        {r.client || DASH}
+                                      </span>
+                                      <Show when={viewOnly()}>
+                                        <span class="flex-none text-[9px] font-bold uppercase tracking-wider px-1.5 py-[1px] rounded bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500">
+                                          View only
+                                        </span>
+                                      </Show>
+                                    </span>
                                   }
-                                  disabled={!r.client}
-                                  class={`block max-w-[200px] truncate text-left font-medium hover:text-[#AC2334] dark:hover:text-[#E4566A] disabled:hover:text-inherit disabled:cursor-default ${
-                                    isDormant(r)
-                                      ? "text-gray-400 dark:text-gray-400"
-                                      : "text-gray-800 dark:text-gray-100"
-                                  }`}
                                 >
-                                  {r.client || DASH}
-                                </button>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      openClientPage(navigate, {
+                                        nomen: r.client,
+                                        pk: r.client_id,
+                                      })
+                                    }
+                                    class={`block max-w-[200px] truncate text-left font-medium hover:text-[#AC2334] dark:hover:text-[#E4566A] ${
+                                      isDormant(r)
+                                        ? "text-gray-400 dark:text-gray-400"
+                                        : "text-gray-800 dark:text-gray-100"
+                                    }`}
+                                  >
+                                    {r.client}
+                                  </button>
+                                </Show>
                                 <p class="max-w-[200px] truncate text-xs text-gray-500 dark:text-gray-400">
                                   {r.email || DASH}
                                 </p>
@@ -1012,7 +1132,7 @@ export default function CommandBoard() {
                             >
                               <button
                                 type="button"
-                                onClick={() => toggleExpand(key)}
+                                onClick={() => toggleExpand(key, "projects")}
                                 aria-expanded={open()}
                                 class="inline-flex items-center gap-1.5 text-[13px] font-semibold text-[#3E6FB0] dark:text-blue-300 hover:underline"
                               >
@@ -1034,13 +1154,42 @@ export default function CommandBoard() {
                             <span class="text-gray-800 dark:text-gray-100">
                               {count(r.active_campaigns)}
                             </span>
-                            <span
-                              class="text-xs text-gray-400 dark:text-gray-400"
-                              title="Ad accounts"
-                            >
-                              {" "}
-                              / {count(r.ad_accounts)}
+                            <span class="text-xs text-gray-400 dark:text-gray-400">
+                              {" "}/{" "}
                             </span>
+                            <Show
+                              when={r.ad_account_list.length > 0}
+                              fallback={
+                                <span
+                                  class="text-xs text-gray-400 dark:text-gray-400"
+                                  title="Ad accounts"
+                                >
+                                  {count(r.ad_accounts)}
+                                </span>
+                              }
+                            >
+                              <button
+                                type="button"
+                                onClick={() => toggleExpand(key, "accounts")}
+                                aria-expanded={acctsOpen()}
+                                title="Show ad accounts"
+                                class={`inline-flex items-center gap-0.5 text-xs font-semibold hover:underline ${
+                                  r.ad_account_list.some(
+                                    (a) => !adAccountStatus(a.account_status).ok,
+                                  )
+                                    ? "text-[#B07A14] dark:text-yellow-300"
+                                    : "text-[#3E6FB0] dark:text-blue-300"
+                                }`}
+                              >
+                                {count(r.ad_accounts)}
+                                <span
+                                  class={`text-[9px] transition-transform ${acctsOpen() ? "rotate-180" : ""}`}
+                                  aria-hidden="true"
+                                >
+                                  ▾
+                                </span>
+                              </button>
+                            </Show>
                           </td>
 
                           {/* ── Everything from here to Premium spend is the
@@ -1125,6 +1274,15 @@ export default function CommandBoard() {
                                   )}
                                 </For>
                               </div>
+                            </td>
+                          </tr>
+                        </Show>
+
+                        {/* Ad accounts — current state, not date-scoped. */}
+                        <Show when={acctsOpen()}>
+                          <tr class="bg-[#F6F9FC] dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800">
+                            <td colspan={COLS} class="px-3 py-3">
+                              <AdAccountList accounts={r.ad_account_list} />
                             </td>
                           </tr>
                         </Show>
@@ -1382,6 +1540,83 @@ function PremiumSpend(props) {
         </span>
       </Match>
     </Switch>
+  );
+}
+
+// ── Ad accounts ───────────────────────────────────────────────────────────────
+// Status 1 is the only healthy one; every other code reads as a warning. A
+// postpaid account has no balance to show — "Not prepaid", never ₹0.
+function AdAccountList(props) {
+  const ATH =
+    "px-3 py-2 text-left text-[10px] font-bold uppercase tracking-wider text-gray-400 whitespace-nowrap";
+  return (
+    <div>
+      <p class="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2">
+        Ad accounts · as they stand now
+      </p>
+      <div class="max-w-4xl overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+        <table class="min-w-full text-[13px]">
+          <thead>
+            <tr class="border-b border-gray-100 dark:border-gray-800">
+              <th class={ATH}>Account</th>
+              <th class={ATH}>Portfolio</th>
+              <th class={ATH}>Status</th>
+              <th class={`${ATH} text-right`}>Available balance</th>
+              <th class={`${ATH} text-right`}>Active campaigns</th>
+            </tr>
+          </thead>
+          <tbody>
+            <For each={props.accounts}>
+              {(a) => {
+                const st = () => adAccountStatus(a.account_status);
+                return (
+                  <tr class="border-b last:border-0 border-gray-100 dark:border-gray-800">
+                    <td class="px-3 py-2">
+                      <p class="font-medium text-gray-800 dark:text-gray-100 max-w-[260px] truncate" title={a.name ?? ""}>
+                        {a.name || <Missing>No name</Missing>}
+                      </p>
+                      <p class="text-[11px] tabular-nums text-gray-400">
+                        {a.account_id || DASH}
+                      </p>
+                    </td>
+                    <td class="px-3 py-2 text-gray-600 dark:text-gray-300 whitespace-nowrap">
+                      {a.portfolio || <Missing />}
+                    </td>
+                    <td class="px-3 py-2">
+                      <span
+                        class={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-[2px] rounded-full whitespace-nowrap ${
+                          st().ok
+                            ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+                            : "bg-[#FBF3E2] text-[#8A6410] border border-[#B07A14]/40 dark:bg-yellow-900/25 dark:text-yellow-200"
+                        }`}
+                        title={`Meta account_status ${a.account_status ?? "?"}`}
+                      >
+                        <Show when={!st().ok}>
+                          <span aria-hidden="true">⚠</span>
+                        </Show>
+                        {st().label}
+                      </span>
+                    </td>
+                    <td
+                      class={`px-3 py-2 text-right tabular-nums whitespace-nowrap ${
+                        a.is_prepay
+                          ? "font-semibold text-gray-800 dark:text-gray-100"
+                          : "text-gray-400 dark:text-gray-500 italic"
+                      }`}
+                    >
+                      {adAccountBalance(a)}
+                    </td>
+                    <td class="px-3 py-2 text-right tabular-nums text-gray-800 dark:text-gray-100">
+                      {count(a.active_campaigns)}
+                    </td>
+                  </tr>
+                );
+              }}
+            </For>
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
 

@@ -51,11 +51,18 @@ export const fetchSalesManagers = async () => {
 //   month  → "YYYY-MM" (omit to let the server default to the current month)
 //   refresh→ true ONLY from an explicit Refresh button — bypasses the server's
 //            10-min cache and forces a ~6s recompute.
-export const fetchSalesPayments = async (month = "", refresh = false) => {
+//   dead   → true sends dead=only: dead clients ONLY, and the totals then cover
+//            only them. Omitted, the server hides dead clients.
+export const fetchSalesPayments = async (
+  month = "",
+  refresh = false,
+  dead = false,
+) => {
   let url = `/billing/admin/payments-overview/`;
   const params = [];
   if (month) params.push(`month=${encodeURIComponent(month)}`);
   if (refresh) params.push(`refresh=1`);
+  if (dead) params.push(`dead=only`);
   if (params.length) url += `?${params.join("&")}`;
   return await api(url, { method: "GET" });
 };

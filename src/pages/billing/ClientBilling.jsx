@@ -2,6 +2,7 @@ import { createSignal, createResource, createMemo, Show } from "solid-js";
 import { A } from "@solidjs/router";
 
 import { fetchSalesPayments } from "../../services/sales";
+import DeadToggle from "../../components/common/DeadToggle";
 import {
   fmtMoney,
   isMissing,
@@ -73,6 +74,9 @@ export default function ClientBilling() {
   const [clientTypes, setClientTypes] = createSignal(ALL_CLIENT_TYPES);
   // GST view. Including GST is the default — it is the amount actually payable.
   const [incGst, setIncGst] = createSignal(true);
+  // Dead clients are hidden server-side. ON → dead=only: ONLY dead clients, and
+  // the server's totals then cover only them.
+  const [deadOnly, setDeadOnly] = createSignal(false);
 
   // Role decides only whether to show the scope hint, never what data to keep.
   // Prefer the loaded /auth/me store; fall back to the role mirrored into
@@ -90,11 +94,14 @@ export default function ClientBilling() {
   // Keyed on month → switching months refetches (cached, no refresh param). The
   // Refresh button calls refetch(true); the fetcher reads info.refetching to
   // append refresh=1 (bypasses the server's 10-min cache).
-  const [payload, { refetch }] = createResource(month, async (m, info) => {
+  const [payload, { refetch }] = createResource(
+    () => ({ m: month(), dead: deadOnly() }),
+    async ({ m, dead }, info) => {
     const refresh = info?.refetching === true;
-    const res = await fetchSalesPayments(m, refresh);
+    const res = await fetchSalesPayments(m, refresh, dead);
     return res?.data ?? {};
-  });
+  },
+  );
 
   const totals = () => payload()?.totals ?? {};
   // Server order (debtors first) preserved — the table handles opt-in sorting.
@@ -238,6 +245,13 @@ export default function ClientBilling() {
             value={month()}
             max={currentMonthStr()}
             onChange={handleMonthChange}
+          />
+
+          <DeadToggle
+            value={deadOnly()}
+            onChange={setDeadOnly}
+            disabled={loading() || refreshing()}
+            class="rounded-full"
           />
 
           {/* GST toggle — flips every money column AND the tiles together. */}

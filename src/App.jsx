@@ -33,6 +33,9 @@ import EditClients from "./pages/admin/client/EditClients";
 import ClientStatusBoard from "./pages/clients/ClientStatusBoard";
 import ValueTierBoard from "./pages/clients/ValueTierBoard";
 import CommandBoard from "./pages/command/CommandBoard";
+import DeadClients from "./pages/clients/DeadClients";
+import GateRoute from "./utils/GateRoute";
+import { canSeeCampaignAnalysis } from "./stores/currentUser";
 import { SuperuserRoute } from "./pages/control/ControlUI";
 import ControlModels from "./pages/control/ControlModels";
 import ControlChangeList from "./pages/control/ControlChangeList";
@@ -621,15 +624,25 @@ function App() {
             />
             {/* Campaign Analysis (formerly "Command") — every client on one
                 screen over a chosen date range: what's live, what it spends,
-                what it returns, what's owed and who owns it. Admin +
-                coordination ONLY; /clients/command/ 403s every other role, so
-                this gate only decides whether the screen is offered, never
-                whether the data is safe to serve. */}
+                what it returns, what's owed and who owns it. Admin,
+                coordination and TIER 1 CMs; /clients/command/ 403s Tier 2/3
+                and every other role, so this gate only decides whether the
+                screen is offered, never whether the data is safe to serve. */}
             <Route
               path="/campaign-analysis"
               component={() => (
-                <AdminRoute roles={["admin", "coordination"]}>
+                <GateRoute allow={canSeeCampaignAnalysis}>
                   <CommandBoard />
+                </GateRoute>
+              )}
+            />
+            {/* Dead clients — every CM tier sees it; the server scopes Tier 2/3
+                to their own clients. */}
+            <Route
+              path="/dead-clients"
+              component={() => (
+                <AdminRoute roles={["admin", "coordination", "campaign_manager"]}>
+                  <DeadClients />
                 </AdminRoute>
               )}
             />

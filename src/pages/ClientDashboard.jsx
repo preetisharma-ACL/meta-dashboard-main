@@ -219,7 +219,14 @@ const ensureClientContextFromRoute = async (routeSlug) => {
   // Slow path (unset or stale): resolve the slug via the admin roster.
   try {
     const roster = await fetchAllAdminClients();
-    const match = roster.find((c) => slugify(c.client_nomen_name) === routeSlug);
+    let match = roster.find((c) => slugify(c.client_nomen_name) === routeSlug);
+    // The roster hides dead clients by default, but their pages still open
+    // (from the Dead Clients screen, an old link, a bookmark) — so a miss asks
+    // the dead-only roster before calling the slug unknown.
+    if (!match) {
+      const deadRoster = await fetchAllAdminClients({ dead: true });
+      match = deadRoster.find((c) => slugify(c.client_nomen_name) === routeSlug);
+    }
     if (!match) {
       console.warn(`ClientDashboard: no client matches route slug "${routeSlug}"`);
       return { ok: false, changed: false, reason: "not-found" };

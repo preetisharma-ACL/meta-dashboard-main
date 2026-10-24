@@ -17,7 +17,7 @@ import {
 // imports nothing and is therefore checkable by scripts/verify-command-flag.mjs.
 // This file only knows how to ask the server.
 //
-// ADMIN + COORDINATION ONLY. The endpoint 403s everyone else, so the route gate
+// ADMIN + COORDINATION + TIER 1 CMs. The endpoint 403s everyone else, so the route gate
 // on the page only decides whether to offer the screen — it is not the security
 // boundary, as everywhere else in this app.
 //
@@ -144,10 +144,31 @@ const normaliseProjects = (row) => {
   }));
 };
 
+// One entry per ad account; the count field (ad_accounts) always equals the
+// list length per the backend.
+const normaliseAdAccounts = (row) => {
+  const list = Array.isArray(row?.ad_account_list) ? row.ad_account_list : [];
+  return list.map((a) => ({
+    id: a?.id ?? null,
+    account_id: a?.account_id ?? null,
+    name: a?.name ?? null,
+    portfolio: a?.portfolio ?? null,
+    account_status: a?.account_status ?? null,
+    is_prepay: a?.is_prepay === true,
+    available_balance: num(a?.available_balance),
+    active_campaigns: num(a?.active_campaigns),
+  }));
+};
+
 const normaliseRow = (row) => {
   const projects = normaliseProjects(row);
   return {
     ...row,
+    ad_account_list: normaliseAdAccounts(row),
+    // Tier 1 CMs only; absent (undefined) for admin/coordination. Kept as
+    // true / false / null — see canOpenClient in commandRules.
+    in_my_team:
+      row?.in_my_team === true ? true : row?.in_my_team === false ? false : null,
     client_type: String(row?.client_type ?? "").toLowerCase() || null,
     // Kept strictly true / false / null. Coercing an absent key to false would
     // mark every client dormant — see deliveryState in commandRules.
@@ -177,7 +198,11 @@ const normaliseRow = (row) => {
 };
 
 // filters: { preset, start, end, sort, dir, type, q, includeDormant, page,
-//            pageSize }
+//            pageSize, scope, dead }
+//
+// `scope` — Tier 1 CMs only: null (all clients) | "team" | "own".
+// `dead` — true sends dead=only (dead clients only). The server then skips the
+// dormant filter itself, so active_only is not sent alongside it.
 //
 // `includeDormant` maps to ?active_only= via activeOnlyParam, and is ALWAYS
 // sent. The endpoint defaults to delivering-only (92 of 186); dormancy is no
@@ -197,7 +222,11 @@ export const fetchCommandBoard = async (filters = {}) => {
       dir: filters.dir,
       type: filters.type,
       q: filters.q,
-      active_only: activeOnlyParam(filters.includeDormant),
+      active_only: filters.dead
+        ? null
+        : activeOnlyParam(filters.includeDormant),
+      scope: filters.scope,
+      dead: filters.dead ? "only" : null,
       page: filters.page,
       page_size: filters.pageSize ?? filters.page_size,
     })}`,

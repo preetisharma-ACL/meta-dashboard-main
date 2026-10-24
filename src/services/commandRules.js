@@ -378,3 +378,44 @@ export const fmtRange = (since, until) => {
   if (a.y === b.y) return `${a.d} ${a.m} – ${b.d} ${b.m} ${b.y}`;
   return `${a.d} ${a.m} ${a.y} – ${b.d} ${b.m} ${b.y}`;
 };
+
+// ── Tier 1 scope ──────────────────────────────────────────────────────────────
+// A Tier 1 CM can widen this page past their team. `scope` is sent only for the
+// two narrower choices; "All clients" is the default and sends nothing.
+export const CM_SCOPES = [
+  { key: null, label: "All clients" },
+  { key: "team", label: "My team" },
+  { key: "own", label: "Just me" },
+];
+
+// Rows a Tier 1 CM sees outside their team carry in_my_team === false, and the
+// client page refuses them — so those rows are view-only. Strictly `=== false`:
+// admin and coordination rows don't carry the key at all, and an absent key
+// must leave the link alone.
+export const canOpenClient = (row) => !!row?.client && row?.in_my_team !== false;
+
+// ── Ad accounts ───────────────────────────────────────────────────────────────
+// Meta account_status codes. Only 1 is healthy; everything else is a warning.
+export const AD_ACCOUNT_STATUS = {
+  1: "Active",
+  2: "Disabled",
+  3: "Unsettled",
+  7: "Pending risk review",
+  8: "Pending settlement",
+  9: "In grace period",
+  100: "Pending closure",
+  101: "Closed",
+};
+
+export const adAccountStatus = (code) => {
+  const n = code === null || code === undefined || code === "" ? null : Number(code);
+  if (n === null || !Number.isFinite(n)) return { label: "Unknown", ok: false };
+  return { label: AD_ACCOUNT_STATUS[n] ?? `Status ${n}`, ok: n === 1 };
+};
+
+// available_balance is null for a postpaid account — that is "Not prepaid",
+// never ₹0. A prepaid account with a null balance is an unknown, not a zero.
+export const adAccountBalance = (acct) => {
+  if (acct?.is_prepay !== true) return "Not prepaid";
+  return inr(acct?.available_balance ?? null);
+};

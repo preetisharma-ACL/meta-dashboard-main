@@ -1,4 +1,5 @@
 import { createResource, createSignal, createMemo, For, Show } from "solid-js";
+import DeadToggle from "../../components/common/DeadToggle";
 import {
   fetchValueTierBoard,
   VALUE_TIER_FILTERS,
@@ -56,7 +57,12 @@ export default function ValueTierBoard() {
   const [review, setReview] = createSignal("none"); // none | mismatch | unclassified
   const [historyFor, setHistoryFor] = createSignal(null);
 
-  const [board, { mutate, refetch }] = createResource(fetchValueTierBoard);
+  // Dead clients are hidden server-side; ON shows ONLY them (?dead=only).
+  const [deadOnly, setDeadOnly] = createSignal(false);
+
+  const [board, { mutate, refetch }] = createResource(() => ({ dead: deadOnly() }), ({ dead }) =>
+    fetchValueTierBoard({ dead }),
+  );
 
   const clients = () => board()?.clients ?? [];
 
@@ -245,13 +251,21 @@ export default function ValueTierBoard() {
             : clients never see this.
           </p>
         </div>
-        <button
-          onClick={() => refetch()}
-          disabled={board.loading}
-          class="px-3.5 py-2 text-sm font-semibold rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:border-[#AC2334]/40 disabled:opacity-50 transition"
-        >
-          {board.loading ? "Refreshing…" : "Refresh"}
-        </button>
+        <div class="flex items-center gap-2 flex-wrap">
+          {/* Hidden by default, like every client list. */}
+          <DeadToggle
+            value={deadOnly()}
+            onChange={setDeadOnly}
+            disabled={board.loading}
+          />
+          <button
+            onClick={() => refetch()}
+            disabled={board.loading}
+            class="px-3.5 py-2 text-sm font-semibold rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:border-[#AC2334]/40 disabled:opacity-50 transition"
+          >
+            {board.loading ? "Refreshing…" : "Refresh"}
+          </button>
+        </div>
       </div>
 
       {/* ── Tabs ── */}

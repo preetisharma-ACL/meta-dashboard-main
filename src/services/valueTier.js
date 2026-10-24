@@ -132,8 +132,12 @@ export const suggestionCaption = (suggested, monthFunds) => {
 // Read defensively: `client_id`/`client_email` here, but the engagement board
 // next door serves the same two facts as `id`/`email`. Accepting both costs one
 // `??` and saves a blank column if this one turns out to follow its neighbour.
-export const fetchValueTierBoard = async () => {
-  const res = await api(`/clients/value-tier-board/`, { method: "GET" });
+// `dead` true → ONLY dead clients; omitted, the server hides them.
+export const fetchValueTierBoard = async ({ dead = false } = {}) => {
+  const res = await api(
+    `/clients/value-tier-board/${dead === true ? "?dead=only" : ""}`,
+    { method: "GET" },
+  );
   const data = res?.data ?? {};
   const clients = Array.isArray(data.clients) ? data.clients : [];
   return {
