@@ -10,7 +10,8 @@ import { fetchHierarchyClients } from "../services/cm";
 //
 // So: write the nomen, drop the ids we can't vouch for (nomen id and Client PK
 // are different numbers, and a wrong one silently scopes to someone else), and
-// for a CM look the nomen id up in their hierarchy — the same source the
+// for a CM use the nomen id the caller hands us (Dead Clients rows carry
+// client_nomen_id) or else look it up in their hierarchy — the same source the
 // Clients screen uses. Then bust the projects cache (as Clients.jsx does before
 // its click-through) and navigate. The admin resolver backfills its own ids.
 export const clientSlug = (nomen) =>
@@ -41,7 +42,7 @@ const resolveForCM = async (nomen, pk) => {
   }
 };
 
-export const openClientPage = async (navigate, { nomen, pk } = {}) => {
+export const openClientPage = async (navigate, { nomen, pk, nomenId } = {}) => {
   if (!nomen) return;
   localStorage.setItem("selectedClientNomen", nomen);
   localStorage.removeItem("selectedClientNomenId");
@@ -49,8 +50,8 @@ export const openClientPage = async (navigate, { nomen, pk } = {}) => {
   localStorage.removeItem("selectedClientName");
 
   if (role() === "campaign_manager") {
-    const nomenId = await resolveForCM(nomen, pk);
-    if (nomenId) localStorage.setItem("selectedClientNomenId", nomenId);
+    const id = nomenId != null ? String(nomenId) : await resolveForCM(nomen, pk);
+    if (id) localStorage.setItem("selectedClientNomenId", id);
   }
 
   setProjectsCache("lastFetched", 0);

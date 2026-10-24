@@ -150,7 +150,7 @@ export default function Clients() {
   // ?activity=, CMs read the hierarchy, which has no such param.
   const [activityFilter, setActivityFilter] = createSignal("all");
   // Dead clients are hidden server-side; ON asks for ONLY dead ones
-  // (?dead=only). Admin path only — the CM hierarchy takes no such param.
+  // (?dead=only) — from the admin roster, or from the hierarchy for CMs.
   const [deadOnly, setDeadOnly] = createSignal(false);
   // Value tier (MANUAL, commercial, INTERNAL) — a fourth label, and the only one
   // of the four that a client must never see. Admin + coordination only.
@@ -415,7 +415,7 @@ export default function Clients() {
   // ── load ──────────────────────────────────────────────────────────────────
   // CMs: one CM-scoped call returns their whole (small) client set.
   const loadCmClients = async () => {
-    const res = await fetchHierarchyClients();
+    const res = await fetchHierarchyClients({ dead: deadOnly() });
     const rows = (Array.isArray(res?.data) ? res.data : []).map(
       adaptHierarchyClient,
     );
@@ -499,6 +499,30 @@ export default function Clients() {
         setLoadError(null);
         try {
           await loadAllClients();
+        } finally {
+          setLoading(false);
+        }
+      },
+      { defer: true },
+    ),
+  );
+
+  // The dead toggle is the one server param the hierarchy takes, so for CMs
+  // it (and only it) re-fetches the roster.
+  createEffect(
+    on(
+      deadOnly,
+      async () => {
+        if (!isCampaignManager()) return;
+        setLoading(true);
+        setSelected(new Set());
+        setLoadError(null);
+        try {
+          await loadCmClients();
+        } catch (err) {
+          console.error("Failed to load clients:", err);
+          setAllClients([]);
+          setLoadError(err);
         } finally {
           setLoading(false);
         }
@@ -774,7 +798,7 @@ export default function Clients() {
                   : `campaigns ${activityFilter()}`}
               </span>
             </Show>
-            <Show when={!isCampaignManager() && deadOnly()}>
+            <Show when={deadOnly()}>
               <span class="font-semibold text-gray-700 dark:text-gray-200">
                 {" "}dead clients only
               </span>
@@ -900,14 +924,12 @@ export default function Clients() {
             </select>
           </Show>
 
-          <Show when={!isCampaignManager()}>
-            <DeadToggle
-              value={deadOnly()}
-              onChange={setDeadOnly}
-              disabled={loading()}
-              class="h-11 rounded-xl"
-            />
-          </Show>
+          <DeadToggle
+            value={deadOnly()}
+            onChange={setDeadOnly}
+            disabled={loading()}
+            class="h-11 rounded-xl"
+          />
 
           <div class="ml-auto flex items-center gap-3">
             <span class="text-[13px] font-semibold text-gray-500 dark:text-gray-400 tabular-nums whitespace-nowrap">

@@ -108,10 +108,12 @@ export const fetchTeamMembers = async () => {
 // date-windowed (omit dates → last-14-days default).
 
 // L1 — clients sorted most-active-first (by raw spend).
-export const fetchHierarchyClients = async ({ startDate, endDate } = {}) => {
+// Dead clients are hidden by default; `dead: true` returns ONLY dead ones.
+export const fetchHierarchyClients = async ({ startDate, endDate, dead } = {}) => {
   let url = `/cm/hierarchy/clients/?1=1`;
   if (startDate) url += `&start_date=${startDate}`;
   if (endDate) url += `&end_date=${endDate}`;
+  if (dead === true) url += `&dead=only`;
   url += scopeQuery({ supportsOwn: true });
 
   const res = await api(url, { method: "GET" });

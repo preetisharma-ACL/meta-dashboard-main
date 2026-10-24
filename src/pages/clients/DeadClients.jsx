@@ -329,7 +329,11 @@ export default function DeadClients() {
         client={selected()}
         onClose={() => setSelectedId(null)}
         onOpen={(c) =>
-          openClientPage(navigate, { nomen: c.client, pk: c.client_id })
+          openClientPage(navigate, {
+            nomen: c.client,
+            pk: c.client_id,
+            nomenId: c.client_nomen_id,
+          })
         }
       />
     </div>

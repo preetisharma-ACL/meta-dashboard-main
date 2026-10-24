@@ -41,6 +41,7 @@ const normaliseRow = (r) => ({
   ...r,
   client_id: r?.client_id ?? null,
   client: r?.client ?? null,
+  client_nomen_id: r?.client_nomen_id ?? null,
   client_type: String(r?.client_type ?? "").toLowerCase() || null,
   engagement_status: String(r?.engagement_status ?? "").toLowerCase() || null,
   lifetime_spend: num(r?.lifetime_spend),
