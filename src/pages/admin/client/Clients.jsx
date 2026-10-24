@@ -1245,7 +1245,8 @@ export default function Clients() {
                     {/* Email + avatar */}
                     <td class="p-3">
                       <div class="flex items-center gap-2.5">
-                        <Avatar name={client.email} />
+                        {/* CM rows carry no email (hierarchy) — letter from the nomen instead of "?". */}
+                        <Avatar name={client.email || client.client_nomen_name} />
                         <span class="text-purple-700 dark:text-gray-300 group-hover:underline font-medium">
                           {client.email}
                         </span>
