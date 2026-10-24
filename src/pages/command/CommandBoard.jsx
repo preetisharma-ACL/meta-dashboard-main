@@ -329,7 +329,42 @@ export default function CommandBoard() {
       ? `${gapRows().length} of ${pagination().total} clients`
       : `${gapRows().length} on this page`;
 
-  const visible = createMemo(() => (gapOnly() ? gapRows() : rows()));
+  // ── Meta ad account ────────────────────────────────────────────────────────
+  // No server param either, so — like the gap — it narrows the rows in hand,
+  // matched against each row's ad_account_list, and the caption says so when
+  // the page doesn't hold the whole set. Keyed on the Meta account_id (falling
+  // back to our PK), since one account can serve several clients.
+  const [adAccount, setAdAccount] = createSignal("");
+  const acctKey = (a) => String(a.account_id ?? a.id ?? "");
+  const accountOptions = createMemo(() => {
+    const byKey = new Map();
+    for (const r of rows()) {
+      for (const a of r.ad_account_list ?? []) {
+        const k = acctKey(a);
+        if (!k) continue;
+        const cur = byKey.get(k);
+        if (cur) cur.clients += 1;
+        else byKey.set(k, { key: k, name: a.name, account_id: a.account_id, clients: 1 });
+      }
+    }
+    return [...byKey.values()].sort((x, y) =>
+      String(x.name ?? x.account_id).localeCompare(String(y.name ?? y.account_id)),
+    );
+  });
+  const pickedAccount = () => accountOptions().find((o) => o.key === adAccount()) ?? null;
+  // A selection the new rows no longer contain (range, type, search changed)
+  // would silently empty the table — drop it instead.
+  createEffect(() => {
+    if (board.loading || !adAccount()) return;
+    if (!pickedAccount()) setAdAccount("");
+  });
+
+  const visible = createMemo(() => {
+    const base = gapOnly() ? gapRows() : rows();
+    const k = adAccount();
+    if (!k) return base;
+    return base.filter((r) => (r.ad_account_list ?? []).some((a) => acctKey(a) === k));
+  });
 
   // ── Dormancy ───────────────────────────────────────────────────────────────
   // The toggle wants to say how many rows it would ADD. When it's off those rows
@@ -743,6 +778,12 @@ export default function CommandBoard() {
           </span>
         </button>
 
+        <AdAccountPicker
+          options={accountOptions()}
+          value={adAccount()}
+          onChange={setAdAccount}
+        />
+
         <span class="ml-auto text-sm text-gray-400 dark:text-gray-400 whitespace-nowrap">
           {visible().length} shown
           {/* The count lives on the toggle, not here as well. This only names
@@ -772,6 +813,20 @@ export default function CommandBoard() {
           Showing the {gapRows().length} unpriced clients{" "}
           <b class="font-semibold">on this page</b> — the gap has no server
           filter yet. Set the page size to 200 to sweep the whole list at once.
+        </div>
+      </Show>
+
+      <Show when={pickedAccount()}>
+        <div class="mb-4 px-4 py-2.5 rounded-lg bg-[#ECF2FA] dark:bg-blue-900/20 border border-[#3E6FB0]/30 text-[13px] text-[#14233A] dark:text-blue-100">
+          Clients on ad account{" "}
+          <b class="font-semibold">{pickedAccount().name ?? pickedAccount().account_id}</b>
+          <Show when={pickedAccount().name && pickedAccount().account_id}>
+            <span class="font-mono text-[12px] text-gray-500 dark:text-gray-400">
+              {" "}({pickedAccount().account_id})
+            </span>
+          </Show>
+          {wholeSetInView() ? "" : " — on this page only"}. The totals cards
+          above still cover every client in the list, not just this account.
         </div>
       </Show>
 
@@ -974,6 +1029,9 @@ export default function CommandBoard() {
                     class="p-12 text-center text-gray-500 dark:text-gray-400"
                   >
                     <Switch fallback="No clients to show.">
+                      <Match when={adAccount()}>
+                        No clients in view use this ad account.
+                      </Match>
                       <Match when={gapOnly()}>
                         Every client in view has a pricing config for these
                         dates.
@@ -1559,6 +1617,122 @@ function PremiumSpend(props) {
         </span>
       </Match>
     </Switch>
+  );
+}
+
+// ── Ad account picker ─────────────────────────────────────────────────────────
+// Type to search by account name or Meta account id; options come from the rows
+// in hand (see accountOptions). value is the account key, "" for all.
+function AdAccountPicker(props) {
+  const [open, setOpen] = createSignal(false);
+  const [query, setQuery] = createSignal("");
+  let wrap;
+  let input;
+
+  const onDocClick = (e) => {
+    if (wrap && !wrap.contains(e.target)) setOpen(false);
+  };
+  document.addEventListener("mousedown", onDocClick);
+  onCleanup(() => document.removeEventListener("mousedown", onDocClick));
+
+  const label = (o) =>
+    o.name && o.account_id ? `${o.name} · ${o.account_id}` : (o.name ?? o.account_id);
+  const selected = () => props.options.find((o) => o.key === props.value) ?? null;
+  const filtered = () => {
+    const q = query().trim().toLowerCase();
+    if (!q) return props.options;
+    return props.options.filter((o) => String(label(o)).toLowerCase().includes(q));
+  };
+  const choose = (key) => {
+    props.onChange(key);
+    setQuery("");
+    setOpen(false);
+    input?.blur();
+  };
+
+  return (
+    <div class="relative w-full sm:w-[300px]" ref={wrap}>
+      <input
+        ref={input}
+        type="text"
+        placeholder="All ad accounts — search…"
+        value={open() ? query() : selected() ? label(selected()) : ""}
+        onFocus={() => setOpen(true)}
+        onInput={(e) => {
+          setQuery(e.currentTarget.value);
+          setOpen(true);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            setOpen(false);
+            input?.blur();
+          } else if (e.key === "Enter") {
+            e.preventDefault();
+            const first = filtered()[0];
+            if (first) choose(first.key);
+          }
+        }}
+        class={`w-full pl-3 pr-8 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-purple-400 dark:focus:ring-gray-600 ${
+          selected()
+            ? "border-[#3E6FB0] bg-[#ECF2FA]"
+            : "border-gray-200 dark:border-gray-700"
+        }`}
+      />
+      <Show
+        when={selected()}
+        fallback={
+          <span class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">
+            ▾
+          </span>
+        }
+      >
+        <button
+          type="button"
+          title="All ad accounts"
+          onClick={() => choose("")}
+          class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-[#AC2334] text-lg leading-none px-1"
+        >
+          ×
+        </button>
+      </Show>
+      <Show when={open()}>
+        <div class="absolute z-50 mt-1 w-full max-h-72 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-xl">
+          <Show
+            when={filtered().length}
+            fallback={
+              <p class="px-3 py-3 text-sm text-gray-400">No ad accounts match.</p>
+            }
+          >
+            <For each={filtered()}>
+              {(o) => (
+                <button
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    choose(o.key);
+                  }}
+                  class={`w-full flex items-center justify-between gap-2 text-left px-3 py-2 text-sm text-gray-800 dark:text-gray-100 hover:bg-[#FBEEF0] dark:hover:bg-gray-800 ${
+                    o.key === props.value ? "bg-[#FBEEF0] dark:bg-gray-800 font-semibold" : ""
+                  }`}
+                >
+                  <span class="min-w-0">
+                    <span class="block truncate">{o.name ?? o.account_id}</span>
+                    <Show when={o.name && o.account_id}>
+                      <span class="block font-mono text-[11px] text-gray-400">
+                        {o.account_id}
+                      </span>
+                    </Show>
+                  </span>
+                  <span class="flex-none text-[11px] tabular-nums text-gray-400">
+                    {o.clients} {o.clients === 1 ? "client" : "clients"}
+                  </span>
+                </button>
+              )}
+            </For>
+          </Show>
+        </div>
+      </Show>
+    </div>
   );
 }
 
