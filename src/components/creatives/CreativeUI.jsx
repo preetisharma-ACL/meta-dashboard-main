@@ -388,32 +388,114 @@ export function ProjectSelect(props) {
 
   const label = (p) => (p.city ? `${p.name} · ${p.city}` : p.name);
 
+  // Searchable: the list is already in hand, so filtering is client-side
+  // (name or city, case-insensitive) — no extra request per keystroke.
+  const [open, setOpen] = createSignal(false);
+  const [query, setQuery] = createSignal("");
+  let wrap;
+  let input;
+
+  const onDocClick = (e) => {
+    if (wrap && !wrap.contains(e.target)) setOpen(false);
+  };
+  document.addEventListener("mousedown", onDocClick);
+  onCleanup(() => document.removeEventListener("mousedown", onDocClick));
+
+  const disabled = () => props.disabled || !props.nomenId || fetched.loading;
+  const selected = () =>
+    projects().find((p) => String(p.id) === String(props.value ?? ""));
+  const filtered = () => {
+    const q = query().trim().toLowerCase();
+    if (!q) return projects();
+    return projects().filter((p) => label(p).toLowerCase().includes(q));
+  };
+
+  const choose = (id) => {
+    props.onChange(id);
+    setQuery("");
+    setOpen(false);
+    input?.blur();
+  };
+
   return (
-    <select
-      class={FIELD}
-      disabled={props.disabled || !props.nomenId || fetched.loading}
-      value={props.value ?? ""}
-      onChange={(e) => props.onChange(e.target.value)}
-    >
-      <option value="">
-        {!props.nomenId
-          ? "Pick a client first"
-          : fetched.loading
-            ? "Loading…"
-            : props.allLabel ?? "Select project"}
-      </option>
-      <For each={projects()}>
-        {(p) => (
-          <option
-            value={String(p.id)}
-            selected={String(p.id) === String(props.value ?? "")}
+    <div class="relative" ref={wrap}>
+      <input
+        ref={input}
+        type="text"
+        class={FIELD + " pr-8"}
+        disabled={disabled()}
+        placeholder={
+          !props.nomenId
+            ? "Pick a client first"
+            : fetched.loading
+              ? "Loading…"
+              : "Search project…"
+        }
+        value={open() ? query() : selected() ? label(selected()) : ""}
+        onFocus={() => setOpen(true)}
+        onInput={(e) => {
+          setQuery(e.target.value);
+          setOpen(true);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            setOpen(false);
+            input?.blur();
+          } else if (e.key === "Enter") {
+            // Enter picks the only/first match so typing + Enter works.
+            e.preventDefault();
+            const first = filtered()[0];
+            if (first) choose(String(first.id));
+          }
+        }}
+      />
+      <Show
+        when={selected() && !disabled()}
+        fallback={
+          <span class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#8593A8] text-xs">
+            ▾
+          </span>
+        }
+      >
+        <button
+          type="button"
+          class="absolute right-2 top-1/2 -translate-y-1/2 text-[#8593A8] dark:text-gray-400 hover:text-[#AC2334] text-lg leading-none px-1"
+          title="Clear"
+          onClick={() => choose("")}
+        >
+          ×
+        </button>
+      </Show>
+      <Show when={open() && !disabled()}>
+        <div class="absolute z-50 mt-1 w-full max-h-72 overflow-y-auto rounded-lg border border-[#E2E8F1] dark:border-gray-700 bg-white dark:bg-gray-900 shadow-xl">
+          <Show
+            when={filtered().length}
+            fallback={<p class="px-3 py-3 text-sm text-[#8593A8] dark:text-gray-400">No projects match.</p>}
           >
-            {label(p)}
-            {props.showAll && p.linked === false ? " (no campaigns yet)" : ""}
-          </option>
-        )}
-      </For>
-    </select>
+            <For each={filtered()}>
+              {(p) => (
+                <button
+                  type="button"
+                  class={
+                    "w-full text-left px-3 py-2 text-sm text-[#14233A] dark:text-gray-100 hover:bg-[#FBEEF0] dark:hover:bg-gray-800 transition-colors" +
+                    (String(p.id) === String(props.value ?? "") ? " bg-[#FBEEF0] dark:bg-gray-800 font-semibold" : "")
+                  }
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    choose(String(p.id));
+                  }}
+                >
+                  {label(p)}
+                  <Show when={props.showAll && p.linked === false}>
+                    <span class="text-[#8593A8] dark:text-gray-400"> (no campaigns yet)</span>
+                  </Show>
+                </button>
+              )}
+            </For>
+          </Show>
+        </div>
+      </Show>
+    </div>
   );
 }
 
