@@ -111,9 +111,10 @@ const isAdmin = () => authRole === "admin";
 
 // The admin clients endpoint is 403 for CMs, so CMs are sourced from the
 // CM-scoped hierarchy endpoint instead. That payload is smaller — this maps it
-// onto the fields the table reads. Columns the hierarchy doesn't expose
-// (email, organisation, created-at) fall back to null → rendered as "—"; the
-// active flag is inferred from has_client_login.
+// onto the fields the table reads. organization_name and created_at match the
+// admin roster (backend 63a9ad6); a null organisation is a client with none
+// set, not a gap. Email isn't exposed → "—". The active flag is inferred from
+// has_client_login.
 const adaptHierarchyClient = (c) => ({
   id: c.client_nomen_id,
   client_nomen: c.client_nomen_id,
