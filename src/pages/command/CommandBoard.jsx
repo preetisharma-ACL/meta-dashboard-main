@@ -1067,7 +1067,7 @@ export default function CommandBoard() {
                                     onClick={() =>
                                       openClientPage(navigate, {
                                         nomen: r.client,
-                                        pk: r.client_id,
+                                        nomenId: r.client_nomen_id,
                                       })
                                     }
                                     class={`block max-w-[200px] truncate text-left font-medium hover:text-[#AC2334] dark:hover:text-[#E4566A] ${

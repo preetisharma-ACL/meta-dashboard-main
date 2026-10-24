@@ -165,6 +165,8 @@ const normaliseRow = (row) => {
   return {
     ...row,
     ad_account_list: normaliseAdAccounts(row),
+    // The dashboard's client scope for CMs — see utils/openClientPage.
+    client_nomen_id: row?.client_nomen_id ?? null,
     // Tier 1 CMs only; absent (undefined) for admin/coordination. Kept as
     // true / false / null — see canOpenClient in commandRules.
     in_my_team:

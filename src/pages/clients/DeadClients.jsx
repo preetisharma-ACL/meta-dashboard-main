@@ -331,7 +331,6 @@ export default function DeadClients() {
         onOpen={(c) =>
           openClientPage(navigate, {
             nomen: c.client,
-            pk: c.client_id,
             nomenId: c.client_nomen_id,
           })
         }
