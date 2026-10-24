@@ -16,6 +16,8 @@ import {
   MapPin,
   Home,
   TrendingUp,
+  Megaphone,
+  Trophy,
 } from "lucide-solid";
 import { IndianRupee, Clock, XCircle, User } from "lucide-solid";
 import { onMount, onCleanup } from "solid-js";
@@ -142,6 +144,29 @@ export default function ProjectDetails() {
       dotBorder: dark ? "#1F2937" : "#ffffff",
     };
 
+    // ── Bar palette — one jewel tone per campaign, light top → deep base ────
+    const BAR_PALETTE = [
+      ["#8EA4F2", "#3B4FC4"], // periwinkle → royal
+      ["#2F55C8", "#14233A"], // sapphire → navy
+      ["#B3507A", "#6A1F45"], // rose → plum
+      ["#14A37F", "#0B4A3A"], // emerald → forest
+      ["#E07A2E", "#7A3510"], // amber → burnt orange
+      ["#C33A4D", "#7E1522"], // crimson → wine
+      ["#D9A441", "#8A6410"], // gold → bronze
+      ["#5B8DB8", "#1F3F5F"], // steel → slate
+    ];
+    const barColors = (i) => BAR_PALETTE[i % BAR_PALETTE.length];
+    const barGradient = (ctx) => {
+      const [top, bottom] = barColors(ctx.dataIndex ?? 0);
+      const area = ctx.chart.chartArea;
+      if (!area) return bottom;
+      const g = ctx.chart.ctx.createLinearGradient(0, area.top, 0, area.bottom);
+      g.addColorStop(0, top);
+      g.addColorStop(1, bottom);
+      return g;
+    };
+    const axisColor = dark ? "#CBD5E1" : "#14233A";
+
     // ── Data ───────────────────────────────────────────────────────────────
     const labels = campaigns.map((c) =>
       (c.campaign_name?.split("|")[0] ?? "").trim().slice(0, 18),
@@ -160,10 +185,14 @@ export default function ProjectDetails() {
             type: "bar",
             label: "Leads",
             data: leads,
-            backgroundColor: theme.barBg,
-            borderColor: theme.barBorder,
-            borderWidth: 1.5,
-            borderRadius: 6,
+            backgroundColor: barGradient,
+            hoverBackgroundColor: (ctx) => barColors(ctx.dataIndex ?? 0)[1],
+            borderWidth: 0,
+            borderRadius: { topLeft: 6, topRight: 6 },
+            borderSkipped: "bottom",
+            maxBarThickness: 60,
+            categoryPercentage: 0.62,
+            barPercentage: 0.9,
             yAxisID: "yLeads",
             order: 2,
           },
@@ -210,6 +239,13 @@ export default function ProjectDetails() {
                 item.dataset.label === "Leads"
                   ? `  Leads: ${item.raw}`
                   : `  Spent: ₹${Number(item.raw).toLocaleString("en-IN")}`,
+              labelColor: (item) => {
+                const c =
+                  item.dataset.label === "Leads"
+                    ? barColors(item.dataIndex)[0]
+                    : theme.lineBorder;
+                return { borderColor: c, backgroundColor: c };
+              },
             },
           },
         },
@@ -218,10 +254,12 @@ export default function ProjectDetails() {
             ticks: {
               autoSkip: false,
               maxRotation: 35,
-              color: theme.tick,
-              font: { size: 11 },
+              color: axisColor,
+              font: { size: 11, weight: "600" },
+              padding: 6,
             },
-            grid: { color: theme.grid },
+            grid: { display: false },
+            border: { color: axisColor, width: 2 },
           },
           yLeads: {
             type: "linear",
@@ -232,8 +270,15 @@ export default function ProjectDetails() {
               color: theme.leadsTitle,
               font: { size: 11, weight: "600" },
             },
-            ticks: { color: theme.leadsTitle, font: { size: 11 } },
-            grid: { color: theme.grid },
+            beginAtZero: true,
+            ticks: {
+              color: axisColor,
+              font: { size: 11, weight: "600" },
+              precision: 0,
+              padding: 6,
+            },
+            grid: { color: theme.grid, drawTicks: false },
+            border: { color: axisColor, width: 2 },
           },
           ySpent: {
             type: "linear",
@@ -1791,7 +1836,7 @@ export default function ProjectDetails() {
           {/* Legend */}
           <div class="flex items-center gap-5 text-xs text-gray-500 dark:text-gray-400">
             <span class="flex items-center gap-1.5">
-              <span class="w-3 h-3 rounded-sm bg-violet-500 dark:bg-violet-400 inline-block" />
+              <span class="w-3 h-3 rounded-sm bg-gradient-to-br from-[#3B4FC4] via-[#B3507A] to-[#14A37F] inline-block" />
               Leads (bar)
             </span>
             <span class="flex items-center gap-2">
@@ -1810,61 +1855,88 @@ export default function ProjectDetails() {
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
           {/* Campaigns */}
           <div
-            class="rounded-lg p-3
-                        bg-gray-50       dark:bg-gray-900/60
-                        border border-transparent dark:border-gray-700/40"
+            class="flex items-center gap-3 rounded-xl p-4
+                        bg-white dark:bg-gray-900/60
+                        border border-gray-200 dark:border-gray-700/50
+                        shadow-[0_1px_2px_rgba(16,24,40,0.04)] hover:shadow-md transition-shadow"
           >
-            <p class="text-xs text-gray-400 dark:text-gray-500 mb-1">
-              Campaigns
-            </p>
-            <p class="text-xl font-semibold text-gray-800 dark:text-gray-100">
-              {displayedCampaigns().length}
-            </p>
+            <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600 ring-1 ring-inset ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700">
+              <Megaphone size={18} />
+            </span>
+            <div class="min-w-0">
+              <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                Campaigns
+              </p>
+              <p class="mt-0.5 text-2xl font-semibold tabular-nums text-gray-900 dark:text-gray-50">
+                {displayedCampaigns().length}
+              </p>
+            </div>
           </div>
 
           {/* Total leads */}
           <div
-            class="rounded-lg p-3
-                        bg-violet-50     dark:bg-violet-900/20
-                        border border-violet-100 dark:border-violet-700/30"
+            class="flex items-center gap-3 rounded-xl p-4
+                        bg-white dark:bg-gray-900/60
+                        border border-gray-200 dark:border-gray-700/50
+                        shadow-[0_1px_2px_rgba(16,24,40,0.04)] hover:shadow-md transition-shadow"
           >
-            <p class="text-xs text-violet-500 dark:text-violet-400 mb-1">
-              Total leads
-            </p>
-            <p class="text-xl font-semibold text-violet-600 dark:text-violet-300">
-              {showTotal(footerTotals().totalLeads)}
-            </p>
+            <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-600 ring-1 ring-inset ring-violet-100 dark:bg-violet-900/30 dark:text-violet-300 dark:ring-violet-800/50">
+              <Users size={18} />
+            </span>
+            <div class="min-w-0">
+              <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                Total leads
+              </p>
+              <p class="mt-0.5 text-2xl font-semibold tabular-nums text-gray-900 dark:text-gray-50">
+                {showTotal(footerTotals().totalLeads)}
+              </p>
+            </div>
           </div>
 
           {/* Total spent */}
           <Show when={!iscpl()}>
             <div
-              class="rounded-lg p-3
-            bg-orange-50     dark:bg-orange-900/20
-            border border-orange-100 dark:border-orange-700/30"
+              class="flex items-center gap-3 rounded-xl p-4
+                        bg-white dark:bg-gray-900/60
+                        border border-gray-200 dark:border-gray-700/50
+                        shadow-[0_1px_2px_rgba(16,24,40,0.04)] hover:shadow-md transition-shadow"
             >
-              <p class="text-xs text-orange-500 dark:text-orange-400 mb-1">
-                Total spent
-              </p>
-              <p class="text-xl font-semibold text-orange-500 dark:text-orange-300">
-                {showRupees(footerTotals().totalSpent)}
-              </p>
+              <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-orange-50 text-orange-600 ring-1 ring-inset ring-orange-100 dark:bg-orange-900/30 dark:text-orange-300 dark:ring-orange-800/50">
+                <IndianRupee size={18} />
+              </span>
+              <div class="min-w-0">
+                <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                  Total spent
+                </p>
+                <p class="mt-0.5 text-2xl font-semibold tabular-nums text-gray-900 dark:text-gray-50">
+                  {showRupees(footerTotals().totalSpent)}
+                </p>
+              </div>
             </div>
           </Show>
 
           {/* Top campaign */}
           <div
-            class="rounded-lg p-3
-            bg-gray-50       dark:bg-gray-900/60
-            border border-transparent dark:border-gray-700/40"
+            class="flex items-center gap-3 rounded-xl p-4
+                        bg-white dark:bg-gray-900/60
+                        border border-gray-200 dark:border-gray-700/50
+                        shadow-[0_1px_2px_rgba(16,24,40,0.04)] hover:shadow-md transition-shadow"
           >
-            <p class="text-xs text-gray-400 dark:text-gray-500 mb-1">
-              Top campaign
-            </p>
-            <p class="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
-              {displayedCampaigns()[0]?.campaign_name?.split("|")[0]?.trim() ??
-                "—"}
-            </p>
+            <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-600 ring-1 ring-inset ring-amber-100 dark:bg-amber-900/30 dark:text-amber-300 dark:ring-amber-800/50">
+              <Trophy size={18} />
+            </span>
+            <div class="min-w-0">
+              <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                Top campaign
+              </p>
+              <p
+                class="mt-1 text-sm font-semibold text-gray-900 dark:text-gray-50 truncate"
+                title={displayedCampaigns()[0]?.campaign_name ?? ""}
+              >
+                {displayedCampaigns()[0]?.campaign_name?.split("|")[0]?.trim() ??
+                  "—"}
+              </p>
+            </div>
           </div>
         </div>
 
@@ -1879,7 +1951,7 @@ export default function ProjectDetails() {
           <canvas
             id="campaignChartCanvas"
             role="img"
-            aria-label="Combined bar and line chart: purple bars for leads, orange line for spend per campaign"
+            aria-label="Combined bar and line chart: coloured bars for leads, orange line for spend per campaign"
           />
         </div>
       </div>

@@ -1568,3 +1568,48 @@
     min-width: 40px;
   }
 }
+
+/* ── Campaign Analysis total tiles: a line that always travels the border ──
+   A rotating conic gradient, masked down to a 1.5px ring so only the border
+   shows. Colour comes from --tile-accent on the tile. */
+@property --tile-trace-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+.tile-trace {
+  position: absolute;
+  inset: -1px; /* sit on the 1px card border, not inside it */
+  border-radius: inherit;
+  padding: 1.5px;
+  pointer-events: none;
+  background: conic-gradient(
+    from var(--tile-trace-angle),
+    transparent 0deg,
+    transparent 250deg,
+    var(--tile-accent) 330deg,
+    transparent 360deg
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  animation: tile-trace-spin 3s linear infinite;
+}
+
+@keyframes tile-trace-spin {
+  to {
+    --tile-trace-angle: 360deg;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tile-trace {
+    animation: none;
+  }
+}
