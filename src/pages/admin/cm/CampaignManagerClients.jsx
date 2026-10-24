@@ -19,6 +19,7 @@ import ClientStatusControl from "../../../components/clientStatus/ClientStatusCo
 import {
   fetchStatusBoard,
   STATUS_FILTERS,
+  emptyStatusCounts,
   STATUS_DOT,
   STATUS_UNSET,
   normaliseStatus,
@@ -502,7 +503,7 @@ export default function CampaignManagerClients() {
   const statusCounts = createMemo(() => {
     const own = ownLists() ?? {};
     const active = activeNomen();
-    const acc = { active: 0, hold: 0, completed: 0, [STATUS_UNSET]: 0, total: 0 };
+    const acc = emptyStatusCounts();
     const seen = new Set();
     for (const m of managers()) {
       for (const c of own[m.manager_id] ?? []) {

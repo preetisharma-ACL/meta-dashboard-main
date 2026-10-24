@@ -10,6 +10,9 @@ import {
   statusLabel,
   changedByLabel,
   changedAtLabel,
+  emptyStatusCounts,
+  DEAD_BLOCKED_LABEL,
+  DEAD_BLOCKED_TITLE,
 } from "../../services/clientStatus";
 import ClientStatusControl from "../../components/clientStatus/ClientStatusControl";
 import ClientStatusHistoryDrawer from "../../components/clientStatus/ClientStatusHistoryDrawer";
@@ -66,8 +69,8 @@ export default function ClientStatusBoard() {
   const [historyFor, setHistoryFor] = createSignal(null);
 
   // Dead clients are hidden server-side; ON shows ONLY them (?dead=only). This
-  // is where a CM revives one — moving it off hold/completed brings it back
-  // within the hour.
+  // is where a CM revives one — moving it off Dead / Completed brings it back
+  // at once.
   const [deadOnly, setDeadOnly] = createSignal(false);
 
   const [board, { mutate, refetch }] = createResource(() => ({ dead: deadOnly(), viewing: scopeKey() }), ({ dead }) =>
@@ -82,7 +85,7 @@ export default function ClientStatusBoard() {
   const counts = createMemo(() => {
     const served = board()?.counts ?? {};
     if (Object.keys(served).length) return served;
-    const acc = { active: 0, hold: 0, completed: 0, [STATUS_UNSET]: 0, total: 0 };
+    const acc = emptyStatusCounts();
     for (const c of clients()) {
       acc[normaliseStatus(c.engagement_status)] += 1;
       acc.total += 1;
@@ -148,15 +151,26 @@ export default function ClientStatusBoard() {
 
   // Patch the row in place after a successful change, and re-tally the counts,
   // so the tab labels and the row agree without another round-trip.
-  const applyChange = (clientId, { status, change }) => {
+  // A client that went dead leaves the default list (dead clients are hidden);
+  // on the dead-only view, one that revived leaves it instead.
+  const applyChange = (clientId, { status, change, isDead, deadBlocked }) => {
     mutate((prev) => {
       if (!prev) return prev;
-      const nextClients = prev.clients.map((c) =>
-        String(c.id) === String(clientId)
-          ? { ...c, engagement_status: status, latest_change: change }
-          : c,
-      );
-      const acc = { active: 0, hold: 0, completed: 0, [STATUS_UNSET]: 0 };
+      const leaves = deadOnly() ? !isDead : isDead;
+      const nextClients = prev.clients
+        .filter((c) => !(leaves && String(c.id) === String(clientId)))
+        .map((c) =>
+          String(c.id) === String(clientId)
+            ? {
+                ...c,
+                engagement_status: status,
+                latest_change: change,
+                dead_blocked: deadBlocked,
+              }
+            : c,
+        );
+      const acc = emptyStatusCounts();
+      delete acc.total;
       for (const c of nextClients) acc[normaliseStatus(c.engagement_status)] += 1;
       return {
         clients: nextClients,
@@ -205,7 +219,7 @@ export default function ClientStatusBoard() {
           </p>
         </div>
         <div class="flex items-center gap-2 flex-wrap">
-          {/* Dead = hold/completed with nothing for 10 days. Changing the status here revives it within the hour. */}
+          {/* Changing a status away from Dead / Completed here revives it at once. */}
           <DeadToggle
             value={deadOnly()}
             onChange={setDeadOnly}
@@ -425,6 +439,15 @@ export default function ClientStatusBoard() {
                           latestChange={c.latest_change}
                           onChanged={(payload) => applyChange(c.id, payload)}
                         />
+                        <Show when={c.dead_blocked === true}>
+                          <span
+                            class="mt-1 flex w-fit items-center gap-1 px-2 py-[2px] rounded-full text-[10px] font-semibold whitespace-nowrap bg-[#FBF3E2] text-[#8A6410] border border-[#B07A14]/40 dark:bg-yellow-900/25 dark:text-yellow-200"
+                            title={DEAD_BLOCKED_TITLE}
+                          >
+                            <span aria-hidden="true">⚠</span>
+                            {DEAD_BLOCKED_LABEL}
+                          </span>
+                        </Show>
                       </td>
 
                       {/* Latest change — reason, who, when */}

@@ -53,6 +53,10 @@ import DeadToggle from "../../components/common/DeadToggle";
 import { isTier1CM } from "../../stores/currentUser";
 import { isSwitched, scopeKey } from "../../stores/cmScope";
 import { openClientPage } from "../../utils/openClientPage";
+import {
+  DEAD_BLOCKED_LABEL,
+  DEAD_BLOCKED_TITLE,
+} from "../../services/clientStatus";
 import RowsPerPageSelect from "../../components/common/RowsPerPageSelect";
 import { loadErrorMessage } from "../../utils/apiErrors";
 
@@ -141,8 +145,8 @@ export default function CommandBoard() {
   // This toggle ADDS them back; it does not take them away.
   const [includeDormant, setIncludeDormant] = createSignal(false);
 
-  // Dead clients (status hold/completed, nothing for 10 days, no live
-  // campaign) are hidden server-side. ON sends dead=only — ONLY dead clients —
+  // Dead clients (status Dead with no live campaign, or Completed with 20
+  // quiet days and no live campaign) are hidden server-side. ON sends dead=only — ONLY dead clients —
   // and the server skips the dormant filter by itself, so the dormant toggle
   // steps aside while this is on.
   const [dead, setDead] = createSignal(false);
@@ -1088,6 +1092,15 @@ export default function CommandBoard() {
                                 <p class="max-w-[200px] truncate text-xs text-gray-500 dark:text-gray-400">
                                   {r.email || DASH}
                                 </p>
+                                <Show when={r.dead_blocked}>
+                                  <span
+                                    class="mt-1 flex w-fit items-center gap-1 px-2 py-[2px] rounded-full text-[10px] font-semibold whitespace-nowrap bg-[#FBF3E2] text-[#8A6410] border border-[#B07A14]/40 dark:bg-yellow-900/25 dark:text-yellow-200"
+                                    title={DEAD_BLOCKED_TITLE}
+                                  >
+                                    <span aria-hidden="true">⚠</span>
+                                    {DEAD_BLOCKED_LABEL}
+                                  </span>
+                                </Show>
                               </div>
                             </div>
                           </td>

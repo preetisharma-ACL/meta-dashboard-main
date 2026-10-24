@@ -1,8 +1,16 @@
 import { api } from "../api/api";
 
 // ─── Client engagement status ─────────────────────────────────────────────────
-// A MANUAL label a CM or admin puts on a client: active / hold / completed, or
-// UNSET (null) when nobody has marked it yet.
+// A MANUAL label a CM or admin puts on a client: active / hold / completed /
+// dead, or UNSET (null) when nobody has marked it yet.
+//
+// DEAD (backend 69b8461): picking "dead" with no active campaign makes the
+// client dead at once (it leaves every list for the Dead Clients section).
+// With a campaign still live the status is saved but the client stays visible,
+// FLAGGED (dead_blocked) until its campaigns stop, then turns dead hourly.
+// Completed turns dead after 20 days of zero spend + zero leads with no live
+// campaign. Hold / Active / Unset never go dead. Moving off Dead or Completed
+// revives at once.
 //
 // This is NOT `is_active`. That flag is the account's own live/disabled state
 // and is set elsewhere; this one is an operational judgement ("we've paused this
@@ -24,6 +32,7 @@ export const CLIENT_STATUSES = [
   { key: "active", label: "Active" },
   { key: "hold", label: "Hold" },
   { key: "completed", label: "Completed" },
+  { key: "dead", label: "Dead" },
 ];
 
 // Tabs / filters, including the "not yet marked" bucket and All.
@@ -32,8 +41,17 @@ export const STATUS_FILTERS = [
   { key: "active", label: "Active" },
   { key: "hold", label: "Hold" },
   { key: "completed", label: "Completed" },
+  { key: "dead", label: "Dead" },
   { key: STATUS_UNSET, label: "Unset" },
 ];
+
+// Zeroed tally with a key for every bucket — a local count that indexes by
+// status would otherwise hit NaN on a status it didn't list.
+export const emptyStatusCounts = () => {
+  const acc = { total: 0, [STATUS_UNSET]: 0 };
+  for (const s of CLIENT_STATUSES) acc[s.key] = 0;
+  return acc;
+};
 
 // Badge styling. Unset is deliberately the faintest thing on the row — it is an
 // absence, and dressing it up as a fourth state would imply somebody chose it.
@@ -43,6 +61,8 @@ export const STATUS_BADGE = {
   hold: "bg-amber-100 text-amber-700 ring-1 ring-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:ring-amber-800",
   completed:
     "bg-slate-200 text-slate-700 ring-1 ring-slate-300 dark:bg-slate-700/40 dark:text-slate-300 dark:ring-slate-600",
+  // Outlined rather than filled so the black dot stays visible on it.
+  dead: "bg-white text-gray-900 ring-1 ring-gray-900 dark:bg-gray-900 dark:text-gray-100 dark:ring-gray-300",
   [STATUS_UNSET]:
     "bg-transparent text-gray-400 ring-1 ring-dashed ring-gray-300 dark:text-gray-500 dark:ring-gray-700",
 };
@@ -52,6 +72,7 @@ export const STATUS_DOT = {
   active: "bg-green-500",
   hold: "bg-amber-500",
   completed: "bg-slate-400",
+  dead: "bg-gray-900 dark:bg-gray-100",
   [STATUS_UNSET]: "bg-gray-300 dark:bg-gray-600",
 };
 
@@ -107,6 +128,24 @@ export const updateClientStatus = async (clientId, { status, reason }) => {
     body: JSON.stringify({ status, reason }),
   });
 };
+
+// What a status save did to the client's dead state. PATCH now answers with
+// is_dead, dead_blocked and warning (non-null = marked Dead but a campaign is
+// still live). Read from data, falling back to the top level.
+export const readStatusOutcome = (res) => {
+  const d = res?.data ?? {};
+  const pick = (k) => d?.[k] ?? res?.[k];
+  const warning = pick("warning");
+  return {
+    isDead: pick("is_dead") === true,
+    deadBlocked: pick("dead_blocked") === true,
+    warning: typeof warning === "string" && warning.trim() ? warning : null,
+  };
+};
+
+export const DEAD_BLOCKED_LABEL = "Dead, campaign live";
+export const DEAD_BLOCKED_TITLE =
+  "Marked Dead, but a campaign is still live. It stays in the lists until its campaigns stop, then moves to Dead clients automatically (hourly).";
 
 // ── Per-client history ───────────────────────────────────────────────────────
 // GET /clients/{id}/status-history/

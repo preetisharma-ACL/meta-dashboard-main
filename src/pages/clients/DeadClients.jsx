@@ -25,8 +25,9 @@ import { openClientPage } from "../../utils/openClientPage";
 import { scopeKey } from "../../stores/cmScope";
 
 // ─── Dead clients ─────────────────────────────────────────────────────────────
-// GET /clients/dead/ — clients the hourly job has marked dead: CM status hold or
-// completed, zero spend and zero leads for 10 days, no active campaign. They
+// GET /clients/dead/ — dead clients: status Dead with no live campaign, or
+// Completed with zero spend and zero leads for 20 days and no live campaign
+// (?flagged=1 lists the ones marked Dead whose campaign is still live). They
 // drop off every other list by default; this is where they live, with who
 // handled them and why they stopped.
 //
@@ -97,6 +98,15 @@ export default function DeadClients() {
   const [query, setQuery] = createSignal(""); // in the box
   const [q, setQ] = createSignal(""); // sent, debounced
   const [selectedId, setSelectedId] = createSignal(null);
+  // "dead" | "flagged" — flagged = marked Dead but a campaign is still live
+  // (GET /clients/dead/?flagged=1, same fields and visibility).
+  const [tab, setTab] = createSignal("dead");
+  const flagged = () => tab() === "flagged";
+  const pickTab = (t) => {
+    if (tab() === t) return;
+    setSelectedId(null);
+    setTab(t);
+  };
 
   let qTimer;
   const onQueryInput = (v) => {
@@ -108,8 +118,9 @@ export default function DeadClients() {
 
   // Object source — a bare "" would read as "don't fetch" to createResource.
   const [list, { refetch }] = createResource(
-    () => ({ q: q(), viewing: scopeKey() }), // viewing: re-key on a switch
-    ({ q }) => fetchDeadClients({ q }),
+    // viewing: re-key on a "Viewing" switch (api.js sends the param itself).
+    () => ({ q: q(), flagged: flagged(), viewing: scopeKey() }),
+    ({ q, flagged }) => fetchDeadClients({ q, flagged }),
   );
 
   // An errored resource THROWS on read, so guard before touching latest.
@@ -147,10 +158,10 @@ export default function DeadClients() {
             </span>
           </h1>
           <p class="pl-[46px] text-sm text-gray-500 dark:text-gray-400 mt-0.5 max-w-3xl">
-            Status on Hold or Completed, no spend and no leads for 10 days, and
-            no active campaign. They're hidden from the other client lists, and
-            come back on their own within an hour once the status changes or a
-            campaign spends or gets a lead.
+            Status Dead with no live campaign, or Completed with no spend and no
+            leads for 20 days and no live campaign. They're hidden from the
+            other client lists. Changing the status away from Dead or Completed
+            brings a client back straight away.
           </p>
         </div>
         <button
@@ -178,6 +189,46 @@ export default function DeadClients() {
         </div>
       </Show>
 
+      {/* ── Dead / Flagged ── */}
+      <div class="mb-4 flex flex-wrap items-center gap-3">
+        <div
+          role="tablist"
+          aria-label="Dead or flagged"
+          class="inline-flex items-center gap-1 bg-white dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-600 rounded-full p-1"
+        >
+          <For
+            each={[
+              { key: "dead", label: "Dead" },
+              { key: "flagged", label: "Flagged (campaign live)" },
+            ]}
+          >
+            {(t) => (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tab() === t.key}
+                onClick={() => pickTab(t.key)}
+                class={`px-4 py-1.5 rounded-full text-[13px] font-semibold transition-colors whitespace-nowrap ${
+                  tab() === t.key
+                    ? t.key === "flagged"
+                      ? "bg-[#B07A14] text-white"
+                      : "bg-[#3B3F47] text-white dark:bg-gray-200 dark:text-gray-900"
+                    : "text-[#54657E] dark:text-gray-300 hover:text-[#14233A] dark:hover:text-white"
+                }`}
+              >
+                {t.label}
+              </button>
+            )}
+          </For>
+        </div>
+        <Show when={flagged()}>
+          <span class="text-[12px] text-gray-500 dark:text-gray-400">
+            Marked Dead, but a campaign is still live — they stay in the lists
+            until it stops, then move to Dead automatically (hourly).
+          </span>
+        </Show>
+      </div>
+
       {/* ── Search ── */}
       <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-4 mb-4 flex flex-wrap items-center gap-3">
         <div class="relative flex w-full sm:w-[380px]">
@@ -201,7 +252,8 @@ export default function DeadClients() {
         </div>
         <span class="ml-auto text-sm text-gray-400 dark:text-gray-400 whitespace-nowrap">
           <Show when={!firstLoad() && !list.error} fallback="—">
-            {rows().length} dead client{rows().length === 1 ? "" : "s"}
+            {rows().length} {flagged() ? "flagged" : "dead"} client
+            {rows().length === 1 ? "" : "s"}
             {q() ? " matching" : ""}
           </Show>
         </span>
@@ -243,7 +295,11 @@ export default function DeadClients() {
             <Show when={!firstLoad() && !list.error && rows().length === 0}>
               <tr>
                 <td colspan={COLS} class="p-12 text-center text-gray-500 dark:text-gray-400">
-                  {q() ? "No dead clients match this search." : "No dead clients right now."}
+                  {q()
+                    ? `No ${flagged() ? "flagged" : "dead"} clients match this search.`
+                    : flagged()
+                      ? "No flagged clients right now."
+                      : "No dead clients right now."}
                 </td>
               </tr>
             </Show>
@@ -521,18 +577,24 @@ function DeadClientPanel(props) {
             </Section>
 
             <Section
-              title="Dead / revived · newest first"
+              title="Dead / flagged / revived · newest first"
               count={c().dead_history.length}
               empty="No dead or revived events recorded."
             >
               <For each={c().dead_history}>
                 {(d) => {
-                  const isDead = () => String(d.event).toLowerCase() === "dead";
+                  const ev = () => String(d.event).toLowerCase();
+                  const isDead = () => ev() === "dead";
+                  const isFlagged = () => ev() === "flagged";
                   return (
                     <li class="ml-5 pb-5 last:pb-0">
                       <span
                         class={`absolute -left-[5px] mt-1.5 h-2.5 w-2.5 rounded-full ring-4 ring-white dark:ring-gray-900 ${
-                          isDead() ? "bg-gray-700 dark:bg-gray-300" : "bg-emerald-500"
+                          isDead()
+                            ? "bg-gray-700 dark:bg-gray-300"
+                            : isFlagged()
+                              ? "bg-[#B07A14]"
+                              : "bg-emerald-500"
                         }`}
                       />
                       <div class="flex flex-wrap items-center gap-2">
@@ -540,10 +602,16 @@ function DeadClientPanel(props) {
                           class={`text-[10px] font-bold uppercase tracking-wider px-2 py-[2px] rounded ${
                             isDead()
                               ? "bg-gray-800 text-white dark:bg-gray-200 dark:text-gray-900"
-                              : "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+                              : isFlagged()
+                                ? "bg-[#FBF3E2] text-[#8A6410] border border-[#B07A14]/40 dark:bg-yellow-900/25 dark:text-yellow-200"
+                                : "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
                           }`}
                         >
-                          {isDead() ? "Went dead" : "Revived"}
+                          {isDead()
+                            ? "Went dead"
+                            : isFlagged()
+                              ? "Flagged: dead but campaign live"
+                              : "Revived"}
                         </span>
                         <span class="text-[12px] text-gray-500 dark:text-gray-400 tabular-nums">
                           {istDateTime(d.at) ?? DASH}

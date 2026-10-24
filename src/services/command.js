@@ -167,6 +167,8 @@ const normaliseRow = (row) => {
     ad_account_list: normaliseAdAccounts(row),
     // The dashboard's client scope for CMs — see utils/openClientPage.
     client_nomen_id: row?.client_nomen_id ?? null,
+    // Marked Dead while a campaign is still live — shown as a flag.
+    dead_blocked: row?.dead_blocked === true,
     // Tier 1 CMs only; absent (undefined) for admin/coordination. Kept as
     // true / false / null — see canOpenClient in commandRules.
     in_my_team:

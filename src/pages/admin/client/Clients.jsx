@@ -23,6 +23,8 @@ import ClientStatusHistoryDrawer from "../../../components/clientStatus/ClientSt
 import {
   fetchStatusBoard,
   STATUS_FILTERS,
+  DEAD_BLOCKED_LABEL,
+  DEAD_BLOCKED_TITLE,
   STATUS_DOT,
   normaliseStatus,
 } from "../../../services/clientStatus";
@@ -183,6 +185,7 @@ export default function Clients() {
       map[String(c.id)] = {
         status: c.engagement_status ?? null,
         change: c.latest_change ?? null,
+        deadBlocked: c.dead_blocked === true,
       };
     }
     return map;
@@ -200,6 +203,10 @@ export default function Clients() {
     const fromBoard = pk != null ? statusByPk()[String(pk)] : null;
     return fromBoard?.status ?? c.engagement_status ?? null;
   };
+  const deadBlockedOf = (c) => {
+    const pk = pkOf(c);
+    return pk != null ? statusByPk()[String(pk)]?.deadBlocked === true : false;
+  };
   const changeOf = (c) => {
     const pk = pkOf(c);
     return pk != null ? (statusByPk()[String(pk)]?.change ?? null) : null;
@@ -207,19 +214,25 @@ export default function Clients() {
 
   // Keep the board in sync after an inline change so the badge, the caption and
   // the status filter all agree without a refetch.
-  const applyStatusChange = (pk, { status, change }) => {
+  const applyStatusChange = (pk, { status, change, isDead, deadBlocked }) => {
     mutateBoard((prev) => {
       const clients = prev?.clients ?? [];
       const hit = clients.some((c) => String(c.id) === String(pk));
+      const patch = {
+        engagement_status: status,
+        latest_change: change,
+        dead_blocked: deadBlocked,
+      };
       const next = hit
-        ? clients.map((c) =>
-            String(c.id) === String(pk)
-              ? { ...c, engagement_status: status, latest_change: change }
-              : c,
-          )
-        : [...clients, { id: pk, engagement_status: status, latest_change: change }];
+        ? clients.map((c) => (String(c.id) === String(pk) ? { ...c, ...patch } : c))
+        : [...clients, { id: pk, ...patch }];
       return { counts: prev?.counts ?? {}, clients: next };
     });
+    // Went dead → it leaves the default list; revived on the dead-only view →
+    // it leaves that one.
+    if (deadOnly() ? !isDead : isDead) {
+      setAllClients((rows) => rows.filter((c) => String(pkOf(c)) !== String(pk)));
+    }
   };
 
   // ── Value tier ────────────────────────────────────────────────────────────
@@ -1308,6 +1321,15 @@ export default function Clients() {
                           applyStatusChange(pkOf(client), payload)
                         }
                       />
+                      <Show when={deadBlockedOf(client)}>
+                          <span
+                            class="mt-1 flex w-fit items-center gap-1 px-2 py-[2px] rounded-full text-[10px] font-semibold whitespace-nowrap bg-[#FBF3E2] text-[#8A6410] border border-[#B07A14]/40 dark:bg-yellow-900/25 dark:text-yellow-200"
+                            title={DEAD_BLOCKED_TITLE}
+                          >
+                            <span aria-hidden="true">⚠</span>
+                            {DEAD_BLOCKED_LABEL}
+                          </span>
+                        </Show>
                     </td>
 
                     {/* Derived activity + the mismatch flag. Read-only — it

@@ -1,10 +1,11 @@
 import { api } from "../api/api";
 
 // ─── Dead clients ─────────────────────────────────────────────────────────────
-// Backend rule (hourly job): a client is DEAD when its CM status is hold or
-// completed AND it had zero spend and zero leads over the last 10 days AND no
-// active campaign. It revives on its own (within the hour) when the status
-// changes or a campaign spends / gets a lead.
+// Backend rule (69b8461): DEAD when the CM sets status "dead" and no campaign
+// is live (with one live it is FLAGGED — dead_blocked — and turns dead hourly
+// once campaigns stop), or status "completed" with zero spend and zero leads
+// for 20 days and no live campaign. Hold / active / unset never go dead.
+// Moving the status off dead/completed revives at once.
 //
 // Dead clients are HIDDEN BY DEFAULT on five lists — admin clients, payments
 // overview, command, status board, value tier board. Each takes ?dead=:
@@ -68,8 +69,10 @@ const readRows = (res) => {
 // GET /clients/dead/[?q=][&client_id=]
 // Server-scoped: admin, coordination and Tier 1 see every dead client; Tier 2/3
 // only their own.
-export const fetchDeadClients = async ({ q, clientId } = {}) => {
+// flagged → ?flagged=1: marked Dead but a campaign still live (same fields).
+export const fetchDeadClients = async ({ q, clientId, flagged } = {}) => {
   const sp = new URLSearchParams();
+  if (flagged) sp.set("flagged", "1");
   if (q) sp.set("q", q);
   if (clientId != null) sp.set("client_id", String(clientId));
   const s = sp.toString();

@@ -3,7 +3,7 @@
 // to dead clients ONLY (?dead=only) — it does not add them to the live ones,
 // which is why the label says "Dead clients" and the ON state is unmistakable.
 export const DEAD_TOGGLE_TITLE =
-  "Dead = status Hold or Completed, no spend and no leads for 10 days, and no active campaign. Hidden by default; turn this on to see ONLY dead clients.";
+  "Dead = status Dead with no live campaign, or Completed with no spend and no leads for 20 days and no live campaign. Hidden by default; turn this on to see ONLY dead clients.";
 
 export default function DeadToggle(props) {
   return (

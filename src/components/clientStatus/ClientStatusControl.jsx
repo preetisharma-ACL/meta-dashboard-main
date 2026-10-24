@@ -8,7 +8,9 @@ import {
   statusLabel,
   updateClientStatus,
   latestChangeCaption,
+  readStatusOutcome,
 } from "../../services/clientStatus";
+import { showNotice } from "../common/NoticeToast";
 
 // ─── Client engagement status: badge + inline change ──────────────────────────
 // The badge IS the control — click it and pick a new status right where you're
@@ -25,7 +27,9 @@ import {
 //   clientId      Client PK (NOT the nomen id) — required to submit
 //   status        current engagement_status (null → unset)
 //   latestChange  { from_status, to_status, reason, changed_by_email, changed_at }
-//   onChanged({ status, change })  fired after a successful PATCH
+//   onChanged({ status, change, isDead, deadBlocked, warning })  after a PATCH.
+//                 isDead → the host should drop the row (lists hide dead
+//                 clients); deadBlocked → show the "Dead, campaign live" flag.
 //   showCaption   render the "Hold · 'reason' · Who · 7 Aug" line under the badge
 //   readOnly      render the badge only (no popover)
 //   compact       smaller badge, for dense card lists
@@ -138,10 +142,15 @@ export default function ClientStatusControl(props) {
           changed_by_email: null,
           changed_at: new Date().toISOString(),
         };
+      const outcome = readStatusOutcome(res);
       setLocalStatus(next);
       setLocalChange(serverChange);
       close();
-      props.onChanged?.({ status: next, change: serverChange });
+      // Told here so every host gets it. A warning means "marked Dead but a
+      // campaign is still live" — the client stays put, flagged.
+      if (outcome.warning) showNotice(outcome.warning, "warn");
+      else if (outcome.isDead) showNotice("Moved to Dead clients", "info");
+      props.onChanged?.({ status: next, change: serverChange, ...outcome });
     } catch (err) {
       // 403 for an out-of-scope client, 400 for a rejected payload — the
       // server's wording names the client and the rule, so print it as-is.

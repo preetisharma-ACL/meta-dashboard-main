@@ -35,6 +35,7 @@ import ValueTierBoard from "./pages/clients/ValueTierBoard";
 import CommandBoard from "./pages/command/CommandBoard";
 import DeadClients from "./pages/clients/DeadClients";
 import GateRoute from "./utils/GateRoute";
+import NoticeToast from "./components/common/NoticeToast";
 import { canSeeCampaignAnalysis } from "./stores/currentUser";
 import { SuperuserRoute } from "./pages/control/ControlUI";
 import ControlModels from "./pages/control/ControlModels";
@@ -129,6 +130,7 @@ function Layout(props) {
         <CMBanner />
         <SuspendedAccountsBanner />
         <main class="min-h-[calc(100vh-4rem)]">{props.children}</main>
+        <NoticeToast />
       </div>
     </div>
   );
