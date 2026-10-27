@@ -624,12 +624,25 @@ export default function Sidebar() {
         // "Client Payments" row for admin — it belongs on the payments desk.
         // Labelled "Client Payments" here rather than accounts' "Billing", so
         // the row keeps the name admin already knows it by.
-        subMenus: PAYMENT_DESK_LINKS.map((l) => ({
-          name: l.path === "/client-payments" ? "Client Payments" : l.name,
-          path: l.path,
-          roles: ["admin"],
-          icon: () => <SmallIcon d={l.d} />,
-        })),
+        // Additional Services sits in here too for admin (same as the CM desk
+        // below). Fine as a sub-item: it is admin-only, so it never asks to
+        // widen past this group's roles.
+        subMenus: [
+          ...PAYMENT_DESK_LINKS.map((l) => ({
+            name: l.path === "/client-payments" ? "Client Payments" : l.name,
+            path: l.path,
+            roles: ["admin"],
+            icon: () => <SmallIcon d={l.d} />,
+          })),
+          {
+            name: "Additional Services",
+            path: "/billing/additional-services",
+            roles: ["admin"],
+            icon: () => (
+              <SmallIcon d="M10 21h4M7 3h10a2 2 0 012 2v4a7 7 0 01-7 7 7 7 0 01-7-7V5a2 2 0 012-2zm5 13v5" />
+            ),
+          },
+        ],
       },
       // ── Sales manager nav (v1.1) ──────────────────────────────────────────
       {
@@ -694,13 +707,13 @@ export default function Sidebar() {
         path: "/client-payments",
       },
       {
-        // Top-level for admin/accounts/coordination. It cannot live inside the
-        // admin "Payments Desk" or the accounts flat list: a sub-item's `roles`
-        // never widen past its parent group's. CMs get it inside their own
-        // "Payments Desk" group below. Sales are out: they onboard clients,
-        // they don't bill them. CLIENTS ARE NEVER HERE.
+        // Top-level for accounts/coordination — neither has a "Payments Desk"
+        // group to hold it (accounts' desk is a flat list), and a sub-item's
+        // `roles` never widen past its parent group's. Admin and CMs get it
+        // inside their own "Payments Desk" groups. Sales are out: they onboard
+        // clients, they don't bill them. CLIENTS ARE NEVER HERE.
         name: "Additional Services",
-        roles: ["admin", "accounts", "coordination"],
+        roles: ["accounts", "coordination"],
         icon: () => (
           <Icon d="M10 21h4M7 3h10a2 2 0 012 2v4a7 7 0 01-7 7 7 7 0 01-7-7V5a2 2 0 012-2zm5 13v5" />
         ),
