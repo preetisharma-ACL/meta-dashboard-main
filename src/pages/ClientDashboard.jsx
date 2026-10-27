@@ -54,6 +54,7 @@ import { fetchSalesClients } from "../services/sales";
 import Avatar from "../components/common/Avatar";
 import RowsPerPageSelect from "../components/common/RowsPerPageSelect";
 import CountUp from "../components/CountUp";
+import SpendGauge from "../components/SpendGauge";
 import ClientAIInsightButton from "../components/ClientAIInsightButton";
 import {
   projectsCache,
@@ -1494,6 +1495,174 @@ export default function MainDashboard() {
     };
   });
 
+  // ── Hero gauge: spend vs the previous period ───────────────────────────────
+  // The gauge compares spend with what was spent BEFORE, not with the
+  // allocation (the allocation line above still says that part).
+  //   • Month view (this month / nothing picked): 100% = last month's full
+  //     spend; a tick marks last month's spend over the SAME days (1st → today's
+  //     date), and the pill's % change is against those same days — the fair
+  //     comparison, since a full month always beats 27 days.
+  //   • Any other window: the same number of days immediately before it (a
+  //     whole calendar month compares with the previous calendar month).
+  // Previous spend comes from the SAME /dashboard/ledger/ endpoint and reader
+  // the hero uses, summed over the SAME project list as the hero total — two
+  // windows of one source, never two sources.
+  const dayOf = (d) => {
+    if (!d) return null;
+    const x = typeof d === "string" ? new Date(`${d}T00:00:00`) : new Date(d);
+    if (Number.isNaN(x.getTime())) return null;
+    x.setHours(0, 0, 0, 0);
+    return x;
+  };
+  const addDays = (d, n) => {
+    const x = new Date(d);
+    x.setDate(x.getDate() + n);
+    return x;
+  };
+
+  // Depends on the date pickers only — NOT on heroPacing(), which changes on
+  // every data load and would refetch the comparison ledgers each time.
+  const compareWindows = createMemo(
+    () => {
+      const today = dayOf(new Date());
+      const monthView =
+        cardRange() === "thisMonth" ||
+        (!cardRange() && !fromDate() && !toDate());
+      const prevMonthOf = (d) => ({
+        start: new Date(d.getFullYear(), d.getMonth() - 1, 1),
+        end: new Date(d.getFullYear(), d.getMonth(), 0),
+      });
+
+      if (monthView) {
+        const prev = prevMonthOf(today);
+        const sameEnd = new Date(
+          prev.start.getFullYear(),
+          prev.start.getMonth(),
+          Math.min(today.getDate(), prev.end.getDate()),
+        );
+        return {
+          monthView: true,
+          prev: { start: ymd(prev.start), end: ymd(prev.end) },
+          same: { start: ymd(prev.start), end: ymd(sameEnd) },
+        };
+      }
+
+      const { from, to } = getCardDateRange();
+      const start = dayOf(from);
+      const end = dayOf(to) ?? today;
+      if (!start || end < start) return null;
+      const wholeMonth =
+        start.getDate() === 1 &&
+        addDays(end, 1).getDate() === 1 &&
+        start.getMonth() === end.getMonth() &&
+        start.getFullYear() === end.getFullYear();
+      if (wholeMonth) {
+        const prev = prevMonthOf(start);
+        return {
+          monthView: false,
+          prev: { start: ymd(prev.start), end: ymd(prev.end) },
+          same: null,
+        };
+      }
+      const days = Math.round((end - start) / 86400000) + 1;
+      const prevEnd = addDays(start, -1);
+      return {
+        monthView: false,
+        prev: { start: ymd(addDays(prevEnd, -(days - 1))), end: ymd(prevEnd) },
+        same: null,
+      };
+    },
+    undefined,
+    { equals: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
+  );
+
+  const windowKey = (w) => {
+    if (!w) return false;
+    const cal = ledgerRangeKey();
+    return { client: cal.client, scope: cal.scope, start: w.start, end: w.end };
+  };
+  const sameKey = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const prevFullKey = createMemo(() => windowKey(compareWindows()?.prev), undefined, {
+    equals: sameKey,
+  });
+  const prevSameKey = createMemo(() => windowKey(compareWindows()?.same), undefined, {
+    equals: sameKey,
+  });
+  const [prevFullRes] = createResource(prevFullKey, loadLedger);
+  const [prevSameRes] = createResource(prevSameKey, loadLedger);
+  const prevFullLedger = scopedLedger(prevFullRes, prevFullKey);
+  const prevSameLedger = scopedLedger(prevSameRes, prevSameKey);
+
+  // Σ spend over the hero's own project list, so both sides cover the same
+  // projects (a project outside the list counts on neither side).
+  const spendOver = (led) =>
+    statusedProjects().reduce(
+      (s, p) => s + (led.byProject[String(p.id)]?.spend ?? 0),
+      0,
+    );
+
+  // "Sep 1–27", "Sep 2026", "Oct 20 – Nov 2"
+  const fmtWindow = (w) => {
+    if (!w) return "";
+    const s = dayOf(w.start);
+    const e = dayOf(w.end);
+    const mon = (d) => d.toLocaleString("en-US", { month: "short" });
+    const lastDay = new Date(e.getFullYear(), e.getMonth() + 1, 0).getDate();
+    if (s.getMonth() === e.getMonth() && s.getFullYear() === e.getFullYear()) {
+      if (s.getDate() === 1 && e.getDate() === lastDay)
+        return `${mon(s)} ${s.getFullYear()}`;
+      if (s.getDate() === e.getDate()) return `${mon(s)} ${s.getDate()}`;
+      return `${mon(s)} ${s.getDate()}–${e.getDate()}`;
+    }
+    return `${mon(s)} ${s.getDate()} – ${mon(e)} ${e.getDate()}`;
+  };
+
+  const heroCompare = createMemo(() => {
+    const w = compareWindows();
+    const full = prevFullLedger();
+    const same = prevSameLedger();
+    const current = Number(overviewStatsCards().totalSpent) || 0;
+    const prevTotal = w && full.loaded ? spendOver(full) : null;
+    const sameTotal = w?.same && same.loaded ? spendOver(same) : null;
+    // What the % change is measured against: same days in month view, the
+    // whole previous window otherwise.
+    const basis = w?.monthView ? sameTotal : prevTotal;
+    const basisLabel = w?.monthView ? fmtWindow(w?.same) : fmtWindow(w?.prev);
+    const changePct = basis > 0 ? ((current - basis) / basis) * 100 : null;
+    const loading =
+      heroLoading() ||
+      (!!w && !full.settled) ||
+      (!!w?.same && !same.settled);
+
+    let status;
+    if (!w) status = { tone: "neutral", text: "No earlier period" };
+    else if (loading) status = null;
+    else if (changePct == null)
+      status = { tone: "neutral", text: `No spend in ${basisLabel}` };
+    else if (Math.abs(changePct) < 0.5)
+      status = { tone: "neutral", text: `Level with ${basisLabel}` };
+    else
+      status = {
+        tone: changePct > 0 ? "good" : "bad",
+        text: `${changePct > 0 ? "▲" : "▼"} ${Math.abs(changePct).toFixed(1)}% vs ${basisLabel}`,
+      };
+
+    return {
+      monthView: !!w?.monthView,
+      current,
+      prevTotal,
+      sameTotal,
+      changePct,
+      prevLabel: fmtWindow(w?.prev),
+      sameLabel: fmtWindow(w?.same),
+      pct: prevTotal > 0 ? (current / prevTotal) * 100 : null,
+      markPct:
+        prevTotal > 0 && sameTotal != null ? (sameTotal / prevTotal) * 100 : null,
+      loading,
+      status,
+    };
+  });
+
   // Best / worst CPL among projects that actually generated leads.
   const cplExtremes = createMemo(() => {
     const rows = projectCardRows().filter((r) => r.s.totalLeads > 0);
@@ -2311,46 +2480,77 @@ export default function MainDashboard() {
                 {heroPacing().utilPct.toFixed(1)}% utilised
               </p>
 
-              {/* Pacing rail */}
-              <div class="mt-9">
-                <div class="relative h-4 rounded-full bg-[#EAEFF6] dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700">
-                  <div
-                    class="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-[#AC2334] to-[#C9374B] transition-all duration-700"
-                    style={`width:${heroPacing().utilPct}%`}
-                  ></div>
-                  <Show when={heroPacing().isMonthView}>
-                    <div
-                      class="absolute -top-2 -bottom-2 w-0.5 bg-[#14233A] dark:bg-gray-50 rounded"
-                      style={`left:${heroPacing().calendarPct}%`}
-                    >
-                      {/* The caption is far wider than the tick it hangs off,
-                          so centring it spills past the card near the ends of
-                          the month — on a phone that gives the whole page a
-                          sideways scroll. Anchor it to whichever side of the
-                          tick still has room. */}
-                      <span
-                        class="absolute -top-7 whitespace-nowrap text-[11px] font-bold uppercase tracking-wide text-[#14233A] dark:text-white"
-                        style={
-                          heroPacing().calendarPct > 70
-                            ? "right:0"
-                            : heroPacing().calendarPct < 30
-                              ? "left:0"
-                              : "left:50%;transform:translateX(-50%)"
-                        }
-                      >
-                        Today · Day {heroPacing().dayOfMonth} of{" "}
-                        {heroPacing().daysInMonth}
-                      </span>
+              {/* Comparison gauge — this window's spend against the previous
+                  one (see heroCompare); the allocation line above is
+                  unchanged. */}
+              <div class="mt-6 grid grid-cols-1 md:grid-cols-[minmax(0,320px)_minmax(0,1fr)] gap-6 md:gap-8 items-center">
+                <SpendGauge
+                  pct={heroCompare().pct}
+                  markPct={heroCompare().markPct}
+                  markLabel={heroCompare().sameLabel}
+                  refLabel={heroCompare().prevLabel || "previous period"}
+                  loading={heroCompare().loading}
+                  status={heroCompare().status}
+                />
+                <div class="min-w-0">
+                  <dl class="grid grid-cols-2 gap-x-6 gap-y-4">
+                    <div class="min-w-0">
+                      <dt class="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8593A8] dark:text-gray-500 flex items-center gap-1.5">
+                        <span class="w-2 h-2 rounded-full bg-[#AC2334]" />
+                        {heroCompare().monthView ? "This month so far" : "This period"}
+                      </dt>
+                      <dd class="mt-1 text-base font-bold text-[#14233A] dark:text-white tabular-nums break-words">
+                        {inr(heroCompare().current)}
+                      </dd>
                     </div>
-                  </Show>
-                </div>
-                <div class="flex justify-between gap-2 mt-2 text-xs font-medium text-[#8593A8] dark:text-gray-500">
-                  <span>₹0</span>
-                  <span>
-                    {"₹"}
-                    {overviewStatsCards().totalBudget.toLocaleString("en-IN")}
-                  </span>
-                </div>
+                    <div class="min-w-0">
+                      <dt class="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8593A8] dark:text-gray-500 flex items-center gap-1.5">
+                        <span class="w-2 h-2 rounded-full bg-[#D4DCE7] dark:bg-gray-600" />
+                        {heroCompare().prevLabel || "Previous period"}
+                      </dt>
+                      <dd class="mt-1 text-base font-bold text-[#14233A] dark:text-white tabular-nums break-words">
+                        {heroCompare().prevTotal == null
+                          ? "—"
+                          : inr(heroCompare().prevTotal)}
+                      </dd>
+                    </div>
+                    <Show when={heroCompare().monthView}>
+                      <div class="min-w-0">
+                        <dt class="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8593A8] dark:text-gray-500 flex items-center gap-1.5">
+                          <span class="w-2.5 h-0.5 rounded bg-[#14233A] dark:bg-white" />
+                          {heroCompare().sameLabel} (same days)
+                        </dt>
+                        <dd class="mt-1 text-base font-bold text-[#14233A] dark:text-white tabular-nums break-words">
+                          {heroCompare().sameTotal == null
+                            ? "—"
+                            : inr(heroCompare().sameTotal)}
+                        </dd>
+                      </div>
+                    </Show>
+                    <div class="min-w-0">
+                      <dt class="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8593A8] dark:text-gray-500">
+                        Change
+                      </dt>
+                      <dd
+                        class={`mt-1 text-base font-bold tabular-nums ${
+                          heroCompare().changePct == null
+                            ? "text-[#8593A8]"
+                            : heroCompare().changePct >= 0
+                              ? "text-[#15966A]"
+                              : "text-[#AC2334]"
+                        }`}
+                      >
+                        {heroCompare().changePct == null
+                          ? "—"
+                          : `${heroCompare().changePct >= 0 ? "+" : "−"}${Math.abs(heroCompare().changePct).toFixed(1)}%`}
+                        <Show when={heroCompare().changePct != null}>
+                          <span class="ml-1.5 text-xs font-semibold text-[#8593A8] dark:text-gray-400">
+                            {heroCompare().monthView ? "vs same days" : "vs previous"}
+                          </span>
+                        </Show>
+                      </dd>
+                    </div>
+                  </dl>
 
                 <Show
                   when={heroPacing().isMonthView && heroPacing().budget > 0}
@@ -2391,6 +2591,7 @@ export default function MainDashboard() {
                     </Show>
                   </p>
                 </Show>
+                </div>
               </div>
             </Show>
           </div>
