@@ -26,8 +26,10 @@ import {
   OneDriveLink,
   ROW,
   STICKY_TD,
-  RowMenu,
+  STICKY_RIGHT_TH,
+  STICKY_RIGHT_TD,
 } from "../../components/creatives/CreativeUI";
+import { Pencil, Trash2 } from "lucide-solid";
 
 // ─── Creative Library (/creatives) ────────────────────────────────────────────
 // Every creative and its code. kind, nomen_id, active and q go to the server.
@@ -35,8 +37,8 @@ import {
 // distinct project_id / project of those same rows (no extra call), and
 // filtering server-side would shrink that list to the one project picked.
 // Row opens the detail page. "Add creative" is admin, coordination and creative
-// (canWriteCreatives); a CM reads it. The row "⋯" menu has Edit for writers and
-// Delete for admin / coordination (canFixCreatives).
+// (canWriteCreatives); a CM reads it. The pinned Actions column has Edit for
+// writers and Delete for admin / coordination (canFixCreatives).
 
 export default function CreativeLibrary() {
   const navigate = useNavigate();
@@ -152,7 +154,9 @@ export default function CreativeLibrary() {
           { label: "Status" },
           { label: "Created by" },
           { label: "Created at" },
-          ...(canWriteCreatives() ? [{ label: "" }] : []),
+          ...(canWriteCreatives()
+            ? [{ label: "Actions", align: "right", sticky: true, stickyClass: STICKY_RIGHT_TH }]
+            : []),
         ]}
       >
         <For each={list()}>
@@ -185,15 +189,31 @@ export default function CreativeLibrary() {
                 {fmtDateTimeIST(c.created_at)}
               </td>
               <Show when={canWriteCreatives()}>
-                <td class="!py-1 text-right" onClick={(e) => e.stopPropagation()}>
-                  <RowMenu
-                    items={[
-                      { label: "Edit", onClick: () => setEditing(c) },
-                      ...(canFixCreatives()
-                        ? [{ label: "Delete", danger: true, onClick: () => setDeleting(c) }]
-                        : []),
-                    ]}
-                  />
+                {/* Pinned right, as icon buttons rather than a "⋯" menu, so
+                    Edit / Delete are one click and never scroll off. */}
+                <td class={STICKY_RIGHT_TD + " !py-1"} onClick={(e) => e.stopPropagation()}>
+                  <div class="flex items-center justify-end gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setEditing(c)}
+                      title="Edit creative"
+                      aria-label={`Edit ${c.code ?? "creative"}`}
+                      class="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-[#D89A2B]/30 bg-[#FBF3E6] text-[#9A6512] hover:bg-[#D89A2B] hover:border-[#D89A2B] hover:text-white dark:bg-amber-900/20 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-600 dark:hover:text-white transition-colors"
+                    >
+                      <Pencil size={15} />
+                    </button>
+                    <Show when={canFixCreatives()}>
+                      <button
+                        type="button"
+                        onClick={() => setDeleting(c)}
+                        title="Delete creative"
+                        aria-label={`Delete ${c.code ?? "creative"}`}
+                        class="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-[#AC2334]/25 bg-[#FBEEF0] text-[#AC2334] hover:bg-[#AC2334] hover:border-[#AC2334] hover:text-white dark:bg-red-900/20 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-700 dark:hover:text-white transition-colors"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </Show>
+                  </div>
                 </td>
               </Show>
             </tr>

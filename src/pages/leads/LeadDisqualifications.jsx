@@ -406,7 +406,11 @@ export default function LeadDisqualifications() {
                 <th class={TH}>Notes</th>
                 <th class={TH}>Status</th>
                 <Show when={canRevokeReplacement()}>
-                  <th class={`${TH} text-right`}>Actions</th>
+                  <th
+                    class={`${TH} text-right sticky right-0 z-10 bg-[#F8FAFC] dark:bg-[#171F2D] shadow-[-8px_0_10px_-8px_rgba(16,29,49,0.18)]`}
+                  >
+                    Actions
+                  </th>
                 </Show>
               </tr>
             </thead>
@@ -446,7 +450,12 @@ export default function LeadDisqualifications() {
                         <tr
                           class={`border-b border-[#E2E8F1] dark:border-gray-700 last:border-0 ${
                             i() % 2 ? "bg-[#FAFBFD] dark:bg-gray-900/30" : ""
-                          } ${r.isRevoked ? "opacity-60" : ""}`}
+                          } ${
+                            // Faded cell by cell, skipping the pinned Actions
+                            // cell: opacity on the whole row would make that
+                            // sticky cell see-through as well.
+                            r.isRevoked ? "[&>td:not([data-pin])]:opacity-60" : ""
+                          }`}
                         >
                           {/* S.No — same badge as the dashboard ledgers. Position
                               in the current page/filter, not an id. */}
@@ -512,13 +521,28 @@ export default function LeadDisqualifications() {
                             </Show>
                           </td>
                           <Show when={canRevokeReplacement()}>
-                            <td class="p-3 text-right whitespace-nowrap">
+                            {/* Pinned to the right edge of the scroller. The fills
+                                are the row's stripes pre-composited over the card
+                                (gray-900/30 over gray-800 in dark): a sticky cell
+                                must be opaque or scrolled cells show through. A
+                                revoked row fades this cell's CONTENT, not the
+                                cell — see the tr's data-pin rule. */}
+                            <td
+                              data-pin
+                              class={`sticky right-0 z-[1] p-3 text-right whitespace-nowrap shadow-[-8px_0_10px_-8px_rgba(16,29,49,0.18)] ${
+                                i() % 2
+                                  ? "bg-[#FAFBFD] dark:bg-[#1B2432]"
+                                  : "bg-white dark:bg-gray-800"
+                              }`}
+                            >
+                              <span class={r.isRevoked ? "opacity-60" : ""}>
                               <button
                                 onClick={() => openAudit(r)}
                                 class="text-xs font-semibold text-[#3E6FB0] hover:underline"
                               >
                                 Audit log
                               </button>
+                              </span>
                               <Show when={!r.isRevoked}>
                                 <button
                                   onClick={() => {

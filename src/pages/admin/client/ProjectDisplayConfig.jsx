@@ -1371,7 +1371,14 @@ export default function ProjectDisplayConfig() {
                 Created By {sortIcon("created_by_email")}
               </th>
               <Show when={canWrite()}>
-                <th class="p-3 text-center whitespace-nowrap">Action</th>
+                {/* Pinned to the right edge of the scroller so Edit stays in
+                    reach however far the table is scrolled sideways. The
+                    hex fills are the row's translucent tints pre-composited
+                    over the table (gray-50/60, gray-800/30, purple-50/60): a
+                    sticky cell must be opaque or scrolled cells show through. */}
+                <th class="sticky right-0 z-10 p-3 text-center whitespace-nowrap bg-gray-50 dark:bg-[#19222F] shadow-[-8px_0_10px_-8px_rgba(16,29,49,0.18)]">
+                  Action
+                </th>
               </Show>
             </tr>
           </thead>
@@ -1418,7 +1425,7 @@ export default function ProjectDisplayConfig() {
               <For each={paginated()}>
                 {(cfg, i) => (
                   <tr
-                    class={`border-b border-gray-100 dark:border-gray-800
+                    class={`group border-b border-gray-100 dark:border-gray-800
                                hover:bg-purple-50/60 transition-colors
                                ${
                                  i() % 2 === 0
@@ -1528,7 +1535,13 @@ export default function ProjectDisplayConfig() {
                       {cfg.created_by_email}
                     </td>
                     <Show when={canWrite()}>
-                      <td class="p-3 text-center">
+                      <td
+                        class={`sticky right-0 z-[1] p-3 text-center transition-colors shadow-[-8px_0_10px_-8px_rgba(16,29,49,0.18)] group-hover:bg-[#FCF9FF] dark:group-hover:bg-[#9D9DA9] ${
+                          i() % 2 === 0
+                            ? "bg-white dark:bg-gray-900"
+                            : "bg-[#FBFCFC] dark:bg-[#151D2C]"
+                        }`}
+                      >
                         {/* Edit */}
                         <button
                           onClick={() => handleEdit(cfg)}

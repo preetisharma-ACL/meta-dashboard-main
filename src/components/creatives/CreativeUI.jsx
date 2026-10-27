@@ -746,6 +746,14 @@ export const STICKY_TH =
 export const STICKY_TD =
   "sticky left-0 z-10 bg-white dark:bg-gray-800 group-hover:bg-[#FBF7F8] dark:group-hover:bg-[#2B3442] shadow-[1px_0_0_#E2E8F1] dark:shadow-[1px_0_0_#374151] transition-colors";
 
+// The same, pinned to the RIGHT edge — for a row-actions column that must stay
+// in reach however far the table is scrolled. Pass STICKY_RIGHT_TH as the col's
+// stickyClass; the shadow sits on the left, where this column begins.
+export const STICKY_RIGHT_TH =
+  "sticky right-0 z-20 bg-[#F8FAFC] dark:bg-gray-800 shadow-[-1px_0_0_#E2E8F1,-8px_0_10px_-8px_rgba(16,29,49,0.18)] dark:shadow-[-1px_0_0_#374151]";
+export const STICKY_RIGHT_TD =
+  "sticky right-0 z-10 bg-white dark:bg-gray-800 group-hover:bg-[#FBF7F8] dark:group-hover:bg-[#2B3442] shadow-[-1px_0_0_#E2E8F1,-8px_0_10px_-8px_rgba(16,29,49,0.18)] dark:shadow-[-1px_0_0_#374151] transition-colors";
+
 export const ROW =
   "border-t border-[#E2E8F1] dark:border-gray-700 hover:bg-[#FBF7F8] dark:hover:bg-gray-700/40 transition-colors";
 export const NUM = "text-right tabular-nums whitespace-nowrap";

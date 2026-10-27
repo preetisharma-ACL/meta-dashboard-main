@@ -419,7 +419,14 @@ export default function EditClients() {
               >
                 Onboarded {sortIcon("created_at")}
               </th>
-              <th class="px-4 py-3 text-right">Action</th>
+              {/* Pinned to the right edge of the scroller so Edit stays in
+                  reach however far the table is scrolled sideways. Opaque
+                  backgrounds (matching the row, hover included) stop the
+                  scrolled cells showing through; the left shadow marks the
+                  seam. */}
+              <th class="sticky right-0 z-10 px-4 py-3 text-right bg-gray-50 dark:bg-gray-800 shadow-[-8px_0_10px_-8px_rgba(16,29,49,0.18)]">
+                Action
+              </th>
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
@@ -450,7 +457,7 @@ export default function EditClients() {
                 }
               >
                 {(c) => (
-                  <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors">
+                  <tr class="group hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors">
                     <td class="px-4 py-3">
                       <div class="flex items-center gap-2.5">
                         <Avatar name={clientLabel(c)} />
@@ -507,7 +514,7 @@ export default function EditClients() {
                     <td class="px-4 py-3 text-gray-500 dark:text-gray-400 whitespace-nowrap">
                       {formatDate(c.created_at)}
                     </td>
-                    <td class="px-4 py-3 text-right">
+                    <td class="sticky right-0 z-[1] px-4 py-3 text-right bg-white dark:bg-gray-900 group-hover:bg-gray-50 dark:group-hover:bg-gray-800 transition-colors shadow-[-8px_0_10px_-8px_rgba(16,29,49,0.18)]">
                       <button
                         onClick={() => setEditing(c)}
                         title="Edit client"
