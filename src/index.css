@@ -1062,6 +1062,243 @@
   display: none;
 }
 
+/* ── Elements that belong only to the >=900px design ── */
+.form-card-logo,
+.ll-bubble {
+  display: none;
+}
+
+/* The frame only exists as a box on >=900px; below that its children lay out
+   exactly as if it weren't there. */
+.login-frame { display: contents; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   DESKTOP LOGIN (>=900px) — Razorpay-style layout.
+   LAYOUT + BACKGROUND follow the Razorpay login: a large left panel and a
+   fixed white form column on the right, logo top-left, and the left
+   background alive with soft diagonal glass streaks that drift slowly while
+   pastel light shifts underneath (Razorpay draws this on a canvas; here it
+   is two CSS layers). The background is public/images/waves-bg.jpg (a
+   compressed copy of waves.png) under a white wash to keep it light.
+   CONTENT STYLING is unchanged from the previous design: the frosted content
+   card with dots, DM Serif tagline and pink italic "convert.", and on the
+   right the DM Serif heading, underline fields and the dark-red pill button.
+   ══════════════════════════════════════════════════════════════════════════ */
+@media (min-width: 900px) {
+  .login-root {
+    --li-ink: #111114;
+    --li-grey: #6b6b72;
+    --li-grey-2: #8b8b94;
+    --li-line: #e3e1ea;
+    --li-accent: #e6398a;
+    --li-violet: #7b68ee;
+    background: #fff;
+  }
+
+  body:has(.login-root) .tricolour-wash { display: none; }
+
+  /* ONE background for the whole page: the waves artwork, its wash and the
+     shine live on the frame and run under both columns. The left column is
+     transparent; the right column is frosted glass over the same image. */
+  .login-frame {
+    display: flex;
+    position: relative;
+    width: 100%;
+    min-height: 100vh;
+    overflow: hidden;
+    isolation: isolate;
+    background: #f6eef4;
+  }
+
+  /* ── Left: transparent, so the shared background shows through ── */
+  .login-left {
+    flex: 1;
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 110px 56px 64px;
+    overflow: visible;
+    background: transparent;
+  }
+
+  .login-left::before,
+  .login-left::after { display: none; }
+
+  /* Moving waves: the waves artwork sits on ::after, a little larger than
+     the panel, and drifts on a slow loop — sideways along the waves and
+     gently up and down — so the bands look like they are flowing. Transform
+     only, so it stays smooth. */
+  .login-frame::before {
+    content: '';
+    position: absolute;
+    inset: -8%;
+    z-index: 0;
+    pointer-events: none;
+    background: url('/images/waves-bg.jpg') center / cover no-repeat;
+    animation: rzWaveDrift 18s ease-in-out infinite;
+  }
+
+  /* Over it: a white wash that keeps the artwork very light. */
+  .login-frame::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background: rgba(255, 255, 255, 0.66);
+  }
+
+  /* ── Glossy bubbles: white highlight over a pastel tint, slow drift ── */
+  .ll-bubble {
+    display: block;
+    position: absolute;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 1;
+    background:
+      radial-gradient(circle at 32% 28%, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.2) 38%, transparent 60%),
+      radial-gradient(circle at 70% 76%, var(--tint, rgba(201, 184, 240, 0.65)), transparent 62%);
+    box-shadow:
+      inset 0 0 22px rgba(255, 255, 255, 0.55),
+      0 10px 26px rgba(120, 90, 150, 0.14);
+    animation: llFloat 12s ease-in-out infinite;
+  }
+  .ll-b1 { width: 120px; height: 120px; left: 8%;  top: 16%; --tint: rgba(201, 184, 240, 0.7); }
+  .ll-b2 { width: 54px;  height: 54px;  left: 34%; top: 9%;  --tint: rgba(243, 185, 206, 0.75); animation-delay: -3s; }
+  .ll-b3 { width: 84px;  height: 84px;  right: 12%; top: 22%; --tint: rgba(246, 201, 168, 0.75); animation-delay: -6s; }
+  .ll-b4 { width: 38px;  height: 38px;  left: 14%; bottom: 22%; --tint: rgba(243, 185, 206, 0.8); animation-delay: -1.5s; }
+  .ll-b5 { width: 66px;  height: 66px;  right: 18%; bottom: 12%; --tint: rgba(201, 184, 240, 0.7); animation-delay: -8s; }
+  .ll-b6 { width: 28px;  height: 28px;  left: 46%; bottom: 8%; --tint: rgba(246, 201, 168, 0.8); animation-delay: -4.5s; }
+
+  /* ── The content card — styling exactly as before ── */
+  .left-glass-card {
+    position: relative;
+    z-index: 2;
+    width: auto;
+    max-width: 460px;
+    margin: 0;
+    padding: 40px 42px;
+    background: rgba(255, 255, 255, 0.42);
+    backdrop-filter: blur(22px) saturate(140%);
+    -webkit-backdrop-filter: blur(22px) saturate(140%);
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    border-radius: 22px;
+    box-shadow:
+      0 12px 40px rgba(17, 17, 20, 0.1),
+      inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  }
+  .brand-dot:nth-child(1) { background: var(--li-violet); }
+  .brand-dot:nth-child(2) { background: var(--li-accent); }
+  .brand-dot:nth-child(3) { background: #f0a274; }
+  .brand-dots { margin-bottom: 18px; }
+  .left-tagline { font-size: 2.3rem; color: var(--li-ink); margin-bottom: 14px; }
+  .left-tagline em { color: var(--li-accent); }
+  .left-desc { color: #4b4b55; margin: 0; font-size: 1rem; line-height: 1.65; }
+
+  /* The bubble on the content card's corner, as before */
+  .orb-ring {
+    display: block;
+    bottom: -22px;
+    right: 48px;
+    width: 76px;
+    height: 76px;
+    background:
+      radial-gradient(circle at 32% 28%, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.2) 38%, transparent 60%),
+      radial-gradient(circle at 70% 76%, rgba(243, 185, 206, 0.7), transparent 62%);
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    box-shadow: inset 0 0 18px rgba(255, 255, 255, 0.5), 0 8px 22px rgba(120, 90, 150, 0.16);
+  }
+
+  /* ── Right: form column over its own warm background (::before) ── */
+  .login-right {
+    flex: 0 0 auto;
+    position: relative;
+    z-index: 2;
+    width: clamp(440px, 36vw, 560px);
+    max-width: none;
+    background: transparent;
+    padding: 28px 20px;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Plain background with a smoky warm glow drifting down from the top. A
+     separate panel: it covers exactly the column, with a clean straight edge
+     and a light shadow cast onto the waves to lift it off them. */
+  .login-right::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(70% 38% at 70% 0%, rgba(255, 196, 160, 0.42) 0, transparent 70%),
+      radial-gradient(60% 30% at 15% 0%, rgba(255, 214, 196, 0.35) 0, transparent 70%),
+      radial-gradient(90% 50% at 100% 8%, rgba(248, 190, 196, 0.28) 0, transparent 70%),
+      linear-gradient(180deg, #fff4ec 0%, #fffaf7 45%, #fffdfb 100%);
+    box-shadow:
+      -10px 0 30px rgba(90, 60, 120, 0.1),
+      -1px 0 4px rgba(90, 60, 120, 0.06);
+  }
+
+  /* Form content: the original base rules apply unchanged (logo top-left,
+     serif heading, uppercase labels, soft filled inputs, centred footer,
+     "Powered by" bottom-right) — except the Login button, which keeps the
+     premium dark-red gradient instead of the original navy. */
+  .submit-btn {
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background-image: linear-gradient(135deg, #4a0612 0%, #7a0b1f 38%, #a0112b 72%, #c2193a 100%);
+    background-size: 100% 100%;
+    background-color: #7a0b1f;
+    animation: none;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.28),
+      inset 0 -3px 8px rgba(0, 0, 0, 0.22),
+      0 10px 24px rgba(122, 11, 31, 0.32);
+  }
+  .submit-btn:hover:not(:disabled) {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.32),
+      inset 0 -3px 8px rgba(0, 0, 0, 0.22),
+      0 14px 32px rgba(122, 11, 31, 0.4);
+  }
+  .submit-btn:active:not(:disabled) {
+    box-shadow:
+      inset 0 2px 8px rgba(0, 0, 0, 0.32),
+      0 4px 12px rgba(122, 11, 31, 0.28);
+  }
+  .submit-btn:focus-visible {
+    box-shadow:
+      0 0 0 3px #fff,
+      0 0 0 5px rgba(160, 17, 43, 0.55),
+      0 10px 24px rgba(122, 11, 31, 0.32);
+  }
+}
+
+@keyframes rzWaveDrift {
+  0%   { transform: translate(-3%, 0) scale(1.02); }
+  25%  { transform: translate(-1%, 1.6%) scale(1.03); }
+  50%  { transform: translate(3%, 0) scale(1.02); }
+  75%  { transform: translate(1%, -1.6%) scale(1.03); }
+  100% { transform: translate(-3%, 0) scale(1.02); }
+}
+@keyframes llFloat {
+  0%, 100% { transform: translate(0, 0); }
+  50%      { transform: translate(6px, -16px); }
+}
+
+@media (min-width: 900px) and (prefers-reduced-motion: reduce) {
+  .login-frame::before,
+  .ll-bubble { animation: none; }
+}
+
 /* ══════════════════════════════════════════════════════════════════════════
    MOBILE LOGIN  (<900px)  — port of src/pages/login/demo-page.html
    ──────────────────────────────────────────────────────────────────────────
@@ -1421,6 +1658,121 @@
 @media (prefers-reduced-motion: reduce) {
   .lb-bubble { animation: none; }
 }
+
+/* ── MOBILE LOGIN (<900px) ──
+   Restyles the mobile design above to the intro page's palette: off-white
+   page with pastel lilac / peach / pink blobs, the original content card in
+   frosted glass, then the form straight on the page — underline fields and
+   the violet → pink pill button. The isometric stack is desktop-only.
+   Layout and metrics above are unchanged. */
+@media (max-width: 899px) {
+  body:has(.login-root) .tricolour-wash { display: none; }
+
+  .login-root { background: #f7f7f8; }
+
+  .login-bg::before {
+    inset: 0;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.66) 0%, rgba(255, 255, 255, 0.74) 40%, #f7f7f8 66%),
+      url('/images/waves-bg.jpg') center top / auto 66% no-repeat,
+      #f7f7f8;
+  }
+  .lb-ring,
+  .lb-bubble { display: none; }
+
+  /* Hero: the original card, in frosted glass */
+  .left-glass-card {
+    max-width: 420px;
+    margin: 0 auto;
+    padding: 22px 20px;
+    background: rgba(255, 255, 255, 0.45);
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    border: 1px solid rgba(255, 255, 255, 0.75);
+    border-radius: 20px;
+    box-shadow: 0 10px 30px rgba(17, 17, 20, 0.08);
+  }
+  .brand-dot:nth-child(1) { background: #7b68ee; }
+  .brand-dot:nth-child(2) { background: #e6398a; }
+  .brand-dot:nth-child(3) { background: #f0a274; }
+  .left-tagline { color: #111114; }
+  .left-tagline em { color: #e6398a; }
+  .left-desc { color: #4b4b55; opacity: 1; }
+
+  /* Form — no card, underline fields */
+  .login-right { align-items: flex-start; padding-top: 28px; }
+  .form-wrapper {
+    background: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+    box-shadow: none;
+  }
+  .form-heading { color: #111114; }
+  .form-subheading { color: #6b6b72; }
+  .input-label {
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: #6b6b72;
+    opacity: 1;
+    margin-bottom: 2px;
+  }
+
+  .input-wrapper {
+    background: transparent;
+    border: 0;
+    border-bottom: 1.5px solid #e3e1ea;
+    border-radius: 0;
+    padding: 0 2px;
+    height: 46px;
+  }
+  .input-wrapper:focus-within {
+    border-color: #e6398a;
+    background: transparent;
+    box-shadow: none;
+  }
+  .field-ico { display: none; }
+  .input-field { padding: 0; }
+  .eye-btn { color: #8b8b94; opacity: 1; }
+  .eye-btn:hover { color: #e6398a; opacity: 1; }
+
+  .login-root .input-field:-webkit-autofill,
+  .login-root .input-field:-webkit-autofill:hover,
+  .login-root .input-field:-webkit-autofill:active,
+  .login-root .input-field:-webkit-autofill:focus {
+    -webkit-box-shadow: 0 0 0 1000px #f7f7f8 inset;
+    box-shadow: 0 0 0 1000px #f7f7f8 inset;
+  }
+
+  .submit-btn {
+    margin-top: 24px;
+    border-radius: 999px;
+    border: 0;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    letter-spacing: 0.03em;
+    background-image: linear-gradient(135deg, #4a0612 0%, #7a0b1f 38%, #a0112b 72%, #c2193a 100%);
+    background-size: 100% 100%;
+    background-color: #7a0b1f;
+    animation: none;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.28),
+      inset 0 -3px 8px rgba(0, 0, 0, 0.22),
+      0 12px 26px -12px rgba(122, 11, 31, 0.75);
+  }
+  .submit-btn:hover:not(:disabled) {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.28),
+      inset 0 -3px 8px rgba(0, 0, 0, 0.22),
+      0 12px 26px -12px rgba(122, 11, 31, 0.75);
+  }
+
+  .form-footer { color: #8b8b94; }
+  .rp-powered-label { color: #8b8b94; }
+}
 .input-wrapper {
     position: relative;
     display: flex;
@@ -1610,6 +1962,26 @@
 
 @media (prefers-reduced-motion: reduce) {
   .tile-trace {
+    animation: none;
+  }
+}
+
+/* ── Header user menu: the 2px brand rail across the top ───────────────────
+   Crimson → gold → crimson on a 200%-wide background, slid left to right so
+   the colour travels across the rail. The repeat makes the loop seamless. */
+.user-menu-rail {
+  background: linear-gradient(90deg, #AC2334, #C4552F, #D89A2B, #C4552F, #AC2334);
+  background-size: 200% 100%;
+  animation: user-menu-rail-slide 3s linear infinite;
+}
+
+@keyframes user-menu-rail-slide {
+  from { background-position: 200% 0; }
+  to   { background-position: 0 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .user-menu-rail {
     animation: none;
   }
 }

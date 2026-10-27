@@ -244,11 +244,22 @@ export default function Login() {
           </svg>
         </button>
 
-        {/* ── LEFT DECORATIVE PANEL ── */}
+        {/* ── Frame: holds both panels side by side on >=900px.
+            display:contents below that, so the mobile layout is unaffected. */}
+        <div class="login-frame">
+        {/* ── LEFT PANEL — waves artwork and bubbles, with the content at
+            the centre: the frosted content card. ── */}
         <div class="login-left">
           <div class="blob blob-1" />
           <div class="blob blob-2" />
           <div class="blob blob-3" />
+          {/* Glossy floating bubbles over the waves (>=900px only). */}
+          <span class="ll-bubble ll-b1" aria-hidden="true" />
+          <span class="ll-bubble ll-b2" aria-hidden="true" />
+          <span class="ll-bubble ll-b3" aria-hidden="true" />
+          <span class="ll-bubble ll-b4" aria-hidden="true" />
+          <span class="ll-bubble ll-b5" aria-hidden="true" />
+          <span class="ll-bubble ll-b6" aria-hidden="true" />
           <div class="left-glass-card">
             {/* Colours live in CSS (.brand-dot:nth-child) rather than inline,
                 so the mobile design can restate them — an inline style would
@@ -450,6 +461,7 @@ export default function Login() {
               <img src="/logo.webp" alt="Company Logo" class="logo-imgs" />
             </div>
           </div>
+        </div>
         </div>
       </div>
     </>

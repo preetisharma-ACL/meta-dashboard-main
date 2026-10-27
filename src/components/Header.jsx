@@ -6,6 +6,7 @@ import {
   onCleanup,
   createEffect,
 } from "solid-js";
+import { ChevronDown, UserCog, LogOut } from "lucide-solid";
 import { useSidebar } from "../context/SidebarContext";
 import { useTheme } from "../context/ThemeContext";
 import { loadCurrentUser, currentUser } from "../stores/currentUser";
@@ -442,19 +443,29 @@ export default function Header() {
 
           {/* User Menu */}
           <div class="relative header-user-menu">
+            {/* Same crimson→gold language as the Settings profile card:
+                gradient-ring avatar, and the menu opens on a mini profile. */}
             <button
               onClick={() => setShowUserMenu(!showUserMenu())}
-              class="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              aria-haspopup="menu"
+              aria-expanded={showUserMenu()}
+              class={`flex items-center gap-2.5 py-1.5 pl-1.5 pr-2.5 rounded-full border transition-all ${
+                showUserMenu()
+                  ? "border-[#D89A2B]/50 bg-[#FBF3E6] dark:bg-gray-700/70 dark:border-[#D89A2B]/40 shadow-sm"
+                  : "border-transparent hover:border-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/60 dark:hover:border-gray-600"
+              }`}
             >
               {/* ✅ Show skeleton avatar while loading */}
               <Show
                 when={!loading()}
                 fallback={
-                  <div class="w-8 h-8 bg-gray-200 dark:bg-gray-700 rounded-full animate-pulse" />
+                  <div class="w-9 h-9 bg-gray-200 dark:bg-gray-700 rounded-full animate-pulse" />
                 }
               >
-                <div class="w-8 h-8 bg-blue-900 rounded-full flex items-center justify-center text-white font-semibold text-sm">
-                  {getInitials(user()?.username)}
+                <div class="w-9 h-9 shrink-0 rounded-full p-[2px] bg-[linear-gradient(135deg,#AC2334,#D89A2B)]">
+                  <div class="w-full h-full rounded-full bg-[linear-gradient(135deg,#7E1522,#AC2334_60%,#C4802B)] flex items-center justify-center text-white font-semibold text-sm ring-2 ring-white dark:ring-gray-800">
+                    {getInitials(user()?.username)}
+                  </div>
                 </div>
               </Show>
               <div class="hidden md:block text-left">
@@ -467,7 +478,7 @@ export default function Header() {
                     </div>
                   }
                 >
-                  <p class="max-w-[16rem] truncate text-sm font-medium text-gray-900 dark:text-white" title={user()?.username}>
+                  <p class="max-w-[16rem] truncate text-sm font-semibold leading-tight text-gray-900 dark:text-white" title={user()?.username}>
                     {user()?.username}
                   </p>
                   <p class="max-w-[16rem] truncate text-xs text-gray-500 dark:text-gray-400" title={user()?.organization_name}>
@@ -475,47 +486,68 @@ export default function Header() {
                   </p>
                 </Show>
               </div>
-              <svg
-                class="w-4 h-4 text-gray-600 dark:text-gray-300"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M19 9l-7 7-7-7"
-                />
-              </svg>
+              <ChevronDown
+                class={`w-4 h-4 text-gray-500 dark:text-gray-300 transition-transform duration-200 ${
+                  showUserMenu() ? "rotate-180 text-[#AC2334] dark:text-[#E9AE5C]" : ""
+                }`}
+              />
             </button>
 
             <Show when={showUserMenu()}>
-              <div class="absolute right-0 mt-2 w-70 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden z-50">
-                <div class="p-3 border-b border-gray-200 dark:border-gray-700">
-                  <p class="text-sm font-medium text-gray-900 dark:text-white [overflow-wrap:anywhere]">
-                    {user()?.username}
-                  </p>
-                  <p class="text-xs text-gray-500 dark:text-gray-400 [overflow-wrap:anywhere]">
-                    {user()?.organization_name}
-                  </p>
+              <div
+                role="menu"
+                class="absolute right-0 mt-2 w-72 max-w-[calc(100vw-2rem)] bg-white dark:bg-gray-800 rounded-2xl shadow-[0_12px_40px_-8px_rgba(20,35,58,0.25)] border border-gray-200/80 dark:border-gray-700 overflow-hidden z-50"
+              >
+                {/* Mini profile: a slim brand band, then avatar + identity */}
+                <div class="relative px-4 pt-4 pb-3.5 bg-[linear-gradient(115deg,rgba(172,35,52,0.08),rgba(216,154,43,0.12))] dark:bg-[linear-gradient(115deg,rgba(172,35,52,0.18),rgba(216,154,43,0.12))] border-b border-gray-100 dark:border-gray-700">
+                  <div class="user-menu-rail absolute inset-x-0 top-0 h-[2px]" />
+                  <div class="flex items-center gap-3">
+                    <div class="w-11 h-11 shrink-0 rounded-full p-[2px] bg-[linear-gradient(135deg,#AC2334,#D89A2B)]">
+                      <div class="w-full h-full rounded-full bg-white dark:bg-gray-800 flex items-center justify-center">
+                        <span class="text-base font-bold bg-[linear-gradient(135deg,#AC2334,#D89A2B)] bg-clip-text text-transparent">
+                          {getInitials(user()?.username)}
+                        </span>
+                      </div>
+                    </div>
+                    <div class="min-w-0">
+                      <p class="text-sm font-semibold text-gray-900 dark:text-white [overflow-wrap:anywhere]">
+                        {user()?.username}
+                      </p>
+                      <p class="text-xs text-gray-500 dark:text-gray-400 [overflow-wrap:anywhere]">
+                        {user()?.email}
+                      </p>
+                      <Show when={user()?.organization_name}>
+                        <span class="mt-1.5 inline-flex max-w-full items-center rounded-full bg-white/80 dark:bg-gray-900/50 border border-[#D89A2B]/30 px-2 py-0.5 text-[11px] font-semibold text-[#9A6512] dark:text-amber-300 truncate">
+                          {user()?.organization_name}
+                        </span>
+                      </Show>
+                    </div>
+                  </div>
                 </div>
-                <div class="py-2">
+                <div class="p-1.5">
                   <button
+                    role="menuitem"
                     onClick={() => {
                       setShowUserMenu(false);
                       navigate("/settings");
                     }}
-                    class="w-full text-left px-4 py-2 text-sm text-blue-800 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-gray-700 transition-colors"
+                    class="group w-full flex items-center gap-3 px-2.5 py-2 rounded-xl text-left text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-[#FBF3E6] dark:hover:bg-gray-700 transition-colors"
                   >
+                    <span class="w-8 h-8 shrink-0 rounded-lg bg-gray-100 dark:bg-gray-700 group-hover:bg-white dark:group-hover:bg-gray-600 text-gray-500 group-hover:text-[#B57C1A] dark:text-gray-300 flex items-center justify-center transition-colors">
+                      <UserCog class="w-4 h-4" />
+                    </span>
                     Profile Settings
                   </button>
                 </div>
-                <div class="border-t border-gray-200 dark:border-gray-700">
+                <div class="p-1.5 border-t border-gray-100 dark:border-gray-700">
                   <button
+                    role="menuitem"
                     onClick={handleLogout}
-                    class="w-full text-left px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                    class="group w-full flex items-center gap-3 px-2.5 py-2 rounded-xl text-left text-sm font-medium text-[#AC2334] dark:text-red-400 hover:bg-[#FBEEF0] dark:hover:bg-red-900/20 transition-colors"
                   >
+                    <span class="w-8 h-8 shrink-0 rounded-lg bg-[#FBEEF0] dark:bg-red-900/20 group-hover:bg-white dark:group-hover:bg-red-900/30 flex items-center justify-center transition-colors">
+                      <LogOut class="w-4 h-4" />
+                    </span>
                     Logout
                   </button>
                 </div>
