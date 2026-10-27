@@ -637,10 +637,15 @@ export default function MainDashboard() {
       // report_summary (present because /projects/ is scoped to one client via
       // selectedClientNomen). Capture it so the ledger bills the VIEWED client's
       // rate. null when unscoped → serviceChargePercent() falls back to auth/13%.
+      //
+      // Set on EVERY response, null included: an unscoped (all-clients)
+      // response must clear the last client's rate and type, or going from
+      // client A back to all clients kept A's rate and billed every client
+      // at it. The staff service-charge tile keys off this being non-null.
       const sc = res?.meta?.report_summary?.service_charge;
-      if (sc != null) setClientServiceCharge(Number(sc));
+      setClientServiceCharge(sc != null ? Number(sc) : null);
       const ct = res?.meta?.report_summary?.client_type;
-      if (ct != null) setClientTypeFromReport(String(ct).toLowerCase());
+      setClientTypeFromReport(ct != null ? String(ct).toLowerCase() : null);
 
       const mappedProjects = (apiData || []).map((item) => ({
         id: item.id,
@@ -2667,7 +2672,17 @@ export default function MainDashboard() {
                 hardcoded 13% — an invented charge on a client who owes none.
                 The Daily Report already hides its S.C columns for CPL; this is
                 the same rule in the same words. */}
-            <Show when={viewedClientType() !== "cpl"}>
+            {/* Staff (admin / CM / …) only see it with ONE client open, i.e.
+                once that client's own rate has come back. In the all-clients
+                view there is no rate: the figure was a fallback 13% across
+                every client, CPL and retainer included — nobody's bill. A
+                client's own login always has its rate (auth.serviceCharge). */}
+            <Show
+              when={
+                viewedClientType() !== "cpl" &&
+                (isClientViewer() || clientServiceCharge() != null)
+              }
+            >
               <div class="py-3.5 border-b border-[#E2E8F1] dark:border-gray-700">
                 <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
                   Spend + {serviceChargePercent()}% service charge
