@@ -15,7 +15,7 @@ import {
 import { currentUser, loadCurrentUser } from "../stores/currentUser";
 import { updateMyProfile } from "../services/userProfile";
 import { setHeaderCache } from "../cacheStore/appStore";
-import { showToast } from "../components/common/SuccessToast";
+import ProfileSavedPopup from "../components/settings/ProfileSavedPopup";
 import { collectFieldErrors, errorBanner } from "../utils/apiErrors";
 
 // ─── Settings → Profile ───────────────────────────────────────────────────────
@@ -93,6 +93,8 @@ export default function Settings() {
   const [fieldErrors, setFieldErrors] = createSignal({});
   const [banner, setBanner] = createSignal(null); // { tone: "error"|"info", text }
   const [seeded, setSeeded] = createSignal(false);
+  // Celebration popup after a save: { changes:[{label,from,to}], emailChanged }
+  const [saved, setSaved] = createSignal(null);
 
   const emailChanged = () => clean(email()) !== onRecord().email;
   const phoneChanged = () => clean(phone()) !== onRecord().phone;
@@ -157,7 +159,9 @@ export default function Settings() {
       patch.email = clean(email());
       patch.current_password = currentPassword();
     }
-    if (phoneChanged()) patch.phone = clean(phone());
+    const changingPhone = phoneChanged();
+    if (changingPhone) patch.phone = clean(phone());
+    const before = onRecord();
 
     setSaving(true);
     try {
@@ -173,12 +177,20 @@ export default function Settings() {
 
       setCurrentPassword("");
       setFieldErrors({});
-      showToast(
-        changingEmail
-          ? "Your profile was updated. Use your new email next time you sign in."
-          : "Your profile was updated.",
-        "Profile saved",
-      );
+      // "to" is read back from the reloaded record, not the input: the server
+      // lower-cases the email, and the popup should show what was stored.
+      const after = onRecord();
+      // Re-seed explicitly: the reseed effect skips while dirty(), and a
+      // mixed-case email still differs from the lower-cased record — the form
+      // would stay "unsaved" forever.
+      setEmail(after.email);
+      setPhone(after.phone);
+      const changes = [];
+      if (changingEmail)
+        changes.push({ label: "Email", from: before.email, to: after.email });
+      if (changingPhone)
+        changes.push({ label: "Phone", from: before.phone, to: after.phone });
+      setSaved({ changes, emailChanged: changingEmail });
     } catch (err) {
       // 400 { error:{ fields:{ email | phone | current_password } } } — the
       // server's wording names the actual reason ("A user with this email
@@ -556,6 +568,8 @@ export default function Settings() {
           </aside>
         </div>
       </Show>
+
+      <ProfileSavedPopup data={saved()} onClose={() => setSaved(null)} />
     </div>
   );
 }
