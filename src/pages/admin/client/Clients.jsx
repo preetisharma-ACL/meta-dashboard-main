@@ -71,6 +71,9 @@ const CLIENT_TYPE_CHIPS = [
   { key: "retainer", label: "Retainer" },
 ];
 const DEFAULT_CLIENT_TYPES = ["cpl", "hybrid"];
+// The page opens on live work: Engagement = Active, Activity = Running.
+const DEFAULT_STATUS_FILTER = "active";
+const DEFAULT_ACTIVITY_FILTER = ACTIVITY_RUNNING;
 
 // Assignment (has a campaign manager) filter options.
 const ASSIGN_OPTIONS = [
@@ -148,11 +151,11 @@ export default function Clients() {
   const [cmFilter, setCmFilter] = createSignal("all"); // "all" | manager_email
   const [activeFilter, setActiveFilter] = createSignal("All");
   // Engagement status (manual label) — NOT the is_active flag above.
-  const [statusFilter, setStatusFilter] = createSignal("all");
+  const [statusFilter, setStatusFilter] = createSignal(DEFAULT_STATUS_FILTER);
   // Campaign activity (DERIVED from live campaigns) — a different axis from the
   // engagement label above, and filtered differently: admins get a server-side
   // ?activity=, CMs read the hierarchy, which has no such param.
-  const [activityFilter, setActivityFilter] = createSignal("all");
+  const [activityFilter, setActivityFilter] = createSignal(DEFAULT_ACTIVITY_FILTER);
   // Dead clients are hidden server-side; ON asks for ONLY dead ones
   // (?dead=only) — from the admin roster, or from the hierarchy for CMs.
   const [deadOnly, setDeadOnly] = createSignal(false);
@@ -343,8 +346,8 @@ export default function Clients() {
   // number disagree with the four cards it labels.
   const axisFilterCount = () =>
     (typeFilterOn() ? 1 : 0) +
-    (statusFilter() === "all" ? 0 : 1) +
-    (activityFilter() === "all" ? 0 : 1) +
+    (statusFilter() === DEFAULT_STATUS_FILTER ? 0 : 1) +
+    (activityFilter() === DEFAULT_ACTIVITY_FILTER ? 0 : 1) +
     (tierFilter() === "all" ? 0 : 1);
 
   // Everything back to the state the page opens in — including the sort, which
@@ -355,8 +358,8 @@ export default function Clients() {
     setAssignFilter("all");
     setCmFilter("all");
     setActiveFilter("All");
-    setStatusFilter("all");
-    setActivityFilter("all");
+    setStatusFilter(DEFAULT_STATUS_FILTER);
+    setActivityFilter(DEFAULT_ACTIVITY_FILTER);
     setTierFilter("all");
     setSortKey("created_at");
     setSortDir("desc");
