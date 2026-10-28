@@ -1,6 +1,7 @@
 import { createSignal, createResource, createMemo, createEffect, on, onCleanup, For, Show } from "solid-js";
 import Swal from "sweetalert2";
-import { TriangleAlert, Target, Megaphone, ArrowUp, CalendarDays, ChevronLeft, ChevronRight, ChartColumn, ChevronDown, Check, Search, Users, ChevronsLeftRight, ChevronsRightLeft } from "lucide-solid";
+import html2canvas from "html2canvas";
+import { TriangleAlert, Target, Megaphone, ArrowUp, CalendarDays, ChevronLeft, ChevronRight, ChartColumn, ChevronDown, Check, Search, Users, ChevronsLeftRight, ChevronsRightLeft, Camera, Copy, Download } from "lucide-solid";
 import { fetchCplCampaigns, setCplTarget, fetchHighVolumeClients } from "../../services/cplRules";
 import { scopeKey } from "../../stores/cmScope";
 import { isAdmin, isCoordination } from "../../stores/currentUser";
@@ -72,7 +73,7 @@ const WINDOW_DAYS = [2, 4, 7];
 
 // meta.window → "22 Oct – 28 Oct 2026 (7 days)". Dates parsed as local
 // calendar days (new Date("YYYY-MM-DD") would be UTC midnight).
-const windowCaption = (w) => {
+const windowCaption = (w, withDays = true) => {
   if (!w?.since || !w?.until) return null;
   const parse = (s) => {
     const [y, m, d] = s.split("-").map(Number);
@@ -83,7 +84,7 @@ const windowCaption = (w) => {
   if (isNaN(a) || isNaN(b)) return null;
   const fmt = (dt, withYear) =>
     dt.toLocaleDateString("en-GB", { day: "numeric", month: "short", ...(withYear ? { year: "numeric" } : {}) });
-  const days = w.days != null ? ` (${w.days} day${Number(w.days) === 1 ? "" : "s"})` : "";
+  const days = withDays && w.days != null ? ` (${w.days} day${Number(w.days) === 1 ? "" : "s"})` : "";
   return `${fmt(a, a.getFullYear() !== b.getFullYear())} – ${fmt(b, true)}${days}`;
 };
 
@@ -428,6 +429,70 @@ function RangeCalendar(props) {
   );
 }
 
+// ─── Share snapshot ───────────────────────────────────────────────────────────
+// A compact sheet-style table of every row in view, rendered off-screen and
+// captured with html2canvas — so 12 (or 50) campaigns go out as ONE image,
+// not as many screenshots as fit on a laptop screen.
+const SNAP_MAX_ROWS = 300; // keeps the canvas well under browser size limits
+
+const snapCell = "padding:6px 10px;border-bottom:1px solid #E5E9F0;vertical-align:top;";
+const snapNum = `${snapCell}text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;`;
+const snapHead = "padding:8px 10px;text-align:left;font-size:11px;font-weight:700;color:#54657E;text-transform:uppercase;background:#F1F4F9;border-bottom:2px solid #D4DDE9;white-space:nowrap;";
+
+function SnapshotSheet(props) {
+  return (
+    <div ref={props.ref} style="position:absolute;left:-10000px;top:0;width:1180px;background:#ffffff;font-family:Arial,Helvetica,sans-serif;color:#14233A;padding:20px 22px;box-sizing:border-box;">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin-bottom:12px;">
+        <div>
+          <div style="font-size:17px;font-weight:700;color:#AC2334;">{props.title}</div>
+          <div style="font-size:12px;color:#54657E;margin-top:3px;">{props.subtitle}</div>
+        </div>
+        <div style="font-size:11px;color:#8593A8;white-space:nowrap;">{props.stamp}</div>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <thead>
+          <tr>
+            <th style={`${snapHead}width:28px;`}>#</th>
+            <th style={snapHead}>Campaign</th>
+            <th style={snapHead}>Ad account</th>
+            <th style={snapHead}>CM</th>
+            <th style={`${snapHead}text-align:right;`}>Spend</th>
+            <th style={`${snapHead}text-align:right;`}>Leads</th>
+            <th style={`${snapHead}text-align:right;`}>CPL</th>
+            <th style={`${snapHead}text-align:right;`}>Target</th>
+            <th style={`${snapHead}text-align:right;`}>Over</th>
+          </tr>
+        </thead>
+        <tbody>
+          <For each={props.rows}>
+            {(c, i) => {
+              const over = overPctFmt(c.over_target_pct) ?? (c.no_leads && c.needs_attention ? "0 leads" : "—");
+              return (
+                <tr style={`background:${i() % 2 ? "#F8FAFC" : "#ffffff"};`}>
+                  <td style={`${snapCell}color:#8593A8;`}>{i() + 1}</td>
+                  <td style={`${snapCell}width:400px;font-weight:600;`}>{c.name}</td>
+                  <td style={`${snapCell}width:170px;`}>{c.ad_account_name || c.ad_account || "—"}</td>
+                  <td style={`${snapCell}white-space:nowrap;text-transform:capitalize;`}>{(c.campaign_managers || []).join(", ") || "—"}</td>
+                  <td style={snapNum}>{money2(c.spend) ?? "—"}</td>
+                  <td style={snapNum}>{c.leads == null ? "—" : num(c.leads)}</td>
+                  <td style={`${snapNum}font-weight:700;${c.no_leads ? "color:#AC2334;" : ""}`}>{c.no_leads ? "No leads" : money2(c.actual_cpl) ?? "—"}</td>
+                  <td style={`${snapNum}color:${c.target_is_default ? "#8593A8" : "#14233A"};`}>
+                    {money2(c.target_cpl) ?? "—"}{c.target_is_default ? "*" : ""}
+                  </td>
+                  <td style={`${snapNum}font-weight:700;color:${c.needs_attention ? "#AC2334" : "#15966A"};`}>{over}</td>
+                </tr>
+              );
+            }}
+          </For>
+        </tbody>
+      </table>
+      <Show when={props.rows.some((c) => c.target_is_default)}>
+        <div style="font-size:11px;color:#8593A8;margin-top:8px;">* default target — no explicit target set for this client + project</div>
+      </Show>
+    </div>
+  );
+}
+
 // ─── Campaign-manager picker ─────────────────────────────────────────────────
 function CmPicker(props) {
   const [open, setOpen] = createSignal(false);
@@ -720,6 +785,74 @@ export default function CplRules() {
     return t == null ? null : `${Number(t)}%`;
   };
 
+  // ── Share snapshot ──
+  // The sheet only mounts while a capture runs; `snapping` is "download" | "copy" | null.
+  const [snapping, setSnapping] = createSignal(null);
+  const [snapMenu, setSnapMenu] = createSignal(false);
+  let snapEl;
+  let snapRoot;
+  const onSnapDoc = (e) => {
+    if (snapRoot && !snapRoot.contains(e.target)) setSnapMenu(false);
+  };
+  document.addEventListener("pointerdown", onSnapDoc);
+  onCleanup(() => document.removeEventListener("pointerdown", onSnapDoc));
+
+  const snapRows = () => rows().slice(0, SNAP_MAX_ROWS);
+  const snapTitle = () => {
+    const t = TABS.find((x) => x.key === tab())?.label ?? "Campaigns";
+    const cm = cms().find((m) => String(m.id) === String(cmId()));
+    return cm ? `${t} · ${cmName(cm)}` : t;
+  };
+  const snapSubtitle = () =>
+    [
+      `${win().days ? `Last ${win().days} days` : "Custom range"}${windowCaption(data()?.window, false) ? ` (${windowCaption(data()?.window, false)})` : ""}`,
+      `${num(rows().length)} campaign${rows().length === 1 ? "" : "s"}`,
+      attentionOnly() ? "needs attention only" : null,
+      search().trim() ? `matching "${search().trim()}"` : null,
+    ].filter(Boolean).join(" · ");
+  const snapStamp = () => `Generated ${new Date().toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`;
+
+  const takeSnapshot = async (mode) => {
+    if (snapping() || !rows().length) return;
+    setSnapMenu(false);
+    setSnapping(mode);
+    const capped = rows().length > SNAP_MAX_ROWS ? ` (first ${SNAP_MAX_ROWS} rows)` : "";
+    const fileName = `cpl-${tab()}-${data()?.window?.until || ymd(new Date())}.png`;
+
+    const capture = (async () => {
+      // Let the sheet mount and lay out before capturing it.
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const canvas = await html2canvas(snapEl, { scale: 2, backgroundColor: "#ffffff", width: snapEl.scrollWidth, windowWidth: snapEl.scrollWidth });
+      const blob = await new Promise((r) => canvas.toBlob(r, "image/png"));
+      if (!blob) throw new Error("capture failed");
+      return blob;
+    })();
+
+    // The clipboard write starts inside the click (with the image still
+    // pending) — browsers refuse it once the click's activation has lapsed.
+    const clip =
+      mode === "copy" && navigator.clipboard?.write && window.ClipboardItem
+        ? navigator.clipboard.write([new ClipboardItem({ "image/png": capture })]).then(() => true, () => false)
+        : Promise.resolve(false);
+
+    try {
+      const blob = await capture;
+      const copied = await clip;
+      if (!copied) {
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = fileName;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+      }
+      toast("success", copied ? `Image copied — paste it in WhatsApp${capped}` : `Snapshot downloaded${capped}`);
+    } catch {
+      toast("error", "Couldn't create the snapshot");
+    } finally {
+      setSnapping(null);
+    }
+  };
+
   const pill = (on) =>
     `px-3.5 py-1.5 rounded-full text-[13px] font-semibold border transition-colors whitespace-nowrap ${
       on
@@ -875,7 +1008,43 @@ export default function CplRules() {
           Needs attention
           <span class={`text-[11px] font-extrabold px-1.5 py-px rounded-full ${attentionOnly() ? "bg-white/20 text-white" : "bg-gray-100 dark:bg-gray-700 text-gray-500"}`}>{campaigns().filter((c) => c.needs_attention).length}</span>
         </button>
+        {/* The window the numbers below cover, repeated here so it stays in
+            view next to the filters that act on the same rows. */}
+        <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-[13px] whitespace-nowrap">
+          <CalendarDays size={14} class="text-gray-400" />
+          <span class="font-semibold text-gray-700 dark:text-gray-200">{win().days ? `Last ${win().days} days` : "Custom"}</span>
+          <Show when={windowCaption(data()?.window)}>
+            <span class="text-gray-500 dark:text-gray-400 tabular-nums">· {windowCaption(data()?.window, false)}</span>
+          </Show>
+        </span>
         <span class="ml-auto text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap"><b class="text-gray-800 dark:text-white tabular-nums">{rows().length}</b> shown</span>
+        <div class="relative" ref={snapRoot}>
+          <button type="button" onClick={() => setSnapMenu((v) => !v)} disabled={!rows().length || data.loading || !!snapping()}
+            title="Share every row shown as one image"
+            class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[13px] font-semibold border border-[#AC2334]/30 text-[#AC2334] bg-white dark:bg-gray-800 dark:text-red-300 hover:bg-[#FBEEF0] dark:hover:bg-red-900/20 disabled:opacity-50 disabled:hover:bg-white transition-colors">
+            <Camera size={14} />
+            {snapping() ? "Creating…" : "Share snapshot"}
+            <ChevronDown size={14} class={`transition-transform ${snapMenu() ? "rotate-180" : ""}`} />
+          </button>
+          <Show when={snapMenu()}>
+            <div class="absolute right-0 top-full mt-1.5 z-40 w-60 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 shadow-[0_12px_32px_rgba(20,35,58,0.14)] py-1">
+              <button type="button" onClick={() => takeSnapshot("copy")} class="w-full flex items-start gap-2.5 px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-800">
+                <Copy size={15} class="mt-0.5 text-gray-500" />
+                <span>
+                  <span class="block text-sm font-semibold text-gray-800 dark:text-gray-100">Copy image</span>
+                  <span class="block text-[11px] text-gray-500">Paste straight into WhatsApp</span>
+                </span>
+              </button>
+              <button type="button" onClick={() => takeSnapshot("download")} class="w-full flex items-start gap-2.5 px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-800">
+                <Download size={15} class="mt-0.5 text-gray-500" />
+                <span>
+                  <span class="block text-sm font-semibold text-gray-800 dark:text-gray-100">Download PNG</span>
+                  <span class="block text-[11px] text-gray-500">All {num(Math.min(rows().length, SNAP_MAX_ROWS))} rows in one image</span>
+                </span>
+              </button>
+            </div>
+          </Show>
+        </div>
       </div>
 
       <Show when={loadError()}>
@@ -1048,6 +1217,10 @@ export default function CplRules() {
           </Show>
         </table>
       </div>
+      </Show>
+
+      <Show when={snapping()}>
+        <SnapshotSheet ref={snapEl} rows={snapRows()} title={snapTitle()} subtitle={snapSubtitle()} stamp={snapStamp()} />
       </Show>
 
       <Show when={targetCampaign()}>
