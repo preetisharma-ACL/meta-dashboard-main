@@ -2264,24 +2264,23 @@ export default function Billing() {
                 }
               >
 
-              {/* Opening balance — hidden for retainer */}
-              <Show when={!isRetainer()}>
-                <LedgerRow
-                  noBorder
-                  name="Opening balance"
-                  tag={
-                    iscpl()
-                      ? openingSourceLabel()
-                      : `inc GST${openingSourceLabel() ? ` · ${openingSourceLabel()}` : ""}`
-                  }
-                  value={fmt(openingBalance().inc_gst)}
-                />
-              </Show>
+              {/* Opening balance — every type. A retainer's running balance
+                  (opening − SC + GST payable + funds = closing) is on the
+                  statement since Alok sir's decision, same as hybrid. */}
+              <LedgerRow
+                noBorder
+                name={isRetainer() ? "Previous balance" : "Opening balance"}
+                tag={
+                  iscpl()
+                    ? openingSourceLabel()
+                    : `inc GST${openingSourceLabel() ? ` · ${openingSourceLabel()}` : ""}`
+                }
+                value={fmt(openingBalance().inc_gst)}
+              />
 
               <LedgerRow
-                noBorder={isRetainer()}
                 op="+"
-                name="Funds added this month"
+                name={isRetainer() ? "Payments received" : "Funds added this month"}
                 value={fmt(fundsAddedIncGst())}
                 tone={fundsAddedIncGst() === 0 ? "zero" : "pos"}
               />
@@ -2346,25 +2345,29 @@ export default function Billing() {
               </Show>
 
               {/* ── Retainer payable: service charge + GST on the charge ── */}
+              {/* A deduction from the running balance, like hybrid's "Billed
+                  This Month", with its two parts as sub-rows. */}
               <Show when={isRetainer()}>
                 <LedgerRow
-                  name="Service charge"
-                  tag={
+                  op="−"
+                  name="This month's payable"
+                  tag="Service charge + GST"
+                  value={fmt(retainerPayable())}
+                  tone="neg"
+                />
+                <LedgerRow
+                  sub
+                  name={`Service charge${
                     retainerScPct() > 0
-                      ? `${retainerScPct()}% of ${fmt(adSpendExGst())} spend`
+                      ? ` · ${retainerScPct()}% of ${fmt(adSpendExGst())} spend`
                       : ""
-                  }
+                  }`}
                   value={fmt(retainerScAmount())}
                 />
                 <LedgerRow
+                  sub
                   name={`GST · ${Number(gstPct())}%`}
                   value={fmt(retainerScGst())}
-                />
-                <LedgerRow
-                  total
-                  name="Payable amount"
-                  tag="Service charge + GST"
-                  value={fmt(retainerPayable())}
                 />
               </Show>
 
@@ -2404,6 +2407,25 @@ export default function Billing() {
                   total
                   name="Remaining balance"
                   tag="inc GST · end of month position"
+                  value={fmt(remainingBalance())}
+                />
+              </Show>
+              {/* Retainer closing — closing_balance.inc_gst as sent; the
+                  server's has_outstanding_dues decides the "owes" styling,
+                  the same flag the hybrid hero's Outstanding Dues tag reads. */}
+              <Show when={isRetainer()}>
+                <LedgerRow
+                  total
+                  name="Closing balance"
+                  tag={
+                    closingBalance().has_outstanding_dues ? (
+                      <Tag variant="red">
+                        Total outstanding: {fmt(Math.abs(remainingBalance()))}
+                      </Tag>
+                    ) : (
+                      "inc GST · end of month position"
+                    )
+                  }
                   value={fmt(remainingBalance())}
                 />
               </Show>
