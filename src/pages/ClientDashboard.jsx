@@ -588,6 +588,16 @@ export default function MainDashboard() {
   const serviceChargePercent = () =>
     Number(clientServiceCharge() ?? auth?.serviceCharge ?? 13);
 
+  // Admin sees "Spend + S.C" only when ONE client is open and that client
+  // really pays one: its own rate came back on report_summary (never the
+  // auth / 13% fallback) and is above zero, and it isn't a CPL client (billed
+  // per lead, no S.C). Otherwise admin sees plain spend. Read at render only,
+  // so viewedClientType (declared just below) is initialised by then.
+  const adminScTile = () => {
+    const rate = clientServiceCharge();
+    return rate != null && Number(rate) > 0 && viewedClientType() !== "cpl";
+  };
+
   // Prefer the REPORTED client's type over the viewer's own — an admin looking
   // at a CPL client must see the progression. Declared HERE, above the memos
   // that read it: createMemo bodies run during setup, so a const declared
@@ -637,10 +647,15 @@ export default function MainDashboard() {
       // report_summary (present because /projects/ is scoped to one client via
       // selectedClientNomen). Capture it so the ledger bills the VIEWED client's
       // rate. null when unscoped → serviceChargePercent() falls back to auth/13%.
+      //
+      // Set on EVERY response, null included: an unscoped (all-clients)
+      // response must clear the last client's rate and type, or going from
+      // client A back to all clients kept A's rate. The admin service-charge
+      // tile keys off this being a real, non-zero rate.
       const sc = res?.meta?.report_summary?.service_charge;
-      if (sc != null) setClientServiceCharge(Number(sc));
+      setClientServiceCharge(sc != null ? Number(sc) : null);
       const ct = res?.meta?.report_summary?.client_type;
-      if (ct != null) setClientTypeFromReport(String(ct).toLowerCase());
+      setClientTypeFromReport(ct != null ? String(ct).toLowerCase() : null);
 
       const mappedProjects = (apiData || []).map((item) => ({
         id: item.id,
@@ -1323,6 +1338,11 @@ export default function MainDashboard() {
       }
     }
     const serviceChargeSpent = scCovered > 0 ? withSc(scBase) : null;
+    // The same base WITHOUT the charge — what clients are billed, after the
+    // credit for replaced leads (Σ billed_amount). The admin all-clients tile
+    // shows this: no single client's rate applies across every client.
+    const billedSpent =
+      scCovered > 0 ? Math.round(scBase * 100) / 100 : null;
 
     // Number, not the string .toFixed() returns: this is rendered via
     // .toLocaleString("en-IN"), and String's toLocaleString is a no-op that
@@ -1346,6 +1366,7 @@ export default function MainDashboard() {
       totalLeadsWithFed: totalLeads + totalFedLeads,
       totalSpent,
       serviceChargeSpent,
+      billedSpent,
       scCovered,
       scProjectCount,
       avgCPL,
@@ -2667,7 +2688,50 @@ export default function MainDashboard() {
                 hardcoded 13% — an invented charge on a client who owes none.
                 The Daily Report already hides its S.C columns for CPL; this is
                 the same rule in the same words. */}
-            <Show when={viewedClientType() !== "cpl"}>
+            {/* Admin: the client-billed spend WITHOUT service charge, unless
+                ONE client is open and that client actually pays one (its own
+                rate, from report_summary, is non-zero) — then the S.C tile
+                below. Same base as that tile (Σ billed_amount, after the credit
+                for replaced leads), just no charge on it: in the all-clients
+                view there is no rate, and the tile used to read a fallback 13%
+                across every client, CPL included — nobody's bill. */}
+            {/* Hidden for a CPL client, like the S.C tile: they are billed
+                per lead, so there is no billed-spend figure to show. */}
+            <Show
+              when={
+                isAdmin() && !adminScTile() && viewedClientType() !== "cpl"
+              }
+            >
+              <div class="py-3.5 border-b border-[#E2E8F1] dark:border-gray-700">
+                <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
+                  Spend
+                </p>
+                <p class="text-xl font-bold text-gray-700 dark:text-white mt-1">
+                  {overviewStatsCards().billedSpent == null
+                    ? "—"
+                    : `₹${inr2(overviewStatsCards().billedSpent)}`}
+                </p>
+                <p class="text-xs text-[#54657E] dark:text-gray-400 mt-0.5">
+                  (after replacements · without service charge · excluding GST)
+                </p>
+                <Show
+                  when={
+                    overviewStatsCards().scCovered <
+                    overviewStatsCards().scProjectCount
+                  }
+                >
+                  <p class="text-xs text-[#54657E] dark:text-gray-400 mt-0.5">
+                    {overviewStatsCards().scCovered} of{" "}
+                    {overviewStatsCards().scProjectCount} projects priced
+                  </p>
+                </Show>
+              </div>
+            </Show>
+            <Show
+              when={
+                viewedClientType() !== "cpl" && (!isAdmin() || adminScTile())
+              }
+            >
               <div class="py-3.5 border-b border-[#E2E8F1] dark:border-gray-700">
                 <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">
                   Spend + {serviceChargePercent()}% service charge
