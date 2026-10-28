@@ -124,7 +124,7 @@ const toast = (icon, title) =>
   Swal.fire({ icon, title, toast: true, position: "top-end", timer: 3200, showConfirmButton: false });
 
 // ─── Table layout ─────────────────────────────────────────────────────────────
-const TH = "p-3 text-[13px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 whitespace-nowrap bg-gray-50 dark:bg-gray-800";
+const TH = "p-3 text-xs font-bold uppercase text-gray-500 dark:text-gray-400 whitespace-nowrap bg-gray-50 dark:bg-gray-800";
 const TD = "p-3 align-middle border-b border-gray-100 dark:border-gray-800";
 
 // Numbers pinned to the right edge, left → right. Fixed widths so each
@@ -247,7 +247,7 @@ function SortBtn(props) {
   const active = () => props.sort?.key === props.col;
   return (
     <button type="button" onClick={() => props.onSort(props.col)}
-      class="inline-flex items-center uppercase tracking-wider transition-colors hover:text-purple-600">
+      class="inline-flex items-center uppercase transition-colors hover:text-purple-600">
       {props.label}
       {active() ? <span class="ml-1 text-purple-600">{props.sort.dir === "asc" ? "↑" : "↓"}</span> : <span class="text-gray-300 ml-1">⇅</span>}
     </button>
@@ -596,7 +596,7 @@ export default function CplRules() {
   const [cms, setCms] = createSignal([]);
 
   const nameCol = createResizableCol("cplRules.nameColWidth.v2", 220, 520);
-  const clientCol = createResizableCol("cplRules.clientColWidth.v2", 228, 440, 228);
+  const clientCol = createResizableCol("cplRules.clientColWidth.v2", 200, 440, 200);
 
   // Right offsets for the pinned number columns (the action column only
   // exists for admin + coordination).
@@ -910,16 +910,16 @@ export default function CplRules() {
                 </span>
                 <ResizeHandle col={clientCol} />
               </th>
-              <th class={`${TH} text-left border-b border-gray-200 dark:border-gray-700`}><SortBtn col="cm" label="CM" sort={sort()} onSort={toggleSort} /></th>
               <th class={`${TH} text-left min-w-[230px] border-b border-gray-200 dark:border-gray-700`}><SortBtn col="ad_account" label="Ad account" sort={sort()} onSort={toggleSort} /></th>
+              <th class={`${TH} text-left border-b border-gray-200 dark:border-gray-700`}><SortBtn col="cm" label="CM" sort={sort()} onSort={toggleSort} /></th>
               <th class={`${TH} text-center border-b border-gray-200 dark:border-gray-700`}><SortBtn col="attention" label="Attention" sort={sort()} onSort={toggleSort} /></th>
-              <th class={`${TH} text-right border-b border-gray-200 dark:border-gray-700`}><SortBtn col="spend" label="Spend" sort={sort()} onSort={toggleSort} /></th>
-              <th class={`${TH} text-right z-20 border-b border-gray-200 dark:border-gray-700 ${stickyCls("leads")}`} style={stickyStyle("leads")}><SortBtn col="leads" label="Leads" sort={sort()} onSort={toggleSort} /></th>
-              <th class={`${TH} text-right z-20 border-b border-gray-200 dark:border-gray-700 ${stickyCls("actual_cpl")}`} style={stickyStyle("actual_cpl")}><SortBtn col="actual_cpl" label="Actual CPL" sort={sort()} onSort={toggleSort} /></th>
-              <th class={`${TH} text-right z-20 border-b border-gray-200 dark:border-gray-700 ${stickyCls("target_cpl")}`} style={stickyStyle("target_cpl")}><SortBtn col="target_cpl" label="Target CPL" sort={sort()} onSort={toggleSort} /></th>
+              <th class={`${TH} text-center border-b border-gray-200 dark:border-gray-700`}><SortBtn col="spend" label="Spend" sort={sort()} onSort={toggleSort} /></th>
+              <th class={`${TH} text-center z-20 border-b border-gray-200 dark:border-gray-700 ${stickyCls("leads")}`} style={stickyStyle("leads")}><SortBtn col="leads" label="Leads" sort={sort()} onSort={toggleSort} /></th>
+              <th class={`${TH} text-center z-20 border-b border-gray-200 dark:border-gray-700 ${stickyCls("actual_cpl")}`} style={stickyStyle("actual_cpl")}><SortBtn col="actual_cpl" label="Actual CPL" sort={sort()} onSort={toggleSort} /></th>
+              <th class={`${TH} text-center z-20 border-b border-gray-200 dark:border-gray-700 ${stickyCls("target_cpl")}`} style={stickyStyle("target_cpl")}><SortBtn col="target_cpl" label="Target CPL" sort={sort()} onSort={toggleSort} /></th>
               <th class={`${TH} text-center z-20 border-b border-gray-200 dark:border-gray-700 ${stickyCls("over_target")}`} style={stickyStyle("over_target")}><SortBtn col="over_target" label="Over target" sort={sort()} onSort={toggleSort} /></th>
               <Show when={canSetTarget()}>
-                <th class={`${TH} text-right z-20 border-b border-gray-200 dark:border-gray-700 ${stickyCls("action")}`} style={stickyStyle("action")}>Target</th>
+                <th class={`${TH} text-center z-20 border-b border-gray-200 dark:border-gray-700 ${stickyCls("action")}`} style={stickyStyle("action")}>Target</th>
               </Show>
             </tr>
           </thead>
@@ -953,20 +953,6 @@ export default function CplRules() {
                           </div>
                         </div>
                       </td>
-                      <td class={td("text-[13px] text-gray-700 dark:text-gray-200")}>
-                        <Show when={cmsList.length} fallback={<span class="text-gray-400 dark:text-gray-500">—</span>}>
-                          <div class="flex flex-col gap-1">
-                            <For each={cmsList}>
-                              {(n) => (
-                                <span class="inline-flex items-center gap-1.5 whitespace-nowrap capitalize">
-                                  <Avatar name={n} size="w-6 h-6" textSize="text-[9px]" />
-                                  {n}
-                                </span>
-                              )}
-                            </For>
-                          </div>
-                        </Show>
-                      </td>
                       <td class={td("max-w-[280px]")}>
                         <Show when={c.ad_account || c.ad_account_name} fallback={<span class="text-gray-400 dark:text-gray-500">—</span>}>
                           <div class="flex items-start gap-2">
@@ -993,6 +979,20 @@ export default function CplRules() {
                           </div>
                         </Show>
                       </td>
+                      <td class={td("text-[13px] text-gray-700 dark:text-gray-200")}>
+                        <Show when={cmsList.length} fallback={<span class="text-gray-400 dark:text-gray-500">—</span>}>
+                          <div class="flex flex-col gap-1">
+                            <For each={cmsList}>
+                              {(n) => (
+                                <span class="inline-flex items-center gap-1.5 whitespace-nowrap capitalize">
+                                  <Avatar name={n} size="w-6 h-6" textSize="text-[9px]" />
+                                  {n}
+                                </span>
+                              )}
+                            </For>
+                          </div>
+                        </Show>
+                      </td>
                       <td class={td("text-center whitespace-nowrap")}>
                         <Show when={c.needs_attention} fallback={
                           <Show when={hasTarget} fallback={<span class="text-gray-400 dark:text-gray-500 text-xs">—</span>}>
@@ -1004,14 +1004,14 @@ export default function CplRules() {
                           </span>
                         </Show>
                       </td>
-                      <td class={td("text-right whitespace-nowrap tabular-nums text-gray-800 dark:text-gray-200")}>{money2(c.spend) ?? "—"}</td>
-                      <td class={pinned("leads", "text-right whitespace-nowrap tabular-nums text-gray-800 dark:text-gray-200")} style={stickyStyle("leads")}>{c.leads == null ? "—" : num(c.leads)}</td>
-                      <td class={pinned("actual_cpl", "text-right whitespace-nowrap tabular-nums font-semibold text-gray-800 dark:text-gray-100")} style={stickyStyle("actual_cpl")}>
+                      <td class={td("text-center whitespace-nowrap tabular-nums text-gray-800 dark:text-gray-200")}>{money2(c.spend) ?? "—"}</td>
+                      <td class={pinned("leads", "text-center whitespace-nowrap tabular-nums text-gray-800 dark:text-gray-200")} style={stickyStyle("leads")}>{c.leads == null ? "—" : num(c.leads)}</td>
+                      <td class={pinned("actual_cpl", "text-center whitespace-nowrap tabular-nums font-semibold text-gray-800 dark:text-gray-100")} style={stickyStyle("actual_cpl")}>
                         <Show when={c.no_leads} fallback={money2(c.actual_cpl) ?? "—"}>
                           <span class="text-[#AC2334] dark:text-red-400">No leads</span>
                         </Show>
                       </td>
-                      <td class={pinned("target_cpl", "text-right whitespace-nowrap tabular-nums")} style={stickyStyle("target_cpl")}>
+                      <td class={pinned("target_cpl", "text-center whitespace-nowrap tabular-nums")} style={stickyStyle("target_cpl")}>
                         <Show when={hasTarget} fallback={<span class="text-gray-400 dark:text-gray-500">—</span>}>
                           <Show when={c.target_is_default} fallback={<span class="font-semibold text-gray-800 dark:text-gray-100">{money2(c.target_cpl)}</span>}>
                             <span class="text-gray-500 dark:text-gray-400">{money2(c.target_cpl)}</span>
@@ -1028,7 +1028,7 @@ export default function CplRules() {
                         </Show>
                       </td>
                       <Show when={canSetTarget()}>
-                        <td class={pinned("action", "text-right whitespace-nowrap")} style={stickyStyle("action")}>
+                        <td class={pinned("action", "text-center whitespace-nowrap")} style={stickyStyle("action")}>
                           <button onClick={() => setTargetCampaign(c)} class="px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:border-[#AC2334]/40 hover:text-[#AC2334]">
                             {c.has_target ? "Edit" : "Set target"}
                           </button>
