@@ -890,7 +890,10 @@ export default function CplRules() {
           Select a campaign manager to see their campaigns, highest CPL first.
         </div>
       }>
-      <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 overflow-auto max-h-[calc(100vh-12rem)]">
+      {/* isolate: the sticky header and pinned columns stack inside the table
+          only — otherwise thead z-30 ties the app header (z-30) and, coming
+          later in the DOM, paints over its profile menu. */}
+      <div class="isolate bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 overflow-auto max-h-[calc(100vh-12rem)]">
         <table class="min-w-full text-sm border-separate border-spacing-0">
           <thead class="sticky top-0 z-30">
             <tr>
