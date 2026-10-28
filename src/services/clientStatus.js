@@ -91,12 +91,16 @@ export const statusLabel = (s) => {
 
 // ── Status board ─────────────────────────────────────────────────────────────
 // GET /clients/status-board/[?status=]
-//   data.counts  { active, hold, completed, unset, total }
+//   data.counts  { active, hold, completed, unset, total, dead }
+//                live buckets + total = LIVE clients only; dead = every dead
+//                client in scope + flagged (dead_blocked) ones (7a6ced9)
 //   data.clients [{ id, email, client_nomen, client_type, engagement_status,
+//                   is_dead, dead_blocked,
 //                   latest_change: { from_status, to_status, reason,
 //                                    changed_by_email, changed_at } | null }]
 // Server-scoped: admin sees everything, a CM only their assigned clients.
 // Dead clients are hidden unless `dead` is true (then ONLY dead ones come back).
+// status="dead" returns exactly the dead + flagged rows, whatever `dead` is.
 // `status` must be a string — createResource(fetchStatusBoard) hands it
 // `true`, which used to go out as ?status=true.
 export const fetchStatusBoard = async (status, { dead = false } = {}) => {

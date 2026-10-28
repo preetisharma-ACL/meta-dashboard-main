@@ -1,10 +1,10 @@
 import { createResource, createSignal, createMemo, For, Show } from "solid-js";
-import DeadToggle from "../../components/common/DeadToggle";
 import { scopeKey } from "../../stores/cmScope";
 import {
   fetchStatusBoard,
   STATUS_FILTERS,
   STATUS_DOT,
+  STATUS_BADGE,
   STATUS_UNSET,
   normaliseStatus,
   statusLabel,
@@ -24,10 +24,11 @@ import Avatar from "../../components/common/Avatar";
 // Scope is entirely the backend's: an admin gets all clients, a CM only their
 // assigned ones. Nothing here filters by role.
 //
-// The tabs filter CLIENT-SIDE from the single fetched list. The endpoint also
-// accepts ?status=, but one round-trip gives us the whole board plus the counts
-// that label the tabs, so re-fetching per tab would re-request data we already
-// hold — and would make the counts and the list momentarily disagree.
+// The tabs filter CLIENT-SIDE from the single fetched list — except Dead. Dead
+// clients are hidden from that list, so the Dead tab LOADS its own rows with
+// ?status=dead (every dead client in scope + flagged dead_blocked ones,
+// whatever the dead toggle is). counts.dead is that same set; the other counts
+// are live clients only (backend 7a6ced9).
 
 const TYPE_CHIP = {
   hybrid: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300",
@@ -68,16 +69,23 @@ export default function ClientStatusBoard() {
   const [query, setQuery] = createSignal("");
   const [historyFor, setHistoryFor] = createSignal(null);
 
-  // Dead clients are hidden server-side; ON shows ONLY them (?dead=only). This
-  // is where a CM revives one — moving it off Dead / Completed brings it back
-  // at once.
-  const [deadOnly, setDeadOnly] = createSignal(false);
-
-  const [board, { mutate, refetch }] = createResource(() => ({ dead: deadOnly(), viewing: scopeKey() }), ({ dead }) =>
-    fetchStatusBoard(undefined, { dead }),
+  // Live clients only — dead ones are hidden server-side. No "Dead clients"
+  // toggle here: the Dead tab does that job (and is where a CM revives one —
+  // moving it off Dead / Completed brings it back at once).
+  const [board, { mutate, refetch }] = createResource(
+    () => ({ viewing: scopeKey() }),
+    () => fetchStatusBoard(),
   );
 
+  const onDeadTab = () => tab() === "dead";
+  const [deadBoard, deadActions] = createResource(
+    () => (onDeadTab() ? { viewing: scopeKey() } : false),
+    () => fetchStatusBoard("dead"),
+  );
+  const shown = () => (onDeadTab() ? deadBoard : board);
+
   const clients = () => board()?.clients ?? [];
+  const rows = () => (onDeadTab() ? (deadBoard()?.clients ?? []) : clients());
 
   // Counts come from the server's `counts` block. Fall back to a local tally so
   // the tabs still label correctly if that block is ever absent — a tab reading
@@ -104,8 +112,13 @@ export default function ClientStatusBoard() {
   const beforeType = createMemo(() => {
     const t = tab();
     const q = query().trim().toLowerCase();
-    return clients()
-      .filter((c) => t === "all" || normaliseStatus(c.engagement_status) === t)
+    return rows()
+      .filter(
+        (c) =>
+          t === "all" ||
+          t === "dead" ||
+          normaliseStatus(c.engagement_status) === t,
+      )
       .filter(
         (c) =>
           !q ||
@@ -149,34 +162,36 @@ export default function ClientStatusBoard() {
       );
   });
 
-  // Patch the row in place after a successful change, and re-tally the counts,
-  // so the tab labels and the row agree without another round-trip.
-  // A client that went dead leaves the default list (dead clients are hidden);
-  // on the dead-only view, one that revived leaves it instead.
-  const applyChange = (clientId, { status, change, isDead, deadBlocked }) => {
-    mutate((prev) => {
-      if (!prev) return prev;
-      const leaves = deadOnly() ? !isDead : isDead;
-      const nextClients = prev.clients
+  // Patch the row in place after a successful change, then quietly re-pull the
+  // board so the tab counts are the server's — dead vs live buckets are not a
+  // local tally (a flagged row counts as dead, a Completed one may already be).
+  // A client that went dead leaves the live list (dead clients are hidden); on
+  // the Dead tab, one that revived leaves it instead.
+  const patchRows = (prev, clientId, leaves, patch) =>
+    prev && {
+      ...prev,
+      clients: prev.clients
         .filter((c) => !(leaves && String(c.id) === String(clientId)))
-        .map((c) =>
-          String(c.id) === String(clientId)
-            ? {
-                ...c,
-                engagement_status: status,
-                latest_change: change,
-                dead_blocked: deadBlocked,
-              }
-            : c,
-        );
-      const acc = emptyStatusCounts();
-      delete acc.total;
-      for (const c of nextClients) acc[normaliseStatus(c.engagement_status)] += 1;
-      return {
-        clients: nextClients,
-        counts: { ...acc, total: nextClients.length },
-      };
-    });
+        .map((c) => (String(c.id) === String(clientId) ? { ...c, ...patch } : c)),
+    };
+
+  const applyChange = (clientId, { status, change, isDead, deadBlocked }) => {
+    const patch = {
+      engagement_status: status,
+      latest_change: change,
+      is_dead: isDead,
+      dead_blocked: deadBlocked,
+    };
+    if (onDeadTab()) {
+      deadActions.mutate((prev) =>
+        patchRows(prev, clientId, !isDead && !deadBlocked, patch),
+      );
+    } else {
+      mutate((prev) => patchRows(prev, clientId, isDead, patch));
+    }
+    fetchStatusBoard()
+      .then((fresh) => mutate(fresh))
+      .catch(() => {});
   };
 
   const TH =
@@ -219,18 +234,15 @@ export default function ClientStatusBoard() {
           </p>
         </div>
         <div class="flex items-center gap-2 flex-wrap">
-          {/* Changing a status away from Dead / Completed here revives it at once. */}
-          <DeadToggle
-            value={deadOnly()}
-            onChange={setDeadOnly}
-            disabled={board.loading}
-          />
           <button
-            onClick={() => refetch()}
-            disabled={board.loading}
+            onClick={() => {
+              refetch();
+              if (onDeadTab()) deadActions.refetch();
+            }}
+            disabled={shown().loading}
             class="px-3.5 py-2 text-sm font-semibold rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:border-[#AC2334]/40 disabled:opacity-50 transition"
           >
-            {board.loading ? "Refreshing…" : "Refresh"}
+            {shown().loading ? "Refreshing…" : "Refresh"}
           </button>
         </div>
       </div>
@@ -354,7 +366,7 @@ export default function ClientStatusBoard() {
           </thead>
 
           <Show
-            when={!board.loading}
+            when={!shown().loading}
             fallback={
               <tbody>
                 <For each={Array(6).fill(0)}>
@@ -374,17 +386,19 @@ export default function ClientStatusBoard() {
             }
           >
             <Show
-              when={!board.error}
+              when={!shown().error}
               fallback={
                 <tbody>
                   <tr>
                     <td colspan="5" class="p-10 text-center">
                       <p class="text-sm font-medium text-[#AC2334]">
-                        {board.error?.message ||
+                        {shown().error?.message ||
                           "Could not load the status board."}
                       </p>
                       <button
-                        onClick={() => refetch()}
+                        onClick={() =>
+                          onDeadTab() ? deadActions.refetch() : refetch()
+                        }
                         class="mt-2 text-sm underline text-gray-500"
                       >
                         Retry
@@ -439,6 +453,20 @@ export default function ClientStatusBoard() {
                           latestChange={c.latest_change}
                           onChanged={(payload) => applyChange(c.id, payload)}
                         />
+                        {/* Dead whose saved status isn't Dead (a Completed
+                            client that aged out) still reads as Dead. */}
+                        <Show
+                          when={
+                            c.is_dead === true &&
+                            normaliseStatus(c.engagement_status) !== "dead"
+                          }
+                        >
+                          <span
+                            class={`mt-1 flex w-fit items-center px-2 py-[2px] rounded-full text-[10px] font-semibold whitespace-nowrap ${STATUS_BADGE.dead}`}
+                          >
+                            Dead
+                          </span>
+                        </Show>
                         <Show when={c.dead_blocked === true}>
                           <span
                             class="mt-1 flex w-fit items-center gap-1 px-2 py-[2px] rounded-full text-[10px] font-semibold whitespace-nowrap bg-[#FBF3E2] text-[#8A6410] border border-[#B07A14]/40 dark:bg-yellow-900/25 dark:text-yellow-200"
