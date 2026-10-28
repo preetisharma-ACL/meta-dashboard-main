@@ -438,7 +438,14 @@ function App() {
             <Route path="/account-monitor" component={AccountMonitor} />
             <Route path="/my-work" component={MyWork} />
             <Route path="/client-workspace/:nomenId" component={ClientWorkspace} />
-            <Route path="/cpl-rules" component={CplRules} />
+            <Route
+              path="/cpl-rules"
+              component={() => (
+                <AdminRoute roles={["admin", "coordination", "campaign_manager"]}>
+                  <CplRules />
+                </AdminRoute>
+              )}
+            />
             {/* Lead replacements — the record + audit surface. Route-gated to
                 admin + CM; the RECORD action inside is further gated to admin
                 and tier-1 CMs (canRecordReplacement), and revoke/audit-log to

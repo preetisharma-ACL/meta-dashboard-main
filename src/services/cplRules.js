@@ -6,14 +6,20 @@ import { scopeQuery, applyMeta } from "../stores/cmScope";
 // Read views are switch-mode aware (scopeQuery); the admin-only target write is
 // not. BASE_URL already includes /api → paths are /cm/cpl-rules/...
 
-// Campaigns ranked by expensiveness desc (most over-target first, untargeted last).
-export const fetchCplCampaigns = async () => {
-  const res = await api(`/cm/cpl-rules/campaigns/?1=1${scopeQuery({ supportsOwn: true })}`, { method: "GET" });
+// Campaigns ranked by expensiveness desc. A (client, project) without its own
+// target is rated against meta.summary.default_target_cpl (₹300).
+// cmId → only that CM's clients (403 if not allowed); only: "expensive" → only
+// rows at ≥125% of target. meta.cms feeds the CM dropdown.
+export const fetchCplCampaigns = async ({ cmId, only } = {}) => {
+  let q = `?1=1${scopeQuery({ supportsOwn: true })}`;
+  if (cmId != null && cmId !== "") q += `&cm_id=${encodeURIComponent(cmId)}`;
+  if (only) q += `&only=${encodeURIComponent(only)}`;
+  const res = await api(`/cm/cpl-rules/campaigns/${q}`, { method: "GET" });
   applyMeta(res?.meta);
   return res;
 };
 
-// Admin sets/edits a per-(client, project) target CPL.
+// Admin + coordination set/edit a per-(client, project) target CPL (CMs 403).
 export const setCplTarget = async (body) => {
   return await api(`/cm/cpl-rules/targets/`, { method: "PUT", body: JSON.stringify(body) });
 };
