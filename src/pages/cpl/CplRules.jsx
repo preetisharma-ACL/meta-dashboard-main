@@ -1,8 +1,10 @@
-import { createSignal, createResource, createMemo, createEffect, on, For, Show } from "solid-js";
+import { createSignal, createResource, createMemo, createEffect, on, onCleanup, For, Show } from "solid-js";
 import Swal from "sweetalert2";
+import { TriangleAlert, Target, Megaphone, ArrowUp, ChartColumn, ChevronDown, Check, Search, Users, ChevronsLeftRight, ChevronsRightLeft } from "lucide-solid";
 import { fetchCplCampaigns, setCplTarget, fetchHighVolumeClients } from "../../services/cplRules";
 import { scopeKey } from "../../stores/cmScope";
 import { isAdmin, isCoordination } from "../../stores/currentUser";
+import Avatar from "../../components/common/Avatar";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Tier B — CPL Rules & Alerts (admin + coordination + CM-scoped). Campaigns
@@ -33,6 +35,7 @@ const strOrNull = (s) => (s ? String(s).toLowerCase() : null);
 const SORT_COLS = {
   name: { get: (c) => strOrNull(c.name), first: "asc" },
   client: { get: (c) => strOrNull([c.client, c.project].filter(Boolean).join(" ")), first: "asc" },
+  project: { get: (c) => strOrNull(c.project), first: "asc" },
   cm: { get: (c) => strOrNull((c.campaign_managers || []).join(", ")), first: "asc" },
   ad_account: { get: (c) => strOrNull(c.ad_account_name || c.ad_account), first: "asc" },
   spend: { get: (c) => numOrNull(c.spend), first: "desc" },
@@ -84,16 +87,9 @@ const windowCaption = (w) => {
   return `${fmt(a, a.getFullYear() !== b.getFullYear())} – ${fmt(b, true)}${days}`;
 };
 
-// "sonu · Tier 2 · 106 campaigns · 3 expensive"
-const cmLabel = (m) => {
-  const tierN = m.tier == null ? "" : String(m.tier).replace(/\D/g, "");
-  return [
-    m.name || m.email || `#${m.id}`,
-    tierN ? `Tier ${tierN}` : null,
-    `${num(m.campaigns)} campaigns`,
-    `${num(m.expensive)} expensive`,
-  ].filter(Boolean).join(" · ");
-};
+// meta.cms tier ("tier_2", 2, "Tier 2") → "2"
+const tierNum = (m) => (m.tier == null ? "" : String(m.tier).replace(/\D/g, ""));
+const cmName = (m) => m.name || m.email || `#${m.id}`;
 
 const copyText = async (text) => {
   try {
@@ -127,6 +123,106 @@ const overPctFmt = (v) => {
 const toast = (icon, title) =>
   Swal.fire({ icon, title, toast: true, position: "top-end", timer: 3200, showConfirmButton: false });
 
+// ─── Table layout ─────────────────────────────────────────────────────────────
+const TH = "p-3 text-[13px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 whitespace-nowrap bg-gray-50 dark:bg-gray-800";
+const TD = "p-3 align-middle border-b border-gray-100 dark:border-gray-800";
+
+// Numbers pinned to the right edge, left → right. Fixed widths so each
+// column's `right` offset is the sum of the widths after it.
+const STICKY = [
+  { key: "spend", width: 120 },
+  { key: "leads", width: 92 },
+  { key: "actual_cpl", width: 136 },
+  { key: "target_cpl", width: 140 },
+  { key: "over_target", width: 160 },
+  { key: "action", width: 112 },
+];
+// Divider + shadow on the two resizable columns — header only, so the body
+// reads as a plain table.
+const RESIZE_EDGE = "relative z-[1] border-r border-gray-200 dark:border-gray-700 shadow-[6px_0_8px_-6px_rgba(0,0,0,0.18)]";
+
+// ─── Drag-resizable column (same behaviour as the Campaigns page) ────────────
+const COL_MIN = 160;
+const COL_MAX = 900;
+function createResizableCol(storageKey, def, wide) {
+  const read = () => {
+    try {
+      const v = Number(localStorage.getItem(storageKey));
+      return v >= COL_MIN && v <= COL_MAX ? v : def;
+    } catch {
+      return def;
+    }
+  };
+  const [width, setWidth] = createSignal(read());
+  const [active, setActive] = createSignal(false);
+  const save = (w) => {
+    try {
+      localStorage.setItem(storageKey, String(w));
+    } catch {
+      /* storage unavailable — width just won't persist */
+    }
+  };
+  const start = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startW = width();
+    setActive(true);
+    const onMove = (ev) => setWidth(Math.min(COL_MAX, Math.max(COL_MIN, startW + ev.clientX - startX)));
+    const onUp = () => {
+      setActive(false);
+      save(width());
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
+  // Double-click the divider: toggle between default and wide.
+  const toggle = (e) => {
+    e.stopPropagation();
+    const w = width() > def ? def : wide;
+    setWidth(w);
+    save(w);
+  };
+  const style = () => ({ width: `${width()}px`, "min-width": `${width()}px`, "max-width": `${width()}px` });
+  const expanded = () => width() > def;
+  return { active, start, toggle, style, expanded };
+}
+
+function ResizeHandle(props) {
+  return (
+    <span
+      role="separator"
+      aria-orientation="vertical"
+      title="Drag to resize · double-click to toggle width"
+      class="absolute top-0 -right-1.5 h-full w-3 z-10 cursor-col-resize group/rs flex justify-center"
+      onPointerDown={props.col.start}
+      onClick={(e) => e.stopPropagation()}
+      onDblClick={props.col.toggle}
+    >
+      <span class={`h-full w-0.5 transition-colors ${props.col.active() ? "bg-[#AC2334]" : "bg-gray-300 dark:bg-gray-600 group-hover/rs:bg-[#AC2334]"}`} />
+    </span>
+  );
+}
+
+// Header button: expand / collapse the column (same as double-clicking the edge).
+function ExpandBtn(props) {
+  return (
+    <button type="button" onClick={props.col.toggle}
+      title={props.col.expanded() ? "Collapse column" : "Expand column"}
+      class={`ml-1.5 p-0.5 rounded transition-colors hover:text-[#AC2334] hover:bg-[#FBEEF0] dark:hover:bg-red-900/20 ${props.col.expanded() ? "text-[#AC2334]" : "text-gray-400"}`}>
+      <Show when={props.col.expanded()} fallback={<ChevronsLeftRight size={14} />}>
+        <ChevronsRightLeft size={14} />
+      </Show>
+    </button>
+  );
+}
+
 // ─── Expensiveness ratio badge ────────────────────────────────────────────────
 function RatioBadge(props) {
   const a = () => props.campaign;
@@ -139,24 +235,189 @@ function RatioBadge(props) {
       : "bg-[#FBF3E2] text-[#B07A14] dark:bg-amber-900/30 dark:text-amber-300";
   };
   return (
-    <Show when={ratioFmt(a().expensiveness_ratio) != null} fallback={<span class="text-[#8593A8] dark:text-gray-500 text-xs">—</span>}>
-      <span class={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-extrabold tabular-nums ${tone()}`}>{ratioFmt(a().expensiveness_ratio)}</span>
+    <Show when={ratioFmt(a().expensiveness_ratio) != null} fallback={<span class="text-gray-400 dark:text-gray-500 text-xs">—</span>}>
+      <span class={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold tabular-nums ${tone()}`}>{ratioFmt(a().expensiveness_ratio)}</span>
     </Show>
   );
 }
 
-// ─── Sortable column header ───────────────────────────────────────────────────
-function SortTh(props) {
+// ─── Sort button — same ⇅ / ↑ ↓ markers as the Campaigns page ──────────────
+function SortBtn(props) {
   const active = () => props.sort?.key === props.col;
-  const justify = { left: "justify-start", right: "justify-end", center: "justify-center" }[props.align];
   return (
-    <th class={`p-0 text-${props.align} whitespace-nowrap border-b border-[#D4DDE9] dark:border-gray-700 ${props.extra || ""}`}>
-      <button type="button" onClick={() => props.onSort(props.col)}
-        class={`w-full p-4 inline-flex items-center gap-1 ${justify} uppercase font-bold tracking-wider hover:text-[#AC2334] ${active() ? "text-[#AC2334] dark:text-red-400" : ""}`}>
-        {props.label}
-        <span class={`text-[10px] ${active() ? "" : "opacity-30"}`}>{active() ? (props.sort.dir === "asc" ? "▲" : "▼") : "↕"}</span>
+    <button type="button" onClick={() => props.onSort(props.col)}
+      class="inline-flex items-center uppercase tracking-wider transition-colors hover:text-purple-600">
+      {props.label}
+      {active() ? <span class="ml-1 text-purple-600">{props.sort.dir === "asc" ? "↑" : "↓"}</span> : <span class="text-gray-300 ml-1">⇅</span>}
+    </button>
+  );
+}
+
+// ─── Totals card with tinted background shapes ───────────────────────────────
+const SHAPE_TONES = {
+  crimson: {
+    color: "#D92D45",
+    card: "from-[#FDEEF1] via-white to-[#FDF3F5] border-[#F6D3D9] dark:from-red-950/40 dark:via-gray-900 dark:to-gray-900 dark:border-red-900/50",
+    chip: "bg-[#FBDDE2] text-[#C8243B] dark:bg-red-900/40 dark:text-red-300",
+    value: "text-[#C8243B] dark:text-[#F06A7E]",
+  },
+  gold: {
+    color: "#E0A030",
+    card: "from-[#FEF6E7] via-white to-[#FEF9EF] border-[#F5E2BC] dark:from-amber-950/40 dark:via-gray-900 dark:to-gray-900 dark:border-amber-900/50",
+    chip: "bg-[#FCEBC8] text-[#C4801A] dark:bg-amber-900/40 dark:text-amber-300",
+    value: "text-[#C4801A] dark:text-[#E9AE5C]",
+  },
+  blue: {
+    color: "#3B6FE0",
+    card: "from-[#EDF3FE] via-white to-[#F2F6FE] border-[#D3E0FA] dark:from-blue-950/40 dark:via-gray-900 dark:to-gray-900 dark:border-blue-900/50",
+    chip: "bg-[#DCE7FC] text-[#2F5FCC] dark:bg-blue-900/40 dark:text-blue-300",
+    value: "text-[#2F5FCC] dark:text-[#7FA6F0]",
+  },
+};
+
+function ShapeTile(props) {
+  const tone = () => SHAPE_TONES[props.tone] ?? SHAPE_TONES.blue;
+  const Icon = props.icon;
+  return (
+    <div class={`relative rounded-xl border bg-gradient-to-br px-5 py-4 shadow-[0_1px_2px_rgba(20,35,58,0.04)] hover:shadow-[0_6px_18px_rgba(20,35,58,0.08)] transition-shadow ${tone().card}`}
+      style={{ "--tile-accent": tone().color }}>
+      {/* Moving border trace — same as the Campaign Analysis tiles */}
+      <span class="tile-trace" aria-hidden="true" />
+      {/* Shapes are clipped in their own layer so the trace, which sits on the
+          border, isn't clipped with them. */}
+      <span class="pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit]" aria-hidden="true">
+      {/* Soft wave shapes, bottom-right */}
+      <svg class="pointer-events-none absolute right-0 bottom-0 h-full w-[70%]" viewBox="0 0 300 120" preserveAspectRatio="none" aria-hidden="true">
+        <path d="M60 120 C 120 70, 180 110, 240 60 S 300 20, 300 20 L300 120 Z" fill={tone().color} fill-opacity="0.07" />
+        <path d="M0 120 C 90 95, 150 120, 220 85 S 300 60, 300 55 L300 120 Z" fill={tone().color} fill-opacity="0.06" />
+        <circle cx="270" cy="18" r="46" fill={tone().color} fill-opacity="0.05" />
+      </svg>
+      </span>
+      <div class="relative flex items-start justify-between gap-3">
+        <div class="min-w-0">
+          <p class="text-[13px] font-semibold text-gray-700 dark:text-gray-200 truncate">{props.label}</p>
+          <p class={`mt-1 text-3xl font-bold tabular-nums ${tone().value}`}>{props.value}</p>
+          <Show when={props.sub}>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{props.sub}</p>
+          </Show>
+        </div>
+        <Show when={Icon}>
+          <span class={`flex h-11 w-11 flex-none items-center justify-center rounded-xl ${tone().chip}`}>
+            <Icon size={20} stroke-width={2} />
+          </span>
+        </Show>
+      </div>
+    </div>
+  );
+}
+
+// ─── High-volume client chips — muted dot + count tint, cycled ──────────────
+const HV_TONES = [
+  { dot: "#6B7A99", chip: "#F5F6F9", line: "#E3E7EE", bg: "#E9ECF2", fg: "#4F5D78" }, // slate blue
+  { dot: "#9A7480", chip: "#FAF6F7", line: "#EEE2E5", bg: "#F1E9EB", fg: "#7A5662" }, // dusty rose
+  { dot: "#6F8C7B", chip: "#F5F8F6", line: "#E0EAE3", bg: "#E8EFEA", fg: "#52705F" }, // sage
+  { dot: "#9A8468", chip: "#FAF8F4", line: "#EDE6DA", bg: "#F1ECE4", fg: "#79654C" }, // taupe
+  { dot: "#80739A", chip: "#F7F6FA", line: "#E6E2EE", bg: "#ECE9F1", fg: "#615679" }, // plum
+  { dot: "#5F8A90", chip: "#F4F8F8", line: "#DDE9EA", bg: "#E6EEEF", fg: "#466D72" }, // steel teal
+];
+
+// ─── Campaign-manager picker ─────────────────────────────────────────────────
+function CmPicker(props) {
+  const [open, setOpen] = createSignal(false);
+  const [q, setQ] = createSignal("");
+  let root;
+
+  const onDoc = (e) => {
+    if (root && !root.contains(e.target)) setOpen(false);
+  };
+  document.addEventListener("pointerdown", onDoc);
+  onCleanup(() => document.removeEventListener("pointerdown", onDoc));
+
+  const selected = () => props.options.find((m) => String(m.id) === String(props.value)) || null;
+  const filtered = () => {
+    const s = q().trim().toLowerCase();
+    if (!s) return props.options;
+    return props.options.filter((m) => cmName(m).toLowerCase().includes(s));
+  };
+  const pick = (id) => {
+    props.onChange(id);
+    setOpen(false);
+    setQ("");
+  };
+
+  return (
+    <div class="relative" ref={root}>
+      <button type="button" onClick={() => setOpen((v) => !v)}
+        class={`min-w-[260px] max-w-[320px] inline-flex items-center gap-2.5 pl-2 pr-3 py-1.5 rounded-lg border bg-white dark:bg-gray-800 text-sm text-left transition-colors ${props.highlight ? "border-[#AC2334] ring-2 ring-[#AC2334]/20" : "border-gray-200 dark:border-gray-700 hover:border-[#AC2334]/40"}`}>
+        <Show when={selected()} fallback={
+          <>
+            <span class="w-7 h-7 rounded-full flex items-center justify-center bg-[#F1F4F9] dark:bg-gray-700 text-[#54657E] dark:text-gray-300 flex-shrink-0"><Users size={14} /></span>
+            <span class="flex-1 truncate font-medium text-gray-600 dark:text-gray-300">{props.placeholder}</span>
+          </>
+        }>
+          <Avatar name={cmName(selected())} size="w-7 h-7" textSize="text-[10px]" />
+          <span class="flex-1 min-w-0">
+            <span class="block truncate font-semibold text-gray-800 dark:text-gray-100 leading-tight capitalize">{cmName(selected())}</span>
+            <span class="block text-[11px] text-gray-500 dark:text-gray-400 leading-tight">
+              {tierNum(selected()) ? `Tier ${tierNum(selected())} · ` : ""}{num(selected().campaigns)} campaigns
+            </span>
+          </span>
+        </Show>
+        <ChevronDown size={16} class={`flex-shrink-0 text-gray-400 transition-transform ${open() ? "rotate-180" : ""}`} />
       </button>
-    </th>
+
+      <Show when={open()}>
+        <div class="absolute left-0 top-full mt-1.5 z-40 w-[360px] bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 shadow-[0_12px_32px_rgba(20,35,58,0.14)] overflow-hidden">
+          <div class="p-2 border-b border-gray-100 dark:border-gray-800">
+            <div class="relative">
+              <Search size={14} class="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input type="text" placeholder="Find a campaign manager…" value={q()} onInput={(e) => setQ(e.target.value)} autofocus
+                class="w-full pl-8 pr-2 py-1.5 text-sm rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#AC2334]/25 focus:border-[#AC2334]" />
+            </div>
+          </div>
+          <div class="max-h-[340px] overflow-y-auto py-1">
+            <Show when={props.allowAll}>
+              <button type="button" onClick={() => pick("")}
+                class={`w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-800 ${!props.value ? "bg-[#FBEEF0]/60 dark:bg-red-900/10" : ""}`}>
+                <span class="w-7 h-7 rounded-full flex items-center justify-center bg-[#F1F4F9] dark:bg-gray-700 text-[#54657E] dark:text-gray-300 flex-shrink-0"><Users size={14} /></span>
+                <span class="flex-1 text-sm font-semibold text-gray-800 dark:text-gray-100">All campaign managers</span>
+                <Show when={!props.value}><Check size={15} class="text-[#AC2334]" /></Show>
+              </button>
+              <div class="my-1 border-t border-gray-100 dark:border-gray-800" />
+            </Show>
+            <For each={filtered()} fallback={<p class="px-3 py-4 text-center text-xs text-gray-400">No match</p>}>
+              {(m) => {
+                const on = () => String(m.id) === String(props.value);
+                const exp = () => Number(m.expensive) || 0;
+                return (
+                  <button type="button" onClick={() => pick(String(m.id))}
+                    class={`w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-800 ${on() ? "bg-[#FBEEF0]/60 dark:bg-red-900/10" : ""}`}>
+                    <Avatar name={cmName(m)} size="w-7 h-7" textSize="text-[10px]" />
+                    <span class="flex-1 min-w-0">
+                      <span class="flex items-center gap-1.5">
+                        <span class="truncate text-sm font-semibold text-gray-800 dark:text-gray-100 capitalize">{cmName(m)}</span>
+                        <Show when={tierNum(m)}>
+                          <span class="flex-shrink-0 px-1.5 py-px rounded text-[10px] font-bold bg-[#EEF2F7] text-[#14233A] dark:bg-[#1A2B45] dark:text-[#A9C1E0]">T{tierNum(m)}</span>
+                        </Show>
+                      </span>
+                      <span class="block text-[11px] text-gray-500 dark:text-gray-400 tabular-nums">{num(m.campaigns)} campaigns</span>
+                    </span>
+                    <span title="Expensive campaigns"
+                      class={`flex-shrink-0 whitespace-nowrap px-2 py-0.5 rounded-full text-[11px] font-bold tabular-nums ${exp() > 0 ? "bg-[#FBEEF0] text-[#AC2334] dark:bg-red-900/30 dark:text-red-300" : "bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500"}`}>
+                      {num(exp())} expensive
+                    </span>
+                    <span class="w-4 flex-shrink-0"><Show when={on()}><Check size={15} class="text-[#AC2334]" /></Show></span>
+                  </button>
+                );
+              }}
+            </For>
+          </div>
+          <div class="px-3 py-1.5 border-t border-gray-100 dark:border-gray-800 text-[10px] text-gray-400 flex justify-between">
+            <span>Sorted by most expensive campaigns</span>
+          </div>
+        </div>
+      </Show>
+    </div>
   );
 }
 
@@ -190,7 +451,7 @@ function TargetModal(props) {
   return (
     <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div class="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={props.onClose} />
-      <div class="relative z-10 w-full max-w-md bg-gray-50 dark:bg-gray-900 rounded-2xl border border-[#E2E8F1] dark:border-gray-700 shadow-2xl">
+      <div class="relative z-10 w-full max-w-md bg-white dark:bg-gray-900 rounded-2xl border border-[#E2E8F1] dark:border-gray-700 shadow-2xl">
         <div class="flex items-center justify-between px-5 py-4 border-b border-[#E2E8F1] dark:border-gray-800">
           <div>
             <h2 class="text-base font-bold text-[#14233A] dark:text-white">Set target CPL</h2>
@@ -218,13 +479,29 @@ function TargetModal(props) {
 export default function CplRules() {
   // Backend allows target writes for admin + coordination; CMs get 403.
   const canSetTarget = () => isAdmin() || isCoordination();
-  const [tab, setTab] = createSignal("all");
+  // Opens on Expensive — the list someone lands here to act on.
+  const [tab, setTab] = createSignal("expensive");
   const [cmId, setCmId] = createSignal("");
-  const [sort, setSort] = createSignal(null);
+  const [sort, setSort] = createSignal(TABS.find((t) => t.key === "expensive").sort);
   const [search, setSearch] = createSignal("");
   const [attentionOnly, setAttentionOnly] = createSignal(false);
   const [targetCampaign, setTargetCampaign] = createSignal(null);
   const [cms, setCms] = createSignal([]);
+
+  const nameCol = createResizableCol("cplRules.nameColWidth.v2", 220, 520);
+  const clientCol = createResizableCol("cplRules.clientColWidth.v2", 180, 420);
+
+  // Right offsets for the pinned number columns (the action column only
+  // exists for admin + coordination).
+  const stickyCols = () => STICKY.filter((s) => s.key !== "action" || canSetTarget());
+  const stickyStyle = (key) => {
+    const cols = stickyCols();
+    const i = cols.findIndex((s) => s.key === key);
+    const right = cols.slice(i + 1).reduce((t, s) => t + s.width, 0);
+    const w = `${cols[i].width}px`;
+    return { right: `${right}px`, width: w, "min-width": w, "max-width": w };
+  };
+  const stickyCls = () => "sticky";
 
   // High CPL by CM needs a CM before it shows anything.
   const needsCm = () => tab() === "cm" && !cmId();
@@ -338,126 +615,156 @@ export default function CplRules() {
     return t == null ? null : `${Number(t)}%`;
   };
 
+  const pill = (on) =>
+    `px-3.5 py-1.5 rounded-full text-[13px] font-semibold border transition-colors whitespace-nowrap ${
+      on
+        ? "bg-[#14233A] text-white border-[#14233A]"
+        : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-[#14233A]/40"
+    }`;
+
   return (
-    <div class="font-sans min-h-screen bg-[#F4F6FA] dark:bg-gray-900 p-4 md:p-6 lg:p-8">
-      {/* Header */}
-      <div class="mb-5">
-        <p class="text-xs font-bold uppercase tracking-[0.12em] text-[#AC2334] mb-1.5">Performance · CPL Rules</p>
-        <h1 class="text-2xl font-bold text-[#14233A] dark:text-white tracking-tight">CPL Rules &amp; Alerts</h1>
-        <p class="text-sm text-[#54657E] dark:text-gray-400 mt-1">
-          Campaigns ranked by how far over their target CPL they run. Most over-target first.
-        </p>
+    <div class="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 sm:p-6 lg:p-8">
+      {/* ══ Header ══ */}
+      <div class="flex items-start justify-between gap-3 flex-wrap mb-6">
+        <div>
+          <h1 class="flex items-center gap-2.5 text-2xl font-semibold tracking-tight">
+            <span class="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#7E1522] via-[#AC2334] via-70% to-[#C4802B] text-white shadow-[0_2px_8px_rgba(126,21,34,.32)]">
+              <Target size={20} stroke-width={2} />
+            </span>
+            <span class="inline-block pb-0.5 leading-tight bg-gradient-to-r from-[#7E1522] via-[#AC2334] via-72% to-[#C4802B] dark:from-[#D9455E] dark:via-[#E4566A] dark:to-[#E9AE5C] bg-clip-text text-transparent">
+              CPL Rules &amp; Alerts
+            </span>
+          </h1>
+          <p class="pl-[46px] text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+            Campaigns ranked by how far over their target CPL they run. Most over-target first.
+          </p>
+        </div>
+        <button
+          onClick={() => refetch()}
+          disabled={data.loading}
+          class="px-3.5 py-2 text-sm font-semibold rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:border-[#AC2334]/40 disabled:opacity-50 transition"
+        >
+          {data.loading ? "Loading…" : "Refresh"}
+        </button>
       </div>
 
-      {/* Date window */}
-      <div class="flex flex-wrap items-center gap-3 mb-4">
-        <div class="inline-flex rounded-lg border border-[#E2E8F1] dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-0.5">
+      {/* ══ Date window ══ */}
+      <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-4 mb-4">
+        <div class="flex flex-wrap items-center gap-1.5">
+          <span class="text-[11px] font-bold uppercase tracking-wider text-gray-400 mr-1">Range</span>
           <For each={WINDOW_DAYS}>
             {(d) => (
-              <button type="button" onClick={() => pickDays(d)}
-                class={`px-3.5 py-1.5 text-[13px] font-semibold rounded-md transition-colors ${windowKey() === String(d) && !customOpen() ? "bg-[#AC2334] text-white" : "text-[#54657E] dark:text-gray-300 hover:text-[#AC2334]"}`}>
-                {d} days
+              <button type="button" onClick={() => pickDays(d)} aria-pressed={windowKey() === String(d) && !customOpen()}
+                class={pill(windowKey() === String(d) && !customOpen())}>
+                Last {d} days
               </button>
             )}
           </For>
-          <button type="button" onClick={openCustom}
-            class={`px-3.5 py-1.5 text-[13px] font-semibold rounded-md transition-colors ${windowKey() === "custom" || customOpen() ? "bg-[#AC2334] text-white" : "text-[#54657E] dark:text-gray-300 hover:text-[#AC2334]"}`}>
+          <button type="button" onClick={openCustom} class={pill(windowKey() === "custom" || customOpen())}>
             Custom
           </button>
+          <Show when={customOpen()}>
+            <div class="flex items-center gap-2 ml-1">
+              <input type="date" value={draftSince()} max={draftUntil() || undefined} onInput={(e) => setDraftSince(e.target.value)}
+                class="px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
+              <span class="text-gray-400">→</span>
+              <input type="date" value={draftUntil()} min={draftSince() || undefined} onInput={(e) => setDraftUntil(e.target.value)}
+                class="px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
+              <button type="button" onClick={applyCustom} disabled={!draftSince() || !draftUntil()}
+                class="px-3 py-1.5 text-[13px] font-bold rounded-lg bg-[#AC2334] text-white hover:bg-[#921d2c] disabled:opacity-50">Apply</button>
+            </div>
+          </Show>
+          <Show when={windowCaption(data()?.window)}>
+            <span class="ml-auto text-[13px] font-medium tabular-nums text-gray-600 dark:text-gray-300">{windowCaption(data()?.window)}</span>
+          </Show>
         </div>
-        <Show when={customOpen()}>
-          <div class="inline-flex flex-wrap items-center gap-2 text-sm">
-            <input type="date" value={draftSince()} max={draftUntil() || undefined} onInput={(e) => setDraftSince(e.target.value)}
-              class="px-2.5 py-1.5 rounded-lg border border-[#E2E8F1] dark:border-gray-700 bg-[#F8FAFC] dark:bg-gray-800 text-[#1A2B45] dark:text-white" />
-            <span class="text-[#8593A8]">to</span>
-            <input type="date" value={draftUntil()} min={draftSince() || undefined} onInput={(e) => setDraftUntil(e.target.value)}
-              class="px-2.5 py-1.5 rounded-lg border border-[#E2E8F1] dark:border-gray-700 bg-[#F8FAFC] dark:bg-gray-800 text-[#1A2B45] dark:text-white" />
-            <button type="button" onClick={applyCustom} disabled={!draftSince() || !draftUntil()}
-              class="px-3 py-1.5 text-[13px] font-bold rounded-lg bg-[#AC2334] text-white hover:bg-[#921d2c] disabled:opacity-50">Apply</button>
-          </div>
-        </Show>
-        <Show when={windowCaption(data()?.window)}>
-          <span class="text-[13px] font-medium text-[#54657E] dark:text-gray-400">{windowCaption(data()?.window)}</span>
-        </Show>
       </div>
 
-      {/* Tabs */}
-      <div class="flex flex-wrap gap-1 mb-5 border-b border-[#E2E8F1] dark:border-gray-700">
+      {/* ══ Tabs ══ */}
+      <div class="flex flex-wrap gap-1 mb-4 border-b border-gray-200 dark:border-gray-700">
         <For each={TABS}>
           {(t) => (
             <button onClick={() => pickTab(t.key)}
-              class={`px-4 py-2.5 text-sm font-semibold -mb-px border-b-2 transition-colors ${tab() === t.key ? "border-[#AC2334] text-[#AC2334] dark:text-red-400" : "border-transparent text-[#54657E] dark:text-gray-400 hover:text-[#14233A] dark:hover:text-white"}`}>
+              class={`px-4 py-2.5 text-sm font-semibold -mb-px border-b-2 transition-colors ${tab() === t.key ? "border-[#AC2334] text-[#AC2334] dark:text-red-400" : "border-transparent text-gray-500 dark:text-gray-400 hover:text-[#14233A] dark:hover:text-white"}`}>
               {t.label}
             </button>
           )}
         </For>
       </div>
 
-      {/* High-volume clients */}
+      {/* ══ High-volume clients ══ */}
       <Show when={!highVol.loading && (highVol()?.rows?.length ?? 0) > 0}>
-        <div class="bg-gray-50 dark:bg-gray-900 rounded-2xl border border-[#E2E8F1] dark:border-gray-700 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] px-5 py-4 mb-5">
-          <div class="flex items-center gap-2 mb-2.5">
-            <span class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">High-volume clients</span>
+        <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 px-4 py-3 mb-4 flex flex-wrap items-center gap-x-2 gap-y-2">
+          <span class="inline-flex items-center gap-2 mr-2">
+            <span class="flex h-6 w-6 items-center justify-center rounded-md bg-[#EEF1F5] text-[#5B6B85] dark:bg-gray-800 dark:text-gray-300">
+              <ChartColumn size={13} stroke-width={2.2} />
+            </span>
+            <span class="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">High-volume clients</span>
             <Show when={highVol()?.meta?.threshold != null}>
-              <span class="text-[11px] text-[#8593A8]">· &gt; {num(highVol().meta.threshold)} leads/day</span>
+              <span class="text-xs text-gray-400">&gt; {num(highVol().meta.threshold)}/day</span>
             </Show>
-          </div>
-          <div class="flex flex-wrap gap-2">
-            <For each={highVol().rows}>
-              {(hv) => (
-                <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-[#ECF2FA] text-[#3E6FB0] dark:bg-blue-900/40 dark:text-blue-300">
+          </span>
+          <For each={highVol().rows}>
+            {(hv, i) => {
+              const t = HV_TONES[i() % HV_TONES.length];
+              return (
+                <span class="inline-flex items-center gap-1.5 pl-1.5 pr-1 py-0.5 rounded-md border text-xs font-medium text-gray-700 dark:text-gray-200" style={{ background: t.chip, "border-color": t.line }}>
+                  <span class="flex h-3 w-3 flex-none items-center justify-center rounded-full border" style={{ "border-color": t.dot }}>
+                    <span class="h-1.5 w-1.5 rounded-full" style={{ background: t.dot }} />
+                  </span>
                   {hv.name}
-                  <span class="text-[10px] font-extrabold bg-[#3E6FB0]/15 px-1.5 py-px rounded-full tabular-nums">{num(hv.leads_today)} leads</span>
+                  <span class="ml-0.5 px-1.5 py-px rounded text-[11px] font-semibold tabular-nums" style={{ background: t.bg, color: t.fg }}>{num(hv.leads_today)}</span>
                 </span>
-              )}
-            </For>
-          </div>
+              );
+            }}
+          </For>
         </div>
       </Show>
 
-      {/* Summary band */}
+      {/* ══ Totals ══ */}
       <Show when={!needsCm() && !loadError()}>
-      <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-5">
-        <Show when={!data.loading && summary()} fallback={
-          <For each={Array(3).fill(0)}>{() => <div class="h-24 rounded-2xl bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 animate-pulse" />}</For>
-        }>
-          <div class="bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-2xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] px-5 py-5">
-            <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">Needs attention</p>
-            <p class="text-3xl font-extrabold text-[#AC2334] dark:text-red-400 mt-2 tabular-nums">{num(summary().needs_attention)}</p>
-            <Show when={attnThreshold()}><p class="text-xs text-[#54657E] dark:text-gray-400 mt-1">≥ {attnThreshold()} over target</p></Show>
-          </div>
-          <div class="bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-2xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] px-5 py-5">
-            <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">No explicit target</p>
-            <p class="text-3xl font-extrabold text-[#14233A] dark:text-white mt-2 tabular-nums">{num(summary().no_target_set)}</p>
-            <p class="text-xs text-[#54657E] dark:text-gray-400 mt-1">rated against the {defaultTarget()} default</p>
-          </div>
-          <div class="bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-2xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] px-5 py-5">
-            <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400">Campaigns</p>
-            <p class="text-3xl font-extrabold text-[#14233A] dark:text-white mt-2 tabular-nums">{num(summary().campaigns)}</p>
-            <p class="text-xs text-[#54657E] dark:text-gray-400 mt-1">in scope</p>
-          </div>
-        </Show>
-      </div>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+          <Show when={!data.loading && summary()} fallback={
+            <For each={Array(3).fill(0)}>{() => <div class="h-[112px] rounded-xl bg-white dark:bg-gray-900 border border-[#E2E8F1] dark:border-gray-700 animate-pulse" />}</For>
+          }>
+            <ShapeTile label="Needs attention" icon={TriangleAlert} tone="crimson"
+              value={num(summary().needs_attention)}
+              sub={attnThreshold() ? (
+                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#FBEEF0] dark:bg-red-900/30 text-[#AC2334] dark:text-red-300 font-medium">
+                  <ArrowUp size={12} stroke-width={2.5} /> ≥ {attnThreshold()} over target
+                </span>
+              ) : undefined} />
+            <ShapeTile label="No explicit target" icon={Target} tone="gold"
+              value={num(summary().no_target_set)}
+              sub={`rated against the ${defaultTarget()} default`} />
+            <ShapeTile label="Campaigns" icon={Megaphone} tone="blue"
+              value={num(summary().campaigns)}
+              sub="in scope" />
+          </Show>
+        </div>
       </Show>
 
-      {/* Filter toolbar */}
-      <div class="bg-gray-50 dark:bg-gray-900 rounded-xl border border-[#E2E8F1] dark:border-gray-700 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] p-3.5 mb-4 flex flex-wrap items-center gap-3">
-        <div class="relative flex-1 min-w-[220px]">
-          <svg class="w-4 h-4 text-[#8593A8] absolute left-3 top-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" /></svg>
+      {/* ══ Search · CM · attention ══ */}
+      <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-4 mb-4 flex flex-wrap items-center gap-3">
+        <div class="relative flex w-full sm:w-[340px]">
+          <Search size={16} class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input type="text" placeholder="Search campaign, client, project, CM or ad account…" value={search()} onInput={(e) => setSearch(e.target.value)}
-            class="w-full pl-9 pr-3 py-2.5 text-sm rounded-lg border border-[#E2E8F1] dark:border-gray-700 bg-[#F8FAFC] dark:bg-gray-800 text-[#1A2B45] dark:text-white placeholder:text-[#8593A8] focus:outline-none focus:ring-2 focus:ring-[#AC2334]/25 focus:border-[#AC2334]" />
+            class="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-800 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#AC2334]/25 focus:border-[#AC2334]" />
         </div>
-        <select value={cmId()} onChange={(e) => setCmId(e.target.value)}
-          class={`max-w-[320px] px-3 py-2.5 text-sm rounded-lg border bg-[#F8FAFC] dark:bg-gray-800 text-[#1A2B45] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#AC2334]/25 focus:border-[#AC2334] ${needsCm() ? "border-[#AC2334]" : "border-[#E2E8F1] dark:border-gray-700"}`}>
-          <option value="">{tab() === "cm" ? "Select a campaign manager" : "All campaign managers"}</option>
-          <For each={cmOptions()}>{(m) => <option value={String(m.id)}>{cmLabel(m)}</option>}</For>
-        </select>
+        <CmPicker
+          value={cmId()}
+          options={cmOptions()}
+          onChange={setCmId}
+          allowAll={tab() !== "cm"}
+          highlight={needsCm()}
+          placeholder={tab() === "cm" ? "Select a campaign manager" : "All campaign managers"}
+        />
         <button onClick={() => setAttentionOnly((v) => !v)}
-          class={`inline-flex items-center gap-2 px-3.5 py-2 rounded-full text-[13px] font-semibold border transition-colors ${attentionOnly() ? "bg-[#AC2334] text-white border-[#AC2334]" : "bg-gray-50 dark:bg-gray-800 text-[#54657E] dark:text-gray-300 border-[#E2E8F1] dark:border-gray-700 hover:border-[#AC2334]/40"}`}>
+          class={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-[13px] font-semibold border transition-colors ${attentionOnly() ? "bg-[#AC2334] text-white border-[#AC2334]" : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-[#AC2334]/40"}`}>
           Needs attention
-          <span class={`text-[11px] font-extrabold px-1.5 py-px rounded-full ${attentionOnly() ? "bg-white/20 text-white" : "bg-[#F1F4F9] dark:bg-gray-700 text-[#8593A8]"}`}>{campaigns().filter((c) => c.needs_attention).length}</span>
+          <span class={`text-[11px] font-extrabold px-1.5 py-px rounded-full ${attentionOnly() ? "bg-white/20 text-white" : "bg-gray-100 dark:bg-gray-700 text-gray-500"}`}>{campaigns().filter((c) => c.needs_attention).length}</span>
         </button>
-        <span class="ml-auto text-sm font-bold text-[#8593A8] dark:text-gray-500 whitespace-nowrap"><b class="text-[#14233A] dark:text-white">{rows().length}</b> shown</span>
+        <span class="ml-auto text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap"><b class="text-gray-800 dark:text-white tabular-nums">{rows().length}</b> shown</span>
       </div>
 
       <Show when={loadError()}>
@@ -466,57 +773,96 @@ export default function CplRules() {
         </div>
       </Show>
 
-      {/* Table */}
+      {/* ══ Table ══ */}
       <Show when={!needsCm()} fallback={
-        <div class="bg-gray-50 dark:bg-gray-900 rounded-2xl border border-[#E2E8F1] dark:border-gray-700 py-16 text-center text-sm font-medium text-[#8593A8] dark:text-gray-500">
+        <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 py-16 text-center text-sm font-medium text-gray-400 dark:text-gray-500">
           Select a campaign manager to see their campaigns, highest CPL first.
         </div>
       }>
-      <div class="bg-gray-50 dark:bg-gray-900 rounded-2xl border border-[#E2E8F1] dark:border-gray-700 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] overflow-x-auto">
+      <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 overflow-auto max-h-[calc(100vh-12rem)]">
         <table class="min-w-full text-sm border-separate border-spacing-0">
-          <thead>
-            <tr class="bg-[#F8FAFC] dark:bg-gray-800 text-[#54657E] dark:text-gray-400 uppercase text-xs font-bold tracking-wider">
-              <SortTh col="name" label="Campaign" align="left" extra="min-w-[240px]" sort={sort()} onSort={toggleSort} />
-              <SortTh col="client" label="Client / Project" align="left" sort={sort()} onSort={toggleSort} />
-              <SortTh col="cm" label="CM" align="left" sort={sort()} onSort={toggleSort} />
-              <SortTh col="ad_account" label="Ad account" align="left" extra="min-w-[220px]" sort={sort()} onSort={toggleSort} />
-              <SortTh col="spend" label="Spend" align="right" sort={sort()} onSort={toggleSort} />
-              <SortTh col="leads" label="Leads" align="right" sort={sort()} onSort={toggleSort} />
-              <SortTh col="actual_cpl" label="Actual CPL" align="right" sort={sort()} onSort={toggleSort} />
-              <SortTh col="target_cpl" label="Target CPL" align="right" sort={sort()} onSort={toggleSort} />
-              <SortTh col="over_target" label="Over Target" align="center" sort={sort()} onSort={toggleSort} />
-              <SortTh col="attention" label="Attention" align="center" sort={sort()} onSort={toggleSort} />
-              <Show when={canSetTarget()}><th class="p-4 text-right whitespace-nowrap border-b border-[#D4DDE9] dark:border-gray-700">Target</th></Show>
+          <thead class="sticky top-0 z-30">
+            <tr>
+              <th class={`${TH} text-left relative border-b border-gray-200 dark:border-gray-700 ${RESIZE_EDGE}`} style={nameCol.style()}>
+                <span class="inline-flex items-center">
+                  <SortBtn col="name" label="Campaign" sort={sort()} onSort={toggleSort} />
+                  <ExpandBtn col={nameCol} />
+                </span>
+                <ResizeHandle col={nameCol} />
+              </th>
+              <th class={`${TH} text-left relative border-b border-gray-200 dark:border-gray-700 ${RESIZE_EDGE}`} style={clientCol.style()}>
+                <span class="inline-flex items-center gap-1.5">
+                  <SortBtn col="client" label="Client" sort={sort()} onSort={toggleSort} />
+                  <span class="text-gray-300 dark:text-gray-600">/</span>
+                  <SortBtn col="project" label="Project" sort={sort()} onSort={toggleSort} />
+                  <ExpandBtn col={clientCol} />
+                </span>
+                <ResizeHandle col={clientCol} />
+              </th>
+              <th class={`${TH} text-left border-b border-gray-200 dark:border-gray-700`}><SortBtn col="cm" label="CM" sort={sort()} onSort={toggleSort} /></th>
+              <th class={`${TH} text-left min-w-[230px] border-b border-gray-200 dark:border-gray-700`}><SortBtn col="ad_account" label="Ad account" sort={sort()} onSort={toggleSort} /></th>
+              <th class={`${TH} text-center border-b border-gray-200 dark:border-gray-700`}><SortBtn col="attention" label="Attention" sort={sort()} onSort={toggleSort} /></th>
+              <th class={`${TH} text-right z-20 border-b border-gray-200 dark:border-gray-700 ${stickyCls("spend")}`} style={stickyStyle("spend")}><SortBtn col="spend" label="Spend" sort={sort()} onSort={toggleSort} /></th>
+              <th class={`${TH} text-right z-20 border-b border-gray-200 dark:border-gray-700 ${stickyCls("leads")}`} style={stickyStyle("leads")}><SortBtn col="leads" label="Leads" sort={sort()} onSort={toggleSort} /></th>
+              <th class={`${TH} text-right z-20 border-b border-gray-200 dark:border-gray-700 ${stickyCls("actual_cpl")}`} style={stickyStyle("actual_cpl")}><SortBtn col="actual_cpl" label="Actual CPL" sort={sort()} onSort={toggleSort} /></th>
+              <th class={`${TH} text-right z-20 border-b border-gray-200 dark:border-gray-700 ${stickyCls("target_cpl")}`} style={stickyStyle("target_cpl")}><SortBtn col="target_cpl" label="Target CPL" sort={sort()} onSort={toggleSort} /></th>
+              <th class={`${TH} text-center z-20 border-b border-gray-200 dark:border-gray-700 ${stickyCls("over_target")}`} style={stickyStyle("over_target")}><SortBtn col="over_target" label="Over target" sort={sort()} onSort={toggleSort} /></th>
+              <Show when={canSetTarget()}>
+                <th class={`${TH} text-right z-20 border-b border-gray-200 dark:border-gray-700 ${stickyCls("action")}`} style={stickyStyle("action")}>Target</th>
+              </Show>
             </tr>
           </thead>
           <Show when={!data.loading} fallback={
             <tbody>
-              <For each={Array(8).fill(0)}>{() => <tr class="animate-pulse"><For each={Array(colCount()).fill(0)}>{(_, idx) => <td class="p-4 border-b border-[#E2E8F1] dark:border-gray-800"><div class={`h-3 bg-gray-200 dark:bg-gray-700 rounded ${idx() === 0 ? "w-48" : "w-16 ml-auto"}`} /></td>}</For></tr>}</For>
+              <For each={Array(8).fill(0)}>{() => <tr class="animate-pulse"><For each={Array(colCount()).fill(0)}>{(_, idx) => <td class={TD}><div class={`h-3 bg-gray-200 dark:bg-gray-700 rounded ${idx() === 0 ? "w-48" : "w-16 ml-auto"}`} /></td>}</For></tr>}</For>
             </tbody>
           }>
             <tbody>
               <For each={rows()}>
-                {(c) => {
+                {(c, i) => {
                   const hasTarget = c.target_cpl != null;
+                  // Opaque per-cell background so the pinned columns cover
+                  // what scrolls underneath them.
+                  const bg = () =>
+                    `${i() % 2 === 0 ? "bg-white dark:bg-gray-900" : "bg-gray-50 dark:bg-gray-800"}`;
+                  const td = (extra = "") => `${TD} ${bg()} ${extra}`;
+                  const pinned = (key, extra = "") => `${td(extra)} z-10 ${stickyCls(key)}`;
+                  const cmsList = c.campaign_managers || [];
                   return (
-                    <tr class={`group transition-colors ${c.needs_attention ? "bg-[#FFF8F9] dark:bg-red-900/5 hover:bg-[#FDEFF1] dark:hover:bg-red-900/10" : "hover:bg-[#F6F9FC] dark:hover:bg-gray-800/40"}`}>
-                      <td class="p-4 align-middle border-b border-[#E2E8F1] dark:border-gray-800 max-w-[320px]">
-                        <span class="block font-semibold text-[#14233A] dark:text-gray-100 truncate" title={c.name}>{c.name}</span>
+                    <tr class="group">
+                      <td class={td()} style={nameCol.style()}>
+                        <span class="font-medium text-gray-800 dark:text-gray-100 line-clamp-2 break-words" title={c.name}>{c.name}</span>
                       </td>
-                      <td class="p-4 align-middle border-b border-[#E2E8F1] dark:border-gray-800">
-                        <span class="block text-[13px] font-medium text-[#1A2B45] dark:text-gray-200 truncate">{c.client}</span>
-                        <span class="block text-[11px] text-[#8593A8] dark:text-gray-500 truncate">{c.project}</span>
+                      <td class={td()} style={clientCol.style()}>
+                        <div class="flex items-center gap-2.5 min-w-0">
+                          <Avatar name={c.client} />
+                          <div class="min-w-0">
+                            <span class="block text-[13px] font-medium text-gray-800 dark:text-gray-200 truncate" title={c.client}>{c.client || "—"}</span>
+                            <span class="block text-[11px] text-gray-500 dark:text-gray-400 truncate" title={c.project}>{c.project}</span>
+                          </div>
+                        </div>
                       </td>
-                      <td class="p-4 align-middle border-b border-[#E2E8F1] dark:border-gray-800 text-[13px] text-[#1A2B45] dark:text-gray-200">
-                        {(c.campaign_managers || []).length ? c.campaign_managers.join(", ") : <span class="text-[#8593A8] dark:text-gray-500">—</span>}
+                      <td class={td("text-[13px] text-gray-700 dark:text-gray-200")}>
+                        <Show when={cmsList.length} fallback={<span class="text-gray-400 dark:text-gray-500">—</span>}>
+                          <div class="flex flex-col gap-1">
+                            <For each={cmsList}>
+                              {(n) => (
+                                <span class="inline-flex items-center gap-1.5 whitespace-nowrap capitalize">
+                                  <Avatar name={n} size="w-6 h-6" textSize="text-[9px]" />
+                                  {n}
+                                </span>
+                              )}
+                            </For>
+                          </div>
+                        </Show>
                       </td>
-                      <td class="p-4 align-middle border-b border-[#E2E8F1] dark:border-gray-800 max-w-[280px]">
-                        <Show when={c.ad_account || c.ad_account_name} fallback={<span class="text-[#8593A8] dark:text-gray-500">—</span>}>
+                      <td class={td("max-w-[280px]")}>
+                        <Show when={c.ad_account || c.ad_account_name} fallback={<span class="text-gray-400 dark:text-gray-500">—</span>}>
                           <div class="flex items-start gap-2">
                             <div class="min-w-0">
-                              <span class="block text-[13px] font-medium text-[#1A2B45] dark:text-gray-200 truncate" title={c.ad_account_name}>{c.ad_account_name || c.ad_account}</span>
+                              <span class="block text-[13px] font-medium text-gray-800 dark:text-gray-200 truncate" title={c.ad_account_name}>{c.ad_account_name || c.ad_account}</span>
                               <Show when={c.ad_account}>
-                                <span class="flex items-center gap-1 text-[11px] text-[#8593A8] dark:text-gray-500 font-mono">
+                                <span class="flex items-center gap-1 text-[11px] text-gray-500 dark:text-gray-400 font-mono">
                                   {c.ad_account}
                                   <button type="button" title="Copy account id" onClick={() => copyText(c.ad_account)} class="p-0.5 rounded hover:text-[#AC2334]">
                                     <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg>
@@ -524,43 +870,21 @@ export default function CplRules() {
                                 </span>
                               </Show>
                               <Show when={c.portfolio}>
-                                <span class="inline-block mt-1 px-1.5 py-px rounded text-[10px] font-semibold bg-[#F1F4F9] text-[#8593A8] dark:bg-gray-800 dark:text-gray-400">{c.portfolio}</span>
+                                <span class="inline-block mt-1 px-1.5 py-px rounded text-[10px] font-semibold bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">{c.portfolio}</span>
                               </Show>
                             </div>
                             <Show when={c.ads_manager_url}>
                               <a href={c.ads_manager_url} target="_blank" rel="noopener noreferrer" title="Open in Ads Manager"
-                                class="shrink-0 mt-0.5 p-1 rounded text-[#8593A8] hover:text-[#AC2334] hover:bg-[#F1F4F9] dark:hover:bg-gray-800">
+                                class="shrink-0 mt-0.5 p-1 rounded text-gray-400 hover:text-[#AC2334] hover:bg-gray-100 dark:hover:bg-gray-800">
                                 <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3" /></svg>
                               </a>
                             </Show>
                           </div>
                         </Show>
                       </td>
-                      <td class="p-4 text-right align-middle whitespace-nowrap tabular-nums text-[#1A2B45] dark:text-gray-200 border-b border-[#E2E8F1] dark:border-gray-800">{money2(c.spend) ?? "—"}</td>
-                      <td class="p-4 text-right align-middle whitespace-nowrap tabular-nums text-[#1A2B45] dark:text-gray-200 border-b border-[#E2E8F1] dark:border-gray-800">{c.leads == null ? "—" : num(c.leads)}</td>
-                      <td class="p-4 text-right align-middle whitespace-nowrap tabular-nums font-bold text-[#1A2B45] dark:text-gray-100 border-b border-[#E2E8F1] dark:border-gray-800">
-                        <Show when={c.no_leads} fallback={money2(c.actual_cpl) ?? "—"}>
-                          <span class="text-[#AC2334] dark:text-red-400">No leads</span>
-                        </Show>
-                      </td>
-                      <td class="p-4 text-right align-middle whitespace-nowrap tabular-nums border-b border-[#E2E8F1] dark:border-gray-800">
-                        <Show when={hasTarget} fallback={<span class="text-[#8593A8] dark:text-gray-500">—</span>}>
-                          <Show when={c.target_is_default} fallback={<span class="font-bold text-[#1A2B45] dark:text-gray-100">{money2(c.target_cpl)}</span>}>
-                            <span class="text-xs text-[#8593A8] dark:text-gray-500">{money2(c.target_cpl)} (default)</span>
-                          </Show>
-                        </Show>
-                      </td>
-                      <td class="p-4 text-center align-middle whitespace-nowrap border-b border-[#E2E8F1] dark:border-gray-800">
-                        <Show when={hasTarget} fallback={<span class="text-[#8593A8] dark:text-gray-500">—</span>}>
-                          <div class="inline-flex items-center gap-2">
-                            <span class={`text-xs font-bold tabular-nums ${c.needs_attention ? "text-[#AC2334] dark:text-red-400" : "text-[#15966A] dark:text-green-400"}`}>{overPctFmt(c.over_target_pct) ?? (c.no_leads && c.needs_attention ? "0 leads" : "—")}</span>
-                            <RatioBadge campaign={c} />
-                          </div>
-                        </Show>
-                      </td>
-                      <td class="p-4 text-center align-middle border-b border-[#E2E8F1] dark:border-gray-800">
+                      <td class={td("text-center whitespace-nowrap")}>
                         <Show when={c.needs_attention} fallback={
-                          <Show when={hasTarget} fallback={<span class="text-[#8593A8] dark:text-gray-500 text-xs">—</span>}>
+                          <Show when={hasTarget} fallback={<span class="text-gray-400 dark:text-gray-500 text-xs">—</span>}>
                             <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-[#E9F7F1] text-[#15966A] dark:bg-green-900/30 dark:text-green-300">On target</span>
                           </Show>
                         }>
@@ -569,9 +893,32 @@ export default function CplRules() {
                           </span>
                         </Show>
                       </td>
+                      <td class={pinned("spend", "text-right whitespace-nowrap tabular-nums text-gray-800 dark:text-gray-200")} style={stickyStyle("spend")}>{money2(c.spend) ?? "—"}</td>
+                      <td class={pinned("leads", "text-right whitespace-nowrap tabular-nums text-gray-800 dark:text-gray-200")} style={stickyStyle("leads")}>{c.leads == null ? "—" : num(c.leads)}</td>
+                      <td class={pinned("actual_cpl", "text-right whitespace-nowrap tabular-nums font-semibold text-gray-800 dark:text-gray-100")} style={stickyStyle("actual_cpl")}>
+                        <Show when={c.no_leads} fallback={money2(c.actual_cpl) ?? "—"}>
+                          <span class="text-[#AC2334] dark:text-red-400">No leads</span>
+                        </Show>
+                      </td>
+                      <td class={pinned("target_cpl", "text-right whitespace-nowrap tabular-nums")} style={stickyStyle("target_cpl")}>
+                        <Show when={hasTarget} fallback={<span class="text-gray-400 dark:text-gray-500">—</span>}>
+                          <Show when={c.target_is_default} fallback={<span class="font-semibold text-gray-800 dark:text-gray-100">{money2(c.target_cpl)}</span>}>
+                            <span class="text-gray-500 dark:text-gray-400">{money2(c.target_cpl)}</span>
+                            <span class="block text-[10px] uppercase tracking-wide text-gray-400">default</span>
+                          </Show>
+                        </Show>
+                      </td>
+                      <td class={pinned("over_target", "text-center whitespace-nowrap")} style={stickyStyle("over_target")}>
+                        <Show when={hasTarget} fallback={<span class="text-gray-400 dark:text-gray-500">—</span>}>
+                          <div class="inline-flex items-center gap-2">
+                            <span class={`text-xs font-bold tabular-nums ${c.needs_attention ? "text-[#AC2334] dark:text-red-400" : "text-[#15966A] dark:text-green-400"}`}>{overPctFmt(c.over_target_pct) ?? (c.no_leads && c.needs_attention ? "0 leads" : "—")}</span>
+                            <RatioBadge campaign={c} />
+                          </div>
+                        </Show>
+                      </td>
                       <Show when={canSetTarget()}>
-                        <td class="p-4 text-right align-middle whitespace-nowrap border-b border-[#E2E8F1] dark:border-gray-800">
-                          <button onClick={() => setTargetCampaign(c)} class="px-3 py-1.5 text-xs font-semibold rounded-lg border border-[#E2E8F1] dark:border-gray-600 text-[#54657E] dark:text-gray-300 hover:border-[#AC2334]/40 hover:text-[#AC2334]">
+                        <td class={pinned("action", "text-right whitespace-nowrap")} style={stickyStyle("action")}>
+                          <button onClick={() => setTargetCampaign(c)} class="px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:border-[#AC2334]/40 hover:text-[#AC2334]">
                             {c.has_target ? "Edit" : "Set target"}
                           </button>
                         </td>
@@ -581,7 +928,7 @@ export default function CplRules() {
                 }}
               </For>
               <Show when={rows().length === 0}>
-                <tr><td colspan={colCount()} class="py-16 text-center text-[#8593A8] dark:text-gray-500">{search().trim() || attentionOnly() ? "No campaigns match the current filters." : "No campaigns to show."}</td></tr>
+                <tr><td colspan={colCount()} class="py-16 text-center text-gray-400 dark:text-gray-500">{search().trim() || attentionOnly() ? "No campaigns match the current filters." : "No campaigns to show."}</td></tr>
               </Show>
             </tbody>
           </Show>
