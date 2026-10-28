@@ -915,6 +915,20 @@ function CplProjectTable(props) {
   const missingPromise = (p) => p.missing_promise === true;
   const fmtTotal = (v) => (v == null ? <Dash /> : fmt(v));
 
+  // One grey line under each project saying why disqualified leads were (or
+  // weren't) billed. "Met" is keyed off the server's billable reaching
+  // generated, not off the rounded %s: 49.6% shows as "50% vs 50%" but bills
+  // 100 of 101, and "all 101 leads billed" would then contradict the column.
+  const promiseLine = (p) => {
+    const gen = Number(p.generated || 0);
+    if (missingPromise(p) || p.promised_pct == null || gen <= 0) return null;
+    const qPct = Math.round((Number(p.qualified || 0) / gen) * 100);
+    const pct = `${qPct}% qualified vs ${Number(p.promised_pct)}% promised`;
+    return billable(p) >= gen
+      ? `Promise met: ${pct}, all ${num(gen)} leads billed.`
+      : `Promise missed: ${pct}, billed ${num(billable(p))} of ${num(gen)} leads.`;
+  };
+
   const Dash = () => (
     <span class="font-medium text-gray-400 dark:text-gray-400">—</span>
   );
@@ -1001,7 +1015,7 @@ function CplProjectTable(props) {
                 <th class={numHead}>Qualified</th>
                 <Show when={promiseMode()}>
                   <th class={numHead}>Promise %</th>
-                  <th class={numHead}>Billable</th>
+                  <th class={numHead}>Billable leads</th>
                 </Show>
                 <th class={numHead}>Rate / lead</th>
                 <Show
@@ -1027,6 +1041,11 @@ function CplProjectTable(props) {
                       <Show when={promiseMode() && missingPromise(p)}>
                         <span class="block text-[11px] font-normal text-amber-600 dark:text-amber-400">
                           Promise % not set: billed on qualified leads
+                        </span>
+                      </Show>
+                      <Show when={promiseMode() && promiseLine(p)}>
+                        <span class="block text-[11px] font-normal text-gray-400 dark:text-gray-400">
+                          {promiseLine(p)}
                         </span>
                       </Show>
                     </td>
@@ -1196,8 +1215,9 @@ function CplProjectTable(props) {
         <div class="px-6 py-3 border-t border-gray-100 dark:border-gray-700/60 space-y-1">
           <Show when={promiseMode() && hasRows()}>
             <p class="text-xs text-gray-500 dark:text-gray-400">
-              Billable = Qualified / Promise %, capped at leads generated. 18%
-              GST added on the lead value.
+              Billable leads = Qualified / Promise %, capped at leads generated.
+              Disqualified leads within the promised rate are billed; below it,
+              billing reduces. 18% GST added on the lead value.
             </p>
           </Show>
           <Show when={anyUncovered()}>
