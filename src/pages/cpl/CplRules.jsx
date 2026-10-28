@@ -130,12 +130,11 @@ const TD = "p-3 align-middle border-b border-gray-100 dark:border-gray-800";
 // Numbers pinned to the right edge, left → right. Fixed widths so each
 // column's `right` offset is the sum of the widths after it.
 const STICKY = [
-  { key: "spend", width: 120 },
-  { key: "leads", width: 92 },
-  { key: "actual_cpl", width: 136 },
-  { key: "target_cpl", width: 140 },
-  { key: "over_target", width: 160 },
-  { key: "action", width: 112 },
+  { key: "leads", width: 80 },
+  { key: "actual_cpl", width: 124 },
+  { key: "target_cpl", width: 122 },
+  { key: "over_target", width: 136 },
+  { key: "action", width: 104 },
 ];
 // Divider + shadow on the two resizable columns — header only, so the body
 // reads as a plain table.
@@ -144,11 +143,13 @@ const RESIZE_EDGE = "relative z-[1] border-r border-gray-200 dark:border-gray-70
 // ─── Drag-resizable column (same behaviour as the Campaigns page) ────────────
 const COL_MIN = 160;
 const COL_MAX = 900;
-function createResizableCol(storageKey, def, wide) {
+// `min` is the narrowest the column may go — at least its header (label, sort
+// arrows, expand button), so the divider never cuts across them.
+function createResizableCol(storageKey, def, wide, min = COL_MIN) {
   const read = () => {
     try {
       const v = Number(localStorage.getItem(storageKey));
-      return v >= COL_MIN && v <= COL_MAX ? v : def;
+      return v >= min && v <= COL_MAX ? v : def;
     } catch {
       return def;
     }
@@ -168,7 +169,7 @@ function createResizableCol(storageKey, def, wide) {
     const startX = e.clientX;
     const startW = width();
     setActive(true);
-    const onMove = (ev) => setWidth(Math.min(COL_MAX, Math.max(COL_MIN, startW + ev.clientX - startX)));
+    const onMove = (ev) => setWidth(Math.min(COL_MAX, Math.max(min, startW + ev.clientX - startX)));
     const onUp = () => {
       setActive(false);
       save(width());
@@ -595,7 +596,7 @@ export default function CplRules() {
   const [cms, setCms] = createSignal([]);
 
   const nameCol = createResizableCol("cplRules.nameColWidth.v2", 220, 520);
-  const clientCol = createResizableCol("cplRules.clientColWidth.v2", 180, 420);
+  const clientCol = createResizableCol("cplRules.clientColWidth.v2", 228, 440, 228);
 
   // Right offsets for the pinned number columns (the action column only
   // exists for admin + coordination).
@@ -607,7 +608,8 @@ export default function CplRules() {
     const w = `${cols[i].width}px`;
     return { right: `${right}px`, width: w, "min-width": w, "max-width": w };
   };
-  const stickyCls = () => "sticky";
+  // px-2 (not p-3) keeps the pinned block tight.
+  const stickyCls = () => "sticky px-2";
 
   // High CPL by CM needs a CM before it shows anything.
   const needsCm = () => tab() === "cm" && !cmId();
@@ -911,7 +913,7 @@ export default function CplRules() {
               <th class={`${TH} text-left border-b border-gray-200 dark:border-gray-700`}><SortBtn col="cm" label="CM" sort={sort()} onSort={toggleSort} /></th>
               <th class={`${TH} text-left min-w-[230px] border-b border-gray-200 dark:border-gray-700`}><SortBtn col="ad_account" label="Ad account" sort={sort()} onSort={toggleSort} /></th>
               <th class={`${TH} text-center border-b border-gray-200 dark:border-gray-700`}><SortBtn col="attention" label="Attention" sort={sort()} onSort={toggleSort} /></th>
-              <th class={`${TH} text-right z-20 border-b border-gray-200 dark:border-gray-700 ${stickyCls("spend")}`} style={stickyStyle("spend")}><SortBtn col="spend" label="Spend" sort={sort()} onSort={toggleSort} /></th>
+              <th class={`${TH} text-right border-b border-gray-200 dark:border-gray-700`}><SortBtn col="spend" label="Spend" sort={sort()} onSort={toggleSort} /></th>
               <th class={`${TH} text-right z-20 border-b border-gray-200 dark:border-gray-700 ${stickyCls("leads")}`} style={stickyStyle("leads")}><SortBtn col="leads" label="Leads" sort={sort()} onSort={toggleSort} /></th>
               <th class={`${TH} text-right z-20 border-b border-gray-200 dark:border-gray-700 ${stickyCls("actual_cpl")}`} style={stickyStyle("actual_cpl")}><SortBtn col="actual_cpl" label="Actual CPL" sort={sort()} onSort={toggleSort} /></th>
               <th class={`${TH} text-right z-20 border-b border-gray-200 dark:border-gray-700 ${stickyCls("target_cpl")}`} style={stickyStyle("target_cpl")}><SortBtn col="target_cpl" label="Target CPL" sort={sort()} onSort={toggleSort} /></th>
@@ -1002,7 +1004,7 @@ export default function CplRules() {
                           </span>
                         </Show>
                       </td>
-                      <td class={pinned("spend", "text-right whitespace-nowrap tabular-nums text-gray-800 dark:text-gray-200")} style={stickyStyle("spend")}>{money2(c.spend) ?? "—"}</td>
+                      <td class={td("text-right whitespace-nowrap tabular-nums text-gray-800 dark:text-gray-200")}>{money2(c.spend) ?? "—"}</td>
                       <td class={pinned("leads", "text-right whitespace-nowrap tabular-nums text-gray-800 dark:text-gray-200")} style={stickyStyle("leads")}>{c.leads == null ? "—" : num(c.leads)}</td>
                       <td class={pinned("actual_cpl", "text-right whitespace-nowrap tabular-nums font-semibold text-gray-800 dark:text-gray-100")} style={stickyStyle("actual_cpl")}>
                         <Show when={c.no_leads} fallback={money2(c.actual_cpl) ?? "—"}>
