@@ -468,6 +468,7 @@ function HeadOfOpsCard(props) {
   const c = () => props.contact;
   const wa = () => waLink(c().whatsapp);
   const email = () => clean(c().email);
+  const number = () => directNumber(c());
 
   return (
     <article
@@ -496,6 +497,21 @@ function HeadOfOpsCard(props) {
             <p class="text-[13.5px] text-gray-500 dark:text-gray-400">
               {clean(c().designation)}
             </p>
+          </Show>
+
+          <Show when={number()}>
+            <CopyNumber
+              value={fmtIntl(number())}
+              class="mt-3 inline-flex items-center gap-2 pl-1 pr-3 py-1 rounded-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-white/5 text-[13px] font-bold text-gray-800 dark:text-gray-100 hover:border-[#AC2334]/35 hover:text-[#AC2334] dark:hover:text-red-300"
+            >
+              <span
+                class="w-6 h-6 grid place-items-center rounded-full flex-shrink-0"
+                style={{ "background-color": `${RED}16`, color: RED }}
+              >
+                <Phone size={13} />
+              </span>
+              {fmtLocal(number())}
+            </CopyNumber>
           </Show>
         </div>
 
