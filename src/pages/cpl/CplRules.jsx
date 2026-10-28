@@ -1,6 +1,6 @@
 import { createSignal, createResource, createMemo, createEffect, on, onCleanup, For, Show } from "solid-js";
 import Swal from "sweetalert2";
-import { TriangleAlert, Target, Megaphone, ArrowUp, ChartColumn, ChevronDown, Check, Search, Users, ChevronsLeftRight, ChevronsRightLeft } from "lucide-solid";
+import { TriangleAlert, Target, Megaphone, ArrowUp, CalendarDays, ChevronLeft, ChevronRight, ChartColumn, ChevronDown, Check, Search, Users, ChevronsLeftRight, ChevronsRightLeft } from "lucide-solid";
 import { fetchCplCampaigns, setCplTarget, fetchHighVolumeClients } from "../../services/cplRules";
 import { scopeKey } from "../../stores/cmScope";
 import { isAdmin, isCoordination } from "../../stores/currentUser";
@@ -321,6 +321,112 @@ const HV_TONES = [
   { dot: "#5F8A90", chip: "#F4F8F8", line: "#DDE9EA", bg: "#E6EEEF", fg: "#466D72" }, // steel teal
 ];
 
+// ─── Custom range calendar ────────────────────────────────────────────────────
+// One month at a time: first click picks the start, second the end (swapped if
+// earlier). Dates are local "YYYY-MM-DD"; nothing after today is pickable.
+const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const parseYmd = (s) => {
+  const [y, m, d] = s.split("-").map(Number);
+  return new Date(y, m - 1, d);
+};
+const shortDate = (s) => (s ? parseYmd(s).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—");
+const WEEKDAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
+
+function RangeCalendar(props) {
+  const today = ymd(new Date());
+  const [since, setSince] = createSignal(props.since || "");
+  const [until, setUntil] = createSignal(props.until || "");
+  const [hover, setHover] = createSignal("");
+  const start = parseYmd(props.until || props.since || today);
+  const [month, setMonth] = createSignal(new Date(start.getFullYear(), start.getMonth(), 1));
+  let root;
+
+  const onDoc = (e) => {
+    if (root && !root.contains(e.target) && !props.anchor?.contains(e.target)) props.onClose();
+  };
+  document.addEventListener("pointerdown", onDoc);
+  onCleanup(() => document.removeEventListener("pointerdown", onDoc));
+
+  // 6 rows × 7, Monday-first, padded with the neighbouring months.
+  const cells = createMemo(() => {
+    const m = month();
+    const offset = (m.getDay() + 6) % 7;
+    return Array.from({ length: 42 }, (_, i) => {
+      const d = new Date(m.getFullYear(), m.getMonth(), 1 - offset + i);
+      return { key: ymd(d), day: d.getDate(), inMonth: d.getMonth() === m.getMonth() };
+    });
+  });
+  const shift = (n) => setMonth((m) => new Date(m.getFullYear(), m.getMonth() + n, 1));
+  const canNext = () => ymd(new Date(month().getFullYear(), month().getMonth() + 1, 1)) <= today;
+
+  const pick = (key) => {
+    if (key > today) return;
+    if (!since() || until()) {
+      setSince(key);
+      setUntil("");
+    } else if (key < since()) {
+      setUntil(since());
+      setSince(key);
+    } else {
+      setUntil(key);
+    }
+  };
+  // While choosing the end, preview the range up to the hovered day.
+  const rangeEnd = () => until() || (since() && hover() >= since() ? hover() : "");
+  const inRange = (k) => since() && rangeEnd() && k > since() && k < rangeEnd();
+  const isEdge = (k) => k === since() || k === rangeEnd();
+
+  return (
+    <div ref={root} class="absolute left-0 top-full mt-2 z-40 w-[300px] bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 shadow-[0_12px_32px_rgba(20,35,58,0.14)] p-3">
+      <div class="flex items-center justify-between mb-2">
+        <button type="button" onClick={() => shift(-1)} class="h-7 w-7 flex items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800" aria-label="Previous month">
+          <ChevronLeft size={16} />
+        </button>
+        <span class="text-sm font-semibold text-gray-800 dark:text-gray-100">
+          {month().toLocaleDateString("en-GB", { month: "long", year: "numeric" })}
+        </span>
+        <button type="button" onClick={() => canNext() && shift(1)} disabled={!canNext()} class="h-7 w-7 flex items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30 disabled:hover:bg-transparent" aria-label="Next month">
+          <ChevronRight size={16} />
+        </button>
+      </div>
+      <div class="grid grid-cols-7 mb-1">
+        <For each={WEEKDAYS}>{(w) => <span class="text-center text-[11px] font-semibold uppercase text-gray-400 py-1">{w}</span>}</For>
+      </div>
+      <div class="grid grid-cols-7 gap-y-0.5" onPointerLeave={() => setHover("")}>
+        <For each={cells()}>
+          {(c) => {
+            const future = c.key > today;
+            return (
+              <button type="button" disabled={future} onClick={() => pick(c.key)} onPointerEnter={() => setHover(c.key)}
+                class={`h-8 text-[13px] tabular-nums transition-colors ${
+                  isEdge(c.key)
+                    ? "bg-[#14233A] text-white font-semibold rounded-md"
+                    : inRange(c.key)
+                      ? "bg-[#EEF1F5] text-[#14233A] dark:bg-gray-800 dark:text-gray-100"
+                      : future
+                        ? "text-gray-300 dark:text-gray-600 cursor-not-allowed"
+                        : `${c.inMonth ? "text-gray-700 dark:text-gray-200" : "text-gray-300 dark:text-gray-600"} rounded-md hover:bg-gray-100 dark:hover:bg-gray-800`
+                } ${c.key === today && !isEdge(c.key) ? "ring-1 ring-inset ring-[#AC2334]/50 rounded-md" : ""}`}>
+                {c.day}
+              </button>
+            );
+          }}
+        </For>
+      </div>
+      <div class="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between gap-2">
+        <span class="text-xs text-gray-500 dark:text-gray-400 tabular-nums">
+          {shortDate(since())} <span class="text-gray-300">→</span> {shortDate(until())}
+        </span>
+        <div class="flex gap-1.5">
+          <button type="button" onClick={props.onClose} class="px-2.5 py-1 text-xs font-semibold rounded-md text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800">Cancel</button>
+          <button type="button" disabled={!since() || !until()} onClick={() => props.onApply(since(), until())}
+            class="px-3 py-1 text-xs font-bold rounded-md bg-[#AC2334] text-white hover:bg-[#921d2c] disabled:opacity-50">Apply</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Campaign-manager picker ─────────────────────────────────────────────────
 function CmPicker(props) {
   const [open, setOpen] = createSignal(false);
@@ -512,7 +618,8 @@ export default function CplRules() {
   // Date window — shared by all three tabs and kept across tab / CM / search.
   // { days } or { since, until }. Custom is staged in drafts until Apply.
   const [win, setWin] = createSignal({ days: 7 });
-  const [customOpen, setCustomOpen] = createSignal(false);
+  const [calOpen, setCalOpen] = createSignal(false);
+  let customBtn;
   const [draftSince, setDraftSince] = createSignal("");
   const [draftUntil, setDraftUntil] = createSignal("");
 
@@ -548,7 +655,7 @@ export default function CplRules() {
 
   const windowKey = () => (win().days ? String(win().days) : "custom");
   const pickDays = (d) => {
-    setCustomOpen(false);
+    setCalOpen(false);
     if (win().days !== d) setWin({ days: d });
   };
   const openCustom = () => {
@@ -556,11 +663,7 @@ export default function CplRules() {
     const w = data()?.window;
     if (!draftSince() && w?.since) setDraftSince(w.since);
     if (!draftUntil() && w?.until) setDraftUntil(w.until);
-    setCustomOpen(true);
-  };
-  const applyCustom = () => {
-    if (!draftSince() || !draftUntil()) return;
-    setWin({ since: draftSince(), until: draftUntil() });
+    setCalOpen((v) => !v);
   };
 
   const cmOptions = createMemo(() =>
@@ -654,26 +757,32 @@ export default function CplRules() {
           <span class="text-[11px] font-bold uppercase tracking-wider text-gray-400 mr-1">Range</span>
           <For each={WINDOW_DAYS}>
             {(d) => (
-              <button type="button" onClick={() => pickDays(d)} aria-pressed={windowKey() === String(d) && !customOpen()}
-                class={pill(windowKey() === String(d) && !customOpen())}>
+              <button type="button" onClick={() => pickDays(d)} aria-pressed={windowKey() === String(d)}
+                class={pill(windowKey() === String(d))}>
                 Last {d} days
               </button>
             )}
           </For>
-          <button type="button" onClick={openCustom} class={pill(windowKey() === "custom" || customOpen())}>
-            Custom
-          </button>
-          <Show when={customOpen()}>
-            <div class="flex items-center gap-2 ml-1">
-              <input type="date" value={draftSince()} max={draftUntil() || undefined} onInput={(e) => setDraftSince(e.target.value)}
-                class="px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
-              <span class="text-gray-400">→</span>
-              <input type="date" value={draftUntil()} min={draftSince() || undefined} onInput={(e) => setDraftUntil(e.target.value)}
-                class="px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
-              <button type="button" onClick={applyCustom} disabled={!draftSince() || !draftUntil()}
-                class="px-3 py-1.5 text-[13px] font-bold rounded-lg bg-[#AC2334] text-white hover:bg-[#921d2c] disabled:opacity-50">Apply</button>
-            </div>
-          </Show>
+          <div class="relative">
+            <button type="button" ref={customBtn} onClick={openCustom} class={`${pill(windowKey() === "custom" || calOpen())} inline-flex items-center gap-1.5`}>
+              <CalendarDays size={14} />
+              Custom
+            </button>
+            <Show when={calOpen()}>
+              <RangeCalendar
+                anchor={customBtn}
+                since={draftSince()}
+                until={draftUntil()}
+                onClose={() => setCalOpen(false)}
+                onApply={(s, u) => {
+                  setDraftSince(s);
+                  setDraftUntil(u);
+                  setWin({ since: s, until: u });
+                  setCalOpen(false);
+                }}
+              />
+            </Show>
+          </div>
           <Show when={windowCaption(data()?.window)}>
             <span class="ml-auto text-[13px] font-medium tabular-nums text-gray-600 dark:text-gray-300">{windowCaption(data()?.window)}</span>
           </Show>
