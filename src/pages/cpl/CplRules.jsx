@@ -989,7 +989,8 @@ export default function CplRules() {
       </Show>
 
       {/* ══ Search · CM · attention ══ */}
-      <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-4 mb-4 flex flex-wrap items-center gap-3">
+      <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-4 mb-4 flex flex-col gap-3">
+      <div class="flex flex-wrap items-center gap-3">
         <div class="relative flex w-full sm:w-[340px]">
           <Search size={16} class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input type="text" placeholder="Search campaign, client, project, CM or ad account…" value={search()} onInput={(e) => setSearch(e.target.value)}
@@ -1018,6 +1019,10 @@ export default function CplRules() {
           </Show>
         </span>
         <span class="ml-auto text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap"><b class="text-gray-800 dark:text-white tabular-nums">{rows().length}</b> shown</span>
+      </div>
+
+      {/* Second row: share. Left-aligned, so the menu opens rightward into the card. */}
+      <div class="flex items-center">
         <div class="relative" ref={snapRoot}>
           <button type="button" onClick={() => setSnapMenu((v) => !v)} disabled={!rows().length || data.loading || !!snapping()}
             title="Share every row shown as one image"
@@ -1027,7 +1032,7 @@ export default function CplRules() {
             <ChevronDown size={14} class={`transition-transform ${snapMenu() ? "rotate-180" : ""}`} />
           </button>
           <Show when={snapMenu()}>
-            <div class="absolute right-0 top-full mt-1.5 z-40 w-60 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 shadow-[0_12px_32px_rgba(20,35,58,0.14)] py-1">
+            <div class="absolute left-0 top-full mt-1.5 z-50 w-64 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 shadow-[0_12px_32px_rgba(20,35,58,0.14)] py-1">
               <button type="button" onClick={() => takeSnapshot("copy")} class="w-full flex items-start gap-2.5 px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-800">
                 <Copy size={15} class="mt-0.5 text-gray-500" />
                 <span>
@@ -1044,6 +1049,7 @@ export default function CplRules() {
               </button>
             </div>
           </Show>
+        </div>
         </div>
       </div>
 
