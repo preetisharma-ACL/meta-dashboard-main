@@ -10,8 +10,12 @@ import { scopeQuery, applyMeta } from "../stores/cmScope";
 // target is rated against meta.summary.default_target_cpl (₹300).
 // cmId → only that CM's clients (403 if not allowed); only: "expensive" → only
 // rows at ≥125% of target. meta.cms feeds the CM dropdown.
-export const fetchCplCampaigns = async ({ cmId, only } = {}) => {
+// Window: days (2|4|7, today inclusive) or since+until (YYYY-MM-DD, ≤92 days);
+// nothing → last 7 days. Bad input → 422. Echoed back as meta.window.
+export const fetchCplCampaigns = async ({ cmId, only, days, since, until } = {}) => {
   let q = `?1=1${scopeQuery({ supportsOwn: true })}`;
+  if (since && until) q += `&since=${encodeURIComponent(since)}&until=${encodeURIComponent(until)}`;
+  else if (days) q += `&days=${encodeURIComponent(days)}`;
   if (cmId != null && cmId !== "") q += `&cm_id=${encodeURIComponent(cmId)}`;
   if (only) q += `&only=${encodeURIComponent(only)}`;
   const res = await api(`/cm/cpl-rules/campaigns/${q}`, { method: "GET" });

@@ -35,9 +35,16 @@ const SORT_COLS = {
   client: { get: (c) => strOrNull([c.client, c.project].filter(Boolean).join(" ")), first: "asc" },
   cm: { get: (c) => strOrNull((c.campaign_managers || []).join(", ")), first: "asc" },
   ad_account: { get: (c) => strOrNull(c.ad_account_name || c.ad_account), first: "asc" },
+  spend: { get: (c) => numOrNull(c.spend), first: "desc" },
+  leads: { get: (c) => numOrNull(c.leads), first: "desc" },
   actual_cpl: { get: (c) => numOrNull(c.actual_cpl), first: "desc" },
   target_cpl: { get: (c) => numOrNull(c.target_cpl), first: "desc" },
-  over_target: { get: (c) => numOrNull(c.over_target_pct), first: "desc" },
+  // A flagged no-lead campaign has over_target_pct null but is the worst
+  // case → rank it above every real percentage.
+  over_target: {
+    get: (c) => (c.no_leads && c.needs_attention ? Infinity : numOrNull(c.over_target_pct)),
+    first: "desc",
+  },
   attention: { get: (c) => (c.needs_attention ? 1 : 0), first: "desc" },
 };
 
@@ -52,9 +59,29 @@ const sortRows = (list, sort) => {
     if (x == null && y == null) return 0;
     if (x == null) return 1;
     if (y == null) return -1;
+    if (x === y) return 0; // also keeps Infinity − Infinity (NaN) out
     if (typeof x === "string") return x.localeCompare(y) * mul;
     return (x - y) * mul;
   });
+};
+
+const WINDOW_DAYS = [2, 4, 7];
+
+// meta.window → "22 Oct – 28 Oct 2026 (7 days)". Dates parsed as local
+// calendar days (new Date("YYYY-MM-DD") would be UTC midnight).
+const windowCaption = (w) => {
+  if (!w?.since || !w?.until) return null;
+  const parse = (s) => {
+    const [y, m, d] = s.split("-").map(Number);
+    return new Date(y, m - 1, d);
+  };
+  const a = parse(w.since);
+  const b = parse(w.until);
+  if (isNaN(a) || isNaN(b)) return null;
+  const fmt = (dt, withYear) =>
+    dt.toLocaleDateString("en-GB", { day: "numeric", month: "short", ...(withYear ? { year: "numeric" } : {}) });
+  const days = w.days != null ? ` (${w.days} day${Number(w.days) === 1 ? "" : "s"})` : "";
+  return `${fmt(a, a.getFullYear() !== b.getFullYear())} – ${fmt(b, true)}${days}`;
 };
 
 // "sonu · Tier 2 · 106 campaigns · 3 expensive"
@@ -205,16 +232,59 @@ export default function CplRules() {
   // A different Viewing scope has a different CM list — drop the pick.
   createEffect(on(scopeKey, () => setCmId(""), { defer: true }));
 
+  // Date window — shared by all three tabs and kept across tab / CM / search.
+  // { days } or { since, until }. Custom is staged in drafts until Apply.
+  const [win, setWin] = createSignal({ days: 7 });
+  const [customOpen, setCustomOpen] = createSignal(false);
+  const [draftSince, setDraftSince] = createSignal("");
+  const [draftUntil, setDraftUntil] = createSignal("");
+
   const [data, { refetch }] = createResource(
-    () => ({ scope: scopeKey(), tab: tab(), cmId: cmId() }),
-    async ({ tab: t, cmId: id }) => {
+    () => ({ scope: scopeKey(), tab: tab(), cmId: cmId(), win: win() }),
+    async ({ tab: t, cmId: id, win: w }) => {
       // With no CM picked on the CM tab we still fetch unfiltered — that's
       // where the dropdown options (meta.cms) come from.
-      const res = await fetchCplCampaigns({ cmId: id || undefined, only: t === "expensive" ? "expensive" : undefined });
-      if (Array.isArray(res?.meta?.cms)) setCms(res.meta.cms);
-      return { rows: Array.isArray(res?.data) ? res.data : [], summary: res?.meta?.summary ?? null };
+      // Errors are returned, not thrown: a 422 on a bad custom range is an
+      // expected outcome and its message is shown as-is.
+      try {
+        const res = await fetchCplCampaigns({ cmId: id || undefined, only: t === "expensive" ? "expensive" : undefined, ...w });
+        // CM counts are per window, so refresh them on every load.
+        if (Array.isArray(res?.meta?.cms)) setCms(res.meta.cms);
+        return {
+          rows: Array.isArray(res?.data) ? res.data : [],
+          summary: res?.meta?.summary ?? null,
+          window: res?.meta?.window ?? null,
+        };
+      } catch (err) {
+        return { rows: [], summary: null, window: null, error: err };
+      }
     },
   );
+
+  const loadError = () => {
+    const err = data()?.error;
+    if (!err) return null;
+    if (err.status === 422) return err.message || "Invalid date range.";
+    if (err.status === 403 && cmId()) return "You don't have access to that campaign manager's campaigns.";
+    return "Failed to load CPL rules. Please try again.";
+  };
+
+  const windowKey = () => (win().days ? String(win().days) : "custom");
+  const pickDays = (d) => {
+    setCustomOpen(false);
+    if (win().days !== d) setWin({ days: d });
+  };
+  const openCustom = () => {
+    // Seed the picker with the window currently shown.
+    const w = data()?.window;
+    if (!draftSince() && w?.since) setDraftSince(w.since);
+    if (!draftUntil() && w?.until) setDraftUntil(w.until);
+    setCustomOpen(true);
+  };
+  const applyCustom = () => {
+    if (!draftSince() || !draftUntil()) return;
+    setWin({ since: draftSince(), until: draftUntil() });
+  };
 
   const cmOptions = createMemo(() =>
     [...cms()].sort((a, b) =>
@@ -261,7 +331,7 @@ export default function CplRules() {
   });
 
   const defaultTarget = () => money2(summary()?.default_target_cpl ?? 300);
-  const colCount = () => (canSetTarget() ? 9 : 8);
+  const colCount = () => (canSetTarget() ? 11 : 10);
 
   const attnThreshold = () => {
     const t = summary()?.attention_threshold_pct;
@@ -277,6 +347,38 @@ export default function CplRules() {
         <p class="text-sm text-[#54657E] dark:text-gray-400 mt-1">
           Campaigns ranked by how far over their target CPL they run. Most over-target first.
         </p>
+      </div>
+
+      {/* Date window */}
+      <div class="flex flex-wrap items-center gap-3 mb-4">
+        <div class="inline-flex rounded-lg border border-[#E2E8F1] dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-0.5">
+          <For each={WINDOW_DAYS}>
+            {(d) => (
+              <button type="button" onClick={() => pickDays(d)}
+                class={`px-3.5 py-1.5 text-[13px] font-semibold rounded-md transition-colors ${windowKey() === String(d) && !customOpen() ? "bg-[#AC2334] text-white" : "text-[#54657E] dark:text-gray-300 hover:text-[#AC2334]"}`}>
+                {d} days
+              </button>
+            )}
+          </For>
+          <button type="button" onClick={openCustom}
+            class={`px-3.5 py-1.5 text-[13px] font-semibold rounded-md transition-colors ${windowKey() === "custom" || customOpen() ? "bg-[#AC2334] text-white" : "text-[#54657E] dark:text-gray-300 hover:text-[#AC2334]"}`}>
+            Custom
+          </button>
+        </div>
+        <Show when={customOpen()}>
+          <div class="inline-flex flex-wrap items-center gap-2 text-sm">
+            <input type="date" value={draftSince()} max={draftUntil() || undefined} onInput={(e) => setDraftSince(e.target.value)}
+              class="px-2.5 py-1.5 rounded-lg border border-[#E2E8F1] dark:border-gray-700 bg-[#F8FAFC] dark:bg-gray-800 text-[#1A2B45] dark:text-white" />
+            <span class="text-[#8593A8]">to</span>
+            <input type="date" value={draftUntil()} min={draftSince() || undefined} onInput={(e) => setDraftUntil(e.target.value)}
+              class="px-2.5 py-1.5 rounded-lg border border-[#E2E8F1] dark:border-gray-700 bg-[#F8FAFC] dark:bg-gray-800 text-[#1A2B45] dark:text-white" />
+            <button type="button" onClick={applyCustom} disabled={!draftSince() || !draftUntil()}
+              class="px-3 py-1.5 text-[13px] font-bold rounded-lg bg-[#AC2334] text-white hover:bg-[#921d2c] disabled:opacity-50">Apply</button>
+          </div>
+        </Show>
+        <Show when={windowCaption(data()?.window)}>
+          <span class="text-[13px] font-medium text-[#54657E] dark:text-gray-400">{windowCaption(data()?.window)}</span>
+        </Show>
       </div>
 
       {/* Tabs */}
@@ -314,7 +416,7 @@ export default function CplRules() {
       </Show>
 
       {/* Summary band */}
-      <Show when={!needsCm()}>
+      <Show when={!needsCm() && !loadError()}>
       <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-5">
         <Show when={!data.loading && summary()} fallback={
           <For each={Array(3).fill(0)}>{() => <div class="h-24 rounded-2xl bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 animate-pulse" />}</For>
@@ -358,11 +460,9 @@ export default function CplRules() {
         <span class="ml-auto text-sm font-bold text-[#8593A8] dark:text-gray-500 whitespace-nowrap"><b class="text-[#14233A] dark:text-white">{rows().length}</b> shown</span>
       </div>
 
-      <Show when={data.error}>
+      <Show when={loadError()}>
         <div class="bg-[#FBEEF0] dark:bg-red-900/20 border border-[#AC2334]/25 dark:border-red-800 rounded-xl p-4 mb-4 text-sm font-medium text-[#AC2334] dark:text-red-400">
-          {cmId() && /403|permission|not allowed/i.test(String(data.error?.message || data.error))
-            ? "You don't have access to that campaign manager's campaigns."
-            : "Failed to load CPL rules. Please try again."}
+          {loadError()}
         </div>
       </Show>
 
@@ -380,6 +480,8 @@ export default function CplRules() {
               <SortTh col="client" label="Client / Project" align="left" sort={sort()} onSort={toggleSort} />
               <SortTh col="cm" label="CM" align="left" sort={sort()} onSort={toggleSort} />
               <SortTh col="ad_account" label="Ad account" align="left" extra="min-w-[220px]" sort={sort()} onSort={toggleSort} />
+              <SortTh col="spend" label="Spend" align="right" sort={sort()} onSort={toggleSort} />
+              <SortTh col="leads" label="Leads" align="right" sort={sort()} onSort={toggleSort} />
               <SortTh col="actual_cpl" label="Actual CPL" align="right" sort={sort()} onSort={toggleSort} />
               <SortTh col="target_cpl" label="Target CPL" align="right" sort={sort()} onSort={toggleSort} />
               <SortTh col="over_target" label="Over Target" align="center" sort={sort()} onSort={toggleSort} />
@@ -434,7 +536,13 @@ export default function CplRules() {
                           </div>
                         </Show>
                       </td>
-                      <td class="p-4 text-right align-middle whitespace-nowrap tabular-nums font-bold text-[#1A2B45] dark:text-gray-100 border-b border-[#E2E8F1] dark:border-gray-800">{money2(c.actual_cpl) ?? "—"}</td>
+                      <td class="p-4 text-right align-middle whitespace-nowrap tabular-nums text-[#1A2B45] dark:text-gray-200 border-b border-[#E2E8F1] dark:border-gray-800">{money2(c.spend) ?? "—"}</td>
+                      <td class="p-4 text-right align-middle whitespace-nowrap tabular-nums text-[#1A2B45] dark:text-gray-200 border-b border-[#E2E8F1] dark:border-gray-800">{c.leads == null ? "—" : num(c.leads)}</td>
+                      <td class="p-4 text-right align-middle whitespace-nowrap tabular-nums font-bold text-[#1A2B45] dark:text-gray-100 border-b border-[#E2E8F1] dark:border-gray-800">
+                        <Show when={c.no_leads} fallback={money2(c.actual_cpl) ?? "—"}>
+                          <span class="text-[#AC2334] dark:text-red-400">No leads</span>
+                        </Show>
+                      </td>
                       <td class="p-4 text-right align-middle whitespace-nowrap tabular-nums border-b border-[#E2E8F1] dark:border-gray-800">
                         <Show when={hasTarget} fallback={<span class="text-[#8593A8] dark:text-gray-500">—</span>}>
                           <Show when={c.target_is_default} fallback={<span class="font-bold text-[#1A2B45] dark:text-gray-100">{money2(c.target_cpl)}</span>}>
@@ -445,7 +553,7 @@ export default function CplRules() {
                       <td class="p-4 text-center align-middle whitespace-nowrap border-b border-[#E2E8F1] dark:border-gray-800">
                         <Show when={hasTarget} fallback={<span class="text-[#8593A8] dark:text-gray-500">—</span>}>
                           <div class="inline-flex items-center gap-2">
-                            <span class={`text-xs font-bold tabular-nums ${c.needs_attention ? "text-[#AC2334] dark:text-red-400" : "text-[#15966A] dark:text-green-400"}`}>{overPctFmt(c.over_target_pct) ?? "—"}</span>
+                            <span class={`text-xs font-bold tabular-nums ${c.needs_attention ? "text-[#AC2334] dark:text-red-400" : "text-[#15966A] dark:text-green-400"}`}>{overPctFmt(c.over_target_pct) ?? (c.no_leads && c.needs_attention ? "0 leads" : "—")}</span>
                             <RatioBadge campaign={c} />
                           </div>
                         </Show>
