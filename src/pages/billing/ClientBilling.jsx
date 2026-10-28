@@ -42,7 +42,9 @@ import {
 // Columns (per client, straight off the endpoint):
 //   opening  = balance carried in from the previous month
 //   received = funds added this month (real payments, not the opening balance)
-//   utilized = spend + service charge + GST (the full billed amount)
+//   utilized = the full billed amount, as the server states it: spend + service
+//              charge + GST for hybrid; service charge + GST only for retainer
+//              (the client pays Meta directly, backend b3e3ab5)
 //   closing  = opening + received − utilized   (NEGATIVE = the client owes us)
 //   status   = owes (closing<0) · low (closing < 15% of budget) · healthy
 // Rows arrive closing-ascending (debtors first) and the table keeps that as its
@@ -140,7 +142,8 @@ export default function ClientBilling() {
     {
       // No per-tile GST note: all three flip on the same toggle, so the basis is
       // stated once in the strip caption below and can't drift between labels.
-      label: "Billed · spend + S.C",
+      // Not "spend + S.C": a retainer's billed figure has no spend in it.
+      label: "Billed",
       value: fmtMoney(totalMoney("utilized", "utilized"), 0),
       tone: TONE_NAVY,
     },
@@ -419,7 +422,7 @@ export default function ClientBilling() {
             so the two never disagree about whether this month had any.
 
             NOT the service charge: that is the 13%/15% on ad spend and it sits
-            inside the "Billed · spend + S.C" tile above. Different money, and
+            inside the "Billed" tile above. Different money, and
             a shared label would make the two impossible to tell apart. */}
         <Show
           when={

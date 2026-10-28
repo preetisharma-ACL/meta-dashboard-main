@@ -1837,23 +1837,31 @@ export default function Billing() {
   ];
 
   // ── Retainer billing: client pays only the service charge + GST on it ─────
-  // Service charge comes strictly from the API — service_charge_amount when
-  // present, else service_charge_pct × ad spend. No hardcoded default.
+  // The client pays Meta directly, so ad spend is information only — it is
+  // never added to what they owe us (backend b3e3ab5). All three figures are
+  // the server's: service_charge_amount, gst_amount and, for the total,
+  // total_with_service_charge_and_gst (= SC + GST for a retainer). Each falls
+  // back to arithmetic only for a month_spend that predates the key, the same
+  // degrade-don't-gap rule as the hybrid rows above. A stated 0.00 wins.
   const retainerScPct = () => Number(serviceChargePct()) || 0;
 
-  // Same preference as the statement rows above, through the same reader: a
-  // service_charge_amount the API sent wins, including a legitimate 0.00 —
-  // `apiAmt > 0` treated a stated zero as "absent" and billed the percentage
-  // instead.
   const retainerScAmount = () => {
     const sent = apiNum(monthSpend().service_charge_amount);
     if (sent != null) return sent;
     return (adSpendExGst() * retainerScPct()) / 100;
   };
 
-  const retainerScGst = () => (retainerScAmount() * Number(gstPct())) / 100;
+  const retainerScGst = () => {
+    const sent = apiNum(monthSpend().gst_amount);
+    if (sent != null) return sent;
+    return (retainerScAmount() * Number(gstPct())) / 100;
+  };
 
-  const retainerPayable = () => retainerScAmount() + retainerScGst();
+  const retainerPayable = () => {
+    const sent = apiNum(monthSpend().total_with_service_charge_and_gst);
+    if (sent != null) return sent;
+    return retainerScAmount() + retainerScGst();
+  };
 
   // All-time points credited, from the payments list
   const totalPointsReceived = createMemo(() =>
@@ -2028,7 +2036,8 @@ export default function Billing() {
                 <HeroCard
                   ariaLabel="Total spent this month"
                   label={`Total Spent · ${monthProgress().monthShort} · ex GST & Service Charge`}
-                  value={fmt(billedIncGst())}
+                  value={fmt(adSpendExGst())}
+                  sub="Paid to Meta directly · you're billed the service charge + GST below"
                 />
                 <LeadsCard leads={totalLeads()} showCpl={false} />
               </div>
@@ -2279,19 +2288,22 @@ export default function Billing() {
 
               {/* CPL clients see the plain ex-SC/ex-GST figure with no GST tag,
                   so the card above and this row always match. */}
-              <Show when={!iscpl()}>
+              <Show when={ishybrid()}>
                 <LedgerRow
                   op="−"
-                  name={ishybrid() ? "Billed This Month" : "Total Spend"}
-                  tag={
-                    ishybrid()
-                      ? "inc GST & Service Charge"
-                      : iscpl()
-                        ? ""
-                        : "ex GST"
-                  }
+                  name="Billed This Month"
+                  tag="inc GST & Service Charge"
                   value={fmt(billedForClient())}
                   tone="neg"
+                />
+              </Show>
+              {/* Retainer: spend is paid to Meta by the client, so it carries
+                  no "−" and no deduction tone — information only. */}
+              <Show when={isRetainer()}>
+                <LedgerRow
+                  name="Ad spend"
+                  tag="ex GST · paid to Meta directly · not billed"
+                  value={fmt(adSpendExGst())}
                 />
               </Show>
 
@@ -2337,7 +2349,11 @@ export default function Billing() {
               <Show when={isRetainer()}>
                 <LedgerRow
                   name="Service charge"
-                  tag={retainerScPct() > 0 ? `${retainerScPct()}% ` : ""}
+                  tag={
+                    retainerScPct() > 0
+                      ? `${retainerScPct()}% of ${fmt(adSpendExGst())} spend`
+                      : ""
+                  }
                   value={fmt(retainerScAmount())}
                 />
                 <LedgerRow
@@ -2347,6 +2363,7 @@ export default function Billing() {
                 <LedgerRow
                   total
                   name="Payable amount"
+                  tag="Service charge + GST"
                   value={fmt(retainerPayable())}
                 />
               </Show>
