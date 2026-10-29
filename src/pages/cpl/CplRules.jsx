@@ -506,11 +506,29 @@ function CmPicker(props) {
   onCleanup(() => document.removeEventListener("pointerdown", onDoc));
 
   const selected = () => props.options.find((m) => String(m.id) === String(props.value)) || null;
+  // Name sort, same ⇅ / ↑ / ↓ markers as the table headers. null keeps the
+  // incoming order (most expensive first); clicks cycle null → A–Z → Z–A → null.
+  const [nameSort, setNameSort] = createSignal(null);
+  const cycleNameSort = (e) => {
+    e.stopPropagation();
+    setNameSort((d) => (d === null ? "asc" : d === "asc" ? "desc" : null));
+  };
+
   const filtered = () => {
     const s = q().trim().toLowerCase();
-    if (!s) return props.options;
-    return props.options.filter((m) => cmName(m).toLowerCase().includes(s));
+    const list = s ? props.options.filter((m) => cmName(m).toLowerCase().includes(s)) : props.options;
+    if (!nameSort()) return list;
+    const mul = nameSort() === "asc" ? 1 : -1;
+    return [...list].sort((a, b) => cmName(a).localeCompare(cmName(b), undefined, { sensitivity: "base" }) * mul);
   };
+
+  const sortArrows = () => (
+    <button type="button" onClick={cycleNameSort}
+      title={nameSort() === "asc" ? "Sorted A → Z" : nameSort() === "desc" ? "Sorted Z → A" : "Sort by name"}
+      class="ml-1.5 px-1 rounded text-sm leading-none hover:text-purple-600">
+      {nameSort() ? <span class="text-purple-600">{nameSort() === "asc" ? "↑" : "↓"}</span> : <span class="text-gray-300">⇅</span>}
+    </button>
+  );
   const pick = (id) => {
     props.onChange(id);
     setOpen(false);
@@ -548,15 +566,24 @@ function CmPicker(props) {
             </div>
           </div>
           <div class="max-h-[340px] overflow-y-auto py-1">
-            <Show when={props.allowAll}>
-              <button type="button" onClick={() => pick("")}
-                class={`w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-800 ${!props.value ? "bg-[#FBEEF0]/60 dark:bg-red-900/10" : ""}`}>
+            {/* A div, not a button, so the sort arrows can be a button inside it. */}
+            <Show when={props.allowAll} fallback={
+              <div class="flex items-center px-3 py-1.5 text-[11px] font-bold uppercase text-gray-400">
+                Campaign managers
+                {sortArrows()}
+              </div>
+            }>
+              <div role="button" tabindex="0" onClick={() => pick("")} onKeyDown={(e) => e.key === "Enter" && pick("")}
+                class={`w-full flex items-center gap-2.5 px-3 py-2 text-left cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 ${!props.value ? "bg-[#FBEEF0]/60 dark:bg-red-900/10" : ""}`}>
                 <span class="w-7 h-7 rounded-full flex items-center justify-center bg-[#F1F4F9] dark:bg-gray-700 text-[#54657E] dark:text-gray-300 flex-shrink-0"><Users size={14} /></span>
-                <span class="flex-1 text-sm font-semibold text-gray-800 dark:text-gray-100">All campaign managers</span>
+                <span class="flex-1 flex items-center text-sm font-semibold text-gray-800 dark:text-gray-100">
+                  All campaign managers
+                  {sortArrows()}
+                </span>
                 <Show when={!props.value}><Check size={15} class="text-[#AC2334]" /></Show>
-              </button>
-              <div class="my-1 border-t border-gray-100 dark:border-gray-800" />
+              </div>
             </Show>
+            <div class="my-1 border-t border-gray-100 dark:border-gray-800" />
             <For each={filtered()} fallback={<p class="px-3 py-4 text-center text-xs text-gray-400">No match</p>}>
               {(m) => {
                 const on = () => String(m.id) === String(props.value);
@@ -585,7 +612,7 @@ function CmPicker(props) {
             </For>
           </div>
           <div class="px-3 py-1.5 border-t border-gray-100 dark:border-gray-800 text-[10px] text-gray-400 flex justify-between">
-            <span>Sorted by most expensive campaigns</span>
+            <span>{nameSort() === "asc" ? "Sorted by name, A → Z" : nameSort() === "desc" ? "Sorted by name, Z → A" : "Sorted by most expensive campaigns"}</span>
           </div>
         </div>
       </Show>
