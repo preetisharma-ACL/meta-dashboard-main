@@ -23,11 +23,10 @@ export const fetchFundQueue = async ({ cmId } = {}) => {
   return res;
 };
 
-// Sidebar counter. Read envelope-proof: the counts may sit at data or at
-// data.badge.
+// Sidebar counter: data = { open, urgent, stopped }; the badge is urgent + stopped.
 export const fetchFundBadge = async () => {
   const res = await api(`${BASE}/badge/`, { method: "GET" });
-  const b = res?.data?.badge ?? res?.data ?? {};
+  const b = res?.data ?? {};
   return (Number(b.urgent) || 0) + (Number(b.stopped) || 0);
 };
 

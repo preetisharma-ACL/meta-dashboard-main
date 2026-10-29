@@ -844,17 +844,13 @@ function Drawer(props) {
 
 // ── funds register ───────────────────────────────────────────────────────────
 
-// Register row keys aren't pinned in the ticket beyond column names, so each
-// cell reads the obvious spellings.
-const pick = (o, ...keys) => {
-  for (const k of keys) if (o?.[k] !== undefined && o?.[k] !== null) return o[k];
-  return null;
-};
-const regAccount = (r) => {
-  const a = r.ad_account;
-  if (a && typeof a === "object") return a;
-  return { name: pick(r, "ad_account_name", "account_name", "name"), id: pick(r, "ad_account_id", "ad_account", "account_id") };
-};
+// data.rows[]: { date, ad_account (name), ad_account_id, clients (string),
+// campaign_managers (string), daily_budget, topups, funds_added, spend,
+// spend_inc_gst, wallet_end_of_day, requests }. Money is strings ("1500.00");
+// daily_budget and wallet_end_of_day can be null → "-".
+// data.totals: { funds_added, topups, spend, spend_inc_gst, requests }.
+const regMoney = (v) => (isNum(v) ? money(v) : "-");
+const regNum = (v) => (isNum(v) ? num(v) : "-");
 
 const RANGES = [
   { key: "today", label: "Today" },
@@ -1052,16 +1048,16 @@ function Register(props) {
                 {(r) => (
                   <tr class="hover:bg-[#F6F9FC] dark:hover:bg-gray-800/40">
                     <td class={`${TD} whitespace-nowrap`}>{prettyYMD(r.date)}</td>
-                    <td class={TD}><AccountCell account={regAccount(r)} /></td>
-                    <td class={`${TD} text-xs text-gray-600 dark:text-gray-300 max-w-[220px]`}>{clientNames(r.clients) || "—"}</td>
-                    <td class={`${TD} text-xs text-gray-600 dark:text-gray-300`}>{joinList(r.campaign_managers ?? r.cms) || "—"}</td>
-                    <td class={TDN}>{money(r.daily_budget)}</td>
-                    <td class={TDN}>{num(pick(r, "topups", "top_ups", "topup_count", "top_up_count", "topups_count"))}</td>
-                    <td class={`${TDN} font-semibold text-[#15966A] dark:text-green-400`}>{money(pick(r, "funds_added", "added"))}</td>
-                    <td class={TDN}>{money(r.spend)}</td>
-                    <td class={TDN}>{money(pick(r, "spend_inc_gst", "spend_incl_gst"))}</td>
-                    <td class={TDN}>{money(pick(r, "wallet_end", "wallet_at_day_end", "wallet_day_end", "wallet"))}</td>
-                    <td class={TDN}>{num(pick(r, "requests", "request_count", "requests_count"))}</td>
+                    <td class={TD}><AccountCell account={{ name: r.ad_account, id: r.ad_account_id }} /></td>
+                    <td class={`${TD} text-xs text-gray-600 dark:text-gray-300 max-w-[220px]`}>{r.clients || "-"}</td>
+                    <td class={`${TD} text-xs text-gray-600 dark:text-gray-300`}>{r.campaign_managers || "-"}</td>
+                    <td class={TDN}>{regMoney(r.daily_budget)}</td>
+                    <td class={TDN}>{regNum(r.topups)}</td>
+                    <td class={`${TDN} font-semibold text-[#15966A] dark:text-green-400`}>{regMoney(r.funds_added)}</td>
+                    <td class={TDN}>{regMoney(r.spend)}</td>
+                    <td class={TDN}>{regMoney(r.spend_inc_gst)}</td>
+                    <td class={TDN}>{regMoney(r.wallet_end_of_day)}</td>
+                    <td class={TDN}>{regNum(r.requests)}</td>
                   </tr>
                 )}
               </For>
@@ -1071,13 +1067,14 @@ function Register(props) {
             <tfoot>
               <tr class="bg-[#F6F9FC] dark:bg-gray-800 font-bold">
                 <td class={`${TD} text-[11px] uppercase tracking-wider text-[#8593A8]`} colspan="4">Total</td>
-                <td class={TDN}>{money(totals().daily_budget)}</td>
-                <td class={TDN}>{num(pick(totals(), "topups", "top_ups", "topup_count", "top_up_count", "topups_count"))}</td>
-                <td class={`${TDN} text-[#15966A] dark:text-green-400`}>{money(pick(totals(), "funds_added", "added"))}</td>
-                <td class={TDN}>{money(totals().spend)}</td>
-                <td class={TDN}>{money(pick(totals(), "spend_inc_gst", "spend_incl_gst"))}</td>
-                <td class={TDN}>{money(pick(totals(), "wallet_end", "wallet_at_day_end", "wallet_day_end", "wallet"))}</td>
-                <td class={TDN}>{num(pick(totals(), "requests", "request_count", "requests_count"))}</td>
+                {/* No daily-budget or wallet total: neither sums across days. */}
+                <td class={TDN} />
+                <td class={TDN}>{regNum(totals().topups)}</td>
+                <td class={`${TDN} text-[#15966A] dark:text-green-400`}>{regMoney(totals().funds_added)}</td>
+                <td class={TDN}>{regMoney(totals().spend)}</td>
+                <td class={TDN}>{regMoney(totals().spend_inc_gst)}</td>
+                <td class={TDN} />
+                <td class={TDN}>{regNum(totals().requests)}</td>
               </tr>
             </tfoot>
           </Show>
@@ -1114,13 +1111,14 @@ export default function FundRequests() {
       if (mine !== seq) return;
       setQueue(res);
       setLoadError(null);
-      // meta.cms feeds the CM dropdown when the backend sends it.
+      // meta.cms = [{ id, name, open }] feeds both CM dropdowns (queue and
+      // register) as "name (open)".
       const list = res?.meta?.cms;
       if (Array.isArray(list) && list.length) {
         setCms(
           list
-            .map((m) => ({ id: m.id ?? m.user_id, label: m.name || m.email || `#${m.id ?? m.user_id}` }))
-            .filter((m) => m.id != null),
+            .filter((m) => m?.id != null)
+            .map((m) => ({ id: m.id, label: `${m.name || `#${m.id}`} (${Number(m.open) || 0})` })),
         );
       }
     } catch (err) {
