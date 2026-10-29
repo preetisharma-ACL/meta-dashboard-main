@@ -60,6 +60,7 @@ import SalesLeaderboard from "./pages/admin/sales/SalesLeaderboard";
 import CMDailyReport from "./pages/CMDailyReport";
 import AccountFunding from "./pages/funding/AccountFunding";
 import FundsAdded from "./pages/funding/FundsAdded";
+import FundRequests from "./pages/funding/FundRequests";
 import SpendSegregation from "./pages/spend/SpendSegregation";
 import AllowedBudget from "./pages/budget/AllowedBudget";
 import BudgetGuard from "./pages/budget/BudgetGuard";
@@ -211,6 +212,18 @@ function App() {
             />
             <Route path="/account-funding" component={AccountFunding} />
             <Route path="/funds-added" component={FundsAdded} />
+            {/* Fund Requests — the queue that replaced the WhatsApp top-up
+                group. Every control inside reads the backend's can_* flags. */}
+            <Route
+              path="/fund-requests"
+              component={() => (
+                <AdminRoute
+                  roles={["admin", "accounts", "coordination", "campaign_manager"]}
+                >
+                  <FundRequests />
+                </AdminRoute>
+              )}
+            />
             <Route path="/spend-segregation" component={SpendSegregation} />
             <Route path="/allowed-budget" component={AllowedBudget} />
             {/* Budget Guard approval queue — ADMIN ONLY, and deliberately not

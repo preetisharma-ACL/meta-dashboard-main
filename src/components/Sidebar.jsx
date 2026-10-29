@@ -20,6 +20,10 @@ import {
   budgetGuardPending,
   watchBudgetGuardPending,
 } from "../stores/budgetGuardPending";
+import {
+  fundRequestsBadge,
+  watchFundRequestsBadge,
+} from "../stores/fundRequestsBadge";
 
 // Expanded submenu group, remembered across reloads (see openMenu below).
 const OPEN_MENU_KEY = "sidebarOpenMenu";
@@ -188,6 +192,11 @@ export default function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const isActive = (path) => location.pathname === path;
+  // Any counter on a group's visible sub-items.
+  const subBadge = (item) =>
+    item.subMenus?.some(
+      (sub) => sub.badge && (!sub.roles || sub.roles.includes(userRole())),
+    );
 
   const goToDashboard = () => {
     const role = JSON.parse(localStorage.getItem("auth") || "{}")?.role;
@@ -231,6 +240,9 @@ export default function Sidebar() {
     // "Budget Guard" row is the only thing that tells anyone a campaign is
     // sitting paused, which is how this feature fails when it fails.
     watchBudgetGuardPending();
+    // Fund Requests: urgent + stopped, every 60s. No-ops outside the four
+    // roles that can open the page.
+    watchFundRequestsBadge();
   });
 
   const menuItems = createMemo(() =>
@@ -505,6 +517,17 @@ export default function Sidebar() {
         ),
         subMenus: [
           {
+            // First: it's the live queue the desk works from. The counter is
+            // urgent + stopped — accounts already off air or about to be.
+            name: "Fund Requests",
+            path: "/fund-requests",
+            roles: ["admin", "campaign_manager", "accounts"],
+            icon: () => (
+              <SmallIcon d="M12 8v4l2.5 2.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            ),
+            badge: fundRequestsBadge() > 0 ? fundRequestsBadge() : null,
+          },
+          {
             name: "Account Funding",
             path: "/account-funding",
             roles: ["admin", "campaign_manager", "accounts"],
@@ -544,6 +567,17 @@ export default function Sidebar() {
             icon: () => <SmallIcon d="M3 12l2-2 4 4 6-6 4 4 2-2" />,
           },
         ],
+      },
+      {
+        // Coordination's own row: the Accounts & Funding group above is not
+        // theirs, and a sub-item can never widen past its group's roles.
+        name: "Fund Requests",
+        roles: ["coordination"],
+        icon: () => (
+          <Icon d="M12 8v4l2.5 2.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        ),
+        path: "/fund-requests",
+        badge: fundRequestsBadge() > 0 ? fundRequestsBadge() : null,
       },
       {
         name: "Allowed Budget",
@@ -1308,13 +1342,18 @@ export default function Sidebar() {
                       class={`flex items-center gap-3 ${isCollapsed() ? "mx-auto" : ""}`}
                     >
                       <span
-                        class={`flex-shrink-0 transition-all duration-200 group-hover:scale-110 ${
+                        class={`relative flex-shrink-0 transition-all duration-200 group-hover:scale-110 ${
                           openMenu() === item.name
                             ? "text-[#AC2334] dark:text-red-300"
                             : "text-[#8593A8] group-hover:text-[#AC2334] dark:group-hover:text-red-300"
                         }`}
                       >
                         {item.icon()}
+                        {/* A closed group hides its sub-item's counter, so the
+                            glyph carries a dot meanwhile. */}
+                        <Show when={openMenu() !== item.name && subBadge(item)}>
+                          <span class="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-[#AC2334] ring-2 ring-white dark:ring-gray-900" />
+                        </Show>
                       </span>
                       <Show when={!isCollapsed()}>
                         <span
@@ -1364,8 +1403,13 @@ export default function Sidebar() {
                               {sub.icon?.()}
                             </span>
                             <span>{sub.name}</span>
+                            <Show when={sub.badge}>
+                              <span class="ml-auto inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-bold leading-none text-white bg-[#AC2334] rounded-full shadow-[0_1px_2px_rgba(172,35,52,.35)]">
+                                {sub.badge}
+                              </span>
+                            </Show>
                             {/* Active dot */}
-                            <Show when={isActive(sub.path)}>
+                            <Show when={isActive(sub.path) && !sub.badge}>
                               <span class="ml-auto w-1.5 h-1.5 rounded-full bg-[#D89A2B]" />
                             </Show>
                           </A>

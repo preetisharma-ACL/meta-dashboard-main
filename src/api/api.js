@@ -5,7 +5,7 @@ import {
     SCOPE_REVOKED_EVENT,
 } from "../stores/cmScope";
 
-const BASE_URL = "https://metadashboard.aajneeticonnectltd.com/api";
+export const BASE_URL = "https://metadashboard.aajneeticonnectltd.com/api";
 
 const DEPLOY_STAMP = "v1.0.1";
 
