@@ -19,6 +19,10 @@ import {
   cancelFundRequest,
   fetchFundRegister,
   downloadFundRegister,
+  fetchFundPayers,
+  claimFundRequest,
+  fetchFundTopups,
+  setTopupPayer,
 } from "../../services/fundRequests";
 import { scopeKey } from "../../stores/cmScope";
 import { refreshFundRequestsBadge } from "../../stores/fundRequestsBadge";
@@ -80,6 +84,11 @@ const ago = (iso) => {
   const h = Math.floor(mins / 60);
   if (h < 48) return `${h}h ago`;
   return `${Math.floor(h / 24)}d ago`;
+};
+
+const minsSince = (iso) => {
+  const t = iso ? new Date(iso).getTime() : NaN;
+  return Number.isFinite(t) ? Math.max(0, Math.round((Date.now() - t) / 60000)) : null;
 };
 
 const fmtWhen = (iso) => {
@@ -232,6 +241,7 @@ const REGISTER_SORT = {
   spend_inc_gst: { get: (r) => numOrNull(r.spend_inc_gst), first: "desc" },
   wallet_end_of_day: { get: (r) => numOrNull(r.wallet_end_of_day), first: "desc" },
   requests: { get: (r) => numOrNull(r.requests), first: "desc" },
+  paid_by: { get: (r) => strOrNull(r.paid_by), first: "asc" },
 };
 
 // ── priority ─────────────────────────────────────────────────────────────────
@@ -482,6 +492,225 @@ function SearchSelect(props) {
   );
 }
 
+// ── who paid ─────────────────────────────────────────────────────────────────
+// The payer is always ENTERED, never taken from the login: company money is
+// handed to different people, and whoever opens the payment page is often not
+// the one paying. No default — an unpicked payer blocks the submit.
+//
+// One picker everywhere. Options: payers.users (sent as paid_by_user_id),
+// payers.other_names and free-text "Other…" (both sent as paid_by_name).
+
+const OTHER = "__other";
+
+const createPayerState = () => {
+  const [key, setKey] = createSignal("");
+  const [other, setOther] = createSignal("");
+  const payload = () => {
+    const k = key();
+    if (k.startsWith("u:")) return { paid_by_user_id: Number(k.slice(2)) };
+    if (k.startsWith("n:")) return { paid_by_name: k.slice(2) };
+    if (k === OTHER && other().trim()) return { paid_by_name: other().trim() };
+    return null;
+  };
+  return { key, setKey, other, setOther, payload };
+};
+
+function PayerPicker(props) {
+  const st = props.state;
+  const users = () => props.payers?.()?.users || [];
+  const names = () => props.payers?.()?.other_names || [];
+  let otherEl;
+  return (
+    <div class="space-y-2">
+      <select
+        class={INPUT}
+        value={st.key()}
+        onChange={(e) => {
+          st.setKey(e.currentTarget.value);
+          if (e.currentTarget.value === OTHER) queueMicrotask(() => otherEl?.focus());
+        }}
+      >
+        <option value="" disabled>
+          {props.payers?.() ? "Select who paid…" : "Loading payers…"}
+        </option>
+        <Show when={users().length}>
+          <optgroup label="People">
+            <For each={users()}>
+              {(u) => <option value={`u:${u.id}`}>{u.role ? `${u.name} (${u.role})` : u.name}</option>}
+            </For>
+          </optgroup>
+        </Show>
+        <Show when={names().length}>
+          <optgroup label="Other names">
+            <For each={names()}>{(n) => <option value={`n:${n}`}>{n}</option>}</For>
+          </optgroup>
+        </Show>
+        <option value={OTHER}>Other…</option>
+      </select>
+      <Show when={st.key() === OTHER}>
+        <input
+          ref={otherEl}
+          type="text"
+          class={INPUT}
+          placeholder="Name of the person who paid"
+          value={st.other()}
+          onInput={(e) => st.setOther(e.currentTarget.value)}
+        />
+      </Show>
+    </div>
+  );
+}
+
+const SOURCE_LABEL = { claim: "entered at Pay click", manual: "entered by hand" };
+
+// Top-up rows: ad_account may be the name (with ad_account_id) or an object.
+const acctOf = (r) =>
+  r?.ad_account && typeof r.ad_account === "object"
+    ? r.ad_account
+    : { name: r?.ad_account, id: r?.ad_account_id };
+
+const topupTime = (t) => t?.time ?? t?.paid_at ?? t?.at ?? t?.created_at ?? null;
+
+const fmtIST = (v) => {
+  if (!v) return "—";
+  const d = new Date(v);
+  if (!Number.isFinite(d.getTime())) return String(v);
+  return d.toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+// paid_by null + tracked → amber "Payer not set"; untracked (before 29 Oct) → "-".
+function PaidByText(props) {
+  return (
+    <Show when={props.topup?.payer_tracked !== false} fallback={<span class="text-gray-400">-</span>}>
+      <Show
+        when={props.topup?.paid_by}
+        fallback={<span class="font-semibold text-[#B07A14]">Payer not set</span>}
+      >
+        <span class="font-semibold text-[#14233A] dark:text-gray-100">{props.topup.paid_by}</span>
+      </Show>
+    </Show>
+  );
+}
+
+// Holding text for the tab opened before the claim answers.
+const holdTab = (w, text) => {
+  try {
+    w.document.title = "Ads Manager";
+    w.document.body.innerHTML = `<p style="font:15px system-ui,sans-serif;color:#333;margin:40px">${text}</p>`;
+  } catch {}
+};
+
+// "Who is paying?" → claim → send the pre-opened tab to Meta's payment page.
+function ClaimModal(props) {
+  const payer = createPayerState();
+  const [busy, setBusy] = createSignal(false);
+  const [conflict, setConflict] = createSignal(null);
+  let w = null;
+  let done = false;
+
+  // Closing the dialog mid-flow must not strand the blank tab.
+  onCleanup(() => {
+    if (!done && w && !w.closed) w.close();
+  });
+
+  const go = (url) => {
+    done = true;
+    if (!url) {
+      w?.close();
+      showNotice("No payment link came back for this account.", "warn");
+      return;
+    }
+    if (w && !w.closed) w.location = url;
+    else window.open(url, "_blank", "noopener");
+  };
+
+  const claim = async (force) => {
+    setBusy(true);
+    try {
+      const res = await claimFundRequest(props.row.id, payer.payload(), force);
+      go(res?.data?.pay_url);
+      props.onDone();
+    } catch (err) {
+      if (!force && err?.status === 409 && err?.code === "already_claimed") {
+        if (w && !w.closed) holdTab(w, "Someone is already paying this. Answer the question in the dashboard tab.");
+        setConflict(errorMessage(err, "Someone is already paying this. Pay anyway?"));
+      } else {
+        w?.close();
+        reportError(err, "Couldn't start the payment.", props.reload);
+        props.onClose();
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onContinue = (e) => {
+    e.preventDefault();
+    if (!payer.payload() || busy()) return;
+    // Opened synchronously inside the click, before any await, so the browser
+    // doesn't treat it as a popup.
+    w = window.open("", "_blank");
+    if (w) {
+      try {
+        w.opener = null;
+      } catch {}
+      holdTab(w, "Opening Ads Manager…");
+    }
+    claim(false);
+  };
+
+  const declined = () => {
+    w?.close();
+    done = true;
+    props.onClose();
+  };
+
+  return (
+    <Modal title="Who is paying?" busy={busy()} onClose={conflict() ? declined : props.onClose}>
+      <form onSubmit={onContinue} class="space-y-4">
+        <AccountCell account={props.row.ad_account} />
+        <Show
+          when={conflict()}
+          fallback={
+            <>
+              <div>
+                <label class={LABEL}>Paid by (required)</label>
+                <PayerPicker state={payer} payers={props.payers} />
+              </div>
+              <div class="flex justify-end gap-2">
+                <button type="button" class={BTN_GHOST} disabled={busy()} onClick={props.onClose}>
+                  Close
+                </button>
+                <button type="submit" class={BTN_PRIMARY} disabled={!payer.payload() || busy()}>
+                  {busy() ? "Opening…" : "Continue to Ads Manager ↗"}
+                </button>
+              </div>
+            </>
+          }
+        >
+          <div class="rounded-lg border border-[#B07A14]/40 bg-[#FBF3E2] dark:bg-yellow-900/30 px-3 py-2 text-sm text-[#8A6410] dark:text-yellow-100">
+            {conflict()}
+          </div>
+          <div class="flex justify-end gap-2">
+            <button type="button" class={BTN_GHOST} disabled={busy()} onClick={declined}>
+              No
+            </button>
+            <button type="button" class={BTN_PRIMARY} disabled={busy()} onClick={() => claim(true)}>
+              {busy() ? "Opening…" : "Yes, pay anyway"}
+            </button>
+          </div>
+        </Show>
+      </form>
+    </Modal>
+  );
+}
+
 // ── summary strip ────────────────────────────────────────────────────────────
 
 function Tile(props) {
@@ -511,8 +740,9 @@ function MarkPaidModal(props) {
     isNum(props.row.amount_requested) ? String(props.row.amount_requested) : "",
   );
   const [reference, setReference] = createSignal("");
+  const payer = createPayerState();
   const [busy, setBusy] = createSignal(false);
-  const valid = () => isNum(amount()) && Number(amount()) > 0;
+  const valid = () => isNum(amount()) && Number(amount()) > 0 && !!payer.payload();
 
   const submit = async (e) => {
     e.preventDefault();
@@ -522,6 +752,7 @@ function MarkPaidModal(props) {
       await markFundRequestPaid(props.row.id, {
         amount: Number(amount()),
         reference: reference().trim(),
+        payer: payer.payload(),
       });
       showNotice("Marked paid");
       props.onDone();
@@ -548,6 +779,10 @@ function MarkPaidModal(props) {
             onInput={(e) => setAmount(e.currentTarget.value)}
             autofocus
           />
+        </div>
+        <div>
+          <label class={LABEL}>Paid by (required)</label>
+          <PayerPicker state={payer} payers={props.payers} />
         </div>
         <div>
           <label class={LABEL}>UTR / reference (optional)</label>
@@ -998,6 +1233,32 @@ function Drawer(props) {
             </div>
           </Show>
 
+          <Show when={detail() && Array.isArray(detail().topups) && detail().topups.length}>
+            <div>
+              <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] mb-2">Top-ups</p>
+              <ul class="divide-y divide-[#E2E8F1] dark:divide-gray-800 rounded-lg border border-[#E2E8F1] dark:border-gray-700">
+                <For each={detail().topups}>
+                  {(t) => (
+                    <li class="px-3 py-2 flex items-start justify-between gap-3 text-sm">
+                      <div class="min-w-0">
+                        <PaidByText topup={t} />
+                        <Show when={t.paid_by && SOURCE_LABEL[t.paid_by_source]}>
+                          <span class="block text-xs text-gray-400">{SOURCE_LABEL[t.paid_by_source]}</span>
+                        </Show>
+                      </div>
+                      <div class="text-right flex-none tabular-nums">
+                        <div class="font-semibold text-[#15966A] dark:text-green-400">{money(t.amount)}</div>
+                        <Show when={topupTime(t)}>
+                          <div class="text-xs text-gray-400">{fmtIST(topupTime(t))}</div>
+                        </Show>
+                      </div>
+                    </li>
+                  )}
+                </For>
+              </ul>
+            </div>
+          </Show>
+
           <div>
             <p class="text-[11px] font-bold uppercase tracking-wider text-[#8593A8] mb-2">Timeline</p>
             <Show
@@ -1236,6 +1497,7 @@ function Register(props) {
               <th class={`${TH} text-right`}><SortBtn col="daily_budget" label="Daily budget" sort={sort()} onSort={onSort} /></th>
               <th class={`${TH} text-right`}><SortBtn col="topups" label="Top-ups" sort={sort()} onSort={onSort} /></th>
               <th class={`${TH} text-right`}><SortBtn col="funds_added" label="Funds added" sort={sort()} onSort={onSort} /></th>
+              <th class={`${TH} text-left`}><SortBtn col="paid_by" label="Paid by" sort={sort()} onSort={onSort} /></th>
               <th class={`${TH} text-right`}><SortBtn col="spend" label="Spend" sort={sort()} onSort={onSort} /></th>
               <th class={`${TH} text-right`}><SortBtn col="spend_inc_gst" label="Spend incl GST" sort={sort()} onSort={onSort} /></th>
               <th class={`${TH} text-right`}><SortBtn col="wallet_end_of_day" label="Wallet at day end" sort={sort()} onSort={onSort} /></th>
@@ -1247,7 +1509,7 @@ function Register(props) {
               when={rows().length}
               fallback={
                 <tr>
-                  <td colspan="11" class="px-4 py-8 text-center text-sm text-gray-400">
+                  <td colspan="12" class="px-4 py-8 text-center text-sm text-gray-400">
                     {loading() && !res() ? "Loading…" : "Nothing in this range."}
                   </td>
                 </tr>
@@ -1263,6 +1525,10 @@ function Register(props) {
                     <td class={TDN}>{regMoney(r.daily_budget)}</td>
                     <td class={TDN}>{regNum(r.topups)}</td>
                     <td class={`${TDN} font-semibold text-[#15966A] dark:text-green-400`}>{regMoney(r.funds_added)}</td>
+                    {/* "accounts, Alok sir" | "not set" | "" before 29 Oct 2026 */}
+                    <td class={`${TD} text-xs min-w-[120px] max-w-[200px] [overflow-wrap:anywhere] ${r.paid_by === "not set" ? "font-semibold text-[#B07A14]" : "text-gray-700 dark:text-gray-200"}`}>
+                      {r.paid_by || "-"}
+                    </td>
                     <td class={TDN}>{regMoney(r.spend)}</td>
                     <td class={TDN}>{regMoney(r.spend_inc_gst)}</td>
                     <td class={TDN}>{regMoney(r.wallet_end_of_day)}</td>
@@ -1280,6 +1546,7 @@ function Register(props) {
                 <td class={TDN} />
                 <td class={TDN}>{regNum(totals().topups)}</td>
                 <td class={`${TDN} text-[#15966A] dark:text-green-400`}>{regMoney(totals().funds_added)}</td>
+                <td class={TD} />
                 <td class={TDN}>{regMoney(totals().spend)}</td>
                 <td class={TDN}>{regMoney(totals().spend_inc_gst)}</td>
                 <td class={TDN} />
@@ -1296,6 +1563,281 @@ function Register(props) {
   );
 }
 
+// ── top-ups (who paid) ───────────────────────────────────────────────────────
+// GET /topups/ → data: { rows, by_payer:[{paid_by, amount, topups}],
+// unset:{topups, amount}, total }. Payer tracking started 29 Oct 2026; older
+// rows carry payer_tracked:false and show "-".
+
+// Paid-by cell. can_set → inline picker ("Add payer" when empty, "Change" when
+// filled — only accounts/admin get can_set on a filled row). Otherwise text.
+function TopupPayerCell(props) {
+  const [editing, setEditing] = createSignal(false);
+  const [busy, setBusy] = createSignal(false);
+  const payer = createPayerState();
+  const t = () => props.topup;
+
+  const save = async () => {
+    if (!payer.payload() || busy()) return;
+    setBusy(true);
+    try {
+      await setTopupPayer(t().id, payer.payload());
+      showNotice("Payer saved");
+      setEditing(false);
+      props.onSaved();
+    } catch (err) {
+      showNotice(errorMessage(err, "Couldn't save the payer."), "warn");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Show when={t().can_set} fallback={<PaidByText topup={t()} />}>
+      <Show
+        when={editing()}
+        fallback={
+          <div class="flex items-center gap-2 flex-wrap">
+            <Show when={t().paid_by}>
+              <span class="font-semibold text-[#14233A] dark:text-gray-100">{t().paid_by}</span>
+            </Show>
+            <button
+              type="button"
+              class={`${BTN_ROW} ${
+                t().paid_by
+                  ? "border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
+                  : "border-[#B07A14]/50 text-[#8A6410] bg-[#FBF3E2] hover:bg-[#F6E7C4] dark:bg-yellow-900/30 dark:text-yellow-100"
+              }`}
+              onClick={() => setEditing(true)}
+            >
+              {t().paid_by ? "Change" : "Add payer"}
+            </button>
+          </div>
+        }
+      >
+        <div class="w-[220px] space-y-1.5">
+          <PayerPicker state={payer} payers={props.payers} />
+          <div class="flex gap-1.5">
+            <button
+              type="button"
+              class={`${BTN_ROW} bg-[#AC2334] text-white border-[#AC2334] hover:bg-[#8F1C2B]`}
+              disabled={!payer.payload() || busy()}
+              onClick={save}
+            >
+              {busy() ? "Saving…" : "Save"}
+            </button>
+            <button
+              type="button"
+              class={`${BTN_ROW} border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300`}
+              disabled={busy()}
+              onClick={() => setEditing(false)}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </Show>
+    </Show>
+  );
+}
+
+function Topups(props) {
+  const initial = rangeFor("7d");
+  const [rangeKey, setRangeKey] = createSignal("7d");
+  const [from, setFrom] = createSignal(initial.from);
+  const [to, setTo] = createSignal(initial.to);
+  const [adAccount, setAdAccount] = createSignal("");
+  const [paidBy, setPaidBy] = createSignal("");
+  const [res, setRes] = createSignal(null);
+  const [loading, setLoading] = createSignal(false);
+  const [error, setError] = createSignal(null);
+
+  const rangeError = () => {
+    if (!from() || !to()) return "Pick both dates.";
+    if (daySpan(from(), to()) < 1) return "Start date is after end date.";
+    return null;
+  };
+  const setRange = (key) => {
+    setRangeKey(key);
+    if (key !== "custom") {
+      const r = rangeFor(key);
+      setFrom(r.from);
+      setTo(r.to);
+    }
+  };
+
+  let seq = 0;
+  const load = async () => {
+    if (rangeError()) return;
+    const mine = ++seq;
+    setLoading(true);
+    setError(null);
+    try {
+      const r = await fetchFundTopups({ from: from(), to: to(), adAccount: adAccount(), paidBy: paidBy() });
+      if (mine === seq) setRes(r);
+    } catch (err) {
+      if (mine === seq) setError(loadErrorMessage(err, "Couldn't load top-ups."));
+    } finally {
+      if (mine === seq) setLoading(false);
+    }
+  };
+  createEffect(on([from, to, adAccount, paidBy, scopeKey], () => load()));
+
+  const data = () => res()?.data || {};
+  const rows = () => {
+    const list = Array.isArray(data().rows) ? data().rows : [];
+    // Newest first.
+    return [...list].sort((a, b) => String(topupTime(b) ?? "").localeCompare(String(topupTime(a) ?? "")));
+  };
+  const byPayer = () => (Array.isArray(data().by_payer) ? data().by_payer : []);
+  const total = () => {
+    const t = data().total;
+    if (t && typeof t === "object") return { amount: t.amount, topups: t.topups };
+    return { amount: t, topups: null };
+  };
+
+  const payerOptions = () => {
+    const p = props.payers() || {};
+    return [
+      ...(p.users || []).map((u) => ({ value: String(u.id), label: u.name })),
+      ...(p.other_names || []).map((n) => ({ value: n, label: n })),
+      { value: "unset", label: "Not set" },
+    ];
+  };
+
+  const TH = "sticky top-0 z-10 px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400 whitespace-nowrap border-b border-[#D4DDE9] dark:border-gray-700 bg-[#F6F9FC] dark:bg-gray-800 text-left";
+  const TD = "px-3 py-2 align-top border-b border-[#E2E8F1] dark:border-gray-800";
+  const CHIP = "inline-flex items-baseline gap-1.5 px-3 py-1.5 rounded-full border text-[13px] tabular-nums";
+
+  return (
+    <section class="mt-8">
+      <div class="mb-3">
+        <h2 class="text-lg font-bold text-[#14233A] dark:text-white">Top-ups (who paid)</h2>
+        <p class="text-sm text-[#54657E] dark:text-gray-400">Every top-up Meta recorded, and who paid for it.</p>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2 mb-3">
+        <For each={RANGES}>
+          {(r) => (
+            <button
+              type="button"
+              onClick={() => setRange(r.key)}
+              class={`px-3.5 py-1.5 rounded-full text-[13px] font-semibold border transition-colors ${
+                rangeKey() === r.key
+                  ? "bg-[#14233A] text-white border-[#14233A]"
+                  : "bg-white dark:bg-gray-800 text-[#54657E] dark:text-gray-300 border-[#E2E8F1] dark:border-gray-700 hover:border-[#14233A]/40"
+              }`}
+            >
+              {r.label}
+            </button>
+          )}
+        </For>
+        <Show when={rangeKey() === "custom"}>
+          <input type="date" class={`${INPUT} !w-auto`} value={from()} max={to() || undefined} onChange={(e) => setFrom(e.currentTarget.value)} />
+          <span class="text-gray-400 text-sm">to</span>
+          <input type="date" class={`${INPUT} !w-auto`} value={to()} min={from() || undefined} max={toYMD(new Date())} onChange={(e) => setTo(e.currentTarget.value)} />
+        </Show>
+        <SearchSelect
+          class="w-[300px]"
+          allLabel="All ad accounts"
+          placeholder="Search account name or id…"
+          value={adAccount()}
+          onChange={setAdAccount}
+          options={(props.accounts() || []).map((a) => ({ value: a.id, label: `${a.name || a.id} · ${a.id}` }))}
+        />
+        <SearchSelect
+          class="w-[220px]"
+          allLabel="Anyone paid"
+          placeholder="Search payer…"
+          value={paidBy()}
+          onChange={setPaidBy}
+          options={payerOptions()}
+        />
+      </div>
+
+      <Show when={rangeError()}>
+        <p class="text-sm text-[#AC2334] mb-2">{rangeError()}</p>
+      </Show>
+      <Show when={error()}>
+        <div class="rounded-xl bg-[#FBEEF0] border border-[#AC2334]/25 p-3 mb-3 text-sm text-[#AC2334]">{error()}</div>
+      </Show>
+
+      <Show when={res()}>
+        <div class="flex flex-wrap gap-2 mb-3">
+          <span class={`${CHIP} border-[#14233A] bg-[#14233A] text-white`}>
+            <span class="font-semibold">Total</span>
+            <span class="font-bold">{money(total().amount)}</span>
+            <Show when={isNum(total().topups)}>
+              <span class="text-xs opacity-75">· {num(total().topups)} top-ups</span>
+            </Show>
+          </span>
+          <For each={byPayer()}>
+            {(p) => (
+              <span class={`${CHIP} border-[#E2E8F1] dark:border-gray-700 bg-white dark:bg-gray-900 text-[#14233A] dark:text-gray-100`}>
+                <span class="font-semibold">{p.paid_by || "—"}</span>
+                <span class="font-bold">{money(p.amount)}</span>
+                <span class="text-xs text-gray-400">· {num(p.topups)}</span>
+              </span>
+            )}
+          </For>
+          <Show when={Number(data().unset?.topups) > 0}>
+            <span class={`${CHIP} border-[#B07A14]/50 bg-[#FBF3E2] text-[#8A6410] dark:bg-yellow-900/30 dark:text-yellow-100`}>
+              <span class="font-semibold">Payer not set (since 29 Oct)</span>
+              <span class="font-bold">{money(data().unset.amount)}</span>
+              <span class="text-xs opacity-75">· {num(data().unset.topups)}</span>
+            </span>
+          </Show>
+        </div>
+      </Show>
+
+      <div class={`overflow-auto max-h-[calc(100vh-10rem)] rounded-2xl border border-[#E2E8F1] dark:border-gray-700 bg-white dark:bg-gray-900 transition-opacity ${loading() ? "opacity-60" : ""}`}>
+        <table class="min-w-full text-sm border-separate border-spacing-0">
+          <thead>
+            <tr>
+              <th class={TH}>Time (IST)</th>
+              <th class={TH}>Ad account</th>
+              <th class={`${TH} !text-right`}>Amount</th>
+              <th class={TH}>Method</th>
+              <th class={TH}>Paid by</th>
+              <th class={TH}>Entered via</th>
+              <th class={TH}>Entered by</th>
+            </tr>
+          </thead>
+          <tbody>
+            <Show
+              when={rows().length}
+              fallback={
+                <tr>
+                  <td colspan="7" class="px-4 py-8 text-center text-sm text-gray-400">
+                    {loading() && !res() ? "Loading…" : "No top-ups in this range."}
+                  </td>
+                </tr>
+              }
+            >
+              <For each={rows()}>
+                {(t) => (
+                  <tr class="hover:bg-[#F6F9FC] dark:hover:bg-gray-800/40">
+                    <td class={`${TD} whitespace-nowrap tabular-nums`}>{fmtIST(topupTime(t))}</td>
+                    <td class={`${TD} max-w-[240px]`}><AccountCell account={acctOf(t)} /></td>
+                    <td class={`${TD} text-right tabular-nums whitespace-nowrap font-semibold text-[#15966A] dark:text-green-400`}>{money(t.amount)}</td>
+                    <td class={`${TD} text-xs text-gray-600 dark:text-gray-300`}>{t.method || "-"}</td>
+                    <td class={TD}>
+                      <TopupPayerCell topup={t} payers={props.payers} onSaved={load} />
+                    </td>
+                    <td class={`${TD} text-xs text-gray-600 dark:text-gray-300 whitespace-nowrap`}>
+                      {t.paid_by ? SOURCE_LABEL[t.paid_by_source] || t.paid_by_source || "-" : "-"}
+                    </td>
+                    <td class={`${TD} text-xs text-gray-600 dark:text-gray-300`}>{t.set_by || "-"}</td>
+                  </tr>
+                )}
+              </For>
+            </Show>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 // ── page ─────────────────────────────────────────────────────────────────────
 
 export default function FundRequests() {
@@ -1308,7 +1850,10 @@ export default function FundRequests() {
   const [accounts, setAccounts] = createSignal([]);
   const [accountsLoading, setAccountsLoading] = createSignal(false);
 
-  // { kind: "pay"|"edit"|"cancel"|"raise", row? }
+  // Payer picker options, shared by every place that records who paid.
+  const [payers, setPayers] = createSignal(null);
+
+  // { kind: "claim"|"pay"|"edit"|"cancel"|"raise", row? }
   const [modal, setModal] = createSignal(null);
   const [drawerRow, setDrawerRow] = createSignal(null);
 
@@ -1349,6 +1894,15 @@ export default function FundRequests() {
   // Re-key on the Viewing switch and the CM filter.
   createEffect(on([scopeKey, cmId], () => loadQueue()));
   createEffect(on(scopeKey, () => loadAccounts()));
+  createEffect(
+    on(scopeKey, async () => {
+      try {
+        setPayers(await fetchFundPayers());
+      } catch (err) {
+        console.warn("[fundRequests] payers failed:", err?.message);
+      }
+    }),
+  );
 
   onMount(() => {
     const tick = () => {
@@ -1502,7 +2056,26 @@ export default function FundRequests() {
                         <PriorityChip value={pr()} auto={r.source === "auto"} />
                       </td>
                       <td class={`${TD} max-w-[220px]`}>
-                        <AccountCell account={r.ad_account} />
+                        <div class="flex items-start gap-1.5">
+                          <AccountCell account={r.ad_account} />
+                          <Show when={Number(r.unset_payer_topups) > 0}>
+                            <span
+                              class="flex-none mt-1.5 w-2 h-2 rounded-full bg-[#D89A2B]"
+                              title={`${r.unset_payer_topups} top-up${Number(r.unset_payer_topups) === 1 ? "" : "s"} without a payer`}
+                            />
+                          </Show>
+                        </div>
+                        <Show when={r.being_paid}>
+                          <div class="mt-1.5">
+                            <span class="inline-block whitespace-nowrap px-2 py-0.5 rounded-full text-[11px] font-bold bg-yellow-100 text-yellow-800 ring-1 ring-inset ring-yellow-300 dark:bg-yellow-900/40 dark:text-yellow-200 dark:ring-yellow-700">
+                              {r.claim_payer || "Someone"} is paying
+                            </span>
+                            <span class="block text-[11px] text-gray-400 mt-0.5">
+                              opened by {r.claimed_by || "—"}
+                              <Show when={minsSince(r.claimed_at) != null}>, {fmtWait(minsSince(r.claimed_at))} ago</Show>
+                            </span>
+                          </div>
+                        </Show>
                       </td>
                       <td class={`${TD} text-xs text-gray-700 dark:text-gray-300 min-w-[180px] max-w-[240px]`}>
                         <span class="flex items-start gap-1">
@@ -1561,15 +2134,15 @@ export default function FundRequests() {
                         onClick={(e) => e.stopPropagation()}
                       >
                         <div class="flex flex-col items-stretch gap-1.5 w-[150px]">
-                          <Show when={r.can_pay && r.ad_account?.pay_url}>
-                            <a
-                              href={r.ad_account.pay_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
+                          {/* Asks who is paying first; the claim hands back the URL. */}
+                          <Show when={r.can_claim}>
+                            <button
+                              type="button"
                               class={`${BTN_ROW} bg-[#14233A] text-white border-[#14233A] hover:bg-[#1F3352]`}
+                              onClick={stop(() => setModal({ kind: "claim", row: r }))}
                             >
                               Pay in Ads Manager ↗
-                            </a>
+                            </button>
                           </Show>
                           <Show when={r.can_pay}>
                             <button
@@ -1642,6 +2215,7 @@ export default function FundRequests() {
                   <th class={TH}><SortBtn col="status" label="Status" sort={closedSort()} onSort={onClosedSort} /></th>
                   <th class={`${TH} !text-right`}><SortBtn col="paid" label="Paid" sort={closedSort()} onSort={onClosedSort} /></th>
                   <th class={TH}>Paid via</th>
+                  <th class={TH}>Paid by</th>
                   <th class={`${TH} !text-right`}><SortBtn col="time_to_pay" label="Time to pay" sort={closedSort()} onSort={onClosedSort} /></th>
                   <th class={TH}>Reason</th>
                 </tr>
@@ -1651,7 +2225,7 @@ export default function FundRequests() {
                   when={closedToday().length}
                   fallback={
                     <tr>
-                      <td colspan="7" class="px-4 py-6 text-center text-sm text-gray-400">Nothing closed yet today.</td>
+                      <td colspan="8" class="px-4 py-6 text-center text-sm text-gray-400">Nothing closed yet today.</td>
                     </tr>
                   }
                 >
@@ -1676,9 +2250,10 @@ export default function FundRequests() {
                           {r.paid_via === "meta"
                             ? "Detected from Meta"
                             : r.paid_via === "manual"
-                              ? `Marked by ${r.paid_by || "—"}`
+                              ? "Marked by hand"
                               : "—"}
                         </td>
+                        <td class={`${TD} text-xs font-semibold text-[#14233A] dark:text-gray-100`}>{r.paid_by || "—"}</td>
                         <td class={`${TD} text-right tabular-nums whitespace-nowrap`}>
                           {isNum(r.minutes_to_pay) ? fmtWait(r.minutes_to_pay) : "—"}
                         </td>
@@ -1693,12 +2268,18 @@ export default function FundRequests() {
         </Show>
       </div>
 
+      {/* Top-ups (who paid) */}
+      <Topups accounts={accounts} payers={payers} />
+
       {/* 4. Funds register */}
       <Register accounts={accounts} cms={cms} />
 
       {/* Modals + drawer */}
+      <Show when={modal()?.kind === "claim" && modal()}>
+        {(m) => <ClaimModal row={m().row} payers={payers} onClose={() => setModal(null)} onDone={afterWrite} reload={loadQueue} />}
+      </Show>
       <Show when={modal()?.kind === "pay" && modal()}>
-        {(m) => <MarkPaidModal row={m().row} onClose={() => setModal(null)} onDone={afterWrite} reload={loadQueue} />}
+        {(m) => <MarkPaidModal row={m().row} payers={payers} onClose={() => setModal(null)} onDone={afterWrite} reload={loadQueue} />}
       </Show>
       <Show when={modal()?.kind === "edit" && modal()}>
         {(m) => <EditModal row={m().row} onClose={() => setModal(null)} onDone={afterWrite} reload={loadQueue} />}

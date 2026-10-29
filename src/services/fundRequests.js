@@ -59,10 +59,43 @@ export const updateFundRequest = async (id, patch) =>
     body: JSON.stringify(patch),
   });
 
-export const markFundRequestPaid = async (id, { amount, reference }) =>
+// payer: { paid_by_user_id } | { paid_by_name } — always entered, never the login.
+export const markFundRequestPaid = async (id, { amount, reference, payer }) =>
   api(`${BASE}/${encodeURIComponent(id)}/mark-paid/`, {
     method: "POST",
-    body: JSON.stringify({ amount, reference }),
+    body: JSON.stringify({ amount, reference, ...payer }),
+  });
+
+// ─── Who paid ─────────────────────────────────────────────────────────────────
+// Whoever opens the payment page is not always the one paying, so every write
+// below carries an ENTERED payer: { paid_by_user_id } or { paid_by_name }.
+
+// data: { users:[{id,name,role}], other_names:[string], can_change_any }
+export const fetchFundPayers = async () => {
+  const res = await api(`${BASE}/payers/`, { method: "GET" });
+  return res?.data ?? null;
+};
+
+// "I'm paying this now". 409 code "already_claimed" → someone else opened it;
+// repeat with force:true to pay anyway. data.pay_url is where to send the tab.
+export const claimFundRequest = async (id, payer, force = false) =>
+  api(`${BASE}/${encodeURIComponent(id)}/claim/`, {
+    method: "POST",
+    body: JSON.stringify(force ? { ...payer, force: true } : payer),
+  });
+
+// paidBy: user id | "unset" | a name.
+export const fetchFundTopups = async ({ from, to, adAccount, paidBy }) => {
+  let q = `?date_from=${encodeURIComponent(from)}&date_to=${encodeURIComponent(to)}`;
+  if (adAccount) q += `&ad_account=${encodeURIComponent(adAccount)}`;
+  if (paidBy != null && paidBy !== "") q += `&paid_by=${encodeURIComponent(paidBy)}`;
+  return api(`${BASE}/topups/${q}${scopeQuery({ supportsOwn: true })}`, { method: "GET" });
+};
+
+export const setTopupPayer = async (id, payer) =>
+  api(`${BASE}/topups/${encodeURIComponent(id)}/payer/`, {
+    method: "POST",
+    body: JSON.stringify(payer),
   });
 
 export const cancelFundRequest = async (id, reason) =>
