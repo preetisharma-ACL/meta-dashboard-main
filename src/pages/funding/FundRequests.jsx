@@ -515,39 +515,161 @@ const createPayerState = () => {
   return { key, setKey, other, setOther, payload };
 };
 
+const roleLabel = (r) => (r ? String(r).replace(/_/g, " ") : "");
+
+// Searchable combobox. The list opens IN FLOW under the box (not floating), so
+// it stays inside a modal's scroll area and an inline table cell — a native
+// <select> list can't be kept inside either and spilled over the dialog.
 function PayerPicker(props) {
   const st = props.state;
-  const users = () => props.payers?.()?.users || [];
-  const names = () => props.payers?.()?.other_names || [];
+  const [open, setOpen] = createSignal(false);
+  const [q, setQ] = createSignal("");
+  const [active, setActive] = createSignal(0);
+  let root;
+  let searchEl;
+  let listEl;
   let otherEl;
+
+  const options = createMemo(() => {
+    const p = props.payers?.() || {};
+    return [
+      ...(p.users || []).map((u) => ({ key: `u:${u.id}`, label: u.name, sub: roleLabel(u.role), group: "People" })),
+      ...(p.other_names || []).map((n) => ({ key: `n:${n}`, label: n, group: "Other names" })),
+    ];
+  });
+  const filtered = createMemo(() => {
+    const s = q().trim().toLowerCase();
+    const list = s
+      ? options().filter((o) => o.label.toLowerCase().includes(s) || o.sub?.toLowerCase().includes(s))
+      : options();
+    // Free text is always last: the typed name when there is one, else "Other…".
+    return [...list, { key: OTHER, label: s ? `Use "${q().trim()}"` : "Other…", group: "" }];
+  });
+
+  const current = () => {
+    if (st.key() === OTHER) return st.other() ? `Other: ${st.other()}` : "Other…";
+    return options().find((o) => o.key === st.key())?.label ?? "";
+  };
+
+  const close = () => {
+    setOpen(false);
+    setQ("");
+  };
+  const toggle = () => {
+    if (open()) return close();
+    setActive(0);
+    setOpen(true);
+    queueMicrotask(() => searchEl?.focus());
+  };
+  const choose = (o) => {
+    if (o.key === OTHER) {
+      st.setKey(OTHER);
+      if (q().trim()) st.setOther(q().trim());
+      close();
+      queueMicrotask(() => otherEl?.focus());
+      return;
+    }
+    st.setKey(o.key);
+    close();
+  };
+
+  const onDoc = (e) => open() && !root?.contains(e.target) && close();
+  onMount(() => document.addEventListener("pointerdown", onDoc));
+  onCleanup(() => document.removeEventListener("pointerdown", onDoc));
+
+  createEffect(() => {
+    const i = active();
+    if (open()) listEl?.querySelector(`[data-idx="${i}"]`)?.scrollIntoView({ block: "nearest" });
+  });
+
+  // Native listener (on:keydown), not Solid's delegated one, so stopping Esc
+  // here really keeps it from reaching the Modal's document listener.
+  const onKey = (e) => {
+    const list = filtered();
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const step = e.key === "ArrowDown" ? 1 : -1;
+      setActive((i) => (i + step + list.length) % list.length);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const o = list[active()];
+      if (o) choose(o);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      close();
+    }
+  };
+
   return (
-    <div class="space-y-2">
-      <select
-        class={INPUT}
-        value={st.key()}
-        onChange={(e) => {
-          st.setKey(e.currentTarget.value);
-          if (e.currentTarget.value === OTHER) queueMicrotask(() => otherEl?.focus());
-        }}
+    <div ref={root} class="space-y-2">
+      <button
+        type="button"
+        onClick={toggle}
+        aria-expanded={open()}
+        class={`${INPUT} flex items-center justify-between gap-2 text-left`}
       >
-        <option value="" disabled>
-          {props.payers?.() ? "Select who paid…" : "Loading payers…"}
-        </option>
-        <Show when={users().length}>
-          <optgroup label="People">
-            <For each={users()}>
-              {(u) => <option value={`u:${u.id}`}>{u.role ? `${u.name} (${u.role})` : u.name}</option>}
+        <span class={`truncate ${current() ? "" : "text-gray-400"}`}>
+          {current() || (props.payers?.() ? "Select who paid…" : "Loading payers…")}
+        </span>
+        <svg class={`w-4 h-4 flex-none text-gray-500 transition-transform ${open() ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      <Show when={open()}>
+        <div class="rounded-xl border border-[#E2E8F1] dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm">
+          <div class="p-2 border-b border-[#E2E8F1] dark:border-gray-800">
+            <input
+              ref={searchEl}
+              type="text"
+              autocomplete="off"
+              class={`${INPUT} !py-1.5`}
+              placeholder="Search a name or type one…"
+              value={q()}
+              onInput={(e) => {
+                setQ(e.currentTarget.value);
+                setActive(0);
+              }}
+              on:keydown={onKey}
+            />
+          </div>
+          <div ref={listEl} role="listbox" class="max-h-56 overflow-y-auto py-1">
+            <For each={filtered()}>
+              {(o, i) => {
+                const on = () => o.key === st.key() && o.key !== OTHER;
+                const header = () => o.group && (i() === 0 || filtered()[i() - 1].group !== o.group);
+                return (
+                  <>
+                    <Show when={header()}>
+                      <p class="px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-[#8593A8]">{o.group}</p>
+                    </Show>
+                    <Show when={o.key === OTHER}>
+                      <div class="my-1 border-t border-[#E2E8F1] dark:border-gray-800" />
+                    </Show>
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={on()}
+                      data-idx={i()}
+                      onClick={() => choose(o)}
+                      onMouseEnter={() => setActive(i())}
+                      class={`w-full flex items-baseline justify-between gap-3 text-left px-3 py-1.5 text-sm transition-colors ${
+                        active() === i() ? "bg-[#F6F9FC] dark:bg-gray-800" : ""
+                      } ${on() ? "text-[#AC2334] dark:text-red-300 font-semibold" : o.key === OTHER ? "text-[#3E6FB0] font-semibold" : "text-[#14233A] dark:text-gray-100"}`}
+                    >
+                      <span class="truncate">{o.label}</span>
+                      <Show when={o.sub}>
+                        <span class="flex-none text-[11px] text-gray-400">{o.sub}</span>
+                      </Show>
+                    </button>
+                  </>
+                );
+              }}
             </For>
-          </optgroup>
-        </Show>
-        <Show when={names().length}>
-          <optgroup label="Other names">
-            <For each={names()}>{(n) => <option value={`n:${n}`}>{n}</option>}</For>
-          </optgroup>
-        </Show>
-        <option value={OTHER}>Other…</option>
-      </select>
-      <Show when={st.key() === OTHER}>
+          </div>
+        </div>
+      </Show>
+      <Show when={st.key() === OTHER && !open()}>
         <input
           ref={otherEl}
           type="text"
