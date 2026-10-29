@@ -1960,8 +1960,55 @@
   }
 }
 
+/* ── Silk waves on the Creative Library cards: slow, out-of-step drift ───── */
+.silk-drift,
+.silk-drift-rev,
+.silk-swell {
+  transform-box: view-box;
+}
+.silk-drift {
+  animation: silk-drift 11s ease-in-out infinite;
+}
+.silk-drift-rev {
+  animation: silk-drift-rev 9s ease-in-out infinite;
+}
+.silk-swell {
+  transform-origin: 50% 100%;
+  animation: silk-swell 7s ease-in-out infinite;
+}
+@keyframes silk-drift {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(-14px, 4px);
+  }
+}
+@keyframes silk-drift-rev {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(16px, -4px);
+  }
+}
+@keyframes silk-swell {
+  0%,
+  100% {
+    transform: scaleY(1);
+  }
+  50% {
+    transform: scaleY(1.18);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .tile-trace {
+  .tile-trace,
+  .silk-drift,
+  .silk-drift-rev,
+  .silk-swell {
     animation: none;
   }
 }

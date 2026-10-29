@@ -203,11 +203,12 @@ export default function CreativeModal(props) {
   return (
     <Show when={props.open}>
       <div
-        class="fixed inset-0 z-[60] flex items-start sm:items-center justify-center bg-black/40 p-4 overflow-y-auto"
+        class="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4"
         onMouseDown={(e) => e.target === e.currentTarget && !saving() && props.onClose()}
       >
-        <div class="w-full max-w-xl rounded-2xl bg-white dark:bg-gray-900 shadow-2xl border border-[#E2E8F1] dark:border-gray-700">
-          <div class="flex items-center justify-between px-6 py-4 border-b border-[#E2E8F1] dark:border-gray-700">
+        {/* Landscape: wide, height-capped to the viewport, the form scrolls inside. */}
+        <div class="w-full max-w-3xl max-h-[calc(100vh-2rem)] flex flex-col rounded-2xl bg-white dark:bg-gray-900 shadow-2xl border border-[#E2E8F1] dark:border-gray-700">
+          <div class="flex-none flex items-center justify-between px-6 py-4 border-b border-[#E2E8F1] dark:border-gray-700">
             <h2 class="text-lg font-bold text-[#14233A] dark:text-white">
               {savedCode() != null
                 ? "Creative saved"
@@ -229,7 +230,7 @@ export default function CreativeModal(props) {
 
           {/* ── Success: the code, big ── */}
           <Show when={savedCode() != null}>
-            <div class="px-6 py-8 text-center">
+            <div class="px-6 py-8 text-center overflow-y-auto">
               <p class="text-xs font-bold uppercase tracking-[0.12em] text-[#8593A8]">Creative code</p>
               <p class="mt-2 font-mono text-4xl sm:text-5xl font-bold tracking-tight text-[#AC2334] break-all">
                 {savedCode() || "—"}
@@ -285,7 +286,8 @@ export default function CreativeModal(props) {
           {/* ── Form ── */}
           <Show when={savedCode() == null && !fixResult()}>
             <form
-              class="px-6 py-5 space-y-4"
+              // Two fields per row from md up; long items span both columns.
+              class="px-6 py-5 grid grid-cols-1 md:grid-cols-2 gap-x-5 gap-y-4 overflow-y-auto"
               onSubmit={(e) => {
                 e.preventDefault();
                 submit(false);
@@ -294,8 +296,8 @@ export default function CreativeModal(props) {
               <Show
                 when={!isEdit() || fixing()}
                 fallback={
-                  <div class="space-y-3">
-                    <div class="grid grid-cols-2 gap-3">
+                  <div class="space-y-3 md:col-span-2">
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
                       <ReadOnly label="Code" value={props.creative.code} />
                       <ReadOnly label="Type" value={kindLabel(props.creative.kind)} />
                       <ReadOnly
@@ -335,7 +337,9 @@ export default function CreativeModal(props) {
                     }}
                   />
                 </div>
-                <div>
+                {/* Paired with Client nomen when fixing (Code + Type fill the row
+                    above); on a new creative Type + Client pair up and this spans. */}
+                <div class={fixing() ? "" : "md:col-span-2"}>
                   <div class="flex items-center justify-between gap-3 mb-1.5">
                     <label class={LABEL + " !mb-0"}>Project</label>
                     <div class="flex items-center gap-3">
@@ -394,7 +398,7 @@ export default function CreativeModal(props) {
                   </Show>
                 </div>
                 <Show when={fixChanged()}>
-                  <div>
+                  <div class="md:col-span-2">
                     <label class={LABEL}>Reason</label>
                     <textarea
                       class={FIELD}
@@ -410,7 +414,7 @@ export default function CreativeModal(props) {
                   </div>
                 </Show>
                 <Show when={!isEdit() && nomen()?.id && projectId()}>
-                  <div class="rounded-lg border border-dashed border-[#D4DDE9] dark:border-gray-600 px-4 py-3">
+                  <div class="md:col-span-2 rounded-lg border border-dashed border-[#D4DDE9] dark:border-gray-600 px-4 py-3">
                     <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8]">Code preview</p>
                     <p class="font-mono text-lg font-bold text-[#14233A] dark:text-white">
                       {preview.loading ? "…" : preview() || "—"}
@@ -439,17 +443,17 @@ export default function CreativeModal(props) {
                   placeholder="https://…"
                 />
               </div>
-              <div>
+              <div class="md:col-span-2">
                 <label class={LABEL}>Notes</label>
                 <textarea
                   class={FIELD}
-                  rows={3}
+                  rows={2}
                   value={notes()}
                   onInput={(e) => setNotes(e.target.value)}
                 />
               </div>
               <Show when={isEdit()}>
-                <label class="inline-flex items-center gap-2 text-sm font-semibold text-[#14233A] dark:text-gray-200 cursor-pointer select-none">
+                <label class="md:col-span-2 inline-flex items-center gap-2 text-sm font-semibold text-[#14233A] dark:text-gray-200 cursor-pointer select-none">
                   <input
                     type="checkbox"
                     class="w-4 h-4 accent-[#AC2334]"
@@ -461,13 +465,13 @@ export default function CreativeModal(props) {
               </Show>
 
               <Show when={error()}>
-                <div class="rounded-lg border border-[#AC2334]/25 bg-[#FBEEF0] dark:bg-red-900/20 px-3 py-2 text-sm font-medium text-[#AC2334] dark:text-red-300">
+                <div class="md:col-span-2 rounded-lg border border-[#AC2334]/25 bg-[#FBEEF0] dark:bg-red-900/20 px-3 py-2 text-sm font-medium text-[#AC2334] dark:text-red-300">
                   {error()}
                 </div>
               </Show>
 
               <Show when={dupe()}>
-                <div class="rounded-lg border border-[#D89A2B]/40 bg-[#FDF6E9] dark:bg-yellow-900/20 px-4 py-3 text-sm text-[#7A5410] dark:text-yellow-200">
+                <div class="md:col-span-2 rounded-lg border border-[#D89A2B]/40 bg-[#FDF6E9] dark:bg-yellow-900/20 px-4 py-3 text-sm text-[#7A5410] dark:text-yellow-200">
                   <p class="font-semibold">
                     This OneDrive link is already in the library as{" "}
                     <span class="font-mono">{dupe()}</span>.
@@ -490,7 +494,7 @@ export default function CreativeModal(props) {
               </Show>
 
               <Show when={!dupe()}>
-                <div class="flex justify-end gap-2 pt-2">
+                <div class="md:col-span-2 flex justify-end gap-2 pt-2">
                   <button type="button" class={GHOST_BTN} onClick={() => props.onClose()} disabled={saving()}>
                     Cancel
                   </button>

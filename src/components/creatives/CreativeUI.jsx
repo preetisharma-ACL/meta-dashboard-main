@@ -35,10 +35,14 @@ export const GHOST_BTN =
   "inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-[#E2E8F1] dark:border-gray-600 bg-white dark:bg-gray-800 text-sm font-semibold text-[#14233A] dark:text-gray-200 hover:bg-[#F8FAFC] dark:hover:bg-gray-700 disabled:opacity-40 transition-colors whitespace-nowrap";
 
 // ── Page shell ────────────────────────────────────────────────────────────────
+// Pass `icon` (a lucide component) for the gradient header used on Campaign
+// Analysis / CPL Rules; without it the page keeps the plain eyebrow header.
 export function PageShell(props) {
+  const Icon = props.icon;
   return (
     <section class="w-full px-4 sm:px-6 lg:px-8 py-6 bg-gray-50 dark:bg-gray-900 min-h-screen">
       <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 mb-6">
+        <Show when={Icon} fallback={
         <div>
           <p class="text-xs font-bold uppercase tracking-[0.12em] text-[#AC2334] dark:text-red-300 mb-1.5">
             {props.eyebrow ?? "Creatives"}
@@ -52,6 +56,23 @@ export function PageShell(props) {
             </p>
           </Show>
         </div>
+        }>
+          <div>
+            <h1 class="flex items-center gap-2.5 text-2xl font-semibold tracking-tight">
+              <span class="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#7E1522] via-[#AC2334] via-70% to-[#C4802B] text-white shadow-[0_2px_8px_rgba(126,21,34,.32)]">
+                <Icon size={20} stroke-width={2} />
+              </span>
+              <span class="inline-block pb-0.5 leading-tight bg-gradient-to-r from-[#7E1522] via-[#AC2334] via-72% to-[#C4802B] dark:from-[#D9455E] dark:via-[#E4566A] dark:to-[#E9AE5C] bg-clip-text text-transparent">
+                {props.title}
+              </span>
+            </h1>
+            <Show when={props.subtitle}>
+              <p class="pl-[46px] text-sm text-gray-500 dark:text-gray-400 mt-0.5 max-w-2xl">
+                {props.subtitle}
+              </p>
+            </Show>
+          </div>
+        </Show>
         <Show when={props.actions}>
           <div class="flex flex-wrap gap-2">{props.actions}</div>
         </Show>
@@ -548,7 +569,8 @@ export function DataTable(props) {
                     (c.align === "right" ? "text-right" : "text-left") +
                     // stickyClass pins a column at an offset other than
                     // left-0, for a second pinned column.
-                    (c.sticky ? " " + (c.stickyClass ?? STICKY_TH) : "")
+                    (c.sticky ? " " + (c.stickyClass ?? STICKY_TH) : "") +
+                    (c.class ? " " + c.class : "")
                   }
                 >
                   <Show when={c.key && props.onSort} fallback={c.label}>
