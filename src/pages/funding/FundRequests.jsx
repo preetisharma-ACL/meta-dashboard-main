@@ -29,8 +29,8 @@ import { errorMessage, loadErrorMessage } from "../../utils/apiErrors";
 // Fund Requests — one page for the top-up queue that used to live in WhatsApp.
 //
 //   1. Summary strip   (meta of the queue call)
-//   2. Queue           (data.open — the BACKEND's pay-first order, never
-//                       re-sorted here) + "Closed today"
+//   2. Queue           (data.open — the BACKEND's pay-first order unless the
+//                       user picks a column sort) + "Closed today"
 //   3. Raise modal
 //   4. Funds register  (bottom)
 //
@@ -146,6 +146,92 @@ const warningLines = (w) => {
       return "";
     })
     .filter(Boolean);
+};
+
+// ── sorting ──────────────────────────────────────────────────────────────────
+// Client-side column sort, same ⇅ / ↑ ↓ markers as CPL Rules. Clicks cycle
+// first dir → other dir → off; off keeps the backend's order (the queue's
+// pay-first order, the register's newest-first). Empty values always sort last.
+
+const numOrNull = (v) => (isNum(v) ? Number(v) : null);
+const strOrNull = (v) => (v ? String(v).toLowerCase() : null);
+
+const sortBy = (list, sort, cols) => {
+  if (!sort || !cols[sort.key]) return list;
+  const get = cols[sort.key].get;
+  const mul = sort.dir === "asc" ? 1 : -1;
+  return [...list].sort((a, b) => {
+    const x = get(a);
+    const y = get(b);
+    if (x == null && y == null) return 0;
+    if (x == null) return 1;
+    if (y == null) return -1;
+    if (x === y) return 0;
+    if (typeof x === "string") return x.localeCompare(y, undefined, { sensitivity: "base" }) * mul;
+    return (x - y) * mul;
+  });
+};
+
+const nextSort = (cur, key, cols) => {
+  const first = cols[key].first;
+  if (cur?.key !== key) return { key, dir: first };
+  if (cur.dir === first) return { key, dir: first === "asc" ? "desc" : "asc" };
+  return null;
+};
+
+function SortBtn(props) {
+  const active = () => props.sort?.key === props.col;
+  return (
+    <button
+      type="button"
+      onClick={() => props.onSort(props.col)}
+      class="inline-flex items-center uppercase tracking-wider transition-colors hover:text-purple-600"
+    >
+      {props.label}
+      {active() ? (
+        <span class="ml-1 text-purple-600">{props.sort.dir === "asc" ? "↑" : "↓"}</span>
+      ) : (
+        <span class="text-gray-300 ml-1">⇅</span>
+      )}
+    </button>
+  );
+}
+
+const PRIORITY_RANK = { stopped: 4, urgent: 3, high: 2, normal: 1 };
+
+const QUEUE_SORT = {
+  priority: { get: (r) => PRIORITY_RANK[r.effective_priority ?? r.priority] ?? null, first: "desc" },
+  account: { get: (r) => strOrNull(r.ad_account?.name), first: "asc" },
+  clients: { get: (r) => strOrNull(clientNames(r.clients)), first: "asc" },
+  cms: { get: (r) => strOrNull(joinList(r.campaign_managers)), first: "asc" },
+  wallet: { get: (r) => numOrNull(r.wallet), first: "asc" },
+  daily_budget: { get: (r) => numOrNull(r.daily_budget), first: "desc" },
+  spent_today: { get: (r) => numOrNull(r.spent_today), first: "desc" },
+  hours_left: { get: (r) => numOrNull(r.hours_left), first: "asc" },
+  ask: { get: (r) => numOrNull(r.amount_requested), first: "desc" },
+  raised: { get: (r) => numOrNull(r.waiting_minutes), first: "desc" },
+};
+
+const CLOSED_SORT = {
+  account: { get: (r) => strOrNull(r.ad_account?.name), first: "asc" },
+  ask: { get: (r) => numOrNull(r.amount_requested), first: "desc" },
+  status: { get: (r) => strOrNull(r.status), first: "asc" },
+  paid: { get: (r) => numOrNull(r.paid_amount), first: "desc" },
+  time_to_pay: { get: (r) => numOrNull(r.minutes_to_pay), first: "asc" },
+};
+
+const REGISTER_SORT = {
+  date: { get: (r) => (r.date ? String(r.date) : null), first: "desc" },
+  account: { get: (r) => strOrNull(r.ad_account), first: "asc" },
+  clients: { get: (r) => strOrNull(r.clients), first: "asc" },
+  cms: { get: (r) => strOrNull(r.campaign_managers), first: "asc" },
+  daily_budget: { get: (r) => numOrNull(r.daily_budget), first: "desc" },
+  topups: { get: (r) => numOrNull(r.topups), first: "desc" },
+  funds_added: { get: (r) => numOrNull(r.funds_added), first: "desc" },
+  spend: { get: (r) => numOrNull(r.spend), first: "desc" },
+  spend_inc_gst: { get: (r) => numOrNull(r.spend_inc_gst), first: "desc" },
+  wallet_end_of_day: { get: (r) => numOrNull(r.wallet_end_of_day), first: "desc" },
+  requests: { get: (r) => numOrNull(r.requests), first: "desc" },
 };
 
 // ── priority ─────────────────────────────────────────────────────────────────
@@ -881,6 +967,8 @@ function Register(props) {
   const [loading, setLoading] = createSignal(false);
   const [error, setError] = createSignal(null);
   const [downloading, setDownloading] = createSignal(false);
+  const [sort, setSort] = createSignal(null);
+  const onSort = (key) => setSort((cur) => nextSort(cur, key, REGISTER_SORT));
 
   const span = () => (from() && to() ? daySpan(from(), to()) : 0);
   const rangeError = () => {
@@ -936,8 +1024,9 @@ function Register(props) {
   const rows = () => {
     const list = res()?.data?.rows;
     if (!Array.isArray(list)) return [];
-    // Newest date first.
-    return [...list].sort((a, b) => String(b.date ?? "").localeCompare(String(a.date ?? "")));
+    // Newest date first unless a column sort is picked.
+    const byDate = [...list].sort((a, b) => String(b.date ?? "").localeCompare(String(a.date ?? "")));
+    return sortBy(byDate, sort(), REGISTER_SORT);
   };
   const totals = () => res()?.data?.totals || null;
 
@@ -1020,17 +1109,17 @@ function Register(props) {
         <table class="min-w-full text-sm border-separate border-spacing-0">
           <thead>
             <tr>
-              <th class={`${TH} text-left`}>Date</th>
-              <th class={`${TH} text-left`}>Ad account</th>
-              <th class={`${TH} text-left`}>Clients</th>
-              <th class={`${TH} text-left`}>CMs</th>
-              <th class={`${TH} text-right`}>Daily budget</th>
-              <th class={`${TH} text-right`}>Top-ups</th>
-              <th class={`${TH} text-right`}>Funds added</th>
-              <th class={`${TH} text-right`}>Spend</th>
-              <th class={`${TH} text-right`}>Spend incl GST</th>
-              <th class={`${TH} text-right`}>Wallet at day end</th>
-              <th class={`${TH} text-right`}>Requests</th>
+              <th class={`${TH} text-left`}><SortBtn col="date" label="Date" sort={sort()} onSort={onSort} /></th>
+              <th class={`${TH} text-left`}><SortBtn col="account" label="Ad account" sort={sort()} onSort={onSort} /></th>
+              <th class={`${TH} text-left`}><SortBtn col="clients" label="Clients" sort={sort()} onSort={onSort} /></th>
+              <th class={`${TH} text-left`}><SortBtn col="cms" label="CMs" sort={sort()} onSort={onSort} /></th>
+              <th class={`${TH} text-right`}><SortBtn col="daily_budget" label="Daily budget" sort={sort()} onSort={onSort} /></th>
+              <th class={`${TH} text-right`}><SortBtn col="topups" label="Top-ups" sort={sort()} onSort={onSort} /></th>
+              <th class={`${TH} text-right`}><SortBtn col="funds_added" label="Funds added" sort={sort()} onSort={onSort} /></th>
+              <th class={`${TH} text-right`}><SortBtn col="spend" label="Spend" sort={sort()} onSort={onSort} /></th>
+              <th class={`${TH} text-right`}><SortBtn col="spend_inc_gst" label="Spend incl GST" sort={sort()} onSort={onSort} /></th>
+              <th class={`${TH} text-right`}><SortBtn col="wallet_end_of_day" label="Wallet at day end" sort={sort()} onSort={onSort} /></th>
+              <th class={`${TH} text-right`}><SortBtn col="requests" label="Requests" sort={sort()} onSort={onSort} /></th>
             </tr>
           </thead>
           <tbody>
@@ -1049,8 +1138,8 @@ function Register(props) {
                   <tr class="hover:bg-[#F6F9FC] dark:hover:bg-gray-800/40">
                     <td class={`${TD} whitespace-nowrap`}>{prettyYMD(r.date)}</td>
                     <td class={TD}><AccountCell account={{ name: r.ad_account, id: r.ad_account_id }} /></td>
-                    <td class={`${TD} text-xs text-gray-600 dark:text-gray-300 max-w-[220px]`}>{r.clients || "-"}</td>
-                    <td class={`${TD} text-xs text-gray-600 dark:text-gray-300`}>{r.campaign_managers || "-"}</td>
+                    <td class={`${TD} text-xs text-gray-600 dark:text-gray-300 min-w-[180px] max-w-[240px] [overflow-wrap:anywhere]`}>{r.clients || "-"}</td>
+                    <td class={`${TD} text-xs text-gray-600 dark:text-gray-300 min-w-[120px] max-w-[200px] [overflow-wrap:anywhere]`}>{r.campaign_managers || "-"}</td>
                     <td class={TDN}>{regMoney(r.daily_budget)}</td>
                     <td class={TDN}>{regNum(r.topups)}</td>
                     <td class={`${TDN} font-semibold text-[#15966A] dark:text-green-400`}>{regMoney(r.funds_added)}</td>
@@ -1164,8 +1253,14 @@ export default function FundRequests() {
 
   const meta = () => queue()?.meta || {};
   const counts = () => meta().counts || {};
-  const open = () => (Array.isArray(queue()?.data?.open) ? queue().data.open : []);
-  const closedToday = () => (Array.isArray(queue()?.data?.closed_today) ? queue().data.closed_today : []);
+  const [queueSort, setQueueSort] = createSignal(null);
+  const [closedSort, setClosedSort] = createSignal(null);
+  const onQueueSort = (key) => setQueueSort((cur) => nextSort(cur, key, QUEUE_SORT));
+  const onClosedSort = (key) => setClosedSort((cur) => nextSort(cur, key, CLOSED_SORT));
+  const open = () =>
+    sortBy(Array.isArray(queue()?.data?.open) ? queue().data.open : [], queueSort(), QUEUE_SORT);
+  const closedToday = () =>
+    sortBy(Array.isArray(queue()?.data?.closed_today) ? queue().data.closed_today : [], closedSort(), CLOSED_SORT);
 
   const openRaise = () => {
     setModal({ kind: "raise" });
@@ -1249,16 +1344,16 @@ export default function FundRequests() {
         <table class="min-w-full text-sm border-separate border-spacing-0">
           <thead>
             <tr>
-              <th class={TH}>Priority</th>
-              <th class={TH}>Ad account</th>
-              <th class={TH}>Clients</th>
-              <th class={TH}>CMs</th>
-              <th class={`${TH} !text-right`}>Wallet</th>
-              <th class={`${TH} !text-right`}>Daily budget</th>
-              <th class={`${TH} !text-right`}>Spent today</th>
-              <th class={`${TH} !text-right`}>Hours left</th>
-              <th class={`${TH} !text-right`}>Ask</th>
-              <th class={TH}>Raised</th>
+              <th class={TH}><SortBtn col="priority" label="Priority" sort={queueSort()} onSort={onQueueSort} /></th>
+              <th class={TH}><SortBtn col="account" label="Ad account" sort={queueSort()} onSort={onQueueSort} /></th>
+              <th class={TH}><SortBtn col="clients" label="Clients" sort={queueSort()} onSort={onQueueSort} /></th>
+              <th class={TH}><SortBtn col="cms" label="CMs" sort={queueSort()} onSort={onQueueSort} /></th>
+              <th class={`${TH} !text-right`}><SortBtn col="wallet" label="Wallet" sort={queueSort()} onSort={onQueueSort} /></th>
+              <th class={`${TH} !text-right`}><SortBtn col="daily_budget" label="Daily budget" sort={queueSort()} onSort={onQueueSort} /></th>
+              <th class={`${TH} !text-right`}><SortBtn col="spent_today" label="Spent today" sort={queueSort()} onSort={onQueueSort} /></th>
+              <th class={`${TH} !text-right`}><SortBtn col="hours_left" label="Hours left" sort={queueSort()} onSort={onQueueSort} /></th>
+              <th class={`${TH} !text-right`}><SortBtn col="ask" label="Ask" sort={queueSort()} onSort={onQueueSort} /></th>
+              <th class={TH}><SortBtn col="raised" label="Raised" sort={queueSort()} onSort={onQueueSort} /></th>
               <th class={TH}>Note</th>
               <th class={`${TH} sticky right-0 z-[1] shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.15)]`}>Actions</th>
             </tr>
@@ -1289,9 +1384,9 @@ export default function FundRequests() {
                       <td class={`${TD} max-w-[220px]`}>
                         <AccountCell account={r.ad_account} />
                       </td>
-                      <td class={`${TD} text-xs text-gray-700 dark:text-gray-300 max-w-[220px]`}>
-                        <span class="inline-flex items-start gap-1">
-                          <span>{clientNames(r.clients) || "—"}</span>
+                      <td class={`${TD} text-xs text-gray-700 dark:text-gray-300 min-w-[180px] max-w-[240px]`}>
+                        <span class="flex items-start gap-1">
+                          <span class="min-w-0 [overflow-wrap:anywhere]">{clientNames(r.clients) || "—"}</span>
                           <Show when={warns().length}>
                             <span
                               class="flex-none cursor-help text-[#B07A14]"
@@ -1303,7 +1398,7 @@ export default function FundRequests() {
                           </Show>
                         </span>
                       </td>
-                      <td class={`${TD} text-xs text-gray-700 dark:text-gray-300`}>
+                      <td class={`${TD} text-xs text-gray-700 dark:text-gray-300 min-w-[120px] max-w-[200px] [overflow-wrap:anywhere]`}>
                         {joinList(r.campaign_managers) || "—"}
                       </td>
                       <td class={`${TD} text-right tabular-nums whitespace-nowrap`}>
@@ -1422,12 +1517,12 @@ export default function FundRequests() {
             <table class="min-w-full text-sm border-separate border-spacing-0">
               <thead>
                 <tr>
-                  <th class={TH}>Ad account</th>
-                  <th class={`${TH} !text-right`}>Ask</th>
-                  <th class={TH}>Status</th>
-                  <th class={`${TH} !text-right`}>Paid</th>
+                  <th class={TH}><SortBtn col="account" label="Ad account" sort={closedSort()} onSort={onClosedSort} /></th>
+                  <th class={`${TH} !text-right`}><SortBtn col="ask" label="Ask" sort={closedSort()} onSort={onClosedSort} /></th>
+                  <th class={TH}><SortBtn col="status" label="Status" sort={closedSort()} onSort={onClosedSort} /></th>
+                  <th class={`${TH} !text-right`}><SortBtn col="paid" label="Paid" sort={closedSort()} onSort={onClosedSort} /></th>
                   <th class={TH}>Paid via</th>
-                  <th class={`${TH} !text-right`}>Time to pay</th>
+                  <th class={`${TH} !text-right`}><SortBtn col="time_to_pay" label="Time to pay" sort={closedSort()} onSort={onClosedSort} /></th>
                   <th class={TH}>Reason</th>
                 </tr>
               </thead>
