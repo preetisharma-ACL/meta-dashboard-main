@@ -1819,7 +1819,9 @@ function Topups(props) {
                     <td class={`${TD} whitespace-nowrap tabular-nums`}>{fmtIST(topupTime(t))}</td>
                     <td class={`${TD} max-w-[240px]`}><AccountCell account={acctOf(t)} /></td>
                     <td class={`${TD} text-right tabular-nums whitespace-nowrap font-semibold text-[#15966A] dark:text-green-400`}>{money(t.amount)}</td>
-                    <td class={`${TD} text-xs text-gray-600 dark:text-gray-300`}>{t.method || "-"}</td>
+                    <td class={`${TD} text-xs text-gray-600 dark:text-gray-300`}>{/* Meta sends "0" for some non-UPI payments. */}
+                      {String(t.method) === "0" ? "Other" : t.method || "-"}
+                    </td>
                     <td class={TD}>
                       <TopupPayerCell topup={t} payers={props.payers} onSaved={load} />
                     </td>
