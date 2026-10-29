@@ -364,6 +364,124 @@ function NoteCell(props) {
   );
 }
 
+// Filter dropdown with a search box. options: [{ value, label }]; "" is the
+// "all" choice, labelled by allLabel. Search matches anywhere in the label, so
+// an ad account is findable by name or act_ id.
+function SearchSelect(props) {
+  const [open, setOpen] = createSignal(false);
+  const [q, setQ] = createSignal("");
+  const [active, setActive] = createSignal(-1);
+  let root;
+  let inputEl;
+  let listEl;
+
+  const all = () => [{ value: "", label: props.allLabel }, ...(props.options || [])];
+  const filtered = () => {
+    const s = q().trim().toLowerCase();
+    return s ? all().filter((o) => o.label.toLowerCase().includes(s)) : all();
+  };
+  const current = () =>
+    all().find((o) => String(o.value) === String(props.value ?? ""))?.label ?? props.allLabel;
+
+  const close = () => {
+    setOpen(false);
+    setQ("");
+    setActive(-1);
+  };
+  const toggle = () => {
+    if (open()) return close();
+    setOpen(true);
+    queueMicrotask(() => inputEl?.focus());
+  };
+  const choose = (v) => {
+    props.onChange(v);
+    close();
+  };
+
+  const onDoc = (e) => open() && !root?.contains(e.target) && close();
+  onMount(() => document.addEventListener("pointerdown", onDoc));
+  onCleanup(() => document.removeEventListener("pointerdown", onDoc));
+
+  createEffect(() => {
+    const i = active();
+    if (open() && i >= 0) listEl?.querySelector(`[data-idx="${i}"]`)?.scrollIntoView({ block: "nearest" });
+  });
+
+  const onKeyDown = (e) => {
+    const list = filtered();
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      if (!list.length) return;
+      const step = e.key === "ArrowDown" ? 1 : -1;
+      const next = active() < 0 ? (step > 0 ? 0 : list.length - 1) : active() + step;
+      setActive((next + list.length) % list.length);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const o = list[active()] ?? (list.length === 1 ? list[0] : null);
+      if (o) choose(o.value);
+    } else if (e.key === "Escape") {
+      e.stopPropagation();
+      close();
+    }
+  };
+
+  return (
+    <div ref={root} class={`relative ${props.class || ""}`}>
+      <button
+        type="button"
+        onClick={toggle}
+        class={`${INPUT} flex items-center justify-between gap-2 text-left`}
+      >
+        <span class="truncate">{current()}</span>
+        <svg class={`w-4 h-4 flex-none text-gray-500 transition-transform ${open() ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      <Show when={open()}>
+        <div class="absolute z-40 mt-1 w-full min-w-[260px] rounded-xl border border-[#E2E8F1] dark:border-gray-700 bg-white dark:bg-gray-900 shadow-xl">
+          <div class="p-2 border-b border-[#E2E8F1] dark:border-gray-800">
+            <input
+              ref={inputEl}
+              type="text"
+              autocomplete="off"
+              class={`${INPUT} !py-1.5`}
+              placeholder={props.placeholder || "Search…"}
+              value={q()}
+              onInput={(e) => {
+                setQ(e.currentTarget.value);
+                setActive(-1);
+              }}
+              onKeyDown={onKeyDown}
+            />
+          </div>
+          <div ref={listEl} role="listbox" class="max-h-72 overflow-y-auto py-1">
+            <For each={filtered()} fallback={<p class="px-3 py-3 text-sm text-gray-400">No match</p>}>
+              {(o, i) => {
+                const on = () => String(o.value) === String(props.value ?? "");
+                return (
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={on()}
+                    data-idx={i()}
+                    onClick={() => choose(o.value)}
+                    onMouseEnter={() => setActive(i())}
+                    class={`w-full text-left px-3 py-2 text-sm transition-colors ${
+                      active() === i() ? "bg-[#F6F9FC] dark:bg-gray-800" : ""
+                    } ${on() ? "text-[#AC2334] dark:text-red-300 font-semibold" : "text-[#14233A] dark:text-gray-100"}`}
+                  >
+                    {o.label}
+                  </button>
+                );
+              }}
+            </For>
+          </div>
+        </div>
+      </Show>
+    </div>
+  );
+}
+
 // ── summary strip ────────────────────────────────────────────────────────────
 
 function Tile(props) {
@@ -1030,7 +1148,7 @@ function Register(props) {
   };
   const totals = () => res()?.data?.totals || null;
 
-  const TH = "px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400 whitespace-nowrap border-b border-[#D4DDE9] dark:border-gray-700 bg-[#F6F9FC] dark:bg-gray-800";
+  const TH = "sticky top-0 z-10 px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400 whitespace-nowrap border-b border-[#D4DDE9] dark:border-gray-700 bg-[#F6F9FC] dark:bg-gray-800";
   const TD = "px-3 py-2 align-top border-b border-[#E2E8F1] dark:border-gray-800";
   const TDN = `${TD} text-right tabular-nums whitespace-nowrap`;
 
@@ -1080,21 +1198,23 @@ function Register(props) {
             onChange={(e) => setTo(e.currentTarget.value)}
           />
         </Show>
-        <select
-          class={`${INPUT} !w-auto max-w-[260px]`}
+        <SearchSelect
+          class="w-[300px]"
+          allLabel="All ad accounts"
+          placeholder="Search account name or id…"
           value={adAccount()}
-          onChange={(e) => setAdAccount(e.currentTarget.value)}
-        >
-          <option value="">All ad accounts</option>
-          <For each={props.accounts() || []}>
-            {(a) => <option value={a.id}>{`${a.name || a.id} · ${a.id}`}</option>}
-          </For>
-        </select>
+          onChange={setAdAccount}
+          options={(props.accounts() || []).map((a) => ({ value: a.id, label: `${a.name || a.id} · ${a.id}` }))}
+        />
         <Show when={props.cms().length}>
-          <select class={`${INPUT} !w-auto`} value={cmId()} onChange={(e) => setCmId(e.currentTarget.value)}>
-            <option value="">All campaign managers</option>
-            <For each={props.cms()}>{(m) => <option value={m.id}>{m.label}</option>}</For>
-          </select>
+          <SearchSelect
+            class="w-[240px]"
+            allLabel="All campaign managers"
+            placeholder="Search CM…"
+            value={cmId()}
+            onChange={setCmId}
+            options={props.cms().map((m) => ({ value: m.id, label: m.label }))}
+          />
         </Show>
       </div>
 
@@ -1105,7 +1225,7 @@ function Register(props) {
         <div class="rounded-xl bg-[#FBEEF0] border border-[#AC2334]/25 p-3 mb-3 text-sm text-[#AC2334]">{error()}</div>
       </Show>
 
-      <div class={`overflow-x-auto rounded-2xl border border-[#E2E8F1] dark:border-gray-700 bg-white dark:bg-gray-900 transition-opacity ${loading() ? "opacity-60" : ""}`}>
+      <div class={`overflow-auto max-h-[calc(100vh-10rem)] rounded-2xl border border-[#E2E8F1] dark:border-gray-700 bg-white dark:bg-gray-900 transition-opacity ${loading() ? "opacity-60" : ""}`}>
         <table class="min-w-full text-sm border-separate border-spacing-0">
           <thead>
             <tr>
@@ -1267,7 +1387,7 @@ export default function FundRequests() {
     if (!accounts().length) loadAccounts();
   };
 
-  const TH = "px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400 whitespace-nowrap border-b border-[#D4DDE9] dark:border-gray-700 bg-[#F6F9FC] dark:bg-gray-800 text-left";
+  const TH = "sticky top-0 z-10 px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400 whitespace-nowrap border-b border-[#D4DDE9] dark:border-gray-700 bg-[#F6F9FC] dark:bg-gray-800 text-left";
   const TD = "px-3 py-2.5 align-top border-b border-[#E2E8F1] dark:border-gray-800";
 
   const stop = (fn) => (e) => {
@@ -1296,14 +1416,14 @@ export default function FundRequests() {
         </div>
         <div class="flex items-center gap-2 flex-wrap">
           <Show when={cms().length}>
-            <select
-              class={`${INPUT} !w-auto`}
+            <SearchSelect
+              class="w-[240px]"
+              allLabel="All campaign managers"
+              placeholder="Search CM…"
               value={cmId()}
-              onChange={(e) => setCmId(e.currentTarget.value)}
-            >
-              <option value="">All campaign managers</option>
-              <For each={cms()}>{(m) => <option value={m.id}>{m.label}</option>}</For>
-            </select>
+              onChange={setCmId}
+              options={cms().map((m) => ({ value: m.id, label: m.label }))}
+            />
           </Show>
           <Show when={meta().can_raise_any}>
             <button type="button" class={BTN_PRIMARY} onClick={openRaise}>
@@ -1340,7 +1460,7 @@ export default function FundRequests() {
       </div>
 
       {/* 2. Queue */}
-      <div class="overflow-x-auto rounded-2xl border border-[#E2E8F1] dark:border-gray-700 bg-white dark:bg-gray-900 shadow-[0_1px_2px_rgba(16,29,49,.05)]">
+      <div class="overflow-auto max-h-[calc(100vh-10rem)] rounded-2xl border border-[#E2E8F1] dark:border-gray-700 bg-white dark:bg-gray-900 shadow-[0_1px_2px_rgba(16,29,49,.05)]">
         <table class="min-w-full text-sm border-separate border-spacing-0">
           <thead>
             <tr>
@@ -1355,7 +1475,7 @@ export default function FundRequests() {
               <th class={`${TH} !text-right`}><SortBtn col="ask" label="Ask" sort={queueSort()} onSort={onQueueSort} /></th>
               <th class={TH}><SortBtn col="raised" label="Raised" sort={queueSort()} onSort={onQueueSort} /></th>
               <th class={TH}>Note</th>
-              <th class={`${TH} sticky right-0 z-[1] shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.15)]`}>Actions</th>
+              <th class={`${TH} right-0 !z-20 shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.15)]`}>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -1513,7 +1633,7 @@ export default function FundRequests() {
           </span>
         </button>
         <Show when={showClosed()}>
-          <div class="mt-2 overflow-x-auto rounded-2xl border border-[#E2E8F1] dark:border-gray-700 bg-white dark:bg-gray-900">
+          <div class="mt-2 overflow-auto max-h-[calc(100vh-10rem)] rounded-2xl border border-[#E2E8F1] dark:border-gray-700 bg-white dark:bg-gray-900">
             <table class="min-w-full text-sm border-separate border-spacing-0">
               <thead>
                 <tr>
