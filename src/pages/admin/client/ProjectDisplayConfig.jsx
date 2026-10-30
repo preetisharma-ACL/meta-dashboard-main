@@ -26,6 +26,9 @@ import SuccessToast, {
   showToast,
 } from "../../../components/common/SuccessToast";
 
+// engagement_status values that mean "not running" — badged in the client picker.
+const INACTIVE_STATUSES = new Set(["hold", "completed", "dead"]);
+
 // The only promised qualification %s the configs API accepts (others 400).
 const PROMISE_PCTS = [30, 35, 40, 50];
 
@@ -443,9 +446,11 @@ export default function ProjectDisplayConfig() {
       // from the CM-scoped allowed-budget list instead. include_inactive: Hold
       // and Completed clients still need their configs (restart, billing), so
       // this list must not drop them the way the Allowed Budget default does.
+      // Admin: the roster hides DEAD clients by default; dead=all keeps them,
+      // since admin still edits configs of Hold / Completed / Dead clients.
       const clientRes = await (cm
         ? fetchAllowedBudgetClients({ includeInactive: true })
-        : fetchClients(1, 500));
+        : fetchClients(1, 500, { includeDead: true }));
 
       if (cm) {
         // Allowed-budget rows carry the config-compatible client_id + a display
@@ -464,10 +469,18 @@ export default function ProjectDisplayConfig() {
             })),
         );
       } else {
+        // Admin rows carry engagement_status (active | hold | completed | dead
+        // | null) but no `inactive` flag: derive it the same way, and mark a
+        // null status so the picker can say "Status not set".
+        const rows = Array.isArray(clientRes?.data?.results)
+          ? clientRes.data.results
+          : clientRes.data || [];
         setClients(
-          Array.isArray(clientRes?.data?.results)
-            ? clientRes.data.results
-            : clientRes.data || [],
+          rows.map((c) => ({
+            ...c,
+            inactive: INACTIVE_STATUSES.has(c.engagement_status),
+            statusUnset: "engagement_status" in c && c.engagement_status == null,
+          })),
         );
       }
     } catch (err) {
@@ -1752,9 +1765,19 @@ export default function ProjectDisplayConfig() {
                               class="w-full flex items-center justify-between gap-2 text-left px-3 py-2 text-sm hover:bg-purple-50 dark:hover:bg-gray-800 transition-colors"
                             >
                               <span class={`truncate ${client.inactive ? "text-gray-500 dark:text-gray-400" : ""}`}>{client.email}</span>
-                              {/* Not running (CM list only — rows from the
-                                  allowed-budget source carry the status). */}
-                              <Show when={client.inactive}>
+                              {/* Not running → grey status badge, name dimmed.
+                                  Admin rows with no status → amber "Status not
+                                  set" (could be running, so not dimmed). */}
+                              <Show
+                                when={client.inactive}
+                                fallback={
+                                  <Show when={client.statusUnset}>
+                                    <span class="flex-none text-[10px] font-bold px-2 py-0.5 rounded-full uppercase bg-[#FBF3E2] text-[#B07A14] dark:bg-amber-900/30 dark:text-amber-300">
+                                      Status not set
+                                    </span>
+                                  </Show>
+                                }
+                              >
                                 <span class="flex-none text-[10px] font-bold px-2 py-0.5 rounded-full uppercase bg-[#E3E7ED] text-[#3B4656] dark:bg-gray-700 dark:text-gray-200">
                                   {engagementLabel(client.engagement_status)}
                                 </span>

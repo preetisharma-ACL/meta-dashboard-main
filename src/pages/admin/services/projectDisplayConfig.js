@@ -95,9 +95,11 @@ export const resolveConfigRule = async (clientId, projectId) => {
   return res?.data ?? null;
 };
 
-export const fetchClients = async (page = 1, pageSize = 20) => {
+// The server hides DEAD clients unless asked; includeDead sends dead=all
+// (live + dead) for pickers that must still reach them.
+export const fetchClients = async (page = 1, pageSize = 20, { includeDead = false } = {}) => {
   return await api(
-    `/clients/admin/clients?page=${page}&page_size=${pageSize}`,
+    `/clients/admin/clients?page=${page}&page_size=${pageSize}${includeDead ? "&dead=all" : ""}`,
     { method: "GET" }
   );
 };
