@@ -176,6 +176,13 @@ export const blockedReasons = (fields) => {
     const slots = Array.isArray(o?.slots) ? o.slots.join(", ") : o?.slots ?? o?.slot ?? "";
     out.push(`Text too long on page ${o?.page ?? "?"}${slots ? `: ${slots}` : ""}`);
   }
+  // The page count is the model's own (CPL / Retainership 5, Hybrid 7) and
+  // comes from the server; never assumed here. Key name not yet confirmed.
+  const layout = fields?.layout;
+  const expected = layout?.expected_pages ?? layout?.page_count ?? layout?.pages;
+  if (typeof expected === "number" && (layout?.overflow ?? []).length) {
+    out.push(`This proposal should fit on ${expected} page${expected === 1 ? "" : "s"}.`);
+  }
   return out;
 };
 

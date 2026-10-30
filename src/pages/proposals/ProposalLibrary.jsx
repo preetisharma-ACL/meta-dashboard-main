@@ -48,6 +48,44 @@ const rowAt = (r) => r?.updated_at;
 const rowRevs = (r) => r?.revisions;
 const revId = (rv) => rv?.id;
 
+// Values edited in a different shape than they are stored. retainer_services is
+// stored as {"<service name>": {deliverables, objective}} but edited as rows, so
+// a service can be added, renamed or removed. decode on load, encode on save /
+// dirty check / Advanced JSON. Rows with no name are not saved.
+const CODECS = {
+  retainer_services: {
+    decode: (v) =>
+      Object.entries(v && typeof v === "object" && !Array.isArray(v) ? v : {}).map(([name, s]) => ({
+        ...(s && typeof s === "object" ? s : {}),
+        name,
+        deliverables: Array.isArray(s?.deliverables) ? s.deliverables : [],
+        objective: s?.objective ?? "",
+      })),
+    encode: (rows) =>
+      Object.fromEntries(
+        (Array.isArray(rows) ? rows : [])
+          .filter((r) => String(r?.name ?? "").trim())
+          .map(({ name, ...rest }) => [
+            String(name).trim(),
+            { ...rest, deliverables: (rest.deliverables ?? []).map((x) => String(x).trim()).filter(Boolean) },
+          ]),
+      ),
+  },
+};
+const IDENTITY = { decode: (v) => v, encode: (v) => v };
+const codecOf = (key) => CODECS[key] ?? IDENTITY;
+
+// What a root list's items are called ("Service 1", "Phase 1").
+const ROOT_NAMES = { retainer_services: "services", retainer_workflow: "phases", retainer_reporting: "lines" };
+
+// Placeholders the server substitutes, offered as chips even before the entry
+// lists its own (merged with entry.placeholders).
+const PLACEHOLDER_FALLBACK = {
+  tnc_pass_through: ["{markup_pct}", "{min_budget}", "{notice_days}", "{min_months}", "{validity_days}", "{project}"],
+  tnc_retainership: ["{notice_days}", "{revision_rounds}"],
+  hybrid_content: ["{min_budget}"],
+};
+
 const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
 export default function ProposalLibrary() {
@@ -129,9 +167,10 @@ function EntryEditor(props) {
   const [viewing, setViewing] = createSignal(null); // { rev, value | null, error }
   const [restoring, setRestoring] = createSignal(null);
 
+  const codec = codecOf(props.entryKey);
   const adopt = (d) => {
     setEntry(d);
-    setValue(JSON.parse(JSON.stringify(d?.value ?? null)));
+    setValue(codec.decode(JSON.parse(JSON.stringify(d?.value ?? null))));
     setAdvanced(false);
     setJsonError("");
   };
@@ -146,7 +185,7 @@ function EntryEditor(props) {
   };
   load();
 
-  const dirty = createMemo(() => entry() && !same(value(), entry().value));
+  const dirty = createMemo(() => entry() && !same(codec.encode(value()), entry().value));
 
   // Text box last focused, for the placeholder chips.
   let lastText = null;
@@ -161,21 +200,25 @@ function EntryEditor(props) {
       el.setSelectionRange?.(s + token.length, s + token.length);
     });
   };
-  const placeholders = () =>
-    (entry()?.placeholders ?? []).map((p) => {
-      const s = typeof p === "string" ? p : p?.key ?? p?.name ?? "";
-      return s.startsWith("{") ? s : `{${s}}`;
-    });
+  const placeholders = () => [
+    ...new Set(
+      [...(entry()?.placeholders ?? []), ...(PLACEHOLDER_FALLBACK[props.entryKey] ?? [])]
+        .map((p) => (typeof p === "string" ? p : p?.key ?? p?.name ?? ""))
+        .filter(Boolean)
+        .map((s) => (s.startsWith("{") ? s : `{${s}}`)),
+    ),
+  ];
 
+  // Advanced JSON shows (and takes) the stored shape.
   const toggleAdvanced = () => {
     if (!advanced()) {
-      setJsonText(JSON.stringify(value(), null, 2));
+      setJsonText(JSON.stringify(codec.encode(value()), null, 2));
       setJsonError("");
       setAdvanced(true);
       return;
     }
     try {
-      setValue(JSON.parse(jsonText()));
+      setValue(codec.decode(JSON.parse(jsonText())));
       setAdvanced(false);
       setJsonError("");
     } catch (err) {
@@ -185,7 +228,7 @@ function EntryEditor(props) {
 
   const save = async () => {
     if (!note().trim() || busy()) return;
-    let v = value();
+    let v = codec.encode(value());
     if (advanced()) {
       try {
         v = JSON.parse(jsonText());
@@ -213,7 +256,7 @@ function EntryEditor(props) {
     setViewing({ rev: rv, value: null, error: "" });
     try {
       const d = await fetchLibraryRevision(props.entryKey, revId(rv));
-      setViewing({ rev: rv, value: d?.value !== undefined ? d.value : d, error: "" });
+      setViewing({ rev: rv, value: codec.decode(d?.value !== undefined ? d.value : d), error: "" });
     } catch (err) {
       setViewing({ rev: rv, value: null, error: errorMessage(err, "Could not load this revision.") });
     }
@@ -291,6 +334,7 @@ function EntryEditor(props) {
               value={value()}
               template={ROOT_TEMPLATES[props.entryKey]}
               tagRoot={props.entryKey === "developers"}
+              rootName={ROOT_NAMES[props.entryKey]}
               onChange={setValue}
               onFocusText={(t) => (lastText = t)}
             />
@@ -397,6 +441,7 @@ function EntryEditor(props) {
               value={viewing().value}
               template={ROOT_TEMPLATES[props.entryKey]}
               tagRoot={props.entryKey === "developers"}
+              rootName={ROOT_NAMES[props.entryKey]}
               readOnly
               onChange={() => {}}
             />

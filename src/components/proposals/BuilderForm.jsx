@@ -1,8 +1,8 @@
-import { createSignal, createMemo, For, Index, Show } from "solid-js";
+import { createSignal, createMemo, For, Index, Show, Switch, Match } from "solid-js";
 import { Plus, X, CheckCircle2, AlertTriangle, XCircle, Info } from "lucide-solid";
-import { CARD, PanelTitle, FIELD, LABEL, SMALL_BTN } from "./ProposalUI";
+import { CARD, PanelTitle, FIELD, LABEL, SMALL_BTN, TagInput } from "./ProposalUI";
 import BuilderCopy from "./BuilderCopy";
-import { optionsOf, getPath, fmtWhen, nameOf } from "../../services/proposals";
+import { optionsOf, getPath, fmtWhen, nameOf, humanize } from "../../services/proposals";
 
 // ─── Builder: form + checks (middle panel) ────────────────────────────────────
 // Every input shows the value the PDF would print when left empty
@@ -58,7 +58,12 @@ export default function BuilderForm(props) {
   // A text input bound to a dotted path.
   const Text = (p) => (
     <div class={p.class}>
-      <label class={LABEL} for={`pf-${p.path}`}>{p.label}</label>
+      <label class={LABEL} for={`pf-${p.path}`}>
+        {p.label}
+        <Show when={p.required}>
+          <span class="text-[#AC2334]"> *</span>
+        </Show>
+      </label>
       <Show
         when={p.multiline}
         fallback={
@@ -82,6 +87,9 @@ export default function BuilderForm(props) {
           placeholder={ph(p.path)}
           onInput={(e) => props.setField(p.path.split("."), e.target.value)}
         />
+      </Show>
+      <Show when={p.help}>
+        <p class="mt-1 text-xs text-[#8593A8] dark:text-gray-400">{p.help}</p>
       </Show>
     </div>
   );
@@ -110,12 +118,58 @@ export default function BuilderForm(props) {
   const categories = createMemo(() => optionsOf(props.meta?.categories));
   const themes = createMemo(() => optionsOf(props.meta?.themes));
 
-  // Which deal blocks apply. Unknown / empty model → show all three.
+  // Which deal blocks apply. Unknown / empty model → show all three. The
+  // Hybrid model's key is "pass_through" (label "Hybrid" from meta.models).
   const model = () => String(getPath(props.form, "model") ?? props.detail?.model ?? "").toLowerCase();
   const knownModel = () => /cpl|retain|pass/.test(model());
   const showCpl = () => !knownModel() || model().includes("cpl");
   const showRet = () => !knownModel() || model().includes("retain");
   const showPass = () => !knownModel() || model().includes("pass");
+  const modelKind = () => (!knownModel() ? null : model().includes("pass") ? "hybrid" : model().includes("retain") ? "retainer" : "cpl");
+  const hybridLabel = () => models().find((o) => o.value === "pass_through")?.label ?? "Hybrid";
+
+  // ── Retainership services ──
+  // meta.retainer_services: standard deliverables + objective per service
+  // name, as a {name: {deliverables, objective}} map or a [{name, …}] list.
+  const serviceDefaults = createMemo(() => {
+    const raw = props.meta?.retainer_services;
+    const out = {};
+    if (Array.isArray(raw)) {
+      for (const s of raw) {
+        if (typeof s === "string") out[s] = { deliverables: [], objective: "" };
+        else if (s?.name) out[s.name] = { deliverables: s.deliverables ?? [], objective: s.objective ?? "" };
+      }
+    } else if (raw && typeof raw === "object") {
+      for (const [name, s] of Object.entries(raw)) out[name] = { deliverables: s?.deliverables ?? [], objective: s?.objective ?? "" };
+    }
+    return out;
+  });
+  const blankService = () => ({ name: "", fee: "", deliverables: [], objective: "" });
+  // At least one row is always shown; an untouched blank row isn't saved.
+  const services = () => {
+    const v = getPath(props.form, "retainership.services");
+    return Array.isArray(v) && v.length ? v : [blankService()];
+  };
+  const setServices = (next) => props.setField(["retainership", "services"], next);
+  const sameLines = (a, b) => JSON.stringify((a ?? []).filter((x) => String(x).trim())) === JSON.stringify((b ?? []).filter((x) => String(x).trim()));
+  const setServiceName = (i, name) => {
+    const rows = services().map((r) => ({ ...r }));
+    const row = rows[i];
+    const prev = serviceDefaults()[row.name];
+    const next = serviceDefaults()[name];
+    row.name = name;
+    // Picking a suggestion prefills its deliverables / objective — unless the
+    // salesperson already wrote their own (anything other than the previous
+    // suggestion's text).
+    if (next) {
+      const untouchedD = !(row.deliverables ?? []).some((x) => String(x).trim()) || (prev && sameLines(row.deliverables, prev.deliverables));
+      const untouchedO = !String(row.objective ?? "").trim() || (prev && row.objective === prev.objective);
+      if (untouchedD) row.deliverables = [...next.deliverables];
+      if (untouchedO) row.objective = next.objective;
+    }
+    setServices(rows);
+  };
+  const setService = (i, field, value) => setServices(services().map((r, j) => (j === i ? { ...r, [field]: value } : r)));
 
   // ── List helpers (lines, facts) — the whole list is sent on every change ──
   const list = (key) => {
@@ -141,6 +195,8 @@ export default function BuilderForm(props) {
   const versions = () => props.detail?.versions ?? [];
   const display = () => props.detail?.display ?? {};
   const displayLines = () => (Array.isArray(display().lines) ? display().lines : []);
+  const displayScalars = () =>
+    Object.entries(display()).filter(([, v]) => (typeof v === "string" && v !== "") || typeof v === "number");
   const termsMode = () =>
     getPath(props.form, "terms.mode") ?? getPath(defaults(), "terms.mode") ?? "standard";
 
@@ -190,18 +246,45 @@ export default function BuilderForm(props) {
       {/* ══ Numbers ══ */}
       <div class={CARD + " p-4"}>
         <PanelTitle>Numbers</PanelTitle>
-        <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-          <Num label="Sub-total" value={display().subtotal} />
-          <Num label="GST" value={display().gst} />
-          <Num label="Total" value={display().total} strong />
-          <Num label="Cost per qualified lead" value={display().cost_per_qualified} />
-          <Show when={display().monthly_fee != null}>
-            <Num label="Monthly fee" value={display().monthly_fee} />
-          </Show>
-          <Show when={display().total_monthly != null}>
-            <Num label="Total monthly" value={display().total_monthly} />
-          </Show>
-        </dl>
+        {/* Every figure is the server's (display); nothing is computed here. */}
+        <Switch
+          fallback={
+            <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+              <Num label="Sub-total" value={display().subtotal} />
+              <Num label="GST" value={display().gst} />
+              <Num label="Total" value={display().total} strong />
+              <Num label="Cost per qualified lead" value={display().cost_per_qualified} />
+              <Show when={display().monthly_fee != null}>
+                <Num label="Monthly fee" value={display().monthly_fee} />
+              </Show>
+              <Show when={display().total_monthly != null}>
+                <Num label="Total monthly" value={display().total_monthly} />
+              </Show>
+            </dl>
+          }
+        >
+          <Match when={modelKind() === "retainer"}>
+            <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+              <For each={Array.isArray(display().services) ? display().services : []}>
+                {(s, i) => <Num label={s?.name || services()[i()]?.name || `Service ${i() + 1}`} value={s?.fee_f} />}
+              </For>
+              <Num label="Monthly fee" value={display().monthly_fee} />
+              <Num label="GST" value={display().gst} />
+              <Num label="Total monthly" value={display().total_monthly} strong />
+              <Show when={display().contract_value != null && display().contract_value !== ""}>
+                <Num label="Contract value" value={display().contract_value} strong />
+              </Show>
+            </dl>
+          </Match>
+          {/* Hybrid: whatever scalar figures display carries, in its order. */}
+          <Match when={modelKind() === "hybrid"}>
+            <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+              <For each={displayScalars()} fallback={<p class="col-span-2 text-[#8593A8]">No figures yet.</p>}>
+                {([k, v]) => <Num label={humanize(k.replace(/_f$/, ""))} value={v} strong={/^total/.test(k)} />}
+              </For>
+            </dl>
+          </Match>
+        </Switch>
         {/* Per-project breakdown, only when there is more than one project.
             The _f values arrive formatted ("1,100"). */}
         <Show when={displayLines().length > 1}>
@@ -353,23 +436,131 @@ export default function BuilderForm(props) {
             </div>
           </Show>
 
+          {/* ── Retainership: services list + terms. The services list is
+              sent whole on every change; money is shown from display only. */}
           <Show when={showRet()}>
             <div class="mt-4 rounded-lg border border-[#E2E8F1] dark:border-gray-700 p-3">
               <p class="text-sm font-bold text-[#14233A] dark:text-white mb-2">Retainership</p>
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <Text label="Monthly fee" path="retainership.monthly_fee" numeric />
-                <Text label="Notice days" path="retainership.notice_days" numeric />
+
+              <p class={LABEL}>
+                Services<span class="text-[#AC2334]"> *</span>
+              </p>
+              <datalist id="pf-retainer-services">
+                <For each={Object.keys(serviceDefaults())}>{(n) => <option value={n} />}</For>
+              </datalist>
+              <div class="space-y-2.5">
+                <Index each={services()}>
+                  {(s, i) => (
+                    <div class="rounded-lg border border-[#E2E8F1] dark:border-gray-700 bg-[#FBFCFE] dark:bg-gray-800/60 p-2.5 space-y-2">
+                      <div class="grid grid-cols-[1fr_9rem_auto] gap-2 items-end">
+                        <LineInput
+                          label="Service"
+                          path={`retainership.services.${i}.name`}
+                          list="pf-retainer-services"
+                          value={s()?.name}
+                          ph="e.g. Lead generation"
+                          onInput={(v) => setServiceName(i, v)}
+                        />
+                        <LineInput
+                          label="Fee / month (₹) *"
+                          numeric
+                          path={`retainership.services.${i}.fee`}
+                          value={s()?.fee}
+                          onInput={(v) => setService(i, "fee", v)}
+                        />
+                        <RemoveBtn
+                          label={`Remove service ${i + 1}`}
+                          disabled={services().length <= 1}
+                          onClick={() => setServices(services().filter((_, j) => j !== i))}
+                        />
+                      </div>
+                      <div>
+                        <label class="block text-[10px] font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400 mb-1">
+                          Deliverables (one per line)
+                        </label>
+                        <textarea
+                          class={FIELD + " !px-2.5 !py-2 min-h-[4.5rem] leading-relaxed"}
+                          aria-label={`Service ${i + 1} deliverables`}
+                          value={(s()?.deliverables ?? []).join("\n")}
+                          placeholder={
+                            (serviceDefaults()[s()?.name]?.deliverables ?? []).join("\n") ||
+                            "Leave empty to print the standard list for this service."
+                          }
+                          onInput={(e) => setService(i, "deliverables", e.target.value.split("\n"))}
+                        />
+                      </div>
+                      <LineInput
+                        label="Objective"
+                        path={`retainership.services.${i}.objective`}
+                        value={s()?.objective}
+                        ph={serviceDefaults()[s()?.name]?.objective ?? ""}
+                        onInput={(v) => setService(i, "objective", v)}
+                      />
+                    </div>
+                  )}
+                </Index>
+              </div>
+              <button type="button" class={SMALL_BTN + " mt-2"} onClick={() => setServices([...services(), blankService()])}>
+                <Plus size={14} /> Add service
+              </button>
+
+              <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div class="sm:col-span-2">
+                  <p class={LABEL}>Recommended monthly ad budget, paid by client: from / to</p>
+                  <div class="grid grid-cols-2 gap-2">
+                    <Text label="From (₹)" path="retainership.ad_budget_min" numeric />
+                    <Text label="To (₹)" path="retainership.ad_budget_max" numeric />
+                  </div>
+                </div>
+                <Text label="Contract duration (months)" path="retainership.duration_months" numeric />
+                <Text label="Notice period (days)" path="retainership.notice_days" numeric />
+                <Text
+                  label="Creative revision rounds per month"
+                  path="retainership.revision_rounds"
+                  numeric
+                  help="0 removes the revisions clause."
+                />
+                <label class="inline-flex items-center gap-2 text-sm text-[#14233A] dark:text-gray-200 cursor-pointer self-end pb-2.5">
+                  <input
+                    type="checkbox"
+                    data-field="retainership.replace_invalid"
+                    class="accent-[#AC2334] w-4 h-4"
+                    checked={(getPath(props.form, "retainership.replace_invalid") ?? getPath(defaults(), "retainership.replace_invalid") ?? true) !== false}
+                    onChange={(e) => props.setField(["retainership", "replace_invalid"], e.target.checked)}
+                  />
+                  Replace invalid leads
+                </label>
+                <div class="sm:col-span-2">
+                  <p class={LABEL}>Target markets</p>
+                  <TagInput
+                    value={Array.isArray(getPath(props.form, "retainership.target_markets")) ? getPath(props.form, "retainership.target_markets") : []}
+                    placeholder="Add a market and press Enter"
+                    onChange={(next) => props.setField(["retainership", "target_markets"], next)}
+                  />
+                </div>
               </div>
             </div>
           </Show>
 
+          {/* ── Hybrid (model key pass_through): every lead billed at actual
+              cost + markup_pct. That is the only percentage. */}
           <Show when={showPass()}>
             <div class="mt-4 rounded-lg border border-[#E2E8F1] dark:border-gray-700 p-3">
-              <p class="text-sm font-bold text-[#14233A] dark:text-white mb-2">Pass-through</p>
+              <p class="text-sm font-bold text-[#14233A] dark:text-white mb-2">{hybridLabel()}</p>
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <Text label="Markup %" path="pass_through.markup_pct" numeric />
-                <Text label="Monthly fee" path="pass_through.monthly_fee" numeric />
-                <Text label="Terms" path="pass_through.terms_text" multiline class="sm:col-span-2" />
+                <Text
+                  label="Service charge % on actual lead cost"
+                  path="pass_through.markup_pct"
+                  numeric
+                  required
+                  class="sm:col-span-2"
+                  help="Every lead is billed at its actual cost + this %. 15 means a ₹100 lead is billed ₹115."
+                />
+                <Text label="Minimum monthly ad budget (funded by client)" path="pass_through.min_budget" numeric required />
+                <Text label="Fixed monthly fee (optional)" path="pass_through.monthly_fee" numeric />
+                <Text label="Expected leads per day" path="pass_through.leads_per_day" numeric />
+                <Text label="Notice period (days)" path="pass_through.notice_days" numeric />
+                <Text label="Commercial note" path="pass_through.terms_text" multiline class="sm:col-span-2" />
               </div>
             </div>
           </Show>
@@ -491,7 +682,7 @@ export default function BuilderForm(props) {
       </div>
 
       {/* ══ Copy ══ */}
-      <BuilderCopy detail={props.detail} copy={props.copy} setCopyKey={props.setCopyKey} />
+      <BuilderCopy detail={props.detail} copy={props.copy} setCopyKey={props.setCopyKey} model={modelKind()} />
 
       {/* ══ Versions ══ */}
       <Show when={versions().length}>
@@ -546,6 +737,7 @@ function LineInput(props) {
         class={FIELD + " !px-2.5 !py-2"}
         data-field={props.path}
         inputmode={props.numeric ? "decimal" : undefined}
+        list={props.list}
         value={props.value == null ? "" : String(props.value)}
         placeholder={props.ph}
         onInput={(e) => props.onInput(e.target.value)}
@@ -560,8 +752,9 @@ function RemoveBtn(props) {
       type="button"
       aria-label={props.label}
       title={props.label}
+      disabled={props.disabled}
       onClick={() => props.onClick()}
-      class="flex-none inline-flex items-center justify-center w-9 h-9 rounded-lg text-[#8593A8] hover:text-[#AC2334] hover:bg-[#FBEEF0] dark:hover:bg-red-900/20"
+      class="flex-none inline-flex items-center justify-center w-9 h-9 rounded-lg text-[#8593A8] hover:text-[#AC2334] hover:bg-[#FBEEF0] dark:hover:bg-red-900/20 disabled:opacity-30 disabled:pointer-events-none"
     >
       <X size={16} />
     </button>

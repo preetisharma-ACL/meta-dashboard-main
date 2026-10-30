@@ -8,12 +8,13 @@ import { CARD, Spinner, InlineError } from "./ProposalUI";
 
 // ─── Builder: live preview (right panel + full screen) ────────────────────────
 // GET preview → {html} in an <iframe srcdoc>. The page is laid out 794 px wide
-// (A4) × 5 pages, so the frame is rendered at that size and scaled with a CSS
-// transform. Refetched (debounced) whenever `tick` moves — the builder bumps
+// (A4) pages — how many depends on the model (CPL / Retainership 5, Hybrid 7),
+// so the frame starts one page tall and takes the laid-out height on load —
+// rendered at that size and scaled with a CSS transform. Refetched (debounced) whenever `tick` moves — the builder bumps
 // it after every save / confirm / chat / undo / restore. A 400 means there are
 // no numbers yet: its message is shown instead.
 //
-// PAGE_GAP is added just before </head> so the five .page sheets show apart on
+// PAGE_GAP is added just before </head> so the .page sheets show apart on
 // a grey desk instead of as one long strip. Preview only; the PDF is rendered
 // server-side from its own HTML.
 //
@@ -59,7 +60,7 @@ export default function BuilderPreview(props) {
   const [error, setError] = createSignal("");
   const [loading, setLoading] = createSignal(false);
   const [width, setWidth] = createSignal(PAGE_W);
-  const [docH, setDocH] = createSignal(A4_H * 5);
+  const [docH, setDocH] = createSignal(A4_H);
   const [full, setFull] = createSignal(false);
   let box;
   let frame;

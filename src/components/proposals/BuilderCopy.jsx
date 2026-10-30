@@ -1,4 +1,4 @@
-import { createSignal, Index, Show } from "solid-js";
+import { createSignal, For, Index, Show, Switch, Match } from "solid-js";
 import { ChevronDown, AlertTriangle } from "lucide-solid";
 import { CARD, FIELD, LABEL, CharCount, TagInput } from "./ProposalUI";
 import { humanize } from "../../services/proposals";
@@ -11,21 +11,34 @@ import { humanize } from "../../services/proposals";
 // sent whole. Fixed-size lists show their full count of rows even before the
 // AI has written them.
 //
-// Props: detail, copy, setCopyKey(key, value)
+// Only the slots the proposal's model prints are shown (MODEL_SLOTS); an
+// unknown model shows every slot.
+//
+// Props: detail, copy, setCopyKey(key, value), model ("cpl" | "hybrid" |
+// "retainer" | null)
 
-const SINGLE = [
-  { key: "headline" },
-  { key: "lede", multiline: true },
-  { key: "project_line" },
-  { key: "project_description", multiline: true },
-];
-const LISTS = [
-  { key: "props", label: "Selling points", count: 3, a: "title", b: "text", limitA: "prop_title", limitB: "prop_text" },
-  { key: "snapshot", label: "Snapshot", count: 6, a: "label", b: "value", limitA: "snapshot_label", limitB: "snapshot_value" },
-  { key: "audiences", label: "Audiences", count: 4, a: "title", b: "text", limitA: "audience_title", limitB: "audience_text" },
-  { key: "approach", label: "Approach", count: 4, a: "title", b: "text", limitA: "approach_title", limitB: "approach_text" },
-];
-const TAIL = [{ key: "creative_direction", multiline: true }, { key: "acceptance_headline" }];
+const SLOTS = {
+  headline: { type: "single" },
+  lede: { type: "single", multiline: true },
+  project_line: { type: "single" },
+  project_description: { type: "single", multiline: true },
+  summary: { type: "single", multiline: true, label: "Executive summary" },
+  strategy: { type: "single", multiline: true, label: "Lead generation strategy" },
+  chips: { type: "chips" },
+  props: { type: "list", label: "Selling points", count: 3, a: "title", b: "text", limitA: "prop_title", limitB: "prop_text" },
+  snapshot: { type: "list", label: "Snapshot", count: 6, a: "label", b: "value", limitA: "snapshot_label", limitB: "snapshot_value" },
+  audiences: { type: "list", label: "Audiences", count: 4, a: "title", b: "text", limitA: "audience_title", limitB: "audience_text" },
+  approach: { type: "list", label: "Approach", count: 4, a: "title", b: "text", limitA: "approach_title", limitB: "approach_text" },
+  creative_direction: { type: "single", multiline: true },
+  acceptance_headline: { type: "single" },
+};
+const CPL_SLOTS = ["headline", "lede", "project_line", "project_description", "chips", "props", "snapshot", "audiences", "approach", "creative_direction", "acceptance_headline"];
+const MODEL_SLOTS = {
+  cpl: CPL_SLOTS,
+  hybrid: ["headline", "lede", "project_line", "project_description", "audiences", "approach", "creative_direction", "acceptance_headline"],
+  retainer: ["headline", "lede", "project_line", "project_description", "summary", "strategy", "audiences", "acceptance_headline"],
+};
+const ALL_SLOTS = Object.keys(SLOTS);
 
 export default function BuilderCopy(props) {
   const overLimit = () => props.detail?.over_limit ?? [];
@@ -47,10 +60,12 @@ export default function BuilderCopy(props) {
     props.setCopyKey(spec.key, next);
   };
 
+  const slots = () => (MODEL_SLOTS[props.model] ?? ALL_SLOTS).map((key) => ({ key, ...SLOTS[key] }));
+
   const Single = (p) => (
     <div>
       <div class="flex items-center justify-between mb-1.5">
-        <label class={LABEL + " !mb-0"} for={`pc-${p.spec.key}`}>{humanize(p.spec.key)}</label>
+        <label class={LABEL + " !mb-0"} for={`pc-${p.spec.key}`}>{p.spec.label ?? humanize(p.spec.key)}</label>
         <CharCount value={props.copy?.[p.spec.key]} limit={limit(p.spec.key)} />
       </div>
       <Show
@@ -100,78 +115,86 @@ export default function BuilderCopy(props) {
           <p class="text-xs text-[#8593A8] dark:text-gray-400">
             Tip: wrap the project name in asterisks, like <span class="font-mono">*Project Name*</span>, and the PDF prints it in italic colour.
           </p>
-          <Index each={SINGLE}>{(s) => <Single spec={s()} />}</Index>
-
-          <div>
-            <div class="flex items-center justify-between mb-1.5">
-              <span class={LABEL + " !mb-0"}>Chips</span>
-              <Show when={limit("chip")}>
-                <span class="text-[11px] text-[#8593A8] dark:text-gray-400">up to {limit("chip")} characters each</span>
-              </Show>
-            </div>
-            <TagInput
-              value={Array.isArray(props.copy?.chips) ? props.copy.chips : []}
-              limit={limit("chip")}
-              placeholder="Add a tag and press Enter"
-              onChange={(next) => props.setCopyKey("chips", next)}
-            />
-          </div>
-
-          <Index each={LISTS}>
-            {(spec) => (
-              <div>
-                <p class={LABEL}>{spec().label}</p>
-                <div class="space-y-2">
-                  <Index each={listOf(spec())}>
-                    {(row, i) => (
-                      <div class="rounded-lg border border-[#E2E8F1] dark:border-gray-700 p-2.5 space-y-2">
-                        <div>
-                          <div class="flex items-center justify-between mb-1">
-                            <span class="text-[10px] font-bold uppercase tracking-wider text-[#8593A8]">
-                              {i + 1}. {humanize(spec().a)}
-                            </span>
-                            <CharCount value={row()?.[spec().a]} limit={limit(spec().limitA)} />
-                          </div>
-                          <input
-                            class={FIELD + " !py-2"}
-                            aria-label={`${spec().label} ${i + 1} ${spec().a}`}
-                            value={row()?.[spec().a] ?? ""}
-                            onInput={(e) => setItem(spec(), i, spec().a, e.target.value)}
-                          />
-                        </div>
-                        <div>
-                          <div class="flex items-center justify-between mb-1">
-                            <span class="text-[10px] font-bold uppercase tracking-wider text-[#8593A8]">{humanize(spec().b)}</span>
-                            <CharCount value={row()?.[spec().b]} limit={limit(spec().limitB)} />
-                          </div>
-                          <Show
-                            when={spec().b === "text"}
-                            fallback={
-                              <input
-                                class={FIELD + " !py-2"}
-                                aria-label={`${spec().label} ${i + 1} ${spec().b}`}
-                                value={row()?.[spec().b] ?? ""}
-                                onInput={(e) => setItem(spec(), i, spec().b, e.target.value)}
-                              />
-                            }
-                          >
-                            <textarea
-                              class={FIELD + " !py-2 min-h-[4rem] leading-relaxed"}
-                              aria-label={`${spec().label} ${i + 1} ${spec().b}`}
-                              value={row()?.[spec().b] ?? ""}
-                              onInput={(e) => setItem(spec(), i, spec().b, e.target.value)}
-                            />
-                          </Show>
-                        </div>
+          {/* Keyed on the slot key, so switching model swaps slots in place. */}
+          <For each={slots().map((s) => s.key)}>
+            {(key) => {
+              const spec = () => ({ key, ...SLOTS[key] });
+              return (
+                <Switch>
+                  <Match when={spec().type === "single"}>
+                    <Single spec={spec()} />
+                  </Match>
+                  <Match when={spec().type === "chips"}>
+                    <div>
+                      <div class="flex items-center justify-between mb-1.5">
+                        <span class={LABEL + " !mb-0"}>Chips</span>
+                        <Show when={limit("chip")}>
+                          <span class="text-[11px] text-[#8593A8] dark:text-gray-400">up to {limit("chip")} characters each</span>
+                        </Show>
                       </div>
-                    )}
-                  </Index>
-                </div>
-              </div>
-            )}
-          </Index>
-
-          <Index each={TAIL}>{(s) => <Single spec={s()} />}</Index>
+                      <TagInput
+                        value={Array.isArray(props.copy?.chips) ? props.copy.chips : []}
+                        limit={limit("chip")}
+                        placeholder="Add a tag and press Enter"
+                        onChange={(next) => props.setCopyKey("chips", next)}
+                      />
+                    </div>
+                  </Match>
+                  <Match when={spec().type === "list"}>
+                    <div>
+                      <p class={LABEL}>{spec().label}</p>
+                      <div class="space-y-2">
+                        <Index each={listOf(spec())}>
+                          {(row, i) => (
+                            <div class="rounded-lg border border-[#E2E8F1] dark:border-gray-700 p-2.5 space-y-2">
+                              <div>
+                                <div class="flex items-center justify-between mb-1">
+                                  <span class="text-[10px] font-bold uppercase tracking-wider text-[#8593A8]">
+                                    {i + 1}. {humanize(spec().a)}
+                                  </span>
+                                  <CharCount value={row()?.[spec().a]} limit={limit(spec().limitA)} />
+                                </div>
+                                <input
+                                  class={FIELD + " !py-2"}
+                                  aria-label={`${spec().label} ${i + 1} ${spec().a}`}
+                                  value={row()?.[spec().a] ?? ""}
+                                  onInput={(e) => setItem(spec(), i, spec().a, e.target.value)}
+                                />
+                              </div>
+                              <div>
+                                <div class="flex items-center justify-between mb-1">
+                                  <span class="text-[10px] font-bold uppercase tracking-wider text-[#8593A8]">{humanize(spec().b)}</span>
+                                  <CharCount value={row()?.[spec().b]} limit={limit(spec().limitB)} />
+                                </div>
+                                <Show
+                                  when={spec().b === "text"}
+                                  fallback={
+                                    <input
+                                      class={FIELD + " !py-2"}
+                                      aria-label={`${spec().label} ${i + 1} ${spec().b}`}
+                                      value={row()?.[spec().b] ?? ""}
+                                      onInput={(e) => setItem(spec(), i, spec().b, e.target.value)}
+                                    />
+                                  }
+                                >
+                                  <textarea
+                                    class={FIELD + " !py-2 min-h-[4rem] leading-relaxed"}
+                                    aria-label={`${spec().label} ${i + 1} ${spec().b}`}
+                                    value={row()?.[spec().b] ?? ""}
+                                    onInput={(e) => setItem(spec(), i, spec().b, e.target.value)}
+                                  />
+                                </Show>
+                              </div>
+                            </div>
+                          )}
+                        </Index>
+                      </div>
+                    </div>
+                  </Match>
+                </Switch>
+              );
+            }}
+          </For>
         </div>
       </Show>
     </div>

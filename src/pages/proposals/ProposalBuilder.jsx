@@ -52,8 +52,26 @@ const SAVE_DELAY = 800;
 const NUMERIC = {
   lines: ["leads", "cpl", "qualified_pct"],
   timeline: ["target_days"],
-  retainership: ["monthly_fee", "notice_days"],
-  pass_through: ["markup_pct", "monthly_fee"],
+  retainership: ["monthly_fee", "notice_days", "ad_budget_min", "ad_budget_max", "duration_months", "revision_rounds"],
+  pass_through: ["markup_pct", "min_budget", "monthly_fee", "leads_per_day", "notice_days"],
+};
+
+// Retainership extras on the way out: services rows get a numeric fee and no
+// blank deliverable lines, an untouched blank row is dropped, and
+// replace_invalid is always a real true/false (default on).
+const fixRetainership = (r) => {
+  if (!r || typeof r !== "object") return r;
+  if (Array.isArray(r.services)) {
+    r.services = r.services
+      .map((s) => ({
+        ...s,
+        fee: toNum(s?.fee),
+        deliverables: (Array.isArray(s?.deliverables) ? s.deliverables : []).map((x) => String(x).trim()).filter(Boolean),
+      }))
+      .filter((s) => String(s.name ?? "").trim() || s.fee != null || s.deliverables.length || String(s.objective ?? "").trim());
+  }
+  r.replace_invalid = r.replace_invalid !== false;
+  return r;
 };
 
 const toNum = (v) => {
@@ -87,7 +105,20 @@ const groupForSend = (key, raw) => {
     if (Array.isArray(val)) val.forEach(fix);
     else fix(val);
   }
+  if (key === "retainership") fixRetainership(val);
   return blankToNull(val);
+};
+
+// An old retainer proposal has retainership.monthly_fee and no services: show
+// it as one "Lead generation" row with that fee. Nothing is sent until the
+// retainership block is edited; then services are written and the old single
+// fee is cleared (null), so the services list is the only fee left.
+const upgradeLegacyRetainer = (inputs) => {
+  const r = inputs?.retainership;
+  if (!r || r.monthly_fee == null || (Array.isArray(r.services) && r.services.length)) return inputs;
+  r.services = [{ name: "Lead generation", fee: r.monthly_fee, deliverables: [], objective: "" }];
+  r.monthly_fee = null;
+  return inputs;
 };
 
 const clone = (v) => JSON.parse(JSON.stringify(v ?? {}));
@@ -123,7 +154,7 @@ function Builder(props) {
     if (!d) return;
     setDetail(d);
     if (resync) {
-      const inputs = clone(d.inputs);
+      const inputs = upgradeLegacyRetainer(clone(d.inputs));
       // model may sit top-level only; keep it in the form either way.
       if (inputs.model == null && d.model != null) inputs.model = d.model;
       setForm(reconcile(inputs));

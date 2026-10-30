@@ -13,29 +13,60 @@ import { humanize } from "../../services/proposals";
 // complete blank; keys only shown from a template are written only once typed
 // into, so an untouched entry saves back unchanged.
 //
+// Templates are path-aware: a list in a template is written as [itemTemplate],
+// so "clauses" can mean a CPL section's clauses in one key and a Hybrid T&C
+// clause in another. A template value of null marks an OPTIONAL key: shown,
+// but never written by "Add" and removed again when cleared (e.g. `when`).
+//
 // Props: value, onChange(next), template, readOnly, onFocusText({el, set}),
-//        tagRoot (render a root string list as tags)
+//        tagRoot (render a root string list as tags), rootName (what the root
+//        list's items are called, e.g. "services" → "Service 1")
 
-const CLAUSE = { num: "", title: "", text: "", bullets: [], highlight: "" };
-const SECTION = { num: "", title: "", intro: "", text: "", bullets: [], highlight: "", clauses: [] };
-const TNC = { title: "", intro: "", note: "", sections: [] };
-const GUIDE = { audiences: [], creative: "", lead_questions: [], product_word: "" };
+const CLAUSE_CPL = { num: "", title: "", text: "", bullets: [""], highlight: "" };
+const SECTION = { num: "", title: "", intro: "", text: "", bullets: [""], highlight: "", clauses: [CLAUSE_CPL] };
+const GUIDE = { audiences: [""], creative: "", lead_questions: [""], product_word: "" };
 const CATEGORIES = ["plots", "apartments", "floors", "villas", "farmhouse", "commercial", "event"];
+// Hybrid / Retainership T&C: a flat numbered clause list; `when` gates a clause.
+const CLAUSE = { title: "", text: "", when: null };
 
-// Root template per library key; list-item templates by the list's key.
+// Root template per library key.
 export const ROOT_TEMPLATES = {
-  tnc_cpl: { ...TNC, note_gst_inclusive: "" },
-  tnc_retainership: TNC,
-  tnc_pass_through: TNC,
+  tnc_cpl: { title: "", intro: "", note: "", note_gst_inclusive: "", sections: [SECTION] },
+  tnc_retainership: { title: "", clauses: [CLAUSE] },
+  tnc_pass_through: { title: "", clauses: [CLAUSE] },
   category_guides: Object.fromEntries(CATEGORIES.map((c) => [c, GUIDE])),
   contacts: {
     business_head: { name: "", role: "", phone: "", email: "" },
     company: { name: "", helpline: "", web: "" },
   },
+  hybrid_content: {
+    we_deliver: [""],
+    client_provides: [""],
+    responsibilities: [{ title: "", text: "" }],
+    steps: [""],
+    daily_report: [{ item: "", shows: "" }],
+    included: [""],
+    not_included: [""],
+  },
+  retainer_workflow: [{ phase: "", timeline: "", focus: "" }],
+  retainer_reporting: [""],
+  // Edited as rows (see the codec in ProposalLibrary): name + deliverables + objective.
+  retainer_services: [{ name: "", deliverables: [""], objective: "" }],
 };
-const ITEM_TEMPLATES = { sections: SECTION, clauses: CLAUSE, stats: { value: "", label: "" } };
+// Fallback item templates by list name, for values with no root template.
+const ITEM_TEMPLATES = { stats: { value: "", label: "" } };
 
-const LONG_KEYS = new Set(["text", "intro", "note", "note_gst_inclusive", "paragraph", "body", "creative", "description", "about", "highlight", "summary"]);
+// Keys edited with a dropdown instead of free text. "" = not set (key removed).
+const SELECT_FIELDS = {
+  when: [
+    { value: "", label: "Always" },
+    { value: "replace_invalid", label: "Only when invalid leads are replaced" },
+    { value: "no_replacement", label: "Only when leads are not replaced" },
+    { value: "revisions", label: "Only when revision rounds are offered" },
+  ],
+};
+
+const LONG_KEYS = new Set(["text", "intro", "note", "note_gst_inclusive", "paragraph", "body", "creative", "description", "about", "highlight", "summary", "objective", "focus", "shows"]);
 
 const isObj = (v) => v != null && typeof v === "object" && !Array.isArray(v);
 const blankLike = (v) => {
@@ -45,6 +76,14 @@ const blankLike = (v) => {
   if (typeof v === "boolean") return false;
   return "";
 };
+// A fresh value from a template: lists start empty, optional (null) keys left out.
+const instantiate = (t) => {
+  if (Array.isArray(t)) return [];
+  if (isObj(t)) return Object.fromEntries(Object.entries(t).filter(([, x]) => x !== null).map(([k, x]) => [k, instantiate(x)]));
+  return t;
+};
+// "sections" → "Section", "responsibilities" → "Responsibility".
+const singular = (name) => humanize(name).replace(/ies$/, "y").replace(/s$/, "");
 const kind = (v, t) => {
   const x = v ?? t;
   if (Array.isArray(x)) return "array";
@@ -55,12 +94,27 @@ const kind = (v, t) => {
 };
 
 export default function ShapeEditor(props) {
-  return <Node value={props.value} template={props.template} name="" depth={0} ctx={props} onChange={props.onChange} root />;
+  return <Node value={props.value} template={props.template} name={props.rootName ?? ""} depth={0} ctx={props} onChange={props.onChange} root />;
 }
 
 function Node(props) {
   return (
     <Switch>
+      <Match when={SELECT_FIELDS[props.name]}>
+        <select
+          class={FIELD + " !py-2"}
+          aria-label={humanize(props.name)}
+          value={props.value ?? ""}
+          disabled={props.ctx.readOnly}
+          onChange={(e) => props.onChange(e.target.value === "" ? undefined : e.target.value)}
+        >
+          <For each={SELECT_FIELDS[props.name]}>{(o) => <option value={o.value}>{o.label}</option>}</For>
+          {/* A value the list doesn't know still shows, rather than blanking. */}
+          <Show when={props.value && !SELECT_FIELDS[props.name].some((o) => o.value === props.value)}>
+            <option value={props.value}>{props.value}</option>
+          </Show>
+        </select>
+      </Match>
       <Match when={kind(props.value, props.template) === "object"}>
         <ObjectNode {...props} />
       </Match>
@@ -128,7 +182,12 @@ function ObjectNode(props) {
     for (const k of Object.keys(tpl())) if (!ks.includes(k)) ks.push(k);
     return ks;
   };
-  const setKey = (k, v) => props.onChange({ ...obj(), [k]: v });
+  // undefined removes the key (an optional field set back to "not set").
+  const setKey = (k, v) => {
+    const next = { ...obj(), [k]: v };
+    if (v === undefined) delete next[k];
+    props.onChange(next);
+  };
   // Scalars sit in a 2-column grid; lists and groups take the full width.
   const wide = (k) => {
     const kd = kind(obj()[k], tpl()[k]);
@@ -162,8 +221,17 @@ function ObjectNode(props) {
 
 function ArrayNode(props) {
   const arr = () => (Array.isArray(props.value) ? props.value : []);
-  const itemTpl = () => ITEM_TEMPLATES[props.name] ?? (arr().length ? blankLike(arr()[0]) : "");
+  // Item template: the template's own [item], else by list name, else the
+  // first row's shape. When data and template disagree on type, data wins.
+  const itemTpl = () => {
+    const t = Array.isArray(props.template) ? props.template[0] : ITEM_TEMPLATES[props.name];
+    const first = arr()[0];
+    if (t === undefined) return first !== undefined ? blankLike(first) : "";
+    if (first !== undefined && isObj(first) !== isObj(t)) return blankLike(first);
+    return t;
+  };
   const strings = () => arr().every((x) => x == null || typeof x !== "object") && !isObj(itemTpl());
+  const itemName = () => (props.name ? singular(props.name) : "Item");
   const setAt = (i, v) => props.onChange(arr().map((x, j) => (j === i ? v : x)));
   const drop = (i) => props.onChange(arr().filter((_, j) => j !== i));
   const move = (i, d) => {
@@ -172,7 +240,7 @@ function ArrayNode(props) {
     next.splice(i + d, 0, x);
     props.onChange(next);
   };
-  const add = () => props.onChange([...arr(), JSON.parse(JSON.stringify(itemTpl()))]);
+  const add = () => props.onChange([...arr(), instantiate(itemTpl())]);
 
   return (
     <Switch>
@@ -213,9 +281,9 @@ function ArrayNode(props) {
               <div class="rounded-lg border border-[#E2E8F1] dark:border-gray-700 bg-[#FBFCFE] dark:bg-gray-800/60 p-3">
                 <div class="flex items-center justify-between mb-2">
                   <span class="text-xs font-bold text-[#54657E] dark:text-gray-400">
-                    {humanize(props.name).replace(/s$/, "")} {i + 1}
-                    <Show when={x()?.title}>
-                      <span class="font-semibold text-[#14233A] dark:text-gray-200"> · {x().title}</span>
+                    {itemName()} {i + 1}
+                    <Show when={x()?.title || x()?.name || x()?.phase}>
+                      <span class="font-semibold text-[#14233A] dark:text-gray-200"> · {x().title || x().name || x().phase}</span>
                     </Show>
                   </span>
                   <Show when={!props.ctx.readOnly}>
@@ -228,7 +296,7 @@ function ArrayNode(props) {
           </Index>
           <Show when={!props.ctx.readOnly}>
             <button type="button" class={SMALL_BTN} onClick={add}>
-              <Plus size={13} /> Add {humanize(props.name).replace(/s$/, "").toLowerCase() || "item"}
+              <Plus size={13} /> Add {itemName().toLowerCase()}
             </button>
           </Show>
         </div>
