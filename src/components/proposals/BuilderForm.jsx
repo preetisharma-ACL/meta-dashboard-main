@@ -2,7 +2,7 @@ import { createSignal, createMemo, For, Index, Show, Switch, Match } from "solid
 import { Plus, X, CheckCircle2, AlertTriangle, XCircle, Info } from "lucide-solid";
 import { CARD, PanelTitle, FIELD, LABEL, SMALL_BTN, TagInput } from "./ProposalUI";
 import BuilderCopy from "./BuilderCopy";
-import { optionsOf, getPath, fmtWhen, nameOf, humanize } from "../../services/proposals";
+import { optionsOf, getPath, fmtWhen, nameOf } from "../../services/proposals";
 
 // ─── Builder: form + checks (middle panel) ────────────────────────────────────
 // Every input shows the value the PDF would print when left empty
@@ -129,18 +129,13 @@ export default function BuilderForm(props) {
   const hybridLabel = () => models().find((o) => o.value === "pass_through")?.label ?? "Hybrid";
 
   // ── Retainership services ──
-  // meta.retainer_services: standard deliverables + objective per service
-  // name, as a {name: {deliverables, objective}} map or a [{name, …}] list.
+  // meta.retainer_services: [{name, deliverables[], objective}] — the
+  // standard text per service, looked up here by name. (Only the library item
+  // of the same name is a name-keyed map.)
   const serviceDefaults = createMemo(() => {
-    const raw = props.meta?.retainer_services;
     const out = {};
-    if (Array.isArray(raw)) {
-      for (const s of raw) {
-        if (typeof s === "string") out[s] = { deliverables: [], objective: "" };
-        else if (s?.name) out[s.name] = { deliverables: s.deliverables ?? [], objective: s.objective ?? "" };
-      }
-    } else if (raw && typeof raw === "object") {
-      for (const [name, s] of Object.entries(raw)) out[name] = { deliverables: s?.deliverables ?? [], objective: s?.objective ?? "" };
+    for (const s of Array.isArray(props.meta?.retainer_services) ? props.meta.retainer_services : []) {
+      if (s?.name) out[s.name] = { deliverables: s.deliverables ?? [], objective: s.objective ?? "" };
     }
     return out;
   });
@@ -195,8 +190,8 @@ export default function BuilderForm(props) {
   const versions = () => props.detail?.versions ?? [];
   const display = () => props.detail?.display ?? {};
   const displayLines = () => (Array.isArray(display().lines) ? display().lines : []);
-  const displayScalars = () =>
-    Object.entries(display()).filter(([, v]) => (typeof v === "string" && v !== "") || typeof v === "number");
+  const derived = () => props.detail?.derived ?? {};
+  const present = (v) => v != null && v !== "";
   const termsMode = () =>
     getPath(props.form, "terms.mode") ?? getPath(defaults(), "terms.mode") ?? "standard";
 
@@ -276,12 +271,23 @@ export default function BuilderForm(props) {
               </Show>
             </dl>
           </Match>
-          {/* Hybrid: whatever scalar figures display carries, in its order. */}
+          {/* Hybrid: no "total" — ad spend is billed at actuals. Money lines
+              come formatted from display; the fee / GST / total trio only when
+              a fixed fee is set. The rest are plain values from derived. */}
           <Match when={modelKind() === "hybrid"}>
             <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-              <For each={displayScalars()} fallback={<p class="col-span-2 text-[#8593A8]">No figures yet.</p>}>
-                {([k, v]) => <Num label={humanize(k.replace(/_f$/, ""))} value={v} strong={/^total/.test(k)} />}
-              </For>
+              <Num label="Minimum monthly ad budget" value={display().min_budget} />
+              <Num label="A ₹100 lead is billed" value={display().example_billed} />
+              <Show when={present(display().monthly_fee)}>
+                <Num label="Fixed monthly fee" value={display().monthly_fee} />
+                <Num label="GST" value={display().gst} />
+                <Num label="Total monthly fee" value={display().total_monthly} strong />
+              </Show>
+              <Num label="Service charge on actual lead cost" value={present(derived().markup_pct) ? `${derived().markup_pct}%` : null} />
+              <Show when={present(derived().leads_per_day)}>
+                <Num label="Expected leads per day" value={derived().leads_per_day} />
+              </Show>
+              <Num label="Notice period" value={present(derived().notice_days) ? `${derived().notice_days} days` : null} />
             </dl>
           </Match>
         </Switch>
@@ -682,7 +688,13 @@ export default function BuilderForm(props) {
       </div>
 
       {/* ══ Copy ══ */}
-      <BuilderCopy detail={props.detail} copy={props.copy} setCopyKey={props.setCopyKey} model={modelKind()} />
+      <BuilderCopy
+        detail={props.detail}
+        copy={props.copy}
+        setCopyKey={props.setCopyKey}
+        model={modelKind()}
+        overflowSlots={props.overflowSlots ?? {}}
+      />
 
       {/* ══ Versions ══ */}
       <Show when={versions().length}>

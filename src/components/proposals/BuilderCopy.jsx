@@ -1,4 +1,4 @@
-import { createSignal, For, Index, Show, Switch, Match } from "solid-js";
+import { createSignal, createEffect, on, For, Index, Show, Switch, Match } from "solid-js";
 import { ChevronDown, AlertTriangle } from "lucide-solid";
 import { CARD, FIELD, LABEL, CharCount, TagInput } from "./ProposalUI";
 import { humanize } from "../../services/proposals";
@@ -62,6 +62,14 @@ export default function BuilderCopy(props) {
 
   const slots = () => (MODEL_SLOTS[props.model] ?? ALL_SLOTS).map((key) => ({ key, ...SLOTS[key] }));
 
+  // Slots that ran past their page in the last blocked download (layout
+  // report) — listed above the fold and outlined in red; the panel opens so
+  // they're seen.
+  const overflow = () => props.overflowSlots ?? {};
+  const overflowKeys = () => Object.keys(overflow());
+  const slotName = (key) => SLOTS[key]?.label ?? humanize(key);
+  createEffect(on(() => overflowKeys().length, (n) => n > 0 && setOpen(true)));
+
   const Single = (p) => (
     <div>
       <div class="flex items-center justify-between mb-1.5">
@@ -109,6 +117,15 @@ export default function BuilderCopy(props) {
           <span>Too long: {overLimit().map(humanize).join(", ")}</span>
         </div>
       </Show>
+      <Show when={overflowKeys().length}>
+        <div class="mx-4 mb-3 flex items-start gap-2 rounded-lg border border-[#AC2334]/25 bg-[#FBEEF0] dark:bg-red-900/20 dark:border-red-800 px-3 py-2 text-sm text-[#AC2334] dark:text-red-300">
+          <AlertTriangle size={16} class="flex-none mt-0.5" />
+          <span>
+            Ran past its page in the PDF:{" "}
+            {overflowKeys().map((k) => `${slotName(k)}${overflow()[k] != null ? ` (page ${overflow()[k]})` : ""}`).join(", ")}. Shorten {overflowKeys().length > 1 ? "them" : "it"} and download again.
+          </span>
+        </div>
+      </Show>
 
       <Show when={open()}>
         <div class="px-4 pb-4 space-y-4">
@@ -120,78 +137,83 @@ export default function BuilderCopy(props) {
             {(key) => {
               const spec = () => ({ key, ...SLOTS[key] });
               return (
-                <Switch>
-                  <Match when={spec().type === "single"}>
-                    <Single spec={spec()} />
-                  </Match>
-                  <Match when={spec().type === "chips"}>
-                    <div>
-                      <div class="flex items-center justify-between mb-1.5">
-                        <span class={LABEL + " !mb-0"}>Chips</span>
-                        <Show when={limit("chip")}>
-                          <span class="text-[11px] text-[#8593A8] dark:text-gray-400">up to {limit("chip")} characters each</span>
-                        </Show>
+                <div
+                  class={overflow()[key] !== undefined ? "rounded-lg ring-2 ring-[#AC2334]/60 ring-offset-4 ring-offset-white dark:ring-offset-gray-800" : ""}
+                  title={overflow()[key] !== undefined ? "Ran past its page in the PDF" : undefined}
+                >
+                  <Switch>
+                    <Match when={spec().type === "single"}>
+                      <Single spec={spec()} />
+                    </Match>
+                    <Match when={spec().type === "chips"}>
+                      <div>
+                        <div class="flex items-center justify-between mb-1.5">
+                          <span class={LABEL + " !mb-0"}>Chips</span>
+                          <Show when={limit("chip")}>
+                            <span class="text-[11px] text-[#8593A8] dark:text-gray-400">up to {limit("chip")} characters each</span>
+                          </Show>
+                        </div>
+                        <TagInput
+                          value={Array.isArray(props.copy?.chips) ? props.copy.chips : []}
+                          limit={limit("chip")}
+                          placeholder="Add a tag and press Enter"
+                          onChange={(next) => props.setCopyKey("chips", next)}
+                        />
                       </div>
-                      <TagInput
-                        value={Array.isArray(props.copy?.chips) ? props.copy.chips : []}
-                        limit={limit("chip")}
-                        placeholder="Add a tag and press Enter"
-                        onChange={(next) => props.setCopyKey("chips", next)}
-                      />
-                    </div>
-                  </Match>
-                  <Match when={spec().type === "list"}>
-                    <div>
-                      <p class={LABEL}>{spec().label}</p>
-                      <div class="space-y-2">
-                        <Index each={listOf(spec())}>
-                          {(row, i) => (
-                            <div class="rounded-lg border border-[#E2E8F1] dark:border-gray-700 p-2.5 space-y-2">
-                              <div>
-                                <div class="flex items-center justify-between mb-1">
-                                  <span class="text-[10px] font-bold uppercase tracking-wider text-[#8593A8]">
-                                    {i + 1}. {humanize(spec().a)}
-                                  </span>
-                                  <CharCount value={row()?.[spec().a]} limit={limit(spec().limitA)} />
+                    </Match>
+                    <Match when={spec().type === "list"}>
+                      <div>
+                        <p class={LABEL}>{spec().label}</p>
+                        <div class="space-y-2">
+                          <Index each={listOf(spec())}>
+                            {(row, i) => (
+                              <div class="rounded-lg border border-[#E2E8F1] dark:border-gray-700 p-2.5 space-y-2">
+                                <div>
+                                  <div class="flex items-center justify-between mb-1">
+                                    <span class="text-[10px] font-bold uppercase tracking-wider text-[#8593A8]">
+                                      {i + 1}. {humanize(spec().a)}
+                                    </span>
+                                    <CharCount value={row()?.[spec().a]} limit={limit(spec().limitA)} />
+                                  </div>
+                                  <input
+                                    class={FIELD + " !py-2"}
+                                    aria-label={`${spec().label} ${i + 1} ${spec().a}`}
+                                    value={row()?.[spec().a] ?? ""}
+                                    onInput={(e) => setItem(spec(), i, spec().a, e.target.value)}
+                                  />
                                 </div>
-                                <input
-                                  class={FIELD + " !py-2"}
-                                  aria-label={`${spec().label} ${i + 1} ${spec().a}`}
-                                  value={row()?.[spec().a] ?? ""}
-                                  onInput={(e) => setItem(spec(), i, spec().a, e.target.value)}
-                                />
-                              </div>
-                              <div>
-                                <div class="flex items-center justify-between mb-1">
-                                  <span class="text-[10px] font-bold uppercase tracking-wider text-[#8593A8]">{humanize(spec().b)}</span>
-                                  <CharCount value={row()?.[spec().b]} limit={limit(spec().limitB)} />
-                                </div>
-                                <Show
-                                  when={spec().b === "text"}
-                                  fallback={
-                                    <input
-                                      class={FIELD + " !py-2"}
+                                <div>
+                                  <div class="flex items-center justify-between mb-1">
+                                    <span class="text-[10px] font-bold uppercase tracking-wider text-[#8593A8]">{humanize(spec().b)}</span>
+                                    <CharCount value={row()?.[spec().b]} limit={limit(spec().limitB)} />
+                                  </div>
+                                  <Show
+                                    when={spec().b === "text"}
+                                    fallback={
+                                      <input
+                                        class={FIELD + " !py-2"}
+                                        aria-label={`${spec().label} ${i + 1} ${spec().b}`}
+                                        value={row()?.[spec().b] ?? ""}
+                                        onInput={(e) => setItem(spec(), i, spec().b, e.target.value)}
+                                      />
+                                    }
+                                  >
+                                    <textarea
+                                      class={FIELD + " !py-2 min-h-[4rem] leading-relaxed"}
                                       aria-label={`${spec().label} ${i + 1} ${spec().b}`}
                                       value={row()?.[spec().b] ?? ""}
                                       onInput={(e) => setItem(spec(), i, spec().b, e.target.value)}
                                     />
-                                  }
-                                >
-                                  <textarea
-                                    class={FIELD + " !py-2 min-h-[4rem] leading-relaxed"}
-                                    aria-label={`${spec().label} ${i + 1} ${spec().b}`}
-                                    value={row()?.[spec().b] ?? ""}
-                                    onInput={(e) => setItem(spec(), i, spec().b, e.target.value)}
-                                  />
-                                </Show>
+                                  </Show>
+                                </div>
                               </div>
-                            </div>
-                          )}
-                        </Index>
+                            )}
+                          </Index>
+                        </div>
                       </div>
-                    </div>
-                  </Match>
-                </Switch>
+                    </Match>
+                  </Switch>
+                </div>
               );
             }}
           </For>

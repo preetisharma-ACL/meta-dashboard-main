@@ -144,6 +144,7 @@ export const downloadProposalPdf = async (id, fallbackName = "proposal") => {
     );
     err.status = res.status;
     err.lines = blockedReasons(body?.error?.fields);
+    err.overflowSlots = overflowSlots(body?.error?.fields);
     throw err;
   }
   const blob = await res.blob();
@@ -176,12 +177,28 @@ export const blockedReasons = (fields) => {
     const slots = Array.isArray(o?.slots) ? o.slots.join(", ") : o?.slots ?? o?.slot ?? "";
     out.push(`Text too long on page ${o?.page ?? "?"}${slots ? `: ${slots}` : ""}`);
   }
-  // The page count is the model's own (CPL / Retainership 5, Hybrid 7) and
-  // comes from the server; never assumed here. Key name not yet confirmed.
+  // fields.layout = the layout report {expected_pages, pages, ok, overflow[]}.
+  // The page count is the model's own (CPL / Retainership 5, Hybrid 7) and is
+  // only ever read from expected_pages, never assumed here.
   const layout = fields?.layout;
-  const expected = layout?.expected_pages ?? layout?.page_count ?? layout?.pages;
-  if (typeof expected === "number" && (layout?.overflow ?? []).length) {
+  const expected = layout?.expected_pages;
+  if (typeof expected === "number" && (layout?.ok === false || (layout?.overflow ?? []).length)) {
     out.push(`This proposal should fit on ${expected} page${expected === 1 ? "" : "s"}.`);
+  }
+  return out;
+};
+
+// layout.overflow[].slots → { <copy slot key>: page } for highlighting in
+// Edit text. Slot names may be indexed ("audiences.0.text"); the slot key is
+// the part before the first "." or "[".
+export const overflowSlots = (fields) => {
+  const out = {};
+  for (const o of fields?.layout?.overflow ?? []) {
+    const slots = Array.isArray(o?.slots) ? o.slots : o?.slots ? [o.slots] : [];
+    for (const s of slots) {
+      const key = String(s).split(/[.[]/)[0];
+      if (key && !(key in out)) out[key] = o?.page ?? null;
+    }
   }
   return out;
 };

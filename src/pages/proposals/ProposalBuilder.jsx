@@ -334,7 +334,13 @@ function Builder(props) {
       // last_pdf_at moves; re-read quietly so the header stays honest.
       fetchProposal(props.id).then((d) => d && setDetail(d)).catch(() => {});
     } catch (err) {
-      setDlError({ message: err?.message || "Download failed.", lines: err?.lines ?? [] });
+      setDlError({
+        message: err?.message || "Download failed.",
+        lines: err?.lines ?? [],
+        // copy slots that ran past their page → highlighted in Edit text
+        // until the next download attempt or Dismiss.
+        overflowSlots: err?.overflowSlots ?? {},
+      });
     } finally {
       setDlBusy(false);
     }
@@ -465,6 +471,7 @@ function Builder(props) {
             onValidity={changeValidity}
             onConfirm={doConfirm}
             onRestore={doRestore}
+            overflowSlots={dlError()?.overflowSlots ?? {}}
           />
           <BuilderPreview
             id={props.id}
