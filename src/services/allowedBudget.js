@@ -19,6 +19,10 @@ export const fetchAllowedBudgetClients = async ({ includeInactive = false } = {}
   return res;
 };
 
+// Badge text for an inactive row's engagement_status (null → not set).
+const ENGAGEMENT_LABELS = { hold: "Hold", completed: "Completed", dead: "Dead" };
+export const engagementLabel = (s) => ENGAGEMENT_LABELS[s] ?? "Status not set";
+
 // 2. Admin sets/edits a ceiling. Either field may be null to leave it unset.
 export const setAllowedBudget = async (clientId, body) => {
   return await api(`/cm/allowed-budget/clients/${clientId}/`, {

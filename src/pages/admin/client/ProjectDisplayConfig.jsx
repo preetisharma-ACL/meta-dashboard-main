@@ -14,7 +14,7 @@ import Avatar from "../../../components/common/Avatar";
 import RowsPerPageSelect from "../../../components/common/RowsPerPageSelect";
 import DateTimePicker from "../../../components/DateTimePicker";
 import { fetchProjectsByClient } from "../services/fetchProjectsByClient"; // ← NEW
-import { fetchAllowedBudgetClients } from "../../../services/allowedBudget"; // ← CM-scoped client source
+import { fetchAllowedBudgetClients, engagementLabel } from "../../../services/allowedBudget"; // ← CM-scoped client source
 import { loadErrorMessage } from "../../../utils/apiErrors";
 import {
   isAdmin,
@@ -440,9 +440,11 @@ export default function ProjectDisplayConfig() {
     try {
       const cm = isCampaignManager();
       // CMs 403 on the admin all-clients endpoint — source their own clients
-      // from the CM-scoped allowed-budget list instead.
+      // from the CM-scoped allowed-budget list instead. include_inactive: Hold
+      // and Completed clients still need their configs (restart, billing), so
+      // this list must not drop them the way the Allowed Budget default does.
       const clientRes = await (cm
-        ? fetchAllowedBudgetClients()
+        ? fetchAllowedBudgetClients({ includeInactive: true })
         : fetchClients(1, 500));
 
       if (cm) {
@@ -457,6 +459,8 @@ export default function ProjectDisplayConfig() {
               id: c.client_id,
               email: c.name ?? `Client #${c.client_id}`,
               client_type: c.client_type ?? null,
+              inactive: !!c.inactive,
+              engagement_status: c.engagement_status ?? null,
             })),
         );
       } else {
@@ -1745,9 +1749,16 @@ export default function ProjectDisplayConfig() {
                                 loadProjectsForClient(client.id); // ← NEW
                                 applyClientType(client);
                               }}
-                              class="w-full text-left px-3 py-2 text-sm hover:bg-purple-50 dark:hover:bg-gray-800 transition-colors"
+                              class="w-full flex items-center justify-between gap-2 text-left px-3 py-2 text-sm hover:bg-purple-50 dark:hover:bg-gray-800 transition-colors"
                             >
-                              {client.email}
+                              <span class={`truncate ${client.inactive ? "text-gray-500 dark:text-gray-400" : ""}`}>{client.email}</span>
+                              {/* Not running (CM list only — rows from the
+                                  allowed-budget source carry the status). */}
+                              <Show when={client.inactive}>
+                                <span class="flex-none text-[10px] font-bold px-2 py-0.5 rounded-full uppercase bg-[#E3E7ED] text-[#3B4656] dark:bg-gray-700 dark:text-gray-200">
+                                  {engagementLabel(client.engagement_status)}
+                                </span>
+                              </Show>
                             </button>
                           )}
                         </For>

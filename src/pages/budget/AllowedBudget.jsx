@@ -8,6 +8,7 @@ import {
   requestBudgetIncrease,
   reviewBudgetRequest,
   fetchBudgetRequests,
+  engagementLabel,
 } from "../../services/allowedBudget";
 import { scopeKey } from "../../stores/cmScope";
 import { isAdmin, isGlobalRead } from "../../stores/currentUser";
@@ -50,9 +51,8 @@ const TYPE_LABELS = { cpl: "CPL", hybrid: "Hybrid", retainer: "Retainer" };
 
 // ─── Inactive clients ─────────────────────────────────────────────────────────
 // engagement_status: active | hold | completed | dead | null. Inactive rows only
-// arrive with ?include_inactive=1 and are shown greyed with their status.
-const ENGAGEMENT_LABELS = { hold: "Hold", completed: "Completed", dead: "Dead" };
-const engagementLabel = (s) => ENGAGEMENT_LABELS[s] ?? "Status not set";
+// arrive with ?include_inactive=1 and are shown greyed with their status
+// (engagementLabel, shared with Project Display Config).
 
 // Per-user key: auth.user is written at login, so it's there before /auth/me.
 const showInactiveKey = () => {
