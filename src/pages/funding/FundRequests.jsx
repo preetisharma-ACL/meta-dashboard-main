@@ -23,8 +23,10 @@ import {
   claimFundRequest,
   fetchFundTopups,
   setTopupPayer,
+  fundScope,
+  setFundScope,
 } from "../../services/fundRequests";
-import { scopeKey } from "../../stores/cmScope";
+import { scopeKey, isSwitched } from "../../stores/cmScope";
 import { refreshFundRequestsBadge } from "../../stores/fundRequestsBadge";
 import { showNotice } from "../../components/common/NoticeToast";
 import { errorMessage, loadErrorMessage } from "../../utils/apiErrors";
@@ -49,6 +51,28 @@ import { errorMessage, loadErrorMessage } from "../../utils/apiErrors";
 
 const QUEUE_POLL_MS = 30_000;
 const REGISTER_MAX_DAYS = 92;
+
+// Every read re-keys on the Viewing switcher AND the Tier 1 scope toggle.
+const fetchKey = () => `${scopeKey()}|${fundScope() ?? "all"}`;
+
+// Tier 1 toggle (meta.scope_toggle). Same look as Campaign Analysis.
+const FUND_SCOPES = [
+  { key: null, label: "All" },
+  { key: "team", label: "My team" },
+  { key: "own", label: "Just me" },
+];
+
+// in_my_team is true/false for CMs, null for everyone else — only a strict
+// true gets the chip.
+function TeamChip(props) {
+  return (
+    <Show when={props.show && props.row?.in_my_team === true}>
+      <span class="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-[#E9F7F1] text-[#15966A] ring-1 ring-inset ring-[#C6EBDB] dark:bg-emerald-900/30 dark:text-emerald-300 dark:ring-emerald-800/50 whitespace-nowrap">
+        My team
+      </span>
+    </Show>
+  );
+}
 
 // ── formatting ───────────────────────────────────────────────────────────────
 
@@ -1169,6 +1193,7 @@ function RaiseModal(props) {
                             {a.name || "—"}
                           </div>
                           <div class="text-[11px] text-gray-400 font-mono">{a.id}</div>
+                          <TeamChip row={a} show={props.showTeamChip?.()} />
                           <Show when={clientNames(a.clients)}>
                             <div class="text-xs text-gray-500 dark:text-gray-400 truncate">
                               {clientNames(a.clients)}
@@ -1507,7 +1532,7 @@ function Register(props) {
   };
 
   createEffect(
-    on([from, to, adAccount, cmId, scopeKey], () => load()),
+    on([from, to, adAccount, cmId, fetchKey], () => load()),
   );
 
   const download = async () => {
@@ -1802,7 +1827,7 @@ function Topups(props) {
       if (mine === seq) setLoading(false);
     }
   };
-  createEffect(on([from, to, adAccount, paidBy, scopeKey], () => load()));
+  createEffect(on([from, to, adAccount, paidBy, fetchKey], () => load()));
 
   const data = () => res()?.data || {};
   const rows = () => {
@@ -1989,6 +2014,9 @@ export default function FundRequests() {
       if (mine !== seq) return;
       setQueue(res);
       setLoadError(null);
+      // A leftover toggle choice (e.g. a different user signed in on this tab)
+      // must not keep scoping requests for someone who has no toggle.
+      if (res?.meta?.scope_toggle !== true && fundScope() != null && !isSwitched()) setFundScope(null);
       // meta.cms = [{ id, name, open }] feeds both CM dropdowns (queue and
       // register) as "name (open)".
       const list = res?.meta?.cms;
@@ -2016,8 +2044,11 @@ export default function FundRequests() {
   };
 
   // Re-key on the Viewing switch and the CM filter.
-  createEffect(on([scopeKey, cmId], () => loadQueue()));
-  createEffect(on(scopeKey, () => loadAccounts()));
+  createEffect(on([fetchKey, cmId], () => loadQueue()));
+  createEffect(on(fetchKey, () => loadAccounts()));
+  // The sidebar counter follows the toggle too (defer: the badge store
+  // already polls on mount).
+  createEffect(on(fundScope, () => refreshFundRequestsBadge(), { defer: true }));
   createEffect(
     on(scopeKey, async () => {
       try {
@@ -2050,6 +2081,10 @@ export default function FundRequests() {
   };
 
   const meta = () => queue()?.meta || {};
+  // The Viewing switcher wins over the toggle, so the toggle steps aside
+  // (and stops being sent) while the switcher is set.
+  const showScopeToggle = () => meta().scope_toggle === true && !isSwitched();
+  const showTeamChip = () => showScopeToggle() && fundScope() == null;
   const counts = () => meta().counts || {};
   const [queueSort, setQueueSort] = createSignal(null);
   const [closedSort, setClosedSort] = createSignal(null);
@@ -2117,6 +2152,34 @@ export default function FundRequests() {
         </div>
       </Show>
 
+      {/* Tier 1 scope toggle */}
+      <Show when={showScopeToggle()}>
+        <div class="mb-4 flex flex-wrap items-center gap-3">
+          <div
+            role="group"
+            aria-label="Which ad accounts"
+            class="inline-flex items-center gap-1 bg-white dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-600 rounded-full p-1"
+          >
+            <For each={FUND_SCOPES}>
+              {(s) => (
+                <button
+                  type="button"
+                  onClick={() => setFundScope(s.key)}
+                  aria-pressed={fundScope() === s.key}
+                  class={`px-4 py-1.5 rounded-full text-[13px] font-semibold transition-colors whitespace-nowrap ${
+                    fundScope() === s.key
+                      ? "bg-[#AC2334] text-white"
+                      : "text-[#54657E] dark:text-gray-300 hover:text-[#14233A] dark:hover:text-white"
+                  }`}
+                >
+                  {s.label}
+                </button>
+              )}
+            </For>
+          </div>
+        </div>
+      </Show>
+
       {/* 1. Summary strip */}
       <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3 mb-5">
         <Tile
@@ -2178,6 +2241,9 @@ export default function FundRequests() {
                     >
                       <td class={TD}>
                         <PriorityChip value={pr()} auto={r.source === "auto"} />
+                        <div class="mt-1">
+                          <TeamChip row={r} show={showTeamChip()} />
+                        </div>
                       </td>
                       <td class={`${TD} max-w-[220px]`}>
                         <div class="flex items-start gap-1.5">
@@ -2356,7 +2422,10 @@ export default function FundRequests() {
                   <For each={closedToday()}>
                     {(r) => (
                       <tr onClick={() => setDrawerRow(r)} class="cursor-pointer hover:bg-[#F6F9FC] dark:hover:bg-gray-800/40">
-                        <td class={`${TD} max-w-[240px]`}><AccountCell account={r.ad_account} /></td>
+                        <td class={`${TD} max-w-[240px]`}>
+                          <AccountCell account={r.ad_account} />
+                          <TeamChip row={r} show={showTeamChip()} />
+                        </td>
                         <td class={`${TD} text-right tabular-nums`}>{money(r.amount_requested)}</td>
                         <td class={TD}>
                           <span
@@ -2415,6 +2484,7 @@ export default function FundRequests() {
         <RaiseModal
           accounts={accounts}
           accountsLoading={accountsLoading}
+          showTeamChip={showTeamChip}
           onClose={() => setModal(null)}
           onDone={afterWrite}
           reload={loadQueue}

@@ -1,5 +1,6 @@
 import { api, BASE_URL } from "../api/api";
-import { scopeQuery, applyMeta } from "../stores/cmScope";
+import { createSignal } from "solid-js";
+import { scopeQuery, applyMeta, isSwitched } from "../stores/cmScope";
 
 // ─── Fund Requests (backend 48590cf) ──────────────────────────────────────────
 // Replaces the WhatsApp "please add funds" group. The backend checks every
@@ -13,10 +14,28 @@ import { scopeQuery, applyMeta } from "../stores/cmScope";
 
 const BASE = "/cm/fund-requests";
 
+// ─── Tier 1 scope toggle ──────────────────────────────────────────────────────
+// Shown when the queue answers meta.scope_toggle === true (active Tier 1 CMs).
+// null = All accounts (default, no param) | "team" | "own". Module-level so the
+// sidebar badge reads the same scope as the page. The Viewing switcher wins:
+// while it is set, this param is not sent (and the page hides the toggle), so
+// a request never carries two scope values.
+const [fundScope, setFundScopeRaw] = createSignal(null);
+export { fundScope };
+export const setFundScope = (s) => setFundScopeRaw(s || null);
+
+// Switcher params + the toggle's scope, for every Fund Requests GET.
+const scoped = () => {
+  let q = scopeQuery({ supportsOwn: true });
+  const s = fundScope();
+  if (s && !isSwitched()) q += `&scope=${encodeURIComponent(s)}`;
+  return q;
+};
+
 // Queue: { data: { open:[…], closed_today:[…] }, meta: { counts, … } }.
 // data.open is ALREADY in pay-first order — callers must not re-sort it.
 export const fetchFundQueue = async ({ cmId } = {}) => {
-  let q = `?1=1${scopeQuery({ supportsOwn: true })}`;
+  let q = `?1=1${scoped()}`;
   if (cmId != null && cmId !== "") q += `&cm_id=${encodeURIComponent(cmId)}`;
   const res = await api(`${BASE}/${q}`, { method: "GET" });
   applyMeta(res?.meta);
@@ -25,13 +44,13 @@ export const fetchFundQueue = async ({ cmId } = {}) => {
 
 // Sidebar counter: data = { open, urgent, stopped }; the badge is urgent + stopped.
 export const fetchFundBadge = async () => {
-  const res = await api(`${BASE}/badge/`, { method: "GET" });
+  const res = await api(`${BASE}/badge/?1=1${scoped()}`, { method: "GET" });
   const b = res?.data ?? {};
   return (Number(b.urgent) || 0) + (Number(b.stopped) || 0);
 };
 
 export const fetchFundRequest = async (id) => {
-  const res = await api(`${BASE}/${encodeURIComponent(id)}/?1=1${scopeQuery({ supportsOwn: true })}`, {
+  const res = await api(`${BASE}/${encodeURIComponent(id)}/?1=1${scoped()}`, {
     method: "GET",
   });
   return res?.data ?? null;
@@ -39,7 +58,7 @@ export const fetchFundRequest = async (id) => {
 
 // Accounts the raise picker offers (with can_raise / open_request_id per row).
 export const fetchFundAccounts = async () => {
-  const res = await api(`${BASE}/accounts/?1=1${scopeQuery({ supportsOwn: true })}`, {
+  const res = await api(`${BASE}/accounts/?1=1${scoped()}`, {
     method: "GET",
   });
   const d = res?.data;
@@ -89,7 +108,7 @@ export const fetchFundTopups = async ({ from, to, adAccount, paidBy }) => {
   let q = `?date_from=${encodeURIComponent(from)}&date_to=${encodeURIComponent(to)}`;
   if (adAccount) q += `&ad_account=${encodeURIComponent(adAccount)}`;
   if (paidBy != null && paidBy !== "") q += `&paid_by=${encodeURIComponent(paidBy)}`;
-  return api(`${BASE}/topups/${q}${scopeQuery({ supportsOwn: true })}`, { method: "GET" });
+  return api(`${BASE}/topups/${q}${scoped()}`, { method: "GET" });
 };
 
 export const setTopupPayer = async (id, payer) =>
@@ -112,7 +131,7 @@ const registerQuery = ({ from, to, adAccount, cmId, clientId }) => {
   if (adAccount) q += `&ad_account=${encodeURIComponent(adAccount)}`;
   if (cmId != null && cmId !== "") q += `&cm_id=${encodeURIComponent(cmId)}`;
   if (clientId != null && clientId !== "") q += `&client_id=${encodeURIComponent(clientId)}`;
-  return q + scopeQuery({ supportsOwn: true });
+  return q + scoped();
 };
 
 export const fetchFundRegister = async (filters) => {
