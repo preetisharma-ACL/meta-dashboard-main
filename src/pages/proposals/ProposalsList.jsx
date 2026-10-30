@@ -1,4 +1,4 @@
-import { createSignal, createResource, createEffect, on, onCleanup, For, Show } from "solid-js";
+import { createSignal, createResource, createEffect, createMemo, on, onCleanup, For, Show } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { FileText, Copy, Trash2 } from "lucide-solid";
 import {
@@ -8,7 +8,7 @@ import {
   deleteProposal,
   fmtWhen,
   nameOf,
-  humanize,
+  optionsOf,
 } from "../../services/proposals";
 import { loadErrorMessage, errorMessage } from "../../utils/apiErrors";
 import { PageShell, ErrorBox, DataTable, ROW, NUM } from "../../components/creatives/CreativeUI";
@@ -28,6 +28,11 @@ export default function ProposalsList() {
   const [meta, { mutate: setMeta, refetch: refetchMeta }] = createResource(fetchProposalMeta);
   const isAdmin = () => !!(meta.error ? null : meta())?.is_admin;
   const metaVal = () => (meta.error ? null : meta());
+  // Model labels come from meta.models (cpl → "CPL"); an unknown key shows as sent.
+  const modelLabels = createMemo(() =>
+    Object.fromEntries(optionsOf(metaVal()?.models).map((o) => [o.value, o.label])),
+  );
+  const modelLabel = (m) => modelLabels()[m] ?? m;
 
   const [search, setSearch] = createSignal("");
   const [q, setQ] = createSignal("");
@@ -153,7 +158,7 @@ export default function ProposalsList() {
               <td class="whitespace-nowrap font-mono text-xs font-semibold">{r.number || `#${r.id}`}</td>
               <td class="max-w-[14rem] truncate" title={r.client_name ?? ""}>{r.client_name || "—"}</td>
               <td class="max-w-[14rem] truncate" title={r.project_name ?? ""}>{r.project_name || "—"}</td>
-              <td class="whitespace-nowrap">{r.model ? humanize(r.model) : "—"}</td>
+              <td class="whitespace-nowrap">{r.model ? modelLabel(r.model) : "—"}</td>
               <td class={NUM + " font-semibold"}>{r.total || "—"}</td>
               <td>
                 <ConfirmedBadge confirmed={!!r.confirmed} />
