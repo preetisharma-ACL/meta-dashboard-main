@@ -286,6 +286,14 @@ function Builder(props) {
 
   const redChecks = createMemo(() => (detail()?.checks ?? []).filter((c) => c.level === "error"));
 
+  // Shared by the top bar and the full-screen preview's Download button.
+  const dlTitle = () =>
+    detail()?.can_download
+      ? "Download the PDF"
+      : redChecks().length
+        ? "Fix first:\n" + redChecks().map((c) => `• ${c.message}`).join("\n")
+        : "Not ready to download yet";
+
   const download = async () => {
     setDlBusy(true);
     setDlError(null);
@@ -363,15 +371,7 @@ function Builder(props) {
             </div>
           </div>
           <div class="flex flex-wrap items-center gap-2">
-            <span
-              title={
-                d().can_download
-                  ? "Download the PDF"
-                  : redChecks().length
-                    ? "Fix first:\n" + redChecks().map((c) => `• ${c.message}`).join("\n")
-                    : "Not ready to download yet"
-              }
-            >
+            <span title={dlTitle()}>
               <button type="button" class={PRIMARY_BTN} disabled={!d().can_download || dlBusy()} onClick={download}>
                 <Show when={dlBusy()} fallback={<Download size={16} />}>
                   <Spinner />
@@ -435,7 +435,17 @@ function Builder(props) {
             onConfirm={doConfirm}
             onRestore={doRestore}
           />
-          <BuilderPreview id={props.id} tick={previewTick()} />
+          <BuilderPreview
+            id={props.id}
+            tick={previewTick()}
+            title={[d().number, d().client_name].filter(Boolean).join(" · ")}
+            canDownload={!!d().can_download}
+            dlBusy={dlBusy()}
+            dlTitle={dlTitle()}
+            dlError={dlError()}
+            onDownload={download}
+            onDismissDlError={() => setDlError(null)}
+          />
         </div>
       </Show>
 
