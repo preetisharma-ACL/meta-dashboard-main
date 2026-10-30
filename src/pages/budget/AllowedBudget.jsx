@@ -47,6 +47,29 @@ const TYPE_CHIP = {
   retainer: "bg-[#FBF3E2] text-[#B07A14] dark:bg-gray-800 dark:text-gray-300",
 };
 const TYPE_LABELS = { cpl: "CPL", hybrid: "Hybrid", retainer: "Retainer" };
+
+// ─── Inactive clients ─────────────────────────────────────────────────────────
+// engagement_status: active | hold | completed | dead | null. Inactive rows only
+// arrive with ?include_inactive=1 and are shown greyed with their status.
+const ENGAGEMENT_LABELS = { hold: "Hold", completed: "Completed", dead: "Dead" };
+const engagementLabel = (s) => ENGAGEMENT_LABELS[s] ?? "Status not set";
+
+// Per-user key: auth.user is written at login, so it's there before /auth/me.
+const showInactiveKey = () => {
+  try {
+    const u = JSON.parse(localStorage.getItem("auth") || "{}")?.user;
+    return `allowedBudget.showInactive.${u?.id ?? u?.email ?? "me"}`;
+  } catch {
+    return "allowedBudget.showInactive.me";
+  }
+};
+const readShowInactive = () => {
+  try {
+    return localStorage.getItem(showInactiveKey()) === "1";
+  } catch {
+    return false;
+  }
+};
 const TYPE_ORDER = ["cpl", "hybrid", "retainer"];
 // Client-type multi-select chips (same as Account Funding). CPL + Hybrid are
 // the default; Retainer is client-funded, so it's off by default.
@@ -619,14 +642,29 @@ export default function AllowedBudget() {
     clientTypes().length === DEFAULT_CLIENT_TYPES.length &&
     DEFAULT_CLIENT_TYPES.every((k) => clientTypes().includes(k));
 
-  // Source returns an object (always truthy) — UNCHANGED.
+  // "Show inactive" — the server hides hold / completed / dead clients unless
+  // asked. Remembered per user; storage can throw (private mode), so guarded.
+  const [showInactive, setShowInactiveRaw] = createSignal(readShowInactive());
+  const setShowInactive = (v) => {
+    setShowInactiveRaw(v);
+    try {
+      localStorage.setItem(showInactiveKey(), v ? "1" : "0");
+    } catch {
+      /* not remembered — still applies for this visit */
+    }
+  };
+  const [listMeta, setListMeta] = createSignal(null); // { include_inactive, hidden_inactive }
+
+  // Source returns an object (always truthy).
   const [clients, { refetch: refetchClients }] = createResource(
-    () => ({ scope: scopeKey() }),
-    async () => {
-      const res = await fetchAllowedBudgetClients();
+    () => ({ scope: scopeKey(), inactive: showInactive() }),
+    async (s) => {
+      const res = await fetchAllowedBudgetClients({ includeInactive: s.inactive });
+      setListMeta(res?.meta ?? null);
       return Array.isArray(res?.data) ? res.data : [];
     },
   );
+  const hiddenInactive = () => (showInactive() ? 0 : Number(listMeta()?.hidden_inactive) || 0);
 
   // Pending queue + audit resources — UNCHANGED.
   const queueSource = createMemo(() => ({ scope: scopeKey(), status: "pending", tab: tab() }));
@@ -1029,6 +1067,30 @@ export default function AllowedBudget() {
             }}
           </For>
         </div>
+
+        {/* Show inactive (Clients tab) — the server hides hold / completed /
+            dead clients unless this is on. */}
+        <Show when={tab() === "clients"}>
+          <div class="flex items-center gap-3 sm:ml-auto">
+            <Show when={hiddenInactive() > 0}>
+              <span class="text-xs text-[#8593A8] dark:text-gray-500">
+                {hiddenInactive()} inactive client{hiddenInactive() === 1 ? "" : "s"} hidden
+              </span>
+            </Show>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={showInactive()}
+              onClick={() => setShowInactive(!showInactive())}
+              class="inline-flex items-center gap-2 select-none text-[13px] font-semibold text-[#54657E] dark:text-gray-300 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#AC2334]/40"
+            >
+              <span class={`relative inline-flex h-5 w-9 flex-none items-center rounded-full transition-colors ${showInactive() ? "bg-[#14233A]" : "bg-[#D4DDE9] dark:bg-gray-600"}`} aria-hidden="true">
+                <span class={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${showInactive() ? "translate-x-[18px]" : "translate-x-0.5"}`} />
+              </span>
+              Show inactive
+            </button>
+          </div>
+        </Show>
       </div>
 
       {/* Tabs — scroll horizontally on narrow screens instead of overflowing */}
@@ -1252,7 +1314,7 @@ export default function AllowedBudget() {
             {(c) => {
               const st = clientStatus(c);
               return (
-                <div class={`flex flex-col xl:flex-row xl:items-center gap-3 px-4 py-3.5 transition-colors hover:bg-[#F6F9FC] dark:hover:bg-gray-800/40 ${st === "over" ? "bg-[#FEF5F7] dark:bg-red-900/10" : ""}`}>
+                <div class={`flex flex-col xl:flex-row xl:items-center gap-3 px-4 py-3.5 transition-colors hover:bg-[#F6F9FC] dark:hover:bg-gray-800/40 ${c.inactive ? "bg-[#F1F3F6] dark:bg-gray-800/60 [&>*:not(:last-child)]:opacity-55 [&>*:not(:last-child)]:grayscale" : st === "over" ? "bg-[#FEF5F7] dark:bg-red-900/10" : ""}`}>
                   {/* identity */}
                   <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-4">
@@ -1268,6 +1330,18 @@ export default function AllowedBudget() {
                             <span class="w-1.5 h-1.5 rounded-full" style={`background:${STATUS_META[st].color}`} />
                             {st === "uncapped" ? "No budget set" : STATUS_META[st].label}
                           </span>
+                          {/* Engagement: inactive rows carry their status (grey);
+                              an active-list row with no status gets an amber nudge. */}
+                          <Show
+                            when={c.inactive}
+                            fallback={
+                              <Show when={c.engagement_status == null}>
+                                <span class="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase bg-[#FBF3E2] text-[#B07A14] dark:bg-amber-900/30 dark:text-amber-300">Status not set</span>
+                              </Show>
+                            }
+                          >
+                            <span class="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase bg-[#E3E7ED] text-[#3B4656] dark:bg-gray-700 dark:text-gray-200">{engagementLabel(c.engagement_status)}</span>
+                          </Show>
                           <Show when={pendingCount(c) > 0}>
                             <span class="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#FBF3E2] text-[#B07A14] dark:bg-amber-900/30 dark:text-amber-300">
                               <span class="w-1.5 h-1.5 rounded-full bg-[#B07A14]" /> {pendingCount(c)} request{pendingCount(c) !== 1 ? "s" : ""} pending
@@ -1280,7 +1354,16 @@ export default function AllowedBudget() {
 
                   {/* daily + monthly meters (Allowed | Used | Headroom preserved) */}
                   <div class="flex flex-wrap gap-5 xl:gap-7">
-                    <BudgetMeter label="Daily" usedLabel="Allocated" allowed={c.allowed_daily_budget} used={c.daily_allocated} headroom={c.daily_headroom} />
+                    <div class="min-w-[210px] xl:w-[240px] xl:flex-none">
+                      <BudgetMeter label="Daily" usedLabel="Allocated" allowed={c.allowed_daily_budget} used={c.daily_allocated} headroom={c.daily_headroom} />
+                      {/* Running campaigns on disabled / closed ad accounts are
+                          no longer in daily_allocated — say how much is left out. */}
+                      <Show when={(toNum(c.budget_on_disabled_accounts) ?? 0) > 0}>
+                        <p class="mt-1 text-[10.5px] font-semibold text-[#B07A14] dark:text-amber-300" title={money2(c.budget_on_disabled_accounts) ?? undefined}>
+                          {moneyWhole(c.budget_on_disabled_accounts)}/day on disabled ad accounts (not counted)
+                        </p>
+                      </Show>
+                    </div>
                     <BudgetMeter label="Monthly" usedLabel="Spent" allowed={c.allowed_monthly_budget} used={c.monthly_spent} headroom={c.monthly_headroom} />
                   </div>
 

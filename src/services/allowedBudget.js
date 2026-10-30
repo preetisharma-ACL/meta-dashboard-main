@@ -8,8 +8,13 @@ import { scopeQuery, applyMeta } from "../stores/cmScope";
 // do not. BASE_URL already includes /api → paths are /cm/allowed-budget/...
 
 // 1. List clients with ceilings + consumption (CM: own; admin: all).
-export const fetchAllowedBudgetClients = async () => {
-  const res = await api(`/cm/allowed-budget/clients/?1=1${scopeQuery({ supportsOwn: true })}`, { method: "GET" });
+// Inactive clients (engagement hold / completed / dead) are hidden by the
+// server unless includeInactive; meta then carries {include_inactive,
+// hidden_inactive} and each row {engagement_status, inactive,
+// budget_on_disabled_accounts}.
+export const fetchAllowedBudgetClients = async ({ includeInactive = false } = {}) => {
+  const inc = includeInactive ? "&include_inactive=1" : "";
+  const res = await api(`/cm/allowed-budget/clients/?1=1${inc}${scopeQuery({ supportsOwn: true })}`, { method: "GET" });
   applyMeta(res?.meta);
   return res;
 };
