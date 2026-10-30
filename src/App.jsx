@@ -91,6 +91,10 @@ import CreativeRanking from "./pages/creatives/CreativeRanking";
 import CreativeDetail from "./pages/creatives/CreativeDetail";
 import UntaggedAds from "./pages/creatives/UntaggedAds";
 import { CREATIVE_READ_ROLES, UNTAGGED_ROLES } from "./services/creatives";
+import ProposalsList from "./pages/proposals/ProposalsList";
+import ProposalBuilder from "./pages/proposals/ProposalBuilder";
+import ProposalLibrary from "./pages/proposals/ProposalLibrary";
+import { PROPOSAL_ROLES, LIBRARY_ROLES } from "./services/proposals";
 import { loadCurrentUser } from "./stores/currentUser";
 
 // The home route ("/") branches on role: Campaign Managers get the CM dashboard,
@@ -445,6 +449,34 @@ function App() {
               component={() => (
                 <AdminRoute roles={CREATIVE_READ_ROLES}>
                   <CreativeDetail />
+                </AdminRoute>
+              )}
+            />
+            {/* ── Proposals ────────────────────────────────────────────────
+                Sales (own) and admin (all); the library is admin only. Every
+                other role is 403ed by /api/proposals/. Static "library"
+                outranks "/proposals/:id". */}
+            <Route
+              path="/proposals"
+              component={() => (
+                <AdminRoute roles={PROPOSAL_ROLES}>
+                  <ProposalsList />
+                </AdminRoute>
+              )}
+            />
+            <Route
+              path="/proposals/library"
+              component={() => (
+                <AdminRoute roles={LIBRARY_ROLES}>
+                  <ProposalLibrary />
+                </AdminRoute>
+              )}
+            />
+            <Route
+              path="/proposals/:id"
+              component={() => (
+                <AdminRoute roles={PROPOSAL_ROLES}>
+                  <ProposalBuilder />
                 </AdminRoute>
               )}
             />
