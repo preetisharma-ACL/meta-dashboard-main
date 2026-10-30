@@ -11,6 +11,7 @@ import {
   engagementLabel,
 } from "../../services/allowedBudget";
 import { scopeKey } from "../../stores/cmScope";
+import { readUserFlag, writeUserFlag } from "../../utils/userPref";
 import { isAdmin, isGlobalRead } from "../../stores/currentUser";
 import Avatar from "../../components/common/Avatar";
 import BudgetHistory from "./BudgetHistory";
@@ -52,24 +53,9 @@ const TYPE_LABELS = { cpl: "CPL", hybrid: "Hybrid", retainer: "Retainer" };
 // ─── Inactive clients ─────────────────────────────────────────────────────────
 // engagement_status: active | hold | completed | dead | null. Inactive rows only
 // arrive with ?include_inactive=1 and are shown greyed with their status
-// (engagementLabel, shared with Project Display Config).
-
-// Per-user key: auth.user is written at login, so it's there before /auth/me.
-const showInactiveKey = () => {
-  try {
-    const u = JSON.parse(localStorage.getItem("auth") || "{}")?.user;
-    return `allowedBudget.showInactive.${u?.id ?? u?.email ?? "me"}`;
-  } catch {
-    return "allowedBudget.showInactive.me";
-  }
-};
-const readShowInactive = () => {
-  try {
-    return localStorage.getItem(showInactiveKey()) === "1";
-  } catch {
-    return false;
-  }
-};
+// (engagementLabel, shared with Project Display Config). The switch is
+// remembered per user (utils/userPref).
+const SHOW_INACTIVE_PREF = "allowedBudget.showInactive";
 const TYPE_ORDER = ["cpl", "hybrid", "retainer"];
 // Client-type multi-select chips (same as Account Funding). CPL + Hybrid are
 // the default; Retainer is client-funded, so it's off by default.
@@ -643,15 +629,11 @@ export default function AllowedBudget() {
     DEFAULT_CLIENT_TYPES.every((k) => clientTypes().includes(k));
 
   // "Show inactive" — the server hides hold / completed / dead clients unless
-  // asked. Remembered per user; storage can throw (private mode), so guarded.
-  const [showInactive, setShowInactiveRaw] = createSignal(readShowInactive());
+  // asked. Remembered per user.
+  const [showInactive, setShowInactiveRaw] = createSignal(readUserFlag(SHOW_INACTIVE_PREF));
   const setShowInactive = (v) => {
     setShowInactiveRaw(v);
-    try {
-      localStorage.setItem(showInactiveKey(), v ? "1" : "0");
-    } catch {
-      /* not remembered — still applies for this visit */
-    }
+    writeUserFlag(SHOW_INACTIVE_PREF, v);
   };
   const [listMeta, setListMeta] = createSignal(null); // { include_inactive, hidden_inactive }
 

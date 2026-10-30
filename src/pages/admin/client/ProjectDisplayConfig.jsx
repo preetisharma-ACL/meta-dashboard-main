@@ -16,6 +16,7 @@ import DateTimePicker from "../../../components/DateTimePicker";
 import { fetchProjectsByClient } from "../services/fetchProjectsByClient"; // ← NEW
 import { fetchAllowedBudgetClients, engagementLabel } from "../../../services/allowedBudget"; // ← CM-scoped client source
 import { loadErrorMessage } from "../../../utils/apiErrors";
+import { readUserFlag, writeUserFlag } from "../../../utils/userPref";
 import {
   isAdmin,
   isSeniorTier,
@@ -28,6 +29,7 @@ import SuccessToast, {
 
 // engagement_status values that mean "not running" — badged in the client picker.
 const INACTIVE_STATUSES = new Set(["hold", "completed", "dead"]);
+const SHOW_DEAD_PREF = "projectDisplayConfig.showDead";
 
 // The only promised qualification %s the configs API accepts (others 400).
 const PROMISE_PCTS = [30, 35, 40, 50];
@@ -439,18 +441,29 @@ export default function ProjectDisplayConfig() {
   };
   onMount(loadConfigs);
 
-  onMount(async () => {
+  // Admin "Show dead clients": the roster hides DEAD clients by default (the
+  // platform rule); on → dead=all, shown with a grey Dead badge. Remembered
+  // per user. The CM list is unaffected (it comes from allowed-budget).
+  const [showDead, setShowDeadRaw] = createSignal(readUserFlag(SHOW_DEAD_PREF));
+  const setShowDead = (v) => {
+    setShowDeadRaw(v);
+    writeUserFlag(SHOW_DEAD_PREF, v);
+    loadClients();
+  };
+
+  let clientsSeq = 0;
+  const loadClients = async () => {
+    const mine = ++clientsSeq;
     try {
       const cm = isCampaignManager();
       // CMs 403 on the admin all-clients endpoint — source their own clients
       // from the CM-scoped allowed-budget list instead. include_inactive: Hold
       // and Completed clients still need their configs (restart, billing), so
       // this list must not drop them the way the Allowed Budget default does.
-      // Admin: the roster hides DEAD clients by default; dead=all keeps them,
-      // since admin still edits configs of Hold / Completed / Dead clients.
       const clientRes = await (cm
         ? fetchAllowedBudgetClients({ includeInactive: true })
-        : fetchClients(1, 500, { includeDead: true }));
+        : fetchClients(1, 500, { includeDead: showDead() }));
+      if (mine !== clientsSeq) return; // a newer toggle won
 
       if (cm) {
         // Allowed-budget rows carry the config-compatible client_id + a display
@@ -486,7 +499,8 @@ export default function ProjectDisplayConfig() {
     } catch (err) {
       console.error("Failed to load clients:", err);
     }
-  });
+  };
+  onMount(loadClients);
 
   // ── NEW: fetch projects for a given clientId via AJAX ─────────────────────
   const loadProjectsForClient = async (clientId) => {
@@ -1725,9 +1739,26 @@ export default function ProjectDisplayConfig() {
             <div class="flex-1 overflow-y-auto px-6 py-5 space-y-5">
               {/* ── Client dropdown ── */}
               <div>
-                <label class="block text-sm font-medium mb-1.5">
-                  Client Name
-                </label>
+                <div class="flex items-center justify-between gap-3 mb-1.5">
+                  <label class="block text-sm font-medium">
+                    Client Name
+                  </label>
+                  {/* Admin only — dead clients are hidden unless switched on. */}
+                  <Show when={!isCampaignManager()}>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={showDead()}
+                      onClick={() => setShowDead(!showDead())}
+                      class="inline-flex items-center gap-1.5 select-none text-xs font-semibold text-gray-600 dark:text-gray-300 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400"
+                    >
+                      <span class={`relative inline-flex h-4 w-7 flex-none items-center rounded-full transition-colors ${showDead() ? "bg-[#3B4656]" : "bg-gray-300 dark:bg-gray-600"}`} aria-hidden="true">
+                        <span class={`inline-block h-3 w-3 rounded-full bg-white shadow transition-transform ${showDead() ? "translate-x-[14px]" : "translate-x-0.5"}`} />
+                      </span>
+                      Show dead clients
+                    </button>
+                  </Show>
+                </div>
                 <div class="relative">
                   <input
                     type="text"
