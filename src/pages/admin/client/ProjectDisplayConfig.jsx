@@ -441,14 +441,20 @@ export default function ProjectDisplayConfig() {
   };
   onMount(loadConfigs);
 
-  // Admin "Show dead clients": the roster hides DEAD clients by default (the
-  // platform rule); on → dead=all, shown with a grey Dead badge. Remembered
-  // per user. The CM list is unaffected (it comes from allowed-budget).
+  // "Show dead clients" (admin + CM): DEAD clients are hidden by default (the
+  // platform rule) and shown with a grey Dead badge when on. Remembered per
+  // user. Admin: the roster does the hiding, so on → refetch with dead=all.
+  // CM: the allowed-budget rows already include dead ones (include_inactive),
+  // so they are filtered here from the loaded list — no refetch.
   const [showDead, setShowDeadRaw] = createSignal(readUserFlag(SHOW_DEAD_PREF));
+  let cmRows = null; // CM: every normalised row, dead included
+  const applyCmRows = () =>
+    setClients((cmRows ?? []).filter((c) => showDead() || c.engagement_status !== "dead"));
   const setShowDead = (v) => {
     setShowDeadRaw(v);
     writeUserFlag(SHOW_DEAD_PREF, v);
-    loadClients();
+    if (isCampaignManager() && cmRows) applyCmRows();
+    else loadClients();
   };
 
   let clientsSeq = 0;
@@ -470,17 +476,16 @@ export default function ProjectDisplayConfig() {
         // name. Normalise onto the { id, email } shape the picker reads (it
         // displays/searches on `email`; the client name stands in for it).
         const rows = Array.isArray(clientRes?.data) ? clientRes.data : [];
-        setClients(
-          rows
-            .filter((c) => c.client_id != null)
-            .map((c) => ({
-              id: c.client_id,
-              email: c.name ?? `Client #${c.client_id}`,
-              client_type: c.client_type ?? null,
-              inactive: !!c.inactive,
-              engagement_status: c.engagement_status ?? null,
-            })),
-        );
+        cmRows = rows
+          .filter((c) => c.client_id != null)
+          .map((c) => ({
+            id: c.client_id,
+            email: c.name ?? `Client #${c.client_id}`,
+            client_type: c.client_type ?? null,
+            inactive: !!c.inactive,
+            engagement_status: c.engagement_status ?? null,
+          }));
+        applyCmRows();
       } else {
         // Admin rows carry engagement_status (active | hold | completed | dead
         // | null) but no `inactive` flag: derive it the same way, and mark a
@@ -1743,21 +1748,19 @@ export default function ProjectDisplayConfig() {
                   <label class="block text-sm font-medium">
                     Client Name
                   </label>
-                  {/* Admin only — dead clients are hidden unless switched on. */}
-                  <Show when={!isCampaignManager()}>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={showDead()}
-                      onClick={() => setShowDead(!showDead())}
-                      class="inline-flex items-center gap-1.5 select-none text-xs font-semibold text-gray-600 dark:text-gray-300 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400"
-                    >
-                      <span class={`relative inline-flex h-4 w-7 flex-none items-center rounded-full transition-colors ${showDead() ? "bg-[#3B4656]" : "bg-gray-300 dark:bg-gray-600"}`} aria-hidden="true">
-                        <span class={`inline-block h-3 w-3 rounded-full bg-white shadow transition-transform ${showDead() ? "translate-x-[14px]" : "translate-x-0.5"}`} />
-                      </span>
-                      Show dead clients
-                    </button>
-                  </Show>
+                  {/* Dead clients are hidden unless switched on (admin + CM). */}
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={showDead()}
+                    onClick={() => setShowDead(!showDead())}
+                    class="inline-flex items-center gap-1.5 select-none text-xs font-semibold text-gray-600 dark:text-gray-300 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400"
+                  >
+                    <span class={`relative inline-flex h-4 w-7 flex-none items-center rounded-full transition-colors ${showDead() ? "bg-[#3B4656]" : "bg-gray-300 dark:bg-gray-600"}`} aria-hidden="true">
+                      <span class={`inline-block h-3 w-3 rounded-full bg-white shadow transition-transform ${showDead() ? "translate-x-[14px]" : "translate-x-0.5"}`} />
+                    </span>
+                    Show dead clients
+                  </button>
                 </div>
                 <div class="relative">
                   <input
