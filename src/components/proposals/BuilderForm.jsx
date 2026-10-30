@@ -12,8 +12,13 @@ import { optionsOf, getPath, fmtWhen, nameOf } from "../../services/proposals";
 // Props: detail, meta, form, copy, theme, validity, aiBusy, setField(path, v),
 // setCopyKey(key, v), onTheme(t), onValidity(v), onConfirm(), onRestore(version)
 
-// Swatch colours when meta.themes carries no colour of its own.
-const THEME_FALLBACK = { navy: "#1B2A4A", wine: "#7A1F35", pink: "#D9467A" };
+// meta.themes is only {key, label}; the swatch colours (page background +
+// accent) are fixed here, matching the PDF themes.
+const THEME_SWATCH = {
+  navy: { bg: "#0F1B2D", accent: "#AC2334" },
+  wine: { bg: "#3A0D19", accent: "#D9B57A" },
+  pink: { bg: "#FFE2EB", accent: "#C2185B" },
+};
 
 const LEVEL = {
   error: {
@@ -135,6 +140,9 @@ export default function BuilderForm(props) {
   const assumptions = () => props.detail?.assumptions ?? [];
   const versions = () => props.detail?.versions ?? [];
   const display = () => props.detail?.display ?? {};
+  const displayLines = () => (Array.isArray(display().lines) ? display().lines : []);
+  const termsMode = () =>
+    getPath(props.form, "terms.mode") ?? getPath(defaults(), "terms.mode") ?? "standard";
 
   const [pickVersion, setPickVersion] = createSignal("");
 
@@ -194,6 +202,38 @@ export default function BuilderForm(props) {
             <Num label="Total monthly" value={display().total_monthly} />
           </Show>
         </dl>
+        {/* Per-project breakdown, only when there is more than one project.
+            The _f values arrive formatted ("1,100"). */}
+        <Show when={displayLines().length > 1}>
+          <div class="mt-3 overflow-x-auto rounded-lg border border-[#E2E8F1] dark:border-gray-700">
+            <table class="w-full text-xs">
+              <thead class="bg-[#F8FAFC] dark:bg-gray-800 text-[#54657E] dark:text-gray-400">
+                <tr class="[&_th]:px-2.5 [&_th]:py-2 [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:whitespace-nowrap">
+                  <th class="text-left">Project</th>
+                  <th class="text-right">Leads</th>
+                  <th class="text-right">CPL (₹)</th>
+                  <th class="text-right">Qualified min</th>
+                  <th class="text-right">Amount (₹)</th>
+                </tr>
+              </thead>
+              <tbody class="[&_td]:px-2.5 [&_td]:py-1.5 text-[#14233A] dark:text-gray-200">
+                <For each={displayLines()}>
+                  {(l) => (
+                    <tr class="border-t border-[#E2E8F1] dark:border-gray-700">
+                      <td class="max-w-[10rem] truncate" title={l.project ?? ""}>{l.project || "—"}</td>
+                      <td class="text-right tabular-nums">{l.leads ?? "—"}</td>
+                      <td class="text-right tabular-nums" title={l.cpl_with_gst_f ? `₹${l.cpl_with_gst_f} with GST` : undefined}>
+                        {l.cpl_f ?? "—"}
+                      </td>
+                      <td class="text-right tabular-nums">{l.min_qualified ?? "—"}</td>
+                      <td class="text-right tabular-nums font-semibold">{l.subtotal_f ?? "—"}</td>
+                    </tr>
+                  )}
+                </For>
+              </tbody>
+            </table>
+          </div>
+        </Show>
       </div>
 
       {/* ══ Assumptions ══ */}
@@ -339,6 +379,64 @@ export default function BuilderForm(props) {
           <Text label="Payment terms" path="payment_terms" multiline />
         </section>
 
+        {/* ══ T&C ══ inputs.terms {mode: standard|custom, custom_text}. Custom
+            text is checked by the server (qualified % vs the deal, the 24-hour
+            rule); its findings arrive in Checks like any other. */}
+        <section>
+          <PanelTitle>Terms &amp; conditions</PanelTitle>
+          <div class="flex flex-wrap gap-x-5 gap-y-2 text-sm text-[#14233A] dark:text-gray-200" role="radiogroup" aria-label="Terms">
+            <label class="inline-flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name="pf-terms"
+                data-field="terms.mode"
+                class="accent-[#AC2334]"
+                checked={termsMode() === "standard"}
+                onChange={() => props.setField(["terms", "mode"], "standard")}
+              />
+              Standard T&amp;C (recommended)
+            </label>
+            <label class="inline-flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name="pf-terms"
+                class="accent-[#AC2334]"
+                checked={termsMode() === "custom"}
+                onChange={() => props.setField(["terms", "mode"], "custom")}
+              />
+              Use my own T&amp;C
+            </label>
+          </div>
+          <Show when={termsMode() === "standard" && String(getPath(props.form, "terms.custom_text") ?? "").trim()}>
+            <p class="mt-2 text-xs text-[#54657E] dark:text-gray-400">
+              Your brief included T&amp;C. Using standard terms.{" "}
+              <button
+                type="button"
+                class="font-semibold text-[#AC2334] dark:text-red-300 underline"
+                onClick={() => props.setField(["terms", "mode"], "custom")}
+              >
+                Use mine instead
+              </button>
+            </p>
+          </Show>
+          <Show when={termsMode() === "custom"}>
+            <div class="mt-3">
+              <label class={LABEL} for="pf-terms.custom_text">Your T&amp;C</label>
+              <textarea
+                id="pf-terms.custom_text"
+                data-field="terms.custom_text"
+                class={FIELD + " min-h-[10rem] leading-relaxed font-[inherit]"}
+                value={val("terms.custom_text")}
+                placeholder={"One clause per line. A line like \"1. Qualified Leads\" becomes a heading."}
+                onInput={(e) => props.setField(["terms", "custom_text"], e.target.value)}
+              />
+              <p class="mt-1 text-xs text-[#8593A8] dark:text-gray-400">
+                One clause per line; numbered lines like "1. Qualified Leads" become headings. They must state the same qualified % as the deal and include the 24-hour rule.
+              </p>
+            </div>
+          </Show>
+        </section>
+
         <section>
           <PanelTitle>Prepared by</PanelTitle>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -357,8 +455,7 @@ export default function BuilderForm(props) {
               <div class="flex gap-2" role="radiogroup" aria-label="Theme">
                 <For each={themes()}>
                   {(t) => {
-                    const colour = () =>
-                      t.raw?.color ?? t.raw?.colour ?? t.raw?.primary ?? t.raw?.hex ?? t.raw?.swatch ?? THEME_FALLBACK[t.value] ?? "#54657E";
+                    const sw = () => THEME_SWATCH[t.value] ?? { bg: "#54657E", accent: "#8593A8" };
                     const on = () => props.theme === t.value;
                     return (
                       <button
@@ -370,9 +467,9 @@ export default function BuilderForm(props) {
                         onClick={() => props.onTheme(t.value)}
                         class={
                           "w-9 h-9 rounded-full border-2 transition-transform " +
-                          (on() ? "border-[#14233A] dark:border-white scale-110 ring-2 ring-offset-2 ring-[#14233A]/30 dark:ring-offset-gray-800" : "border-white dark:border-gray-700 hover:scale-105")
+                          (on() ? "border-[#14233A] dark:border-white scale-110 ring-2 ring-offset-2 ring-[#14233A]/30 dark:ring-offset-gray-800" : "border-[#D4DDE9] dark:border-gray-600 hover:scale-105")
                         }
-                        style={{ background: colour() }}
+                        style={{ background: `linear-gradient(135deg, ${sw().bg} 0 58%, ${sw().accent} 58% 100%)` }}
                       />
                     );
                   }}

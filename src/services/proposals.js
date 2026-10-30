@@ -65,14 +65,17 @@ export const fetchProposals = async ({ q, by, page } = {}) => {
 };
 
 // ── Create ────────────────────────────────────────────────────────────────────
-// JSON unless a brochure is attached (admin only); then multipart, with
-// prepared_by sent as a JSON string. Reading the brief takes ~5 s.
-export const createProposal = async ({ brief, preparedBy, brochure }) => {
-  if (brochure) {
+// JSON unless files are attached; then multipart, with prepared_by sent as a
+// JSON string. Files: "images" repeated once per screenshot of the brief (sales
+// and admin; the brief text may then be empty) and "brochure" (admin only).
+// Reading the brief takes ~5 s, a few more with images.
+export const createProposal = async ({ brief, preparedBy, brochure, images = [] }) => {
+  if (brochure || images.length) {
     const fd = new FormData();
     fd.append("brief", brief);
     if (preparedBy) fd.append("prepared_by", JSON.stringify(preparedBy));
-    fd.append("brochure", brochure);
+    for (const img of images) fd.append("images", img);
+    if (brochure) fd.append("brochure", brochure);
     return (await withTimeout(`${BASE}/`, { method: "POST", body: fd }))?.data;
   }
   const body = { brief };
@@ -83,6 +86,12 @@ export const createProposal = async ({ brief, preparedBy, brochure }) => {
 export const BROCHURE_TYPES = ["application/pdf", "image/jpeg", "image/png", "image/webp"];
 export const BROCHURE_ACCEPT = ".pdf,.jpg,.jpeg,.png,.webp";
 export const BROCHURE_MAX_BYTES = 15 * 1024 * 1024;
+
+// Brief screenshots. Limits come from meta.image_upload {max_files, max_mb};
+// these are the values the backend publishes there today.
+export const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+export const IMAGE_ACCEPT = ".jpg,.jpeg,.png,.webp";
+export const IMAGE_DEFAULTS = { max_files: 4, max_mb: 5 };
 
 // ── One proposal ──────────────────────────────────────────────────────────────
 const one = (id) => `${BASE}/${encodeURIComponent(id)}`;

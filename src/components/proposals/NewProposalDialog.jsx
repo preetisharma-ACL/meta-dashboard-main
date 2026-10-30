@@ -1,16 +1,22 @@
-import { createSignal, createEffect, on, Show } from "solid-js";
+import { createSignal, createEffect, on, onCleanup, For, Show } from "solid-js";
+import { X, ImagePlus } from "lucide-solid";
 import {
   createProposal,
   saveMyProfile,
   BROCHURE_TYPES,
   BROCHURE_ACCEPT,
   BROCHURE_MAX_BYTES,
+  IMAGE_TYPES,
+  IMAGE_ACCEPT,
+  IMAGE_DEFAULTS,
 } from "../../services/proposals";
 import { errorMessage } from "../../utils/apiErrors";
 import { Modal, InlineError, FIELD, LABEL, GHOST_BTN, PRIMARY_BTN, Spinner } from "./ProposalUI";
 
 // ─── New proposal ─────────────────────────────────────────────────────────────
-// Brief + who it is prepared by (+ a brochure for admin). "Use my profile"
+// Brief (typed, and/or screenshots of it) + who it is prepared by (+ a
+// brochure for admin). Screenshots can be picked or pasted into the brief box;
+// with at least one attached the brief text may be empty. "Use my profile"
 // sends no prepared_by and the server fills it from meta.me. When meta.me has
 // no name or phone yet, the profile fields are asked for here; with "Save as
 // my profile" ticked they are PUT to /meta/ first, otherwise they ride along as
@@ -27,6 +33,7 @@ export default function NewProposalDialog(props) {
   const [saveProfile, setSaveProfile] = createSignal(true);
   const [other, setOther] = createSignal(blankPerson());
   const [file, setFile] = createSignal(null);
+  const [images, setImages] = createSignal([]); // [{ file, url }]
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal("");
 
@@ -49,11 +56,45 @@ export default function NewProposalDialog(props) {
         setSaveProfile(true);
         setOther(blankPerson());
         setFile(null);
+        clearImages();
         setBusy(false);
         setError("");
       },
     ),
   );
+
+  // ── Brief screenshots ──
+  const limits = () => ({ ...IMAGE_DEFAULTS, ...(props.meta?.image_upload ?? {}) });
+  const clearImages = () => {
+    for (const i of images()) URL.revokeObjectURL(i.url);
+    setImages([]);
+  };
+  onCleanup(clearImages);
+  const addImages = (files) => {
+    setError("");
+    const { max_files, max_mb } = limits();
+    const next = [...images()];
+    const problems = [];
+    for (const f of files) {
+      if (!IMAGE_TYPES.includes(f.type)) problems.push(`${f.name || "Pasted file"}: only JPG, PNG or WEBP.`);
+      else if (f.size > max_mb * 1024 * 1024) problems.push(`${f.name || "Pasted image"}: over ${max_mb} MB.`);
+      else if (next.length >= max_files) problems.push(`Up to ${max_files} images.`);
+      else next.push({ file: f, url: URL.createObjectURL(f) });
+    }
+    setImages(next);
+    if (problems.length) setError([...new Set(problems)].join(" "));
+  };
+  const removeImage = (i) => {
+    URL.revokeObjectURL(images()[i]?.url);
+    setImages(images().filter((_, j) => j !== i));
+  };
+  // A screenshot pasted into the brief box is attached; pasted text still lands.
+  const onPaste = (e) => {
+    const files = [...(e.clipboardData?.files ?? [])].filter((f) => f.type.startsWith("image/"));
+    if (!files.length) return;
+    addImages(files);
+    if (!e.clipboardData.getData("text")) e.preventDefault();
+  };
 
   const pickFile = (f) => {
     setError("");
@@ -70,7 +111,7 @@ export default function NewProposalDialog(props) {
   };
 
   const valid = () => {
-    if (!brief().trim()) return false;
+    if (!brief().trim() && !images().length) return false;
     if (who() === "other") return !!other().name.trim();
     if (profileIncomplete()) return !!mine().name.trim() && !!mine().phone.trim();
     return true;
@@ -97,6 +138,7 @@ export default function NewProposalDialog(props) {
         brief: brief().trim(),
         preparedBy,
         brochure: props.meta?.brochure_upload ? file() : null,
+        images: images().map((i) => i.file),
       });
       if (!detail?.id) throw new Error("The server did not return the new proposal.");
       props.onCreated(detail);
@@ -137,7 +179,9 @@ export default function NewProposalDialog(props) {
           <div class="py-14 flex flex-col items-center gap-3 text-[#54657E] dark:text-gray-300">
             <Spinner class="w-7 h-7 text-[#AC2334]" />
             <p class="text-sm font-semibold">Reading the brief…</p>
-            <p class="text-xs text-[#8593A8]">This takes a few seconds.</p>
+            <p class="text-xs text-[#8593A8]">
+              {images().length ? "This takes a few seconds, a little longer with images." : "This takes a few seconds."}
+            </p>
           </div>
         }
       >
@@ -156,8 +200,49 @@ export default function NewProposalDialog(props) {
               data-autofocus
               value={brief()}
               onInput={(e) => setBrief(e.target.value)}
-              placeholder="Leads, CPL, qualified %, project facts, anything the client told you."
+              onPaste={onPaste}
+              placeholder="Leads, CPL, qualified %, project facts, anything the client told you. You can paste a screenshot here too."
             />
+          </div>
+
+          <div>
+            <span class={LABEL}>Attach images (optional)</span>
+            <div class="flex flex-wrap items-center gap-2">
+              <For each={images()}>
+                {(img, i) => (
+                  <div class="relative w-20 h-20 rounded-lg overflow-hidden border border-[#E2E8F1] dark:border-gray-600 bg-[#F8FAFC]">
+                    <img src={img.url} alt={img.file.name || "Brief image"} class="w-full h-full object-cover" />
+                    <button
+                      type="button"
+                      aria-label={`Remove ${img.file.name || "image"}`}
+                      class="absolute top-1 right-1 w-5 h-5 grid place-items-center rounded-full bg-black/60 text-white hover:bg-[#AC2334]"
+                      onClick={() => removeImage(i())}
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                )}
+              </For>
+              <Show when={images().length < limits().max_files}>
+                <label class="w-20 h-20 rounded-lg border-2 border-dashed border-[#D4DDE9] dark:border-gray-600 grid place-items-center text-[#8593A8] hover:border-[#AC2334] hover:text-[#AC2334] cursor-pointer focus-within:ring-2 focus-within:ring-[#AC2334]/40">
+                  <ImagePlus size={22} />
+                  <input
+                    type="file"
+                    multiple
+                    accept={IMAGE_ACCEPT}
+                    aria-label="Attach images"
+                    class="sr-only"
+                    onChange={(e) => {
+                      addImages([...(e.target.files ?? [])]);
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+              </Show>
+            </div>
+            <p class="mt-1 text-xs text-[#8593A8] dark:text-gray-400">
+              Screenshots of the brief: up to {limits().max_files} JPG, PNG or WEBP images, each under {limits().max_mb} MB. The brief text can be empty if you attach one.
+            </p>
           </div>
 
           <fieldset>

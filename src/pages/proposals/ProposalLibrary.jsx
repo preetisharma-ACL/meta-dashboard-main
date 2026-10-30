@@ -35,14 +35,18 @@ import ShapeEditor, { ROOT_TEMPLATES } from "../../components/proposals/ShapeEdi
 // save with a short note. Every save is a revision; History can view one
 // read-only or restore it.
 //
-// List fields are read tolerantly (title / last edited by / at / revision
-// count) — the list payload's exact key names weren't in the spec.
+// Shapes (confirmed by the backend):
+//   list      data[] {key, title, updated_at, updated_by (name), revisions (COUNT)}
+//   item      {key, title, value, updated_at, placeholders[],
+//              revisions[] {id, note, created_at, by}}   ← here a LIST
+//   revision  {id, value, note, created_at, by}
+//   restore   POST {revision: <id>}
 
 const rowTitle = (r) => r?.title || humanize(r?.key);
-const rowBy = (r) => nameOf(r?.updated_by ?? r?.last_edited_by ?? r?.edited_by ?? r?.by);
-const rowAt = (r) => r?.updated_at ?? r?.last_edited_at ?? r?.edited_at;
-const rowRevs = (r) => r?.revisions_count ?? r?.revision_count ?? (Array.isArray(r?.revisions) ? r.revisions.length : r?.revisions);
-const revId = (rv) => rv?.id ?? rv?.revision ?? rv?.rev_id;
+const rowBy = (r) => r?.updated_by ?? "";
+const rowAt = (r) => r?.updated_at;
+const rowRevs = (r) => r?.revisions;
+const revId = (rv) => rv?.id;
 
 const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
@@ -347,7 +351,7 @@ function EntryEditor(props) {
                     <div class="min-w-0">
                       <p class="text-sm text-[#14233A] dark:text-gray-100">{rv.note || "—"}</p>
                       <p class="text-[11px] text-[#8593A8] dark:text-gray-400">
-                        {[nameOf(rv.by ?? rv.created_by), fmtWhen(rv.created_at ?? rv.at)].filter(Boolean).join(" · ")}
+                        {[nameOf(rv.by), fmtWhen(rv.created_at)].filter(Boolean).join(" · ")}
                       </p>
                     </div>
                     <div class="flex gap-1.5">
@@ -373,7 +377,7 @@ function EntryEditor(props) {
         onClose={() => setViewing(null)}
       >
         <p class="text-xs text-[#8593A8] dark:text-gray-400 mb-3">
-          {[nameOf(viewing()?.rev?.by ?? viewing()?.rev?.created_by), fmtWhen(viewing()?.rev?.created_at)].filter(Boolean).join(" · ")} · read only
+          {[nameOf(viewing()?.rev?.by), fmtWhen(viewing()?.rev?.created_at)].filter(Boolean).join(" · ")} · read only
         </p>
         <Show when={viewing()?.error}>
           <InlineError message={viewing().error} />
