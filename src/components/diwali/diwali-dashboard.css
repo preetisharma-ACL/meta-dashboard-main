@@ -1,14 +1,17 @@
 /* ─── Diwali theme for the dashboard ──────────────────────────────────────────
-   Switches on while the dashboard (section.dwd-page) is on screen, in light
-   mode only: every themed rule hangs off
-       :root:not(.dark):has(.dwd-page)
-   so other pages and dark mode render exactly as before, and the sidebar and
-   header go festive only alongside the dashboard. Design only — the hooks are
-   `dwd-*` classes; removing the theme is deleting <DiwaliBanner />,
-   <DiwaliHero />, the sidebar decor and this file.
+   Switches on while the dashboard (section.dwd-page) is on screen, in both
+   light and dark mode. Three selector roots:
+       :root:has(.dwd-page)              layout + decor, both modes
+       :root:not(.dark):has(.dwd-page)   light palette (cream, gold, maroon)
+       :root.dark:has(.dwd-page)         dark palette (Diwali night: plum,
+                                         gold glow, keyed *-dark.png artwork)
+   so other pages render exactly as before, and the sidebar and header go
+   festive only alongside the dashboard. Design only — the hooks are `dwd-*`
+   classes; removing the theme is deleting <DiwaliBanner />, <DiwaliHero />,
+   the sidebar decor and this file.
 
    Palette: maroon #8c1d2c, crimson #AC2334 (the app's own), gold #d9a24a,
-   cream #fffaf4, warm hairline #f0dcc6. */
+   cream #fffaf4, warm hairline #f0dcc6; night #130e17, plum card #1d1522. */
 
 /* Decor is hidden unless the theme is on. */
 .dwd-corner,
@@ -29,8 +32,9 @@
 
 /* ── Page canvas ── */
 :root:not(.dark):has(.dwd-page) body { background: #fef0e8; }
-:root:not(.dark):has(.dwd-page) .dwd-shell,
-:root:not(.dark):has(.dwd-page) .dwd-page { background: transparent; }
+:root.dark:has(.dwd-page) body { background: #130e17; }
+:root:has(.dwd-page) .dwd-shell,
+:root:has(.dwd-page) .dwd-page { background: transparent; }
 
 /* The app-wide wash multiplies over everything; on the dashboard it turns
    warm, which tints every white card cream without touching each one. White
@@ -39,6 +43,13 @@
 :root:not(.dark):has(.dwd-page) .tricolour-wash {
   background: linear-gradient(180deg, #ffffff 0%, #ffffff 30%, #fffaf5 50%, #fffbf7 75%, #fdf1e6 100%);
 }
+/* Dark mode's wash is plain alpha (see index.css): a faint lamplight glow
+   from the top-right, where the diyas are, and a maroon ember at the foot. */
+:root.dark:has(.dwd-page) .tricolour-wash {
+  background:
+    radial-gradient(55% 32% at 84% 0%, rgba(255, 170, 80, 0.07), rgba(255, 170, 80, 0) 72%),
+    linear-gradient(180deg, rgba(255, 170, 80, 0.035) 0%, rgba(255, 170, 80, 0) 30%, rgba(172, 35, 52, 0) 70%, rgba(172, 35, 52, 0.06) 100%);
+}
 
 /* ── Greeting artwork (/images/dashboard-diwali-theme.png, 3:1) ──
    .dwd-hero: a short strip just under the header, pinned right (lg and up,
@@ -46,13 +57,14 @@
    diyas. The image's own string of lights (its top 8%) is cropped off, so
    the lantern cords start at the header's bottom edge and hang from the bar.
    Left edge and bottom dissolve into the page. z-index -1: above the page
-   colour, under every card, button and line of text. The header itself
-   stays plain: warm cream with a hairline. */
+   colour, under every card, button and line of text. Dark mode swaps in
+   dashboard-diwali-theme-dark.png — the same picture with its peach sky
+   keyed out to transparency and the halos turned to lamplight. */
 .dwd-hero { display: none; }
 @media (min-width: 1024px) {
-  :root:not(.dark):has(.dwd-page) { --dwd-h: clamp(170px, 13vw, 205px); }
-  :root:not(.dark):has(.dwd-page) .dwd-col { position: relative; }
-  :root:not(.dark):has(.dwd-page) .dwd-hero {
+  :root:has(.dwd-page) { --dwd-h: clamp(170px, 13vw, 205px); }
+  :root:has(.dwd-page) .dwd-col { position: relative; }
+  :root:has(.dwd-page) .dwd-hero {
     display: block;
     position: absolute;
     top: 64px; /* header height (h-16) */
@@ -71,10 +83,17 @@
       linear-gradient(180deg, #000 64%, transparent 100%);
     mask-composite: intersect;
   }
+  :root.dark:has(.dwd-page) .dwd-hero {
+    background-image: url('/images/dashboard-diwali-theme-dark.png');
+  }
 }
 :root:not(.dark):has(.dwd-page) .dwd-head {
   background: #fef3ec;
   border-bottom-color: #f3dfcc;
+}
+:root.dark:has(.dwd-page) .dwd-head {
+  background: #1a1320;
+  border-bottom-color: rgba(217, 162, 74, 0.22);
 }
 
 /* ── Sidebar ── */
@@ -82,7 +101,11 @@
   background-image: linear-gradient(180deg, #fffaf3 0%, #fff6ec 55%, #fdf0e2 100%);
   border-right-color: #f0dcc6;
 }
-:root:not(.dark):has(.dwd-page) .dwd-side-mandala {
+:root.dark:has(.dwd-page) .dwd-side {
+  background-image: linear-gradient(180deg, #1b1420 0%, #171019 55%, #1a1016 100%);
+  border-right-color: rgba(217, 162, 74, 0.18);
+}
+:root:has(.dwd-page) .dwd-side-mandala {
   display: block;
   position: absolute;
   z-index: 0;
@@ -90,19 +113,21 @@
   user-select: none;
 }
 /* The PNG is a top-right quarter, mirrored for the top-left corner. */
-:root:not(.dark):has(.dwd-page) .dwd-side-mandala--tl {
+:root:has(.dwd-page) .dwd-side-mandala--tl {
   top: -6px;
   left: -10px;
   width: 140px;
   transform: scaleX(-1);
   opacity: 0.5;
 }
+:root.dark:has(.dwd-page) .dwd-side-mandala--tl { opacity: 0.32; }
 /* Diyas, mandalas and waves (/images/bottom-sidebar-theme.png, 789×1994,
    art in its bottom 304px) as a band between the nav and the footer — its
    own flex row, so no menu item or footer line ever sits on the artwork.
    Drawn at 94% of the sidebar's width, centred, with every edge dissolving
-   into the sidebar colour; scales with the sidebar (collapsed included). */
-:root:not(.dark):has(.dwd-page) .dwd-side-art {
+   into the sidebar colour; scales with the sidebar (collapsed included).
+   Dark mode uses the keyed copy, bottom-sidebar-theme-dark.png. */
+:root:has(.dwd-page) .dwd-side-art {
   display: block;
   flex-shrink: 0;
   width: 100%;
@@ -120,15 +145,19 @@
     linear-gradient(180deg, transparent 0%, #000 30%, #000 80%, transparent 100%);
   mask-composite: intersect;
 }
-:root:not(.dark):has(.dwd-page) .dwd-side-foot {
+:root.dark:has(.dwd-page) .dwd-side-art {
+  background-image: url('/images/bottom-sidebar-theme-dark.png');
+}
+:root:has(.dwd-page) .dwd-side-foot {
   position: relative;
   z-index: 1;
   background: transparent;
-  border-top-color: #f0dcc6;
 }
+:root:not(.dark):has(.dwd-page) .dwd-side-foot { border-top-color: #f0dcc6; }
+:root.dark:has(.dwd-page) .dwd-side-foot { border-top-color: rgba(217, 162, 74, 0.18); }
 
 /* Mandala quarters pinned to the bottom corners of the viewport. */
-:root:not(.dark):has(.dwd-page) .dwd-corner {
+:root:has(.dwd-page) .dwd-corner {
   display: block;
   position: fixed;
   bottom: 0;
@@ -137,10 +166,11 @@
   user-select: none;
   opacity: 0.5;
 }
-:root:not(.dark):has(.dwd-page) .dwd-corner--bl { left: 0; width: 360px; transform: rotate(180deg); }
-:root:not(.dark):has(.dwd-page) .dwd-corner--br { right: 0; width: 230px; transform: scaleY(-1); }
+:root.dark:has(.dwd-page) .dwd-corner { opacity: 0.22; }
+:root:has(.dwd-page) .dwd-corner--bl { left: 0; width: 360px; transform: rotate(180deg); }
+:root:has(.dwd-page) .dwd-corner--br { right: 0; width: 230px; transform: scaleY(-1); }
 
-/* ── Page content ── */
+/* ── Page content: light ── */
 :root:not(.dark):has(.dwd-page) .dwd-pills > button.bg-gray-50 {
   background-color: #fffaf4;
   border-color: #efd8c2;
@@ -162,4 +192,33 @@
     0 1px 2px rgba(150, 80, 20, 0.06),
     0 12px 32px -14px rgba(170, 90, 30, 0.22),
     inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+/* ── Page content: dark (Diwali night) ──
+   Gray surfaces turn plum, gray hairlines turn to faint gold. Hover states
+   are restated because these rules outrank Tailwind's dark:hover: ones. */
+:root.dark:has(.dwd-page) .dwd-pills > button.dark\:bg-gray-800 {
+  background-color: #211826;
+  border-color: rgba(217, 162, 74, 0.3);
+  color: #f1dcc0;
+}
+:root.dark:has(.dwd-page) .dwd-pills > button.dark\:bg-gray-800:hover {
+  background-color: #2c1f2e;
+  border-color: rgba(217, 162, 74, 0.6);
+  color: #ffd79a;
+}
+:root.dark:has(.dwd-page) .dwd-page .dark\:bg-gray-800 { background-color: #1d1522; }
+:root.dark:has(.dwd-page) .dwd-page .dark\:bg-gray-700 { background-color: #2a1f2c; }
+:root.dark:has(.dwd-page) .dwd-page .dark\:hover\:bg-gray-700:hover { background-color: #2c1f2e; }
+:root.dark:has(.dwd-page) .dwd-page .dark\:border-gray-700 { border-color: rgba(217, 162, 74, 0.18); }
+:root.dark:has(.dwd-page) .dwd-page .dark\:border-gray-600 { border-color: rgba(217, 162, 74, 0.28); }
+:root.dark:has(.dwd-page) .dwd-page .dark\:divide-gray-700 > :not([hidden]) ~ :not([hidden]) { border-color: rgba(217, 162, 74, 0.14); }
+:root.dark:has(.dwd-page) .dwd-card {
+  border-color: rgba(217, 162, 74, 0.32);
+  border-radius: 18px;
+  background-color: #1d1522;
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.35),
+    0 14px 36px -16px rgba(255, 150, 60, 0.22),
+    inset 0 1px 0 rgba(255, 210, 150, 0.06);
 }

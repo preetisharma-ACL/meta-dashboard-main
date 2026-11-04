@@ -29,7 +29,7 @@ export default function DiwaliBanner() {
       <img src="/images/mandala-top-right.png" alt="" aria-hidden="true" class="dwd-corner dwd-corner--bl" />
       <img src="/images/mandala-top-right.png" alt="" aria-hidden="true" class="dwd-corner dwd-corner--br" />
 
-      <Show when={fireworks && !document.documentElement.classList.contains("dark")}>
+      <Show when={fireworks}>
         <DiwaliFireworks />
       </Show>
     </>
