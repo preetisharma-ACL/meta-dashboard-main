@@ -77,6 +77,7 @@ import { canRecordReplacement } from "../stores/currentUser";
 import { scopeKey } from "../stores/cmScope";
 import { makeLedgerCells } from "../services/ledgerCells";
 import SuccessToast, { showToast } from "../components/common/SuccessToast";
+import DiwaliBanner from "../components/diwali/DiwaliBanner";
 
 // Guards against stale in-flight loads overwriting the cache after the
 // dashboard context switches (e.g. admin leaves a client dashboard and returns
@@ -2216,7 +2217,8 @@ export default function MainDashboard() {
         </section>
       }
     >
-    <section class="w-full px-4 sm:px-6 lg:px-8 py-6 bg-gray-50 dark:bg-gray-900 min-h-screen">
+    <section class="dwd-page w-full px-4 sm:px-6 lg:px-8 py-6 bg-gray-50 dark:bg-gray-900 min-h-screen">
+      <DiwaliBanner />
       {/* Section Header */}
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-6">
         <div>
@@ -2270,7 +2272,7 @@ export default function MainDashboard() {
         </Show>
       </div>
 
-      <div class="flex flex-wrap gap-2 mb-6">
+      <div class="dwd-pills flex flex-wrap gap-2 mb-6">
         {[
           { label: "Today", value: "today" },
           { label: "Yesterday", value: "yesterday" },
@@ -2373,7 +2375,7 @@ export default function MainDashboard() {
 
       {/* ── CPL client: full-width balanced stat row (no empty left column) ── */}
       <Show when={iscpl()}>
-        <div class="bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] p-5 sm:p-7 mb-8">
+        <div class="dwd-card bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] p-5 sm:p-7 mb-8">
           <div class="grid grid-cols-1 sm:grid-cols-3 sm:divide-x divide-[#E2E8F1] dark:divide-gray-700">
             {/* Leads generated */}
             <div class="py-2 sm:py-1 sm:px-6 first:sm:pl-0">
@@ -2468,7 +2470,7 @@ export default function MainDashboard() {
 
       {/* ── Non-CPL clients: original two-column ledger (spend + rail + stats) ── */}
       <Show when={!iscpl()}>
-        <div class="bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] p-4 sm:p-8 mb-8 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_300px] gap-6 lg:gap-12 items-start">
+        <div class="dwd-card bg-gray-50 dark:bg-gray-800 border border-[#E2E8F1] dark:border-gray-700 rounded-xl shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] p-4 sm:p-8 mb-8 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_300px] gap-6 lg:gap-12 items-start">
           {/* min-w-0: a grid track defaults to min-content, so a long
               non-wrapping figure would otherwise widen the card past the
               viewport instead of shrinking inside it. */}

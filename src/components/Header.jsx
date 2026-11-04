@@ -208,7 +208,7 @@ export default function Header() {
   const unreadCount = () => unreadTotal();
 
   return (
-    <header class="h-16 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-30">
+    <header class="dwd-head h-16 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-30">
       <div class="h-full px-4 flex items-center justify-between">
         {/* Left Section */}
         <div class="flex items-center gap-4">

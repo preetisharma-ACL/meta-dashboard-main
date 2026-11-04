@@ -1,0 +1,165 @@
+/* ─── Diwali theme for the dashboard ──────────────────────────────────────────
+   Switches on while the dashboard (section.dwd-page) is on screen, in light
+   mode only: every themed rule hangs off
+       :root:not(.dark):has(.dwd-page)
+   so other pages and dark mode render exactly as before, and the sidebar and
+   header go festive only alongside the dashboard. Design only — the hooks are
+   `dwd-*` classes; removing the theme is deleting <DiwaliBanner />,
+   <DiwaliHero />, the sidebar decor and this file.
+
+   Palette: maroon #8c1d2c, crimson #AC2334 (the app's own), gold #d9a24a,
+   cream #fffaf4, warm hairline #f0dcc6. */
+
+/* Decor is hidden unless the theme is on. */
+.dwd-corner,
+.dwd-side-mandala,
+.dwd-side-art { display: none; }
+
+/* Fireworks canvas (same rules as the login page's, which may not be loaded). */
+.dw-fireworks {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  transition: opacity 0.6s ease;
+}
+.dw-fireworks--out { opacity: 0; }
+
+/* ── Page canvas ── */
+:root:not(.dark):has(.dwd-page) body { background: #fef0e8; }
+:root:not(.dark):has(.dwd-page) .dwd-shell,
+:root:not(.dark):has(.dwd-page) .dwd-page { background: transparent; }
+
+/* The app-wide wash multiplies over everything; on the dashboard it turns
+   warm, which tints every white card cream without touching each one. White
+   (a no-op under multiply) at the top, so the greeting artwork under it
+   matches the header's copy above it exactly. */
+:root:not(.dark):has(.dwd-page) .tricolour-wash {
+  background: linear-gradient(180deg, #ffffff 0%, #ffffff 30%, #fffaf5 50%, #fffbf7 75%, #fdf1e6 100%);
+}
+
+/* ── Greeting artwork (/images/dashboard-diwali-theme.png, 3:1) ──
+   .dwd-hero: a short strip just under the header, pinned right (lg and up,
+   where the column sits beside the sidebar): lanterns, "Happy Diwali", the
+   diyas. The image's own string of lights (its top 8%) is cropped off, so
+   the lantern cords start at the header's bottom edge and hang from the bar.
+   Left edge and bottom dissolve into the page. z-index -1: above the page
+   colour, under every card, button and line of text. The header itself
+   stays plain: warm cream with a hairline. */
+.dwd-hero { display: none; }
+@media (min-width: 1024px) {
+  :root:not(.dark):has(.dwd-page) { --dwd-h: clamp(170px, 13vw, 205px); }
+  :root:not(.dark):has(.dwd-page) .dwd-col { position: relative; }
+  :root:not(.dark):has(.dwd-page) .dwd-hero {
+    display: block;
+    position: absolute;
+    top: 64px; /* header height (h-16) */
+    right: 0;
+    width: calc(var(--dwd-h) * 3);
+    height: calc(var(--dwd-h) * 0.92);
+    z-index: -1;
+    pointer-events: none;
+    background: url('/images/dashboard-diwali-theme.png') right bottom / auto var(--dwd-h) no-repeat;
+    -webkit-mask-image:
+      linear-gradient(90deg, transparent 0%, #000 24%),
+      linear-gradient(180deg, #000 64%, transparent 100%);
+    -webkit-mask-composite: source-in;
+    mask-image:
+      linear-gradient(90deg, transparent 0%, #000 24%),
+      linear-gradient(180deg, #000 64%, transparent 100%);
+    mask-composite: intersect;
+  }
+}
+:root:not(.dark):has(.dwd-page) .dwd-head {
+  background: #fef3ec;
+  border-bottom-color: #f3dfcc;
+}
+
+/* ── Sidebar ── */
+:root:not(.dark):has(.dwd-page) .dwd-side {
+  background-image: linear-gradient(180deg, #fffaf3 0%, #fff6ec 55%, #fdf0e2 100%);
+  border-right-color: #f0dcc6;
+}
+:root:not(.dark):has(.dwd-page) .dwd-side-mandala {
+  display: block;
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
+  user-select: none;
+}
+/* The PNG is a top-right quarter, mirrored for the top-left corner. */
+:root:not(.dark):has(.dwd-page) .dwd-side-mandala--tl {
+  top: -6px;
+  left: -10px;
+  width: 140px;
+  transform: scaleX(-1);
+  opacity: 0.5;
+}
+/* Diyas, mandalas and waves (/images/bottom-sidebar-theme.png, 789×1994,
+   art in its bottom 304px) as a band between the nav and the footer — its
+   own flex row, so no menu item or footer line ever sits on the artwork.
+   Drawn at 94% of the sidebar's width, centred, with every edge dissolving
+   into the sidebar colour; scales with the sidebar (collapsed included). */
+:root:not(.dark):has(.dwd-page) .dwd-side-art {
+  display: block;
+  flex-shrink: 0;
+  width: 100%;
+  aspect-ratio: 789 / 286; /* 304px of art × 0.94 */
+  position: relative;
+  z-index: 1;
+  pointer-events: none;
+  background: url('/images/bottom-sidebar-theme.png') center bottom / 94% auto no-repeat;
+  -webkit-mask-image:
+    linear-gradient(90deg, transparent 3%, #000 12%, #000 88%, transparent 97%),
+    linear-gradient(180deg, transparent 0%, #000 30%, #000 80%, transparent 100%);
+  -webkit-mask-composite: source-in;
+  mask-image:
+    linear-gradient(90deg, transparent 3%, #000 12%, #000 88%, transparent 97%),
+    linear-gradient(180deg, transparent 0%, #000 30%, #000 80%, transparent 100%);
+  mask-composite: intersect;
+}
+:root:not(.dark):has(.dwd-page) .dwd-side-foot {
+  position: relative;
+  z-index: 1;
+  background: transparent;
+  border-top-color: #f0dcc6;
+}
+
+/* Mandala quarters pinned to the bottom corners of the viewport. */
+:root:not(.dark):has(.dwd-page) .dwd-corner {
+  display: block;
+  position: fixed;
+  bottom: 0;
+  z-index: -1;
+  pointer-events: none;
+  user-select: none;
+  opacity: 0.5;
+}
+:root:not(.dark):has(.dwd-page) .dwd-corner--bl { left: 0; width: 360px; transform: rotate(180deg); }
+:root:not(.dark):has(.dwd-page) .dwd-corner--br { right: 0; width: 230px; transform: scaleY(-1); }
+
+/* ── Page content ── */
+:root:not(.dark):has(.dwd-page) .dwd-pills > button.bg-gray-50 {
+  background-color: #fffaf4;
+  border-color: #efd8c2;
+  color: #5d4335;
+}
+:root:not(.dark):has(.dwd-page) .dwd-pills > button.bg-gray-50:hover {
+  border-color: rgba(172, 35, 52, 0.4);
+  color: #ac2334;
+}
+:root:not(.dark):has(.dwd-page) .dwd-page .bg-\[\#D4DDE9\] { background-color: #ecd1b0; }
+:root:not(.dark):has(.dwd-page) .dwd-page .border-\[\#E2E8F1\] { border-color: #f0dcc6; }
+:root:not(.dark):has(.dwd-page) .dwd-page .divide-\[\#E2E8F1\] > :not([hidden]) ~ :not([hidden]) { border-color: #f0dcc6; }
+:root:not(.dark):has(.dwd-page) .dwd-page .bg-gray-50 { background-color: #fffcf8; }
+:root:not(.dark):has(.dwd-page) .dwd-card {
+  border-color: #eccaa0;
+  border-radius: 18px;
+  background-color: #fffcf8;
+  box-shadow:
+    0 1px 2px rgba(150, 80, 20, 0.06),
+    0 12px 32px -14px rgba(170, 90, 30, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}

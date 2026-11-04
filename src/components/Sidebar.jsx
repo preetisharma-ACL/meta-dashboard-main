@@ -24,6 +24,7 @@ import {
   fundRequestsBadge,
   watchFundRequestsBadge,
 } from "../stores/fundRequestsBadge";
+import { SideMandalas, SideArt } from "./diwali/DiwaliSideDecor";
 
 // Expanded submenu group, remembered across reloads (see openMenu below).
 const OPEN_MENU_KEY = "sidebarOpenMenu";
@@ -1222,7 +1223,7 @@ export default function Sidebar() {
 
       {/* Sidebar */}
       <aside
-        class={`fixed overflow-hidden flex flex-col top-0 left-0 h-full z-50 transition-all duration-300
+        class={`dwd-side fixed overflow-hidden flex flex-col top-0 left-0 h-full z-50 transition-all duration-300
           bg-gradient-to-b from-white via-white to-[#FAFBFD] dark:from-gray-900 dark:via-gray-900 dark:to-gray-950
           border-r border-[#E2E8F1] dark:border-gray-800
           shadow-[1px_0_2px_rgba(16,29,49,.04),8px_0_28px_-16px_rgba(16,29,49,.18)] ${
@@ -1234,6 +1235,7 @@ export default function Sidebar() {
         {/* Crimson hairline down the outer edge — the one flourish that marks
             this as Aajneeti chrome rather than a default shell. */}
         <span class="pointer-events-none absolute inset-y-0 right-0 w-px bg-gradient-to-b from-[#AC2334]/40 via-[#AC2334]/10 to-transparent" />
+        <SideMandalas />
 
         {/* Logo — AAJneeti wordmark + gold "Reporting Dashboard" (all screens) */}
         <div class="relative flex-shrink-0 px-4 py-5 flex items-center justify-center">
@@ -1461,9 +1463,11 @@ export default function Sidebar() {
           </For>
         </nav>
 
+        <SideArt />
+
         {/* Footer */}
         <div
-          class={`flex-shrink-0 px-4 py-3 border-t border-[#E2E8F1] dark:border-gray-800 bg-[#F8FAFC]/90 dark:bg-gray-950/80 backdrop-blur-sm ${
+          class={`dwd-side-foot flex-shrink-0 px-4 py-3 border-t border-[#E2E8F1] dark:border-gray-800 bg-[#F8FAFC]/90 dark:bg-gray-950/80 backdrop-blur-sm ${
             isCollapsed() ? "text-center" : ""
           }`}
         >

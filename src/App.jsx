@@ -5,6 +5,7 @@ import { useSidebar } from "./context/SidebarContext";
 import { useNavigate } from "@solidjs/router";
 import { onMount, onCleanup } from "solid-js";
 import Sidebar from "./components/Sidebar";
+import DiwaliHero from "./components/diwali/DiwaliHero";
 import Header from "./components/Header";
 import CMBanner from "./components/CMBanner";
 import SuspendedAccountsBanner from "./components/SuspendedAccountsBanner";
@@ -125,12 +126,13 @@ function Layout(props) {
   const { isCollapsed } = useSidebar();
 
   return (
-    <div class="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div class="dwd-shell min-h-screen bg-gray-50 dark:bg-gray-900">
       <ImpersonationBanner />
       <Sidebar />
       <div
-        class={`transition-all duration-300 ${isCollapsed() ? "lg:ml-20" : "lg:ml-64"}`}
+        class={`dwd-col transition-all duration-300 ${isCollapsed() ? "lg:ml-20" : "lg:ml-64"}`}
       >
+        <DiwaliHero />
         <Header />
         <CMBanner />
         <SuspendedAccountsBanner />

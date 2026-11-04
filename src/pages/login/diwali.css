@@ -1,0 +1,480 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   DIWALI LOGIN THEME
+   Everything here is scoped to .lr-diwali (on .login-root), so removing that
+   one class from LoginForm.jsx restores the regular login design. Visual only:
+   no element the form depends on is moved or hidden.
+
+   Artwork lives in public/images/. The PNGs were cropped from a reference
+   screenshot and carry a strip of its background along one edge, so each one
+   is trimmed with clip-path rather than edited:
+     diya-cluster.png   top 18px of 235  → inset(8% 0 0 0)
+     hanging-diyas.png  left 24px of 265 → inset(0 0 0 9.5%)
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.lr-diwali {
+  --dw-ink: #2e1a10;
+  --dw-brown: #5c2a10;
+  --dw-muted: #7a5c4a;
+  --dw-orange: #e8741e;
+  --dw-gold: #e2a04a;
+  --dw-line: #f0d6bf;
+  --dw-field: #fffaf5;
+}
+
+/* Fireworks overlay (DiwaliFireworks.jsx) — plays once on load, all sizes.
+   Never intercepts a click. */
+.dw-fireworks {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 40;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 0.6s ease;
+}
+.dw-fireworks--out { opacity: 0; }
+
+/* Decor is desktop-only; below 900px the stage wrapper vanishes from layout. */
+.dw-hanging,
+.dw-mandala,
+.dw-diyas,
+.dw-divider,
+.dw-sticker,
+.dw-btn-lotus {
+  display: none;
+}
+.dw-stage { display: contents; }
+.dw-btn-arrow {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
+/* ══════════════════════════ DESKTOP (>=900px) ══════════════════════════ */
+@media (min-width: 900px) {
+  .lr-diwali .login-frame { background: #fdf1e7; }
+
+  /* Diwali wave artwork replaces the pastel waves; it's already light, so the
+     white wash on top drops from 0.66 to a faint veil. */
+  .lr-diwali .login-frame::before {
+    background: url('/images/diwali-wave-background.png') center / cover no-repeat;
+  }
+  .lr-diwali .login-frame::after { background: rgba(255, 250, 245, 0.08); }
+
+  .lr-diwali .ll-bubble,
+  .lr-diwali .orb-ring,
+  .lr-diwali .rp-powered { display: none; }
+
+  /* ── Left panel ── */
+  .lr-diwali .login-left { padding: 90px 56px 120px; }
+
+  .lr-diwali .dw-stage {
+    display: block;
+    position: relative;
+    z-index: 2;
+    /* The diyas hang below the card; this lifts the card so card + diyas
+       read as one centred group. */
+    margin-bottom: 150px;
+  }
+
+  .lr-diwali .left-glass-card {
+    position: relative;
+    z-index: 2;
+    max-width: 440px;
+    padding: 36px 40px 40px;
+    background: rgba(255, 252, 249, 0.58);
+    backdrop-filter: blur(16px) saturate(130%);
+    -webkit-backdrop-filter: blur(16px) saturate(130%);
+    border: 1px solid rgba(255, 255, 255, 0.85);
+    border-radius: 20px;
+    box-shadow:
+      0 18px 50px rgba(150, 70, 20, 0.12),
+      inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    animation: none;
+  }
+  .lr-diwali .brand-dot:nth-child(1) { background: #d92d5c; }
+  .lr-diwali .brand-dot:nth-child(2) { background: #ea5a24; }
+  .lr-diwali .brand-dot:nth-child(3) { background: #f39a26; }
+  .lr-diwali .left-tagline { color: var(--dw-ink); font-size: 2.35rem; line-height: 1.18; }
+  .lr-diwali .left-tagline em { color: var(--dw-orange); }
+  .lr-diwali .left-desc { color: #5e4a3f; font-size: 0.98rem; }
+
+  .lr-diwali .dw-hanging,
+  .lr-diwali .dw-mandala,
+  .lr-diwali .dw-diyas {
+    display: block;
+    position: absolute;
+    pointer-events: none;
+    user-select: none;
+  }
+
+  /* Hanging diyas from the top edge. Starts right of .lp-back so the strings
+     don't run behind the back button; sways gently from the top. */
+  .lr-diwali .dw-hanging {
+    top: -6px;
+    left: 70px;
+    width: clamp(150px, 13vw, 210px);
+    z-index: 1;
+    clip-path: inset(0 0 0 9.5%);
+    transform-origin: 60% 0;
+    animation: dwSway 5s ease-in-out infinite;
+  }
+
+  /* Mandala: one top-right quarter, rotated/flipped per corner. */
+  .lr-diwali .dw-mandala { width: 240px; opacity: 0.6; z-index: 1; }
+  .lr-diwali .dw-mandala--bl {
+    left: -14px;
+    bottom: -10px;
+    width: 200px;
+    transform: rotate(180deg);
+    opacity: 0.55;
+  }
+  /* Inside the card, in its top-right corner. The PNG has transparent padding
+     (15px right, 8px top of 485×290), so it's pushed out by exactly that much
+     at this width — the mandala's centre then lands on the card's corner and
+     the card's overflow clip follows its rounded corner. z-index -1 keeps it
+     under the text (the card is its own stacking context). */
+  .lr-diwali .left-glass-card { overflow: hidden; }
+  .lr-diwali .dw-mandala--card {
+    top: -4px;
+    right: -8px;
+    width: 250px;
+    z-index: -1;
+    opacity: 0.55;
+  }
+
+  .lr-diwali .dw-mandala--tr { top: 0; right: 0; width: 230px; opacity: 0.5; z-index: 0; }
+  .lr-diwali .dw-mandala--br {
+    bottom: 0;
+    right: 0;
+    width: 170px;
+    transform: scaleY(-1);
+    opacity: 0.45;
+    z-index: 0;
+  }
+
+  /* Ornate diyas on a rangoli — the centrepiece, centred under the card with
+     the flames rising just over its lower edge. A soft warm light pool sits
+     behind (a gradient, not a CSS filter — filters left a box on this page). */
+  .lr-diwali .dw-diyas {
+    left: 50%;
+    top: calc(100% - 46px);
+    width: clamp(460px, 38vw, 580px);
+    transform: translateX(-50%);
+    z-index: 3;
+  }
+  .lr-diwali .dw-diyas::before {
+    content: '';
+    position: absolute;
+    left: 8%;
+    right: 8%;
+    top: 18%;
+    bottom: -6%;
+    border-radius: 50%;
+    background: radial-gradient(closest-side, rgba(255, 200, 120, 0.45), rgba(255, 190, 110, 0.16) 60%, rgba(255, 180, 100, 0) 100%);
+    animation: dwGlow 3.2s ease-in-out infinite alternate;
+  }
+  .lr-diwali .dw-diyas img {
+    position: relative;
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+  /* Flicker: a copy of the artwork masked (soft edge) to one flame, stretched
+     and swayed from its wick. Positions are fractions of the 2172×724 PNG.
+     Each flame runs its own timing so they never move in step. */
+  .lr-diwali .dw-flame {
+    position: absolute;
+    inset: 0;
+    -webkit-mask-image: radial-gradient(ellipse var(--rx) var(--ry) at var(--x) var(--y), #000 55%, transparent 100%);
+    mask-image: radial-gradient(ellipse var(--rx) var(--ry) at var(--x) var(--y), #000 55%, transparent 100%);
+    transform-origin: var(--x) var(--wick);
+    animation: dwFlame var(--t) ease-in-out var(--d) infinite alternate;
+  }
+  .lr-diwali .dw-flame--l { --x: 29.5%; --y: 41%; --rx: 3.4%; --ry: 15%; --wick: 53%; --t: 1.3s; --d: -0.4s; }
+  .lr-diwali .dw-flame--c { --x: 50%;   --y: 30%; --rx: 4.4%; --ry: 23%; --wick: 49%; --t: 1.6s; --d: 0s; }
+  .lr-diwali .dw-flame--r { --x: 70.6%; --y: 41%; --rx: 3.4%; --ry: 15%; --wick: 53%; --t: 1.45s; --d: -0.9s; }
+
+  /* ── Right panel ── */
+  .lr-diwali .login-right { overflow: hidden; }
+  .lr-diwali .login-right::before {
+    background:
+      radial-gradient(70% 36% at 100% 0%, rgba(255, 210, 165, 0.42) 0, transparent 70%),
+      radial-gradient(60% 30% at 0% 100%, rgba(255, 220, 190, 0.32) 0, transparent 70%),
+      linear-gradient(180deg, #fffaf5 0%, #fff7f0 55%, #fdf1e6 100%);
+    border-left: 1px solid rgba(240, 200, 165, 0.6);
+    box-shadow: -10px 0 30px rgba(170, 90, 30, 0.08);
+  }
+  .lr-diwali .form-wrapper { position: relative; z-index: 1; }
+
+  /* "Happy Diwali" sticker, centred just above the heading so it follows the
+     form at any viewport height. The PNG is a 1200 square with the artwork in
+     the middle (y 245–953), so object-fit crops the empty top/bottom. */
+  .lr-diwali .dw-sticker {
+    display: block;
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 2px);
+    width: 172px;
+    aspect-ratio: 1200 / 760;
+    object-fit: cover;
+    transform: translateX(-50%) rotate(-4deg);
+    animation: dwStickerIn 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) 0.3s both;
+    pointer-events: none;
+  }
+
+  .lr-diwali .form-heading {
+    text-align: center;
+    color: var(--dw-ink);
+    font-size: 1.6rem;
+  }
+  .lr-diwali .form-subheading {
+    text-align: center;
+    color: var(--dw-muted);
+    margin-bottom: 12px;
+  }
+
+  /* gold rule — lotus — gold rule */
+  .lr-diwali .dw-divider {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin: 0 0 26px;
+    color: var(--dw-gold);
+  }
+  .lr-diwali .dw-divider::before,
+  .lr-diwali .dw-divider::after {
+    content: '';
+    width: 64px;
+    height: 1px;
+    background: linear-gradient(90deg, rgba(226, 160, 74, 0), rgba(226, 160, 74, 0.9));
+  }
+  .lr-diwali .dw-divider::after {
+    background: linear-gradient(90deg, rgba(226, 160, 74, 0.9), rgba(226, 160, 74, 0));
+  }
+  .lr-diwali .dw-divider svg { width: 26px; height: 17px; }
+
+  .lr-diwali .input-label {
+    color: var(--dw-brown);
+    font-weight: 600;
+    font-size: 0.74rem;
+    letter-spacing: 0.06em;
+  }
+
+  /* Bordered field with the leading icon inside it. */
+  .lr-diwali .field-ico {
+    display: block;
+    position: absolute;
+    left: 14px;
+    width: 18px;
+    height: 18px;
+    color: #9a4a1c;
+    pointer-events: none;
+    z-index: 1;
+  }
+  .lr-diwali .input-field {
+    padding: 12px 16px 12px 44px;
+    border-radius: 10px;
+    border: 1px solid var(--dw-line);
+    background: var(--dw-field);
+    color: var(--dw-ink);
+  }
+  .lr-diwali .input-wrapper--eye .input-field { padding-right: 2.8rem; }
+  .lr-diwali .input-field::placeholder { color: #b9a497; }
+  .lr-diwali .input-field:focus {
+    border-color: #e8964f;
+    box-shadow: 0 0 0 3px rgba(232, 116, 30, 0.14);
+  }
+  .lr-diwali .eye-btn { color: #9a7560; }
+  .lr-diwali .eye-btn:hover { color: var(--dw-orange); }
+
+  .login-root.lr-diwali .input-field:-webkit-autofill,
+  .login-root.lr-diwali .input-field:-webkit-autofill:hover,
+  .login-root.lr-diwali .input-field:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 1000px var(--dw-field) inset;
+    box-shadow: 0 0 0 1000px var(--dw-field) inset;
+    -webkit-text-fill-color: var(--dw-ink);
+    caret-color: var(--dw-ink);
+  }
+  .login-root.lr-diwali .input-field:-webkit-autofill:focus {
+    -webkit-box-shadow: 0 0 0 1000px var(--dw-field) inset, 0 0 0 3px rgba(232, 116, 30, 0.14);
+    box-shadow: 0 0 0 1000px var(--dw-field) inset, 0 0 0 3px rgba(232, 116, 30, 0.14);
+    -webkit-text-fill-color: var(--dw-ink);
+    caret-color: var(--dw-ink);
+  }
+
+  /* Login button: burnt-orange slab, arrow after the label, lotus watermark. */
+  .lr-diwali .submit-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    height: 50px;
+    padding: 0 16px;
+    margin-top: 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background-image: linear-gradient(180deg, #d9661f 0%, #c2511a 50%, #a83f14 100%);
+    background-color: #c2511a;
+    background-size: 100% 100%;
+    color: #fff;
+    font-size: 1rem;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.3),
+      inset 0 -3px 8px rgba(90, 25, 0, 0.22),
+      0 10px 24px rgba(194, 81, 26, 0.32);
+  }
+  .lr-diwali .submit-btn:hover:not(:disabled) {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.34),
+      inset 0 -3px 8px rgba(90, 25, 0, 0.22),
+      0 14px 30px rgba(194, 81, 26, 0.4);
+  }
+  .lr-diwali .submit-btn:active:not(:disabled) {
+    box-shadow:
+      inset 0 2px 8px rgba(80, 20, 0, 0.32),
+      0 4px 12px rgba(194, 81, 26, 0.28);
+  }
+  .lr-diwali .submit-btn:focus-visible {
+    box-shadow:
+      0 0 0 3px #fff,
+      0 0 0 5px rgba(232, 116, 30, 0.6),
+      0 10px 24px rgba(194, 81, 26, 0.32);
+  }
+  .lr-diwali .submit-btn .spinner { margin-right: 0; }
+  .lr-diwali .submit-btn:hover:not(:disabled) .dw-btn-arrow { transform: translateX(3px); }
+  .lr-diwali .dw-btn-arrow { transition: transform 0.24s ease; }
+  .lr-diwali .dw-btn-lotus {
+    display: block;
+    position: absolute;
+    right: 10px;
+    bottom: -2px;
+    width: 60px;
+    height: 38px;
+    color: #ffd29a;
+    opacity: 0.55;
+    pointer-events: none;
+  }
+
+  /* Footer: orange shield on the security line. */
+  .lr-diwali .form-footer { color: var(--dw-muted); margin-top: 26px; }
+  .lr-diwali .ff-shield {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    margin-right: 6px;
+    vertical-align: -2px;
+    color: #f08a1c;
+    fill: #f6a23a;
+  }
+}
+
+/* Back button, warmed to the palette at every size (still the same control). */
+.lr-diwali .lp-back {
+  background-image: linear-gradient(
+    115deg,
+    rgba(255, 190, 120, 0.22) 0%,
+    rgba(240, 140, 70, 0.18) 50%,
+    rgba(255, 190, 120, 0.22) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 2px 6px rgba(160, 80, 20, 0.08),
+    0 8px 22px rgba(232, 116, 30, 0.16);
+}
+.lr-diwali .lp-back svg { color: #b4531c; }
+.lr-diwali .lp-back:hover svg { color: #d9661f; }
+
+@keyframes dwSway {
+  0%, 100% { transform: rotate(-2.6deg); }
+  50%      { transform: rotate(2.6deg); }
+}
+@keyframes dwFlame {
+  0%   { transform: scale(1, 1)       skewX(0deg); }
+  30%  { transform: scale(0.97, 1.08) skewX(-3deg); }
+  60%  { transform: scale(1.02, 0.96) skewX(2deg); }
+  100% { transform: scale(0.98, 1.1)  skewX(3.5deg); }
+}
+@keyframes dwStickerIn {
+  0%   { opacity: 0; transform: translateX(-50%) rotate(-14deg) scale(0.6); }
+  100% { opacity: 1; transform: translateX(-50%) rotate(-4deg) scale(1); }
+}
+@keyframes dwGlow {
+  0%   { opacity: 0.65; transform: scale(0.96); }
+  100% { opacity: 1;    transform: scale(1.04); }
+}
+
+@keyframes dwFlicker {
+  0%   { transform: scale(1, 1) rotate(-2deg); }
+  50%  { transform: scale(0.94, 1.06) rotate(1.5deg); }
+  100% { transform: scale(1.03, 0.96) rotate(-1deg); }
+}
+@keyframes dwTwinkle {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.35; }
+}
+@media (min-width: 900px) and (prefers-reduced-motion: reduce) {
+  .lr-diwali .dw-hanging,
+  .lr-diwali .dw-diyas::before,
+  .lr-diwali .dw-flame,
+  .lr-diwali .dw-sticker { animation: none; }
+}
+
+/* ══════════════════════════ MOBILE (<900px) ══════════════════════════
+   Same layout as before; only the palette and backdrop turn festive. */
+@media (max-width: 899px) {
+  .lr-diwali .login-bg::before {
+    background:
+      linear-gradient(180deg, rgba(255, 250, 245, 0.3) 0%, rgba(255, 250, 245, 0.6) 40%, #fff8f1 66%),
+      url('/images/diwali-wave-background.png') center top / auto 66% no-repeat,
+      #fff8f1;
+  }
+  .login-root.lr-diwali { background: #fff8f1; }
+
+  .lr-diwali .brand-dot:nth-child(1) { background: #d92d5c; }
+  .lr-diwali .brand-dot:nth-child(2) { background: #ea5a24; }
+  .lr-diwali .brand-dot:nth-child(3) { background: #f39a26; }
+  .lr-diwali .left-tagline { color: var(--dw-ink); }
+  .lr-diwali .left-tagline em { color: var(--dw-orange); }
+  .lr-diwali .left-desc { color: #5e4a3f; }
+
+  .lr-diwali .form-heading { color: var(--dw-ink); }
+  .lr-diwali .form-subheading { color: var(--dw-muted); }
+  .lr-diwali .input-label { color: var(--dw-brown); }
+  .lr-diwali .input-wrapper { border-bottom-color: var(--dw-line); }
+  .lr-diwali .input-wrapper:focus-within { border-color: var(--dw-orange); }
+  .lr-diwali .eye-btn:hover { color: var(--dw-orange); }
+
+  .login-root.lr-diwali .input-field:-webkit-autofill,
+  .login-root.lr-diwali .input-field:-webkit-autofill:hover,
+  .login-root.lr-diwali .input-field:-webkit-autofill:active,
+  .login-root.lr-diwali .input-field:-webkit-autofill:focus {
+    -webkit-box-shadow: 0 0 0 1000px #fff8f1 inset;
+    box-shadow: 0 0 0 1000px #fff8f1 inset;
+  }
+
+  .lr-diwali .submit-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    background-image: linear-gradient(180deg, #d9661f 0%, #c2511a 50%, #a83f14 100%);
+    background-color: #c2511a;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.3),
+      inset 0 -3px 8px rgba(90, 25, 0, 0.22),
+      0 12px 26px -12px rgba(194, 81, 26, 0.75);
+  }
+  .lr-diwali .submit-btn:hover:not(:disabled) {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.3),
+      inset 0 -3px 8px rgba(90, 25, 0, 0.22),
+      0 12px 26px -12px rgba(194, 81, 26, 0.75);
+  }
+  .lr-diwali .submit-btn .spinner { margin-right: 0; }
+
+  .lr-diwali .form-footer { color: var(--dw-muted); }
+  .lr-diwali .ff-shield { color: #f08a1c; }
+}
