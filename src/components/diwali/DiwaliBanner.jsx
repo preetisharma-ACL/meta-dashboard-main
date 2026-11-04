@@ -1,10 +1,13 @@
 import { Show } from "solid-js";
 import "./diwali-dashboard.css";
 import DiwaliFireworks from "../../pages/login/DiwaliFireworks";
+import DiwaliCrackers from "./DiwaliCrackers";
 
 // Dashboard-only pieces of the Diwali theme: mandala quarters pinned to the
-// bottom corners of the viewport, and a fireworks burst on the first dashboard
-// visit of the session. The greeting artwork itself is <DiwaliHero /> in the
+// bottom corners of the viewport, small crackers going off in the greeting
+// area for as long as the dashboard is open (<DiwaliCrackers />), and a full
+// fireworks show, with sound, on the first dashboard visit of the session. The
+// greeting artwork itself is <DiwaliHero /> in the
 // app layout. Decorative only (aria-hidden, pointer-events:none). Removing the
 // theme = removing <DiwaliBanner />, <DiwaliHero /> and the `dwd-*` classes.
 
@@ -28,9 +31,10 @@ export default function DiwaliBanner() {
     <>
       <img src="/images/mandala-top-right.png" alt="" aria-hidden="true" class="dwd-corner dwd-corner--bl" />
       <img src="/images/mandala-top-right.png" alt="" aria-hidden="true" class="dwd-corner dwd-corner--br" />
+      <DiwaliCrackers />
 
       <Show when={fireworks}>
-        <DiwaliFireworks />
+        <DiwaliFireworks sound />
       </Show>
     </>
   );

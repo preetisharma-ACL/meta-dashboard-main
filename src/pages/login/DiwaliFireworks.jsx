@@ -1,9 +1,11 @@
 import { onMount, onCleanup } from "solid-js";
+import { launchSound, burstSound } from "../../components/diwali/crackerSound";
 
 // Diwali fireworks that play once when the login page loads, then stop and
 // remove themselves. A full-screen canvas with pointer-events:none, so nothing
 // underneath (the form included) is ever blocked. Skipped entirely for users
-// who prefer reduced motion.
+// who prefer reduced motion. With the `sound` prop (the dashboard sets it; the
+// login page doesn't) some rockets whistle and bang, quietly.
 
 // Saturated warm tones — pale golds vanish against the peach page.
 const COLORS = [
@@ -18,7 +20,7 @@ const SPARK_GRAVITY = 0.045;
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 const rand = (min, max) => min + Math.random() * (max - min);
 
-export default function DiwaliFireworks() {
+export default function DiwaliFireworks(props) {
   let canvas;
 
   onMount(() => {
@@ -55,7 +57,9 @@ export default function DiwaliFireworks() {
         vx: rand(-0.8, 0.8),
         vy: -Math.sqrt(2 * GRAVITY * (h + 10 - targetY)),
         color: pick(COLORS),
+        loud: !!props.sound && Math.random() < 0.6,
       });
+      if (rockets[rockets.length - 1].loud) launchSound(x / w);
     };
 
     const explode = (r) => {
@@ -79,6 +83,7 @@ export default function DiwaliFireworks() {
           glitter: Math.random() < 0.3,
         });
       }
+      if (r.loud) burstSound(r.x / w, 0.9);
     };
 
     const start = performance.now();
