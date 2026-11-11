@@ -2,29 +2,6 @@ import { createSignal, onMount } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { loginUser } from "../../services/login-service";
 import { clearAllCache } from "../../cacheStore/appStore";
-import "./diwali.css";
-import DiwaliFireworks from "./DiwaliFireworks";
-
-// Lotus mark for the Diwali theme — the divider under the subheading and the
-// watermark on the Login button. Decorative only.
-const Lotus = (props) => (
-  <svg
-    class={props.class}
-    viewBox="0 0 32 20"
-    fill="none"
-    stroke="currentColor"
-    stroke-width="1.2"
-    stroke-linejoin="round"
-    stroke-linecap="round"
-    aria-hidden="true"
-  >
-    <path d="M16 2c2.6 3 3.6 6.4 3 10.4-.4 2.6-1.6 4.6-3 5.6-1.4-1-2.6-3-3-5.6C12.4 8.4 13.4 5 16 2Z" />
-    <path d="M13.2 7.2C10 6.6 7.4 7.4 6 9.4c1 4.6 5 7.6 10 8.6" />
-    <path d="M18.8 7.2c3.2-.6 5.8.2 7.2 2.2-1 4.6-5 7.6-10 8.6" />
-    <path d="M6.6 11.4C4 11.6 2.4 12.8 1.6 14.6 4.6 17.4 10 18.6 16 18" />
-    <path d="M25.4 11.4c2.6.2 4.2 1.4 5 3.2-3 2.8-8.4 4-14.4 3.4" />
-  </svg>
-);
 
 // ✅ Decode JWT expiry
 const getTokenExpiry = (token) => {
@@ -183,8 +160,7 @@ export default function Login() {
 
   return (
     <>
-      <div class="login-root lr-diwali">
-        <DiwaliFireworks />
+      <div class="login-root">
         {/* ── Ambient backdrop (mobile only; display:none from 900px up) ──
             The >=900px layout gets its atmosphere from the artwork image on
             .login-left. Below that the artwork panel is gone, so these drawn
@@ -284,16 +260,8 @@ export default function Login() {
           <span class="ll-bubble ll-b4" aria-hidden="true" />
           <span class="ll-bubble ll-b5" aria-hidden="true" />
           <span class="ll-bubble ll-b6" aria-hidden="true" />
-          {/* Diwali decor (desktop only — hidden below 900px in diwali.css). */}
-          <img src="/images/hanging-diyas.png" alt="" aria-hidden="true" class="dw-hanging" />
-          <img src="/images/mandala-top-right.png" alt="" aria-hidden="true" class="dw-mandala dw-mandala--bl" />
-          {/* Stage: mandala behind the card, diyas in front of it. Becomes
-              display:contents below 900px so the mobile layout is unchanged. */}
-          <div class="dw-stage">
           <div class="left-glass-card">
-            {/* Corner ornament: the quarter mandala sits in the card's top-right
-                corner, behind the text (desktop only). */}
-            <img src="/images/mandala-top-right.png" alt="" aria-hidden="true" class="dw-mandala dw-mandala--card" />            {/* Colours live in CSS (.brand-dot:nth-child) rather than inline,
+            {/* Colours live in CSS (.brand-dot:nth-child) rather than inline,
                 so the mobile design can restate them — an inline style would
                 have needed !important to override. */}
             <div class="brand-dots">
@@ -314,20 +282,10 @@ export default function Login() {
             </p>
             <div class="orb-ring" />
           </div>
-          <div class="dw-diyas" aria-hidden="true">
-            <img src="/images/Ornate Diwali Diyas with Rangoli Glow.png" alt="" />
-            {/* Flame-only copies over each flame, flickering from the wick. */}
-            <span class="dw-flame dw-flame--l"><img src="/images/Ornate Diwali Diyas with Rangoli Glow.png" alt="" /></span>
-            <span class="dw-flame dw-flame--c"><img src="/images/Ornate Diwali Diyas with Rangoli Glow.png" alt="" /></span>
-            <span class="dw-flame dw-flame--r"><img src="/images/Ornate Diwali Diyas with Rangoli Glow.png" alt="" /></span>
-          </div>
-          </div>
         </div>
 
         {/* ── RIGHT LOGIN PANEL ── */}
         <div class="login-right">
-          <img src="/images/mandala-top-right.png" alt="" aria-hidden="true" class="dw-mandala dw-mandala--tr" />
-          <img src="/images/mandala-top-right.png" alt="" aria-hidden="true" class="dw-mandala dw-mandala--br" />
           {/* ── Company logo — top-left ── */}
           <div class="rp-logo">
             <img src="/logo.webp" alt="Company Logo" class="rp-logo-img" />
@@ -343,14 +301,10 @@ export default function Login() {
                             <span class="form-logo-text">Aajneeti Reporting Dashboard</span>
                         </div> */}
 
-            <img src="/images/happy-diwali.png" alt="" aria-hidden="true" class="dw-sticker" />
             <h1 class="form-heading">Aajneeti Reporting Dashboard</h1>
             <p class="form-subheading mt-2">
               Login to your account to continue
             </p>
-            <div class="dw-divider" aria-hidden="true">
-              <Lotus />
-            </div>
             {/* Error */}
             {error() && <div class="error-box">{error()}</div>}
 
@@ -460,21 +414,6 @@ export default function Login() {
                 <button type="submit" disabled={loading()} class="submit-btn">
                   {loading() && <span class="spinner" />}
                   {loading() ? "Logging in..." : "Login "}
-                  {!loading() && (
-                    <svg
-                      class="dw-btn-arrow"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      aria-hidden="true"
-                    >
-                      <path d="M5 12h14M13 6l6 6-6 6" />
-                    </svg>
-                  )}
-                  <Lotus class="dw-btn-lotus" />
                 </button>
               </form>
             )}
