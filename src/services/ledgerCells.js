@@ -60,6 +60,15 @@ export const count = (v) => (v == null ? DASH : v.toLocaleString("en-IN"));
 export const credit = (v) => (v == null ? DASH : v > 0 ? `−${v}` : "0");
 // Fed leads read as an addition to the Meta count beside them.
 export const added = (v) => (v == null ? DASH : v > 0 ? `+${v}` : "0");
+// A money credit — the replaced-lead credit note — reads as a deduction:
+// "−₹38,661.00". Zero prints "—" rather than "−₹0.00", because a credit of
+// nothing is not a line on the client's statement. The minus is the same
+// typographic U+2212 the Replaced count beside it uses, not a hyphen.
+export const moneyCredit = (v) =>
+  v == null || v === 0 ? DASH : `−${fmt(Math.abs(v))}`;
+// The same value for a spreadsheet: a NEGATIVE number, so a credit column sums
+// against the charges beside it instead of inflating them.
+export const expCredit = (v) => (v == null ? "" : v === 0 ? 0 : -Math.abs(v));
 // The same values for the export sheets: a blank cell rather than an em dash, so
 // a spreadsheet can still sum the column.
 export const exp = (v) => (v == null ? "" : v);
@@ -165,6 +174,23 @@ export const makeLedgerCells = ({
     rawSpent: hasRaw() ? readKey(w, "spend") : null,
     spent: billedSpendOf(w),
     billedAmount: readKey(w, "billed_amount"),
+    // ── The replacement credit, for a HYBRID client (backend fd51d0d) ──────
+    // A hybrid client's ad spend is billed IN FULL; the leads that were
+    // replaced come back as Replaced Credit Notes against the next charges.
+    // The ledger used to show neither the credit nor what the period cost
+    // after it, so a row reading "Net leads 584" beside a billed figure for
+    // all 847 leads read as being charged for leads that had been replaced.
+    //
+    // All five are the SERVER's, on the same row as the spend they describe —
+    // net_cost and net_cpl included. The subtraction and the division are the
+    // backend's; this file does not redo either. net_cost is null with no
+    // spend and net_cpl is null with nothing to divide, and both print "—"
+    // there rather than a confident ₹0.00.
+    replacedCredit: readKey(w, "replaced_credit"),
+    replacedCreditSc: readKey(w, "replaced_credit_sc"),
+    replacedCreditInc: readKey(w, "replaced_credit_inc"),
+    netCost: readKey(w, "net_cost"),
+    netCpl: readKey(w, "net_cpl"),
     // Reach
     impressions: readKey(w, "impressions"),
     clicks: readKey(w, "clicks"),
@@ -219,6 +245,34 @@ export const makeLedgerCells = ({
   // Billing page had it right the whole time — build_billing_overview takes
   // the replacement cost off FIRST, then service charge, then GST — so the
   // ledger was not merely high, it contradicted the client's own invoice.
+  // ── The two NET money columns, for a hybrid client ───────────────────────
+  // "Net + X% S.C" and "Net + X% S.C + 18% GST": the charge on spend billed in
+  // full, less the credit note for the replaced leads, at each stage carrying
+  // the same tax the stage above it does.
+  //
+  // THE BASE IS `spent` — premium_spend, Amount Spent, the figure in the column
+  // the header names — and NOT billed_amount, which the pre-credit S.C columns
+  // load onto. That is a deliberate difference and the one decision in here
+  // worth checking:
+  //   • A hybrid client's spend is billed in full, so Amount Spent IS what the
+  //     service charge is levied on. Taking the credit off here, from a named
+  //     server field, is what the invoice does.
+  //   • billed_amount has historically meant premium_spend MINUS the replaced
+  //     cost. Loading onto that AND subtracting replaced_credit_sc would take
+  //     the same credit off twice — a row with ₹38,661.00 of replacements
+  //     landing ~₹44,460 light, in the direction nobody queries because it
+  //     flatters the client.
+  // The arithmetic is linear in the base, so where the two agree — which is
+  // what backend fd51d0d makes true for hybrid — the choice changes nothing;
+  // where they disagree, only this one reproduces the invoice.
+  //
+  // The subtraction is the ONLY one on this path, it is re-rounded (a float
+  // 125887.45 − 44460.15 lands on 81427.30000000001), and it is null-in →
+  // null-out in both directions: an unresolved rate or a credit the payload
+  // didn't send prints "—" rather than quietly charging the gross figure.
+  const less = (gross, cr) =>
+    gross == null || cr == null ? null : round2(gross - cr);
+
   const rowOf = (w) => {
     const cells = cellsOf(w);
     const base = billedBaseOf(w);
@@ -226,6 +280,8 @@ export const makeLedgerCells = ({
       ...cells,
       spentwithServiceCharge: withSc(base),
       spentwithservice_gst: withScGst(base),
+      netSpentwithSc: less(withSc(cells.spent), cells.replacedCreditSc),
+      netSpentwithScGst: less(withScGst(cells.spent), cells.replacedCreditInc),
     };
   };
 

@@ -802,5 +802,218 @@ console.log("\nPremium CPL sorts numerically, blanks last");
   );
 }
 
+// ── Hybrid: the replaced-lead credit, and the net columns beside it ─────────
+// Backend fd51d0d added five fields to the row and to the totals block, because
+// a hybrid client's table was unreadable without them: ad spend is billed IN
+// FULL, the replaced leads come back as Replaced Credit Notes, and the page
+// showed "Net leads 584" beside a billed figure covering all 847 leads with the
+// credit appearing nowhere on it. The honest reading of that row was that the
+// client was being charged for leads that had already been replaced.
+//
+// Wealth Clinic (client 15), Marina, 1 Oct – 18 Nov 2026. Every figure is the
+// one on the live row, so this section fails if a column gets re-derived rather
+// than read, and fails if the service charge lands on the wrong base.
+console.log("\nhybrid: Wealth Clinic / Marina, 1 Oct – 18 Nov");
+{
+  const { makeLedgerCells } = await import("../src/services/ledgerCells.js");
+  const { rowOf } = makeLedgerCells({
+    hasRaw: () => true,
+    clientType: () => "hybrid",
+    scPct: () => 15,
+    gstPct: () => 18,
+    iscpl: () => false,
+  });
+
+  const marina = {
+    project_id: 1501,
+    project_name: "Marina",
+    meta_leads: 847,
+    fed_leads: 0,
+    total_leads: 847,
+    replaced_leads: 263,
+    billable_leads: 584,
+    premium_spend: "109467.35",
+    premium_cpl: "129.24",
+    premium_leads: 847,
+    // The five new fields, as strings, the way the wire sends them.
+    replaced_credit: "38661.00",
+    replaced_credit_sc: "44460.15",
+    replaced_credit_inc: "52462.98",
+    net_cost: "70806.35",
+    net_cpl: "121.24",
+    // Still on the row, and for a hybrid client now equal to premium_spend —
+    // which is why the "Billed" column is dropped rather than printed twice.
+    billed_amount: "109467.35",
+  };
+
+  const r = rowOf(marina);
+
+  check("Leads Generated = 847", r.leads === 847, `(${r.leads})`);
+  check("Replaced = 263", r.replacedLeads === 263, `(${r.replacedLeads})`);
+  check(
+    "Net leads = 584 — the SAME field as Billable, renamed",
+    r.billableLeads === 584,
+    `(${r.billableLeads})`,
+  );
+  check("CPL = 129.24 (unchanged)", r.cpl === 129.24, `(${r.cpl})`);
+  check(
+    "Net CPL = 121.24, taken from net_cpl",
+    r.netCpl === 121.24,
+    `(${r.netCpl})`,
+  );
+  check(
+    "Amount Spent = 1,09,467.35 — ad spend billed in FULL",
+    r.spent === 109467.35,
+    `(${r.spent})`,
+  );
+  check(
+    "Replaced credit = 38,661.00, taken from replaced_credit",
+    r.replacedCredit === 38661,
+    `(${r.replacedCredit})`,
+  );
+  check(
+    "Net cost = 70,806.35, taken from net_cost (not spent − credit)",
+    r.netCost === 70806.35,
+    `(${r.netCost})`,
+  );
+  check(
+    "Net + 15% S.C = 81,427.30",
+    r.netSpentwithSc === 81427.3,
+    `(${r.netSpentwithSc})`,
+  );
+  check(
+    "Net + 15% S.C + 18% GST = 96,084.21",
+    r.netSpentwithScGst === 96084.21,
+    `(${r.netSpentwithScGst})`,
+  );
+
+  // THE failure this section exists for. The pre-credit S.C columns load onto
+  // billed_amount; the net ones load onto premium_spend and take the credit off
+  // from a named server field. Loading the net columns onto billed_amount too
+  // would charge, then credit, a figure that had already been credited — on
+  // this client ~₹44,460 light, in the flattering direction nobody queries.
+  check(
+    "the credit is taken off ONCE (not 36,967.15)",
+    r.netSpentwithSc !== 36967.15,
+    `(${r.netSpentwithSc})`,
+  );
+  // 125887.45 − 44460.15 lands on 81427.30000000001 before round2.
+  check(
+    "no float dust reaches the screen",
+    String(r.netSpentwithSc) === "81427.3",
+    `(${r.netSpentwithSc})`,
+  );
+
+  // A payload that didn't send the credit prints a gap, never the gross charge
+  // — the same rule every other cell in this file follows.
+  const { replaced_credit_sc, replaced_credit_inc, ...noCredit } = marina;
+  const n = rowOf(noCredit);
+  check(
+    "credit absent → the net S.C / GST columns are null, never the gross",
+    n.netSpentwithSc === null && n.netSpentwithScGst === null,
+    `(${n.netSpentwithSc} / ${n.netSpentwithScGst})`,
+  );
+
+  // An unresolved RATE must not silently charge 0%.
+  const { rowOf: noRate } = makeLedgerCells({
+    hasRaw: () => true,
+    clientType: () => "hybrid",
+    scPct: () => null,
+    gstPct: () => 18,
+    iscpl: () => false,
+  });
+  check(
+    "no S.C rate → null, not a 0% charge",
+    noRate(marina).netSpentwithSc === null,
+    `(${noRate(marina).netSpentwithSc})`,
+  );
+
+  // ── The TOTAL row: the SAME function over the totals block ───────────────
+  const totals = rowOf({
+    replaced_credit: "73894.00",
+    replaced_credit_sc: "84978.10",
+    replaced_credit_inc: "100274.16",
+    net_cost: "207544.63",
+    net_cpl: "150.83",
+    premium_spend: "281438.63",
+    premium_cpl: "159.00",
+    billed_amount: "281438.63",
+    project_count: 7,
+  });
+  check(
+    "TOTAL Net cost = 2,07,544.63",
+    totals.netCost === 207544.63,
+    `(${totals.netCost})`,
+  );
+  check(
+    "TOTAL Net CPL = 150.83",
+    totals.netCpl === 150.83,
+    `(${totals.netCpl})`,
+  );
+  check(
+    "TOTAL reads the same five fields as a row",
+    totals.replacedCredit === 73894 && totals.netSpentwithSc != null,
+    `(${totals.replacedCredit} / ${totals.netSpentwithSc})`,
+  );
+
+  // ── CPL and retainer are untouched ───────────────────────────────────────
+  // The new fields are read on every client type (one cell map, no branches),
+  // but the pre-credit S.C columns have to be bit-for-bit what they were: those
+  // clients' invoices did not change.
+  const { rowOf: cplRow } = makeLedgerCells({
+    hasRaw: () => true,
+    clientType: () => "cpl",
+    scPct: () => null,
+    gstPct: () => 18,
+    iscpl: () => true,
+  });
+  const c = cplRow({ premium_spend: "50000.00", billed_amount: "45000.00" });
+  check(
+    "CPL: + GST still charges on billed_amount (45,000 → 53,100)",
+    c.spentwithservice_gst === 53100,
+    `(${c.spentwithservice_gst})`,
+  );
+  const { rowOf: retRow } = makeLedgerCells({
+    hasRaw: () => true,
+    clientType: () => "retainer",
+    scPct: () => 10,
+    gstPct: () => 18,
+    iscpl: () => false,
+  });
+  const t = retRow({ spend: "100000.00" });
+  check(
+    "retainer: the belt-and-braces fallback still lands (1,10,000)",
+    t.spentwithServiceCharge === 110000,
+    `(${t.spentwithServiceCharge})`,
+  );
+  check(
+    "retainer: no credit fields on the row → the net columns are a gap",
+    t.netSpentwithSc === null && t.replacedCredit === null,
+    `(${t.netSpentwithSc} / ${t.replacedCredit})`,
+  );
+}
+
+// ── The two renderers the credit column goes through ────────────────────────
+console.log("\nthe credit renders as a deduction, and zero renders as nothing");
+{
+  const { moneyCredit, expCredit, DASH } = await import(
+    "../src/services/ledgerCells.js"
+  );
+  check(
+    "38,661 → −₹38,661.00",
+    moneyCredit(38661) === "−₹38,661.00",
+    `(${moneyCredit(38661)})`,
+  );
+  check(
+    "0 → the em dash, not −₹0.00",
+    moneyCredit(0) === DASH,
+    `(${moneyCredit(0)})`,
+  );
+  check("absent → the em dash", moneyCredit(null) === DASH);
+  check("the sheet gets a negative number", expCredit(38661) === -38661);
+  check("the sheet gets 0, not a blank, for a real zero", expCredit(0) === 0);
+  check("the sheet gets a blank for absent", expCredit(null) === "");
+}
+
 console.log(failures === 0 ? "\nALL CHECKS PASSED" : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
