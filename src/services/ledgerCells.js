@@ -273,17 +273,79 @@ export const makeLedgerCells = ({
   const less = (gross, cr) =>
     gross == null || cr == null ? null : round2(gross - cr);
 
+  // A project with no spend in the period has nothing to charge, and the whole
+  // money half of its row reads "—": the server already sends net_cost and
+  // net_cpl as null there. The two charge columns have to follow, or a row
+  // reading "— / —" across Net cost and Net CPL ends with a confident ₹0.00
+  // under "Net + 15% S.C", which reads as a charge of zero rather than as the
+  // absence of one. Taken off the row's OWN spend, so nothing is inferred.
+  const nothingSpent = (spent) => spent == null || spent === 0;
+
   const rowOf = (w) => {
     const cells = cellsOf(w);
     const base = billedBaseOf(w);
+    const netSc = nothingSpent(cells.spent)
+      ? null
+      : less(withSc(cells.spent), cells.replacedCreditSc);
+    const netScGst = nothingSpent(cells.spent)
+      ? null
+      : less(withScGst(cells.spent), cells.replacedCreditInc);
     return {
       ...cells,
       spentwithServiceCharge: withSc(base),
       spentwithservice_gst: withScGst(base),
-      netSpentwithSc: less(withSc(cells.spent), cells.replacedCreditSc),
-      netSpentwithScGst: less(withScGst(cells.spent), cells.replacedCreditInc),
+      netSpentwithSc: netSc,
+      netSpentwithScGst: netScGst,
     };
   };
 
-  return { billedSpendOf, billedBaseOf, cellsOf, withSc, withScGst, rowOf };
+  // ── The two net charge columns on the TOTAL row ──────────────────────────
+  // Σ of the rows' own charges, and this is NOT the re-summing this file
+  // forbids. The ban is on reconstructing a figure the SERVER sent — leads,
+  // spend, CPL, net cost — from some second source. These two columns are not
+  // on the payload at all: the frontend computes them, at the row level and at
+  // the totals level, from the same rate. So the only question is WHERE the
+  // paisa gets rounded, and charging once on the period total is a different
+  // answer from charging each project and adding:
+  //
+  //   per row, then summed   ₹1,67,259.88
+  //   once on the total      ₹1,67,259.89
+  //
+  // Neither is wrong by a rule, but one of them is sitting under a column of
+  // figures that visibly add up to the other, and a reader checking the sum is
+  // right to think the footer is broken. The rows win.
+  //
+  // It sums the rows THE PAYLOAD SENT, not the rows on screen. The rest of the
+  // footer describes the server's whole period, so summing a filtered subset
+  // here would put two different project sets in one row — the exact shape
+  // this file exists to prevent.
+  //
+  // Null means "don't print a sum": either nothing to add, or a row that HAS
+  // spend but produced no charge (an unresolved rate, a credit the payload
+  // omitted). Adding up the rest would quietly drop that project from a money
+  // column, so the caller falls back to charging the totals block instead.
+  const netTotalOf = (wireRows, key) => {
+    let sum = 0;
+    let counted = 0;
+    for (const w of wireRows ?? []) {
+      const r = rowOf(w);
+      if (r[key] != null) {
+        sum += r[key];
+        counted += 1;
+      } else if (!nothingSpent(r.spent)) {
+        return null;
+      }
+    }
+    return counted > 0 ? round2(sum) : null;
+  };
+
+  return {
+    billedSpendOf,
+    billedBaseOf,
+    cellsOf,
+    withSc,
+    withScGst,
+    rowOf,
+    netTotalOf,
+  };
 };

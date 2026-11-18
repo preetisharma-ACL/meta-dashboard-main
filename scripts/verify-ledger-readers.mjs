@@ -993,6 +993,138 @@ console.log("\nhybrid: Wealth Clinic / Marina, 1 Oct – 18 Nov");
   );
 }
 
+// ── The TOTAL row's net charges are Σ of the rows' ──────────────────────────
+// The two net charge cells are the only figures in this table the frontend
+// computes rather than reads, so the per-row and per-total roundings are both
+// available and they differ by a paisa. A footer that disagrees with the column
+// above it by ₹0.01 is a footer a reader stops trusting, so the rows win — and
+// this pins the direction, because the fix is one `??` away from silently
+// reverting to the totals-block figure.
+console.log("\nTOTAL net charges: Σ of the rows, to the paisa");
+{
+  const { makeLedgerCells } = await import("../src/services/ledgerCells.js");
+  const { rowOf, netTotalOf } = makeLedgerCells({
+    hasRaw: () => true,
+    clientType: () => "hybrid",
+    scPct: () => 15,
+    gstPct: () => 18,
+    iscpl: () => false,
+  });
+
+  // Three projects whose per-row charges do NOT re-round to the charge on their
+  // sum — the shape behind the live ₹1,67,259.89 / ₹1,67,259.88 split.
+  const mk = (spend, credit) => ({
+    premium_spend: spend.toFixed(2),
+    total_leads: 100,
+    replaced_leads: 10,
+    billable_leads: 90,
+    replaced_credit: credit.toFixed(2),
+    replaced_credit_sc: (credit * 1.15).toFixed(2),
+    replaced_credit_inc: (credit * 1.15 * 1.18).toFixed(2),
+    net_cost: (spend - credit).toFixed(2),
+    net_cpl: ((spend - credit) / 90).toFixed(2),
+  });
+  const wires = [mk(46793.45, 1470.07), mk(31111.11, 999.99), mk(27777.77, 777.77)];
+
+  const rowSum = wires
+    .map((w) => rowOf(w).netSpentwithSc)
+    .reduce((a, b) => a + b, 0);
+  const summed = netTotalOf(wires, "netSpentwithSc");
+  check(
+    "the TOTAL cell equals the rows added up",
+    summed === parseFloat(rowSum.toFixed(2)),
+    `(${summed} vs ${parseFloat(rowSum.toFixed(2))})`,
+  );
+  const gstSum = wires
+    .map((w) => rowOf(w).netSpentwithScGst)
+    .reduce((a, b) => a + b, 0);
+  check(
+    "and so does the GST cell",
+    netTotalOf(wires, "netSpentwithScGst") === parseFloat(gstSum.toFixed(2)),
+  );
+  check(
+    "no float dust in the sum",
+    String(summed).split(".")[1]?.length <= 2,
+    `(${summed})`,
+  );
+
+  // A row with spend but no charge (unresolved rate, or a credit the payload
+  // left out) must NOT be quietly left out of the sum.
+  const { replaced_credit_sc, ...noCharge } = mk(10000, 500);
+  check(
+    "a row that has spend but no charge → null, so the caller falls back",
+    netTotalOf([...wires, noCharge], "netSpentwithSc") === null,
+  );
+  // A row with NO spend contributes nothing and must not block the sum.
+  check(
+    "a row with no spend is skipped, not treated as a gap",
+    netTotalOf([...wires, { premium_spend: "0.00" }], "netSpentwithSc") === summed,
+  );
+  check("nothing to add → null, never 0", netTotalOf([], "netSpentwithSc") === null);
+}
+
+// ── A project with no spend charges nothing ─────────────────────────────────
+// net_cost and net_cpl come back null from the server on such a row, so the two
+// charge columns have to read "—" beside them. A ₹0.00 there reads as a charge
+// of zero rather than as the absence of one, in the one column a client checks
+// against their invoice.
+console.log("\nno spend → no charge, not a charge of zero");
+{
+  const { makeLedgerCells, money, DASH } = await import(
+    "../src/services/ledgerCells.js"
+  );
+  const { rowOf } = makeLedgerCells({
+    hasRaw: () => true,
+    clientType: () => "hybrid",
+    scPct: () => 15,
+    gstPct: () => 18,
+    iscpl: () => false,
+  });
+
+  const idle = rowOf({
+    premium_spend: "0.00",
+    total_leads: 0,
+    replaced_leads: 0,
+    billable_leads: 0,
+    replaced_credit: "0.00",
+    replaced_credit_sc: "0.00",
+    replaced_credit_inc: "0.00",
+    net_cost: null,
+    net_cpl: null,
+  });
+  check("Net cost is the gap the server sent", money(idle.netCost) === DASH);
+  check(
+    "Net + S.C is a gap too, not ₹0.00",
+    money(idle.netSpentwithSc) === DASH,
+    `(${money(idle.netSpentwithSc)})`,
+  );
+  check(
+    "Net + S.C + GST likewise",
+    money(idle.netSpentwithScGst) === DASH,
+    `(${money(idle.netSpentwithScGst)})`,
+  );
+
+  // An absent premium_spend behaves the same way…
+  const absent = rowOf({ total_leads: 0, replaced_credit: "0.00" });
+  check(
+    "absent spend → both charge columns are gaps",
+    absent.netSpentwithSc === null && absent.netSpentwithScGst === null,
+  );
+  // …and a row that DID spend still charges, including one whose credit is 0.
+  const spent = rowOf({
+    premium_spend: "10000.00",
+    replaced_credit: "0.00",
+    replaced_credit_sc: "0.00",
+    replaced_credit_inc: "0.00",
+    net_cost: "10000.00",
+  });
+  check(
+    "a real spend with no replacements still charges (11,500 / 13,570)",
+    spent.netSpentwithSc === 11500 && spent.netSpentwithScGst === 13570,
+    `(${spent.netSpentwithSc} / ${spent.netSpentwithScGst})`,
+  );
+}
+
 // ── The two renderers the credit column goes through ────────────────────────
 console.log("\nthe credit renders as a deduction, and zero renders as nothing");
 {

@@ -277,7 +277,7 @@ export default function CMDailyReport() {
   // the credit for replaced leads — which is what /daily-reports loads onto
   // too. Both pages used to load onto premium_spend, and both were charging
   // service charge and GST on leads the client had already been credited for.
-  const { rowOf: rowCells } = makeLedgerCells({
+  const { rowOf: rowCells, netTotalOf } = makeLedgerCells({
     hasRaw: () => true,
     clientType,
     scPct,
@@ -507,10 +507,48 @@ export default function CMDailyReport() {
   // Consequence, stated rather than papered over: `totals` describes the whole
   // period the backend returned, so when a filter hides rows the footer is
   // wider than the table above it. The note under the table says so.
-  const totals = createMemo(() => rowCells(ledger().totals?.wire));
+  // The TOTAL row's two NET charge cells are the SUM of the rows' own, not the
+  // charge computed on the totals block. Everything else in the footer stays
+  // the payload's.
+  //
+  // Those two cells are the only figures in this table the frontend computes
+  // rather than reads, at both levels, from one rate — so "charge the period
+  // total" and "charge each project and add" are both available and differ by
+  // the rounding: ₹1,67,259.89 against ₹1,67,259.88 on Wealth Clinic. One of
+  // them sits beneath a column that visibly adds to the other, and a reader
+  // checking the sum is right to call that broken. See netTotalOf, which sums
+  // the rows the PAYLOAD sent (not the filtered ones on screen) and returns
+  // null rather than a sum that silently drops a project.
+  const totalsOfPayload = createMemo(() => rowCells(ledger().totals?.wire));
+  const totals = createMemo(() => {
+    const t = totalsOfPayload();
+    const wires = ledger().rows.map((r) => r.wire);
+    const sc = netTotalOf(wires, "netSpentwithSc");
+    const gst = netTotalOf(wires, "netSpentwithScGst");
+    return {
+      ...t,
+      netSpentwithSc: sc ?? t.netSpentwithSc,
+      netSpentwithScGst: gst ?? t.netSpentwithScGst,
+    };
+  });
 
-  // True when the rows on screen are the same set the totals block describes.
-  const totalsCoversAll = () => reportRows().length === ledger().rows.length;
+  // True when the rows on screen account for everything the totals block
+  // does. NOT a count comparison: a ledger row with no leads, no spend, no
+  // impressions and no clicks is dropped by the "ran in this range" test above
+  // and contributes nothing to the totals, so 4 rows of 18 can still add up to
+  // the footer exactly. Counting rows called that a discrepancy and told the
+  // reader their own correct totals didn't tie out. What actually widens the
+  // footer is a hidden row with something ON it — the status filter dropping a
+  // live project — so that is what this asks.
+  const rowHasActivity = (r) =>
+    r.totalLeads > 0 || r.spend > 0 || r.impressions > 0 || r.clicks > 0;
+  const hiddenActiveCount = () => {
+    const shown = new Set(reportRows().map((r) => String(r.projectId)));
+    return ledger().rows.filter(
+      (r) => !shown.has(String(r.projectId)) && rowHasActivity(r),
+    ).length;
+  };
+  const totalsCoversAll = () => hiddenActiveCount() === 0;
   const totalsProjectCount = () =>
     ledger().totals?.projectCount ?? ledger().rows.length;
 
@@ -1366,9 +1404,9 @@ export default function CMDailyReport() {
         <Show when={reportRows().length > 0 && !totalsCoversAll()}>
           <p class="mt-3 text-xs text-amber-700 dark:text-amber-500 leading-relaxed">
             The <b class="font-semibold">TOTAL</b> row is the period total for
-            all {totalsProjectCount()} projects, as sent by the server — the
-            table above is filtered to {reportRows().length}. The two are not
-            meant to add up.
+            all {totalsProjectCount()} projects the server returned. The table
+            above is filtered to {reportRows().length}, so the two will not add
+            up.
           </p>
         </Show>
 

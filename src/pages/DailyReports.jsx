@@ -545,7 +545,7 @@ export default function DailyReports() {
   // reader in services/ledgerCells: one named payload key per column, no
   // division, "—" for anything the payload didn't send. The three inputs below
   // are the only things about this table that are page-specific.
-  const { rowOf } = makeLedgerCells({
+  const { rowOf, netTotalOf } = makeLedgerCells({
     // A client's own login never receives raw agency cost.
     hasRaw: hasRawSpend,
     clientType: reportClientType,
@@ -630,13 +630,54 @@ export default function DailyReports() {
   // above it. That is disclosed under the table (see totalsCoversAll) rather
   // than papered over by re-summing — a footer that silently follows the
   // filters is exactly how the previous version justified computing its own.
-  const totals = createMemo(() => rowOf(ledger().totals?.wire));
+  // The TOTAL row's two NET charge cells are the SUM of the rows' own, not the
+  // charge computed on the totals block. Everything else in the footer stays
+  // the payload's.
+  //
+  // Those two cells are the only figures in this table the frontend computes
+  // rather than reads, at both levels, from one rate — so "charge the period
+  // total" and "charge each project and add" are both available and differ by
+  // the rounding: ₹1,67,259.89 against ₹1,67,259.88 on Wealth Clinic. One of
+  // them sits beneath a column that visibly adds to the other, and a reader
+  // checking the sum is right to call that broken. See netTotalOf, which sums
+  // the rows the PAYLOAD sent (not the filtered ones on screen) and returns
+  // null rather than a sum that silently drops a project.
+  const totalsOfPayload = createMemo(() => rowOf(ledger().totals?.wire));
+  const totals = createMemo(() => {
+    const t = totalsOfPayload();
+    const wires = ledger().rows.map((r) => r.wire);
+    const sc = netTotalOf(wires, "netSpentwithSc");
+    const gst = netTotalOf(wires, "netSpentwithScGst");
+    return {
+      ...t,
+      netSpentwithSc: sc ?? t.netSpentwithSc,
+      netSpentwithScGst: gst ?? t.netSpentwithScGst,
+    };
+  });
 
-  // True when the rows on screen are the same set the totals block describes.
-  // False whenever the status filter or the "ran in this range" test has
-  // dropped a project the backend counted.
-  const totalsCoversAll = () =>
-    reportRows().length === ledger().rows.length;
+  // True when the rows on screen account for everything the totals block does.
+  //
+  // It is NOT a count comparison. A ledger row with no leads, no spend, no
+  // impressions and no clicks is dropped by the "ran in this range" test above,
+  // and it contributes exactly nothing to the totals block — so a table showing
+  // 4 of 18 rows can still have a footer that equals the 4 of them, which is
+  // what Wealth Clinic looks like with no filter on at all. Counting rows
+  // flagged that as a discrepancy and told the reader their own correct totals
+  // did not add up.
+  //
+  // What makes the footer genuinely wider than the table is a row that was
+  // hidden AND has something on it: the status filter dropping a live project,
+  // or a project the ledger counted that the projects list didn't return. So
+  // that is the test.
+  const rowHasActivity = (r) =>
+    r.totalLeads > 0 || r.spend > 0 || r.impressions > 0 || r.clicks > 0;
+  const hiddenActiveCount = () => {
+    const shown = new Set(reportRows().map((r) => String(r.projectId)));
+    return ledger().rows.filter(
+      (r) => !shown.has(String(r.projectId)) && rowHasActivity(r),
+    ).length;
+  };
+  const totalsCoversAll = () => hiddenActiveCount() === 0;
   // How many projects the TOTAL row covers, straight off the payload.
   const totalsProjectCount = () =>
     ledger().totals?.projectCount ?? ledger().rows.length;
@@ -1547,17 +1588,31 @@ export default function DailyReports() {
 
         {/* What the TOTAL row is, when it isn't what's on screen. The footer
             reads the payload's own totals block, so it covers every project in
-            the period — including any the status filter or the "ran in range"
-            test has hidden. Saying so is the price of not re-summing: a footer
-            that quietly followed the filters is what made computing one look
-            reasonable, and computing one is what printed ₹137.13 under a
-            ₹147.05 row. */}
-        <Show when={reportRows().length > 0 && !totalsCoversAll()}>
+            the period — including any the status filter has hidden. Saying so
+            is the price of not re-summing: a footer that quietly followed the
+            filters is what made computing one look reasonable, and computing
+            one is what printed ₹137.13 under a ₹147.05 row.
+
+            Two conditions beyond the mismatch itself:
+            • hiddenActiveCount, not a row count, so an idle project the server
+              sent and the table skipped — which adds nothing to the footer —
+              doesn't raise a discrepancy that isn't there.
+            • never on a client's own login. The filters that cause this are
+              internal tools (the status filter, the project list); a client
+              reads a finished report, and a note about their totals not adding
+              up reads as an admission that the figures are unreliable. */}
+        <Show
+          when={
+            !isClientViewer() &&
+            reportRows().length > 0 &&
+            !totalsCoversAll()
+          }
+        >
           <p class="mt-3 text-xs text-amber-700 dark:text-amber-500 leading-relaxed">
             The <b class="font-semibold">TOTAL</b> row is the period total for
-            all {totalsProjectCount()} projects, as sent by the server — the
-            table above is filtered to {reportRows().length}. The two are not
-            meant to add up.
+            all {totalsProjectCount()} projects the server returned. The table
+            above is filtered to {reportRows().length}, so the two will not add
+            up.
           </p>
         </Show>
 
