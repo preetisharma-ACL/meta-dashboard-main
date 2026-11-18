@@ -18,10 +18,12 @@ import {
 } from "../services/dashboard";
 import {
   money,
+  moneyCredit,
   count,
   credit,
   added,
   exp,
+  expCredit,
   makeLedgerCells,
 } from "../services/ledgerCells";
 import { scopeKey } from "../stores/cmScope";
@@ -299,6 +301,45 @@ export default function CMDailyReport() {
   // when the "Include raw" toggle is on. Off → client-facing report (no raw).
   const showRaw = () => includeRaw();
 
+  // ── The hybrid net view ───────────────────────────────────────────────────
+  // The same change, the same fields and the same gate as /daily-reports, for
+  // the reason this file shares its cell reader in the first place: a CM and
+  // the client are looking at one client's one period, and the two screens have
+  // to agree cell for cell. A hybrid client's ad spend is billed IN FULL and
+  // the replaced leads come back as Replaced Credit Notes; showing "Billable"
+  // beside a billed figure covering every lead, with the credit nowhere on the
+  // page, reads as charging for leads that were already replaced.
+  //
+  // Gated on the fields being PRESENT (backend fd51d0d), not just on the client
+  // type: against an older deployment the table keeps the columns it had rather
+  // than losing "Client Billed" and gaining em dashes.
+  const hasNetFields = () =>
+    ledger().rows.some((r) => r.wire && "replaced_credit" in r.wire);
+  const showNet = () => clientType() === "hybrid" && hasNetFields();
+  // Same field (billable_leads), named for what the client reads it as.
+  const billableColLabel = () => (showNet() ? "Net leads" : "Billable");
+  // "Total Leads" is this page's name for total_leads; /daily-reports calls it
+  // "Leads Generated" once the raw Meta/Fed split is off, because then there is
+  // no composition to total — just the figure the Replaced column deducts from.
+  // Matched on the net view only, so a CM and the client reading the same
+  // hybrid report are reading the same words as well as the same numbers.
+  const leadsColLabel = () =>
+    showNet() && !showRaw() ? "Leads Generated" : "Total Leads";
+  // premium_spend, under the name /daily-reports gives it.
+  const spentColLabel = () => (showNet() ? "Amount Spent" : "Spent");
+  // The two charge columns, re-based onto the spend AFTER the credit. The
+  // arithmetic is the shared reader's — see netSpentwithSc in ledgerCells.
+  const netScLabel = () => {
+    const pct = scPct();
+    return pct == null ? "Net + S.C" : `Net + ${pct}% S.C`;
+  };
+  const netInclLabel = () => {
+    const pct = scPct();
+    return pct == null
+      ? `Net + S.C + ${GST_PCT}% GST`
+      : `Net + ${pct}% S.C + ${GST_PCT}% GST`;
+  };
+
   // ── Quick-pick presets (same semantics as the CM dashboard pills) ─────────
   const setPreset = (value) => {
     const now = new Date();
@@ -505,14 +546,20 @@ export default function CMDailyReport() {
   const exportColumns = () => {
     const cols = ["Date", "Project"];
     if (showRaw()) cols.push("Meta Leads", "Fed Leads");
-    cols.push("Total Leads");
-    if (showReplaced()) cols.push("Replaced", "Billable");
+    cols.push(leadsColLabel());
+    if (showReplaced()) cols.push("Replaced", billableColLabel());
     if (showRaw()) cols.push("Raw CPL");
     cols.push("CPL");
+    if (showNet()) cols.push("Net CPL");
     if (!iscpl()) {
       if (showRaw()) cols.push("Raw Amount Spent");
-      if (showSpent()) cols.push("Spent");
-      if (showBilled()) cols.push("Client Billed", billedInclLabel());
+      if (showSpent()) cols.push(spentColLabel());
+      if (showNet()) cols.push("Replaced credit", "Net cost");
+      if (showBilled())
+        cols.push(
+          showNet() ? netScLabel() : "Client Billed",
+          showNet() ? netInclLabel() : billedInclLabel(),
+        );
     }
     return cols;
   };
@@ -528,11 +575,18 @@ export default function CMDailyReport() {
     if (showReplaced()) base.push(exp(r.replacedLeads), exp(r.billableLeads));
     if (showRaw()) base.push(exp(r.rawCpl));
     base.push(exp(r.cpl));
+    if (showNet()) base.push(exp(r.netCpl));
     if (!iscpl()) {
       if (showRaw()) base.push(exp(r.rawSpent));
       if (showSpent()) base.push(exp(r.spent));
+      // The credit leaves as a NEGATIVE number so a sheet's charge and credit
+      // columns still add up to the net column beside them.
+      if (showNet()) base.push(expCredit(r.replacedCredit), exp(r.netCost));
       if (showBilled())
-        base.push(exp(r.billedAmount), exp(r.spentwithservice_gst));
+        base.push(
+          exp(showNet() ? r.netSpentwithSc : r.billedAmount),
+          exp(showNet() ? r.netSpentwithScGst : r.spentwithservice_gst),
+        );
     }
     return base;
   };
@@ -1057,26 +1111,41 @@ export default function CMDailyReport() {
                   <th class="p-3">Meta Leads</th>
                   <th class="p-3">Fed Leads</th>
                 </Show>
-                <th class="p-3">Total Leads</th>
+                <th class="p-3">{leadsColLabel()}</th>
                 {/* Total Leads → Replaced → Billable reads as one progression */}
                 <Show when={showReplaced()}>
                   <th class="p-3 text-[#AC2334] dark:text-red-400">Replaced</th>
-                  <th class="p-3">Billable</th>
+                  <th class="p-3">{billableColLabel()}</th>
                 </Show>
                 <Show when={showRaw()}>
                   <th class="p-3">Raw CPL</th>
                 </Show>
                 <th class="p-3">CPL</th>
+                <Show when={showNet()}>
+                  <th class="p-3">Net CPL</th>
+                </Show>
                 <Show when={!iscpl()}>
                   <Show when={showRaw()}>
                     <th class="p-3">Raw Amount Spent</th>
                   </Show>
                   <Show when={showSpent()}>
-                    <th class="p-3">Spent</th>
+                    <th class="p-3">{spentColLabel()}</th>
+                  </Show>
+                  {/* Ad spend billed in full → the credit note → what the
+                      period cost after it. */}
+                  <Show when={showNet()}>
+                    <th class="p-3 text-[#AC2334] dark:text-red-400">
+                      Replaced credit
+                    </th>
+                    <th class="p-3">Net cost</th>
                   </Show>
                   <Show when={showBilled()}>
-                    <th class="p-3">Client Billed</th>
-                    <th class="p-3">{billedInclLabel()}</th>
+                    <th class="p-3">
+                      {showNet() ? netScLabel() : "Client Billed"}
+                    </th>
+                    <th class="p-3">
+                      {showNet() ? netInclLabel() : billedInclLabel()}
+                    </th>
                   </Show>
                 </Show>
               </tr>
@@ -1164,6 +1233,11 @@ export default function CMDailyReport() {
                       <td class="p-3 font-medium text-amber-700 dark:text-amber-400">
                         {money(row.cpl)}
                       </td>
+                      <Show when={showNet()}>
+                        <td class="p-3 font-medium text-amber-700 dark:text-amber-400">
+                          {money(row.netCpl)}
+                        </td>
+                      </Show>
                       <Show when={!iscpl()}>
                         <Show when={showRaw()}>
                           <td class="p-3 text-green-700 dark:text-green-400">
@@ -1175,12 +1249,26 @@ export default function CMDailyReport() {
                             {money(row.spent)}
                           </td>
                         </Show>
+                        <Show when={showNet()}>
+                          <td class="p-3 font-semibold text-[#AC2334] dark:text-red-400">
+                            {moneyCredit(row.replacedCredit)}
+                          </td>
+                          <td class="p-3 font-semibold text-green-800 dark:text-green-300">
+                            {money(row.netCost)}
+                          </td>
+                        </Show>
                         <Show when={showBilled()}>
                           <td class="p-3 text-green-700 dark:text-green-400">
-                            {money(row.billedAmount)}
+                            {money(
+                              showNet() ? row.netSpentwithSc : row.billedAmount,
+                            )}
                           </td>
                           <td class="p-3 text-green-900 dark:text-green-400 font-semibold">
-                            {money(row.spentwithservice_gst)}
+                            {money(
+                              showNet()
+                                ? row.netSpentwithScGst
+                                : row.spentwithservice_gst,
+                            )}
                           </td>
                         </Show>
                       </Show>
@@ -1224,6 +1312,11 @@ export default function CMDailyReport() {
                   <td class="p-3 text-amber-700 dark:text-amber-400 font-bold">
                     {money(totals().cpl)}
                   </td>
+                  <Show when={showNet()}>
+                    <td class="p-3 text-amber-700 dark:text-amber-400 font-bold">
+                      {money(totals().netCpl)}
+                    </td>
+                  </Show>
                   <Show when={!iscpl()}>
                     <Show when={showRaw()}>
                       <td class="p-3 text-green-700 dark:text-green-300 font-bold">
@@ -1235,12 +1328,28 @@ export default function CMDailyReport() {
                         {money(totals().spent)}
                       </td>
                     </Show>
+                    <Show when={showNet()}>
+                      <td class="p-3 text-[#AC2334] dark:text-red-400 font-bold">
+                        {moneyCredit(totals().replacedCredit)}
+                      </td>
+                      <td class="p-3 text-green-800 dark:text-green-300 font-bold">
+                        {money(totals().netCost)}
+                      </td>
+                    </Show>
                     <Show when={showBilled()}>
                       <td class="p-3 text-green-700 dark:text-green-300 font-bold">
-                        {money(totals().billedAmount)}
+                        {money(
+                          showNet()
+                            ? totals().netSpentwithSc
+                            : totals().billedAmount,
+                        )}
                       </td>
                       <td class="p-3 text-green-900 dark:text-green-400 font-bold">
-                        {money(totals().spentwithservice_gst)}
+                        {money(
+                          showNet()
+                            ? totals().netSpentwithScGst
+                            : totals().spentwithservice_gst,
+                        )}
                       </td>
                     </Show>
                   </Show>
@@ -1260,6 +1369,18 @@ export default function CMDailyReport() {
             all {totalsProjectCount()} projects, as sent by the server — the
             table above is filtered to {reportRows().length}. The two are not
             meant to add up.
+          </p>
+        </Show>
+
+        {/* Hybrid: what the red credit column IS. The same sentence as
+            /daily-reports, word for word — a CM explaining this report to the
+            client should be reading off the same page they are. */}
+        <Show when={showNet() && reportRows().length > 0}>
+          <p class="mt-3 text-xs text-gray-600 dark:text-gray-300 leading-relaxed">
+            Ad spend is billed in full. Replaced leads come back as{" "}
+            <b class="font-semibold">Replaced Credit Notes</b>, which pay the
+            client's next charges. <b class="font-semibold">Net cost</b> is what
+            the period cost them after that credit.
           </p>
         </Show>
 
@@ -1284,10 +1405,14 @@ export default function CMDailyReport() {
             <p class="mt-3 text-xs text-amber-700 dark:text-amber-500 leading-relaxed">
               This client is <b class="font-semibold">{clientType()}</b>, so a
               service-charge rate should be set against it — none came back with
-              this report. <b class="font-semibold">{billedInclLabel()}</b>{" "}
+              this report.{" "}
+              <b class="font-semibold">
+                {showNet() ? netInclLabel() : billedInclLabel()}
+              </b>{" "}
               shows “—” rather than assuming 0%; the rate needs setting on the
-              client record. Spent and Client Billed beside it are the figures
-              before service charge and GST, and are unaffected.
+              client record. {showNet() ? "Amount Spent and Net cost" : "Spent and Client Billed"}{" "}
+              beside it are the figures before service charge and GST, and are
+              unaffected.
             </p>
           </Show>
 
@@ -1297,9 +1422,13 @@ export default function CMDailyReport() {
               No client summary came back with this report, so the
               service-charge rate is unknown — it may be genuinely absent (a CPL
               client) or simply not surfaced.{" "}
-              <b class="font-semibold">{billedInclLabel()}</b> shows “—” rather
-              than assuming 0%. Spent and Client Billed beside it are the
-              figures before service charge and GST, and are unaffected.
+              <b class="font-semibold">
+                {showNet() ? netInclLabel() : billedInclLabel()}
+              </b>{" "}
+              shows “—” rather than assuming 0%.{" "}
+              {showNet() ? "Amount Spent and Net cost" : "Spent and Client Billed"}{" "}
+              beside it are the figures before service charge and GST, and are
+              unaffected.
             </p>
           </Show>
         </Show>
@@ -1505,14 +1634,14 @@ export default function CMDailyReport() {
                       </th>
                     </Show>
                     <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
-                      Total Leads
+                      {leadsColLabel()}
                     </th>
                     <Show when={showReplaced()}>
                       <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
                         Replaced
                       </th>
                       <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
-                        Billable
+                        {billableColLabel()}
                       </th>
                     </Show>
                     <Show when={showRaw()}>
@@ -1523,6 +1652,11 @@ export default function CMDailyReport() {
                     <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
                       CPL
                     </th>
+                    <Show when={showNet()}>
+                      <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
+                        Net CPL
+                      </th>
+                    </Show>
                     <Show when={!iscpl()}>
                       <Show when={showRaw()}>
                         <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
@@ -1531,15 +1665,23 @@ export default function CMDailyReport() {
                       </Show>
                       <Show when={showSpent()}>
                         <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
-                          Spent
+                          {spentColLabel()}
+                        </th>
+                      </Show>
+                      <Show when={showNet()}>
+                        <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
+                          Replaced credit
+                        </th>
+                        <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
+                          Net cost
                         </th>
                       </Show>
                       <Show when={showBilled()}>
                         <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
-                          Client Billed
+                          {showNet() ? netScLabel() : "Client Billed"}
                         </th>
                         <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
-                          {billedInclLabel()}
+                          {showNet() ? netInclLabel() : billedInclLabel()}
                         </th>
                       </Show>
                     </Show>
@@ -1590,6 +1732,11 @@ export default function CMDailyReport() {
                         <td class="px-4 py-3 text-center text-[#8a5a00] font-semibold text-md border-r border-[rgba(123,28,28,0.1)]">
                           {money(row.cpl)}
                         </td>
+                        <Show when={showNet()}>
+                          <td class="px-4 py-3 text-center text-[#8a5a00] font-semibold text-md border-r border-[rgba(123,28,28,0.1)]">
+                            {money(row.netCpl)}
+                          </td>
+                        </Show>
                         <Show when={!iscpl()}>
                           <Show when={showRaw()}>
                             <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
@@ -1601,12 +1748,28 @@ export default function CMDailyReport() {
                               {money(row.spent)}
                             </td>
                           </Show>
-                          <Show when={showBilled()}>
-                            <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
-                              {money(row.billedAmount)}
+                          <Show when={showNet()}>
+                            <td class="px-4 py-3 text-center text-[#AC2334] font-semibold text-md border-r border-[rgba(123,28,28,0.1)]">
+                              {moneyCredit(row.replacedCredit)}
                             </td>
                             <td class="px-4 py-3 text-center text-[#1a1a1a] font-semibold text-md border-r border-[rgba(123,28,28,0.1)]">
-                              {money(row.spentwithservice_gst)}
+                              {money(row.netCost)}
+                            </td>
+                          </Show>
+                          <Show when={showBilled()}>
+                            <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
+                              {money(
+                                showNet()
+                                  ? row.netSpentwithSc
+                                  : row.billedAmount,
+                              )}
+                            </td>
+                            <td class="px-4 py-3 text-center text-[#1a1a1a] font-semibold text-md border-r border-[rgba(123,28,28,0.1)]">
+                              {money(
+                                showNet()
+                                  ? row.netSpentwithScGst
+                                  : row.spentwithservice_gst,
+                              )}
                             </td>
                           </Show>
                         </Show>
@@ -1647,6 +1810,11 @@ export default function CMDailyReport() {
                     <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
                       {money(totals().cpl)}
                     </td>
+                    <Show when={showNet()}>
+                      <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
+                        {money(totals().netCpl)}
+                      </td>
+                    </Show>
                     <Show when={!iscpl()}>
                       <Show when={showRaw()}>
                         <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
@@ -1658,12 +1826,28 @@ export default function CMDailyReport() {
                           {money(totals().spent)}
                         </td>
                       </Show>
-                      <Show when={showBilled()}>
+                      <Show when={showNet()}>
                         <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
-                          {money(totals().billedAmount)}
+                          {moneyCredit(totals().replacedCredit)}
                         </td>
                         <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
-                          {money(totals().spentwithservice_gst)}
+                          {money(totals().netCost)}
+                        </td>
+                      </Show>
+                      <Show when={showBilled()}>
+                        <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
+                          {money(
+                            showNet()
+                              ? totals().netSpentwithSc
+                              : totals().billedAmount,
+                          )}
+                        </td>
+                        <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
+                          {money(
+                            showNet()
+                              ? totals().netSpentwithScGst
+                              : totals().spentwithservice_gst,
+                          )}
                         </td>
                       </Show>
                     </Show>
@@ -1769,14 +1953,14 @@ export default function CMDailyReport() {
                         </th>
                       </Show>
                       <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
-                        Total Leads
+                        {leadsColLabel()}
                       </th>
                       <Show when={showReplaced()}>
                         <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
                           Replaced
                         </th>
                         <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
-                          Billable
+                          {billableColLabel()}
                         </th>
                       </Show>
                       <Show when={showRaw()}>
@@ -1787,6 +1971,11 @@ export default function CMDailyReport() {
                       <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
                         CPL
                       </th>
+                      <Show when={showNet()}>
+                        <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
+                          Net CPL
+                        </th>
+                      </Show>
                       <Show when={!iscpl()}>
                         <Show when={showRaw()}>
                           <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
@@ -1795,15 +1984,23 @@ export default function CMDailyReport() {
                         </Show>
                         <Show when={showSpent()}>
                           <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
-                            Spent
+                            {spentColLabel()}
+                          </th>
+                        </Show>
+                        <Show when={showNet()}>
+                          <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
+                            Replaced credit
+                          </th>
+                          <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
+                            Net cost
                           </th>
                         </Show>
                         <Show when={showBilled()}>
                           <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
-                            Client Billed
+                            {showNet() ? netScLabel() : "Client Billed"}
                           </th>
                           <th style="padding:11px 14px;text-align:center;color:#f5d9a0;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;">
-                            {billedInclLabel()}
+                            {showNet() ? netInclLabel() : billedInclLabel()}
                           </th>
                         </Show>
                       </Show>
@@ -1850,6 +2047,11 @@ export default function CMDailyReport() {
                         <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:600;color:#8a5a00;border-right:1px solid rgba(123,28,28,0.1);">
                           {money(row.cpl)}
                         </td>
+                        <Show when={showNet()}>
+                          <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:600;color:#8a5a00;border-right:1px solid rgba(123,28,28,0.1);">
+                            {money(row.netCpl)}
+                          </td>
+                        </Show>
                         <Show when={!iscpl()}>
                           <Show when={showRaw()}>
                             <td style="padding:10px 14px;text-align:center;font-size:14px;color:#333;border-right:1px solid rgba(123,28,28,0.1);">
@@ -1861,12 +2063,28 @@ export default function CMDailyReport() {
                               {money(row.spent)}
                             </td>
                           </Show>
+                          <Show when={showNet()}>
+                            <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:600;color:#AC2334;border-right:1px solid rgba(123,28,28,0.1);">
+                              {moneyCredit(row.replacedCredit)}
+                            </td>
+                            <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:600;color:#1a1a1a;border-right:1px solid rgba(123,28,28,0.1);">
+                              {money(row.netCost)}
+                            </td>
+                          </Show>
                           <Show when={showBilled()}>
                             <td style="padding:10px 14px;text-align:center;font-size:14px;color:#333;border-right:1px solid rgba(123,28,28,0.1);">
-                              {money(row.billedAmount)}
+                              {money(
+                                showNet()
+                                  ? row.netSpentwithSc
+                                  : row.billedAmount,
+                              )}
                             </td>
                             <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:600;color:#6b4c10;background:rgba(201,168,76,0.10);">
-                              {money(row.spentwithservice_gst)}
+                              {money(
+                                showNet()
+                                  ? row.netSpentwithScGst
+                                  : row.spentwithservice_gst,
+                              )}
                             </td>
                           </Show>
                         </Show>
@@ -1904,6 +2122,11 @@ export default function CMDailyReport() {
                       <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
                         {money(totals().cpl)}
                       </td>
+                      <Show when={showNet()}>
+                        <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
+                          {money(totals().netCpl)}
+                        </td>
+                      </Show>
                       <Show when={!iscpl()}>
                         <Show when={showRaw()}>
                           <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
@@ -1915,12 +2138,28 @@ export default function CMDailyReport() {
                             {money(totals().spent)}
                           </td>
                         </Show>
+                        <Show when={showNet()}>
+                          <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
+                            {moneyCredit(totals().replacedCredit)}
+                          </td>
+                          <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
+                            {money(totals().netCost)}
+                          </td>
+                        </Show>
                         <Show when={showBilled()}>
                           <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
-                            {money(totals().billedAmount)}
+                            {money(
+                              showNet()
+                                ? totals().netSpentwithSc
+                                : totals().billedAmount,
+                            )}
                           </td>
                           <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;">
-                            {money(totals().spentwithservice_gst)}
+                            {money(
+                              showNet()
+                                ? totals().netSpentwithScGst
+                                : totals().spentwithservice_gst,
+                            )}
                           </td>
                         </Show>
                       </Show>

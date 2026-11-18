@@ -101,7 +101,7 @@ export default function DailyReports() {
   // for a client's own login).
   const [includeRaw, setIncludeRaw] = createSignal(true);
 
-  // Per-column show/hide for the three money columns (Client Billed, + S.C,
+  // Per-column show/hide for the three money columns (Amount Spent, + S.C,
   // + S.C + GST). Purely presentational: they only ever REMOVE a column that
   // the client-type / role gating already allows, and they apply everywhere the
   // table is rendered — on-screen, Preview, PDF, CSV and Excel — so what you
@@ -413,12 +413,12 @@ export default function DailyReports() {
   const leadsColLabel = () =>
     showRaw() ? "Total Leads" : showReplacement() ? "Leads Generated" : "Leads";
 
-  // The Amount Spent / Client Billed column (the spend the client is charged)
+  // The Amount Spent column (the spend the client is charged)
   // is AVAILABLE for admin/CM (raw data present → any client type, incl. CPL)
   // OR when the client has a service charge (hybrid/retainer — covers a hybrid
   // client's own login). Only the S.C + GST columns stay gated on
   // service_charge (i.e. !iscplReport). This is what lets CPL clients show
-  // Raw/Client-Billed while still hiding S.C/GST.
+  // Raw/Amount-Spent while still hiding S.C/GST.
   const canShowBilled = () => hasRawSpend() || !iscplReport();
   const canShowScGst = () => !iscplReport();
 
@@ -782,7 +782,7 @@ export default function DailyReports() {
     cols.push("CPL");
     if (showNet()) cols.push("Net CPL");
     if (showRaw()) cols.push("Raw Spend");
-    if (showBilled()) cols.push(showRaw() ? "Client Billed" : "Amount Spent");
+    if (showBilled()) cols.push("Amount Spent");
     if (showNet()) cols.push("Replaced credit", "Net cost");
     if (showBilledAmount()) cols.push("Billed");
     if (showSc()) cols.push(scColLabel());
@@ -1166,7 +1166,7 @@ export default function DailyReports() {
                 <ColToggle
                   checked={showBilledCol}
                   onChange={setShowBilledCol}
-                  label={() => (showRaw() ? "Client Billed" : "Amount Spent")}
+                  label={() => ("Amount Spent")}
                 />
               </Show>
               <Show when={canShowScGst()}>
@@ -1265,7 +1265,7 @@ export default function DailyReports() {
                 </Show>
                 <Show when={showBilled()}>
                   <th class="p-3">
-                    {showRaw() ? "Client Billed" : "Amount Spent"}
+                    {"Amount Spent"}
                   </th>
                 </Show>
                 {/* Hybrid: ad spend is billed in full → the credit note for the
@@ -1602,15 +1602,15 @@ export default function DailyReports() {
               <b class="font-semibold">{reportClientType() || "not CPL"}</b>, so
               a service-charge rate should be set against it — none came back
               with this report. The S.C and GST columns show “—” rather than
-              assuming 0%; the rate needs setting on the client record. Client
-              Billed beside them is unaffected.
+              assuming 0%; the rate needs setting on the client record. Amount
+              Spent beside them is unaffected.
             </p>
           </Show>
           <Show when={scState() === "unknown"}>
             <p class="mt-3 text-xs text-amber-700 dark:text-amber-500 leading-relaxed">
               No client summary came back with this report, so the
               service-charge rate is unknown. The S.C and GST columns show “—”
-              rather than assuming 0%. Client Billed beside them is unaffected.
+              rather than assuming 0%. Amount Spent beside them is unaffected.
             </p>
           </Show>
         </Show>
@@ -1879,7 +1879,7 @@ export default function DailyReports() {
                   </Show>
                   <Show when={showBilled()}>
                     <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
-                      {showRaw() ? "Client Billed" : "Amount Spent"}
+                      {"Amount Spent"}
                     </th>
                   </Show>
                   <Show when={showNet()}>
@@ -2227,7 +2227,7 @@ export default function DailyReports() {
                     </Show>
                     <Show when={showBilled()}>
                       <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
-                        {showRaw() ? "Client Billed" : "Amt Spent"}
+                        {"Amt Spent"}
                       </th>
                     </Show>
                     <Show when={showNet()}>
