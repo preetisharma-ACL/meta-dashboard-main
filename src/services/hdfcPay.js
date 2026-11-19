@@ -501,6 +501,380 @@ export const copyToClipboard = async (text) => {
   }
 };
 
+// ═══ BANK TRANSFER / UPI (backend 27bcdca) ═══════════════════════════════════
+// The offline half of the same feature: the client moves money themselves (NEFT
+// / RTGS / IMPS / UPI) and then REPORTS it with its UTR. Nothing is credited by
+// submitting — accounts verify it first, which is why every piece of copy here
+// says "will be added once verified" and never "paid".
+//
+// Verb set confirmed by unauthenticated OPTIONS probes against prod (19 Nov
+// 2026), all 401 without a token:
+//   pay/bank-details/                    GET, POST, PUT
+//   pay/bank-transfers/                  GET, POST
+//   pay/bank-transfers/<id>/verify/      POST
+//   pay/bank-transfers/<id>/reject/      POST
+//   pay/bank-transfers/<id>/proof/       GET          ← auth, so fetch as a blob
+
+// GET pay/bank-details/ → { enabled, account_name, bank_name, account_number,
+//   ifsc, branch, upi_id, note, has_qr, qr_url }
+// Same master-switch discipline as pay/summary/: `enabled` is compared against
+// true, so a missing key leaves the whole tab hidden.
+export const fetchBankDetails = async () => {
+  const res = await api(`${PAY}/bank-details/`, { method: "GET" });
+  return res?.data ?? null;
+};
+
+export const isBankEnabled = (details) => details?.enabled === true;
+
+// The QR's absolute address.
+//
+// qr_url is a path under the API ROOT, not under the site. Confirmed on prod:
+// GET https://…/api/billing/pay/bank-details/qr/ answers 200 image/jpeg with
+// `Cache-Control: public, max-age=300` and NO Authorization header, while
+// /media/ and /api/media/ both 404. So BASE_URL (which already ends in /api) is
+// the right prefix and the <img> needs no credentials.
+//
+// An absolute qr_url is passed through untouched rather than prefixed, which is
+// what stops a later backend change to a CDN address from producing
+// ".../api/https://cdn...".
+export const bankQrSrc = (details) => {
+  if (details?.has_qr !== true) return null;
+  const path = details?.qr_url;
+  if (!path) return null;
+  if (/^https?:\/\//i.test(path)) return path;
+  return `${BASE_URL}${path.startsWith("/") ? "" : "/"}${path}`;
+};
+
+// The minimum a bank transfer may be reported for, ex GST. HARDCODED from the
+// spec at 50,000 and deliberately NOT read from pay/summary/.min_ex_gst, which
+// is the ONLINE minimum and a different number (5,000 on prod today). Borrowing
+// one for the other would either block a legitimate transfer or wave through
+// one the server will reject. The server stays the authority and its message is
+// what the client is shown; this only stops an obviously doomed submit.
+export const BANK_MIN_EX_GST = 50_000;
+
+// UTR rules from the spec: 10 to 40 letters or digits. Input is normalised
+// before it is validated OR sent, so "  utr 1234 5678  " and "UTR12345678"
+// are the same submission and a stray space cannot cause a duplicate-UTR
+// rejection the client has no way to understand.
+export const normaliseUtr = (v) =>
+  String(v ?? "")
+    .replace(/\s+/g, "")
+    .toUpperCase();
+
+export const UTR_MIN = 10;
+export const UTR_MAX = 40;
+
+export const utrError = (v) => {
+  const utr = normaliseUtr(v);
+  if (!utr) return "Enter the UTR or transaction reference.";
+  if (!/^[A-Z0-9]+$/.test(utr))
+    return "The UTR can contain only letters and digits.";
+  if (utr.length < UTR_MIN || utr.length > UTR_MAX)
+    return `The UTR must be between ${UTR_MIN} and ${UTR_MAX} characters.`;
+  return null;
+};
+
+// Transfer modes. The VALUES are the wire contract and the labels are ours;
+// a row always prefers the server's mode_label where it sent one.
+export const TRANSFER_MODES = [
+  { value: "neft", label: "NEFT" },
+  { value: "rtgs", label: "RTGS" },
+  { value: "imps", label: "IMPS" },
+  { value: "upi", label: "UPI" },
+  { value: "other", label: "Other" },
+];
+
+const MODE_LABELS = Object.fromEntries(
+  TRANSFER_MODES.map((m) => [m.value, m.label]),
+);
+
+export const transferModeLabel = (row) =>
+  row?.mode_label || MODE_LABELS[String(row?.mode ?? "").toLowerCase()] || "—";
+
+// Proof upload rules from the spec.
+export const PROOF_MAX_BYTES = 3 * 1024 * 1024;
+export const PROOF_ACCEPT = "image/jpeg,image/png,image/webp,application/pdf";
+const PROOF_TYPES = new Set([
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+  "application/pdf",
+]);
+
+export const proofError = (file) => {
+  if (!file) return null; // optional
+  if (!PROOF_TYPES.has(String(file.type).toLowerCase()))
+    return "The screenshot must be a JPG, PNG, WEBP or PDF.";
+  if (file.size > PROOF_MAX_BYTES) return "The screenshot must be under 3 MB.";
+  return null;
+};
+
+// QR upload rules (the staff settings form). PDF is NOT accepted here: this one
+// is rendered in an <img> on the client's screen.
+export const QR_MAX_BYTES = 2 * 1024 * 1024;
+export const QR_ACCEPT = "image/jpeg,image/png,image/webp";
+const QR_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
+
+export const qrError = (file) => {
+  if (!file) return null;
+  if (!QR_TYPES.has(String(file.type).toLowerCase()))
+    return "The QR image must be a JPG, PNG or WEBP.";
+  if (file.size > QR_MAX_BYTES) return "The QR image must be under 2 MB.";
+  return null;
+};
+
+// ── Transfer dates ──────────────────────────────────────────────────────────
+// Not in the future, at most 60 days back. Both bounds are produced as LOCAL
+// "YYYY-MM-DD" strings rather than from toISOString(), which converts to UTC
+// first: east of Greenwich that hands back yesterday for most of the evening,
+// so an operator in India submitting at 7pm would be told today is in the past.
+export const TRANSFER_MAX_DAYS_BACK = 60;
+
+const pad2 = (n) => String(n).padStart(2, "0");
+
+export const localDateKey = (d = new Date()) =>
+  `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+
+export const transferDateBounds = (today = new Date()) => {
+  const back = new Date(today);
+  back.setDate(back.getDate() - TRANSFER_MAX_DAYS_BACK);
+  return { min: localDateKey(back), max: localDateKey(today) };
+};
+
+export const transferDateError = (value, today = new Date()) => {
+  if (!value) return "Pick the date the transfer was made.";
+  const { min, max } = transferDateBounds(today);
+  // Plain string comparison is exact for zero-padded YYYY-MM-DD and avoids
+  // re-parsing the value into a Date, which is where timezones creep back in.
+  if (value > max) return "The transfer date cannot be in the future.";
+  if (value < min)
+    return `The transfer date cannot be more than ${TRANSFER_MAX_DAYS_BACK} days ago.`;
+  return null;
+};
+
+// ── Bank transfer status ────────────────────────────────────────────────────
+// A THIRD vocabulary, separate from order status and link status on purpose.
+// "pending" here means a human has not looked at it yet, which is nothing like
+// an order's "pending" (the bank has not answered). Sharing a pill between the
+// two would tell a client their money is on its way when nobody has checked it.
+export const TRANSFER_STATUS = {
+  pending: { label: "Pending verification", tone: "amber" },
+  verified: { label: "Verified", tone: "green" },
+  rejected: { label: "Rejected", tone: "red" },
+};
+
+export const transferStatusLabel = (row) =>
+  row?.status_label ||
+  TRANSFER_STATUS[String(row?.status ?? "").toLowerCase()]?.label ||
+  row?.status ||
+  "—";
+
+export const transferStatusTone = (status) =>
+  TRANSFER_STATUS[String(status ?? "").toLowerCase()]?.tone ?? "gray";
+
+export const TRANSFER_STATUS_TABS = [
+  { value: "pending", label: "To verify" },
+  { value: "verified", label: "Verified" },
+  { value: "rejected", label: "Rejected" },
+];
+
+// ── Bank transfer calls ─────────────────────────────────────────────────────
+
+// GET pay/bank-transfers/ — the client's own submissions, or (staff) a status
+// queue optionally narrowed to one client.
+export const fetchBankTransfers = async ({ status, clientNomen } = {}) => {
+  const params = [];
+  if (status) params.push(`status=${encodeURIComponent(status)}`);
+  if (clientNomen !== undefined && clientNomen !== null && clientNomen !== "")
+    params.push(`client_nomen=${encodeURIComponent(clientNomen)}`);
+  const qs = params.length ? `?${params.join("&")}` : "";
+  const res = await api(`${PAY}/bank-transfers/${qs}`, { method: "GET" });
+  return listRows(res);
+};
+
+// POST pay/bank-transfers/ — multipart, because of the optional proof file.
+//
+// FormData is handed to api() as-is: buildHeaders() already skips the JSON
+// Content-Type for a FormData body so the browser can set the multipart
+// boundary itself. Setting it by hand produces a body the server cannot parse.
+//
+// Only fields with a value are appended. An empty `note` or a missing file sent
+// as the string "undefined" is how optional multipart fields turn into
+// validation errors nobody can explain.
+export const submitBankTransfer = async ({
+  amountExGst,
+  tdsPct,
+  utr,
+  transferDate,
+  mode,
+  note,
+  proof,
+}) => {
+  const form = new FormData();
+  form.append("amount_ex_gst", String(amountExGst));
+  form.append("tds_pct", String(tdsPct ?? 0));
+  form.append("utr", normaliseUtr(utr));
+  form.append("transfer_date", transferDate);
+  form.append("mode", mode);
+  const trimmed = String(note ?? "").trim();
+  if (trimmed) form.append("note", trimmed);
+  if (proof) form.append("proof", proof);
+
+  const res = await api(`${PAY}/bank-transfers/`, {
+    method: "POST",
+    body: form,
+  });
+  return res?.data ?? null;
+};
+
+// POST pay/bank-transfers/<id>/verify/
+// amount_ex_gst and tds_pct are OPTIONAL overrides for when the bank credited
+// something other than what the client reported. Each is sent only when the
+// caller actually passes it, so an untouched dialog posts {} plus the note and
+// the server keeps its own figures.
+export const verifyBankTransfer = async (id, { amountExGst, tdsPct, note } = {}) => {
+  const body = {};
+  if (amountExGst !== undefined && amountExGst !== null && amountExGst !== "")
+    body.amount_ex_gst = amountExGst;
+  if (tdsPct !== undefined && tdsPct !== null && tdsPct !== "")
+    body.tds_pct = tdsPct;
+  const trimmed = String(note ?? "").trim();
+  if (trimmed) body.note = trimmed;
+
+  const res = await api(`${PAY}/bank-transfers/${encodeURIComponent(id)}/verify/`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return res?.data ?? null;
+};
+
+// POST pay/bank-transfers/<id>/reject/ — the reason is REQUIRED and the CLIENT
+// READS IT, which the dialog says out loud.
+export const REJECT_REASON_MIN = 5;
+
+export const rejectReasonError = (v) => {
+  const reason = String(v ?? "").trim();
+  if (reason.length < REJECT_REASON_MIN)
+    return `Give a reason of at least ${REJECT_REASON_MIN} characters. The client sees it.`;
+  return null;
+};
+
+export const rejectBankTransfer = async (id, reason) => {
+  const res = await api(`${PAY}/bank-transfers/${encodeURIComponent(id)}/reject/`, {
+    method: "POST",
+    body: JSON.stringify({ reason: String(reason ?? "").trim() }),
+  });
+  return res?.data ?? null;
+};
+
+// The proof file. AUTHENTICATED (prod answers 401 without a token), so it
+// cannot go in an <img src> or a plain link: it is fetched with the header,
+// turned into a blob URL and opened. The caller revokes the URL.
+export const fetchProofBlobUrl = async (row) => {
+  const path = row?.proof_url;
+  if (!path) return null;
+  const url = /^https?:\/\//i.test(path)
+    ? path
+    : `${BASE_URL}${path.startsWith("/") ? "" : "/"}${path}`;
+
+  const auth = JSON.parse(localStorage.getItem("auth") || "null");
+  const res = await fetch(url, {
+    headers: auth?.token ? { Authorization: `Bearer ${auth.token}` } : {},
+  });
+  if (!res.ok) {
+    const err = new Error(
+      res.status === 404
+        ? "The proof file is no longer available."
+        : "The proof file could not be opened.",
+    );
+    err.status = res.status;
+    throw err;
+  }
+  return URL.createObjectURL(await res.blob());
+};
+
+// POST pay/bank-details/ — multipart, for the QR upload.
+// `remove_qr` is sent ONLY when it is true. Sending remove_qr=false on every
+// save is harmless today and is exactly the sort of always-present destructive
+// flag that becomes harmful after a backend refactor.
+export const saveBankDetails = async (fields, { qrFile, removeQr } = {}) => {
+  const form = new FormData();
+  for (const key of [
+    "account_name",
+    "bank_name",
+    "account_number",
+    "ifsc",
+    "branch",
+    "upi_id",
+    "note",
+  ]) {
+    form.append(key, String(fields?.[key] ?? "").trim());
+  }
+  if (qrFile) form.append("qr", qrFile);
+  if (removeQr === true) form.append("remove_qr", "true");
+
+  const res = await api(`${PAY}/bank-details/`, { method: "POST", body: form });
+  return res?.data ?? null;
+};
+
+// ── One payment history for the client ──────────────────────────────────────
+// The Billing page shows online orders and bank transfers in ONE table, so both
+// are normalised to the same row shape first.
+//
+// EACH ROW TAKES EVERY FIELD FROM ONE PAYLOAD ROW. That is the whole discipline
+// here: an order's amount_paid and a transfer's amount_transferred are
+// different keys for different things, and a row assembled from both sources
+// is how two adjacent columns end up describing two different payments.
+//
+// `kind` is what the renderer branches on, so neither shape has to be sniffed.
+export const asOnlineHistoryRow = (o) => ({
+  kind: "online",
+  key: `online-${o.order_id}`,
+  at: o.created_at,
+  reference: o.order_id,
+  method: o.method,
+  paid: o.amount_paid,
+  credited: o.credited,
+  status: o.status,
+  raw: o,
+});
+
+export const asTransferHistoryRow = (t) => ({
+  kind: "transfer",
+  key: `transfer-${t.id}`,
+  at: t.created_at,
+  reference: t.utr,
+  method: transferModeLabel(t),
+  paid: t.amount_transferred,
+  // A pending or rejected transfer has credited NOTHING. The server sends null
+  // there and it must stay null so the column reads "—": a 0 in a Credited
+  // column next to a real amount reads as "we took it and gave you nothing",
+  // and a copied-across amount_transferred would claim money that has not been
+  // credited yet.
+  credited: t.credited,
+  status: t.status,
+  reviewNote: t.review_note,
+  transferDate: t.transfer_date,
+  raw: t,
+});
+
+// Newest first. Rows with no timestamp sink to the bottom rather than being
+// dropped: a payment the client made is never hidden because a date is missing.
+export const mergeHistory = (orders, transfers) =>
+  [
+    ...(Array.isArray(orders) ? orders : []).map(asOnlineHistoryRow),
+    ...(Array.isArray(transfers) ? transfers : []).map(asTransferHistoryRow),
+  ].sort((a, b) => {
+    const ta = a.at ? Date.parse(a.at) : NaN;
+    const tb = b.at ? Date.parse(b.at) : NaN;
+    if (Number.isNaN(ta) && Number.isNaN(tb)) return 0;
+    if (Number.isNaN(ta)) return 1;
+    if (Number.isNaN(tb)) return -1;
+    return tb - ta;
+  });
+
 // ── Staff client roster (NOMEN ids) ─────────────────────────────────────────
 // THE ID IS THE THING TO GET RIGHT. POST pay/links/ takes `client_nomen`, the
 // NOMEN id — the same id POST /payments/add-funds/ wants, and NOT the Client PK

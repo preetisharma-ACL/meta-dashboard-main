@@ -78,6 +78,8 @@ import LeadDisqualifications from "./pages/leads/LeadDisqualifications";
 import ClientBilling from "./pages/billing/ClientBilling";
 import AdditionalServices from "./pages/billing/AdditionalServices";
 import PaymentLinks from "./pages/billing/PaymentLinks";
+import BankTransfers from "./pages/billing/BankTransfers";
+import BankDetailsSettings from "./pages/billing/BankDetailsSettings";
 import PaymentResult from "./pages/billing/PaymentResult";
 import PaymentLinkPay from "./pages/billing/PaymentLinkPay";
 import OnboardingWizard from "./pages/onboarding/OnboardingWizard";
@@ -419,6 +421,31 @@ function App() {
                   ]}
                 >
                   <PaymentLinks />
+                </AdminRoute>
+              )}
+            />
+            {/* Bank transfers a client reported, and the account details they
+                are told to send money to.
+
+                ADMIN + ACCOUNTS ONLY, a narrower gate than Payment Links above
+                on purpose: verifying is the one action in this feature that
+                CREDITS a balance with money nobody charged, and the details
+                screen publishes the account real money gets sent to. A wrong
+                IFSC here is unrecoverable, so coordination and campaign
+                managers are out of both. The endpoints 403 them regardless. */}
+            <Route
+              path="/billing/bank-transfers"
+              component={() => (
+                <AdminRoute roles={["admin", "accounts"]}>
+                  <BankTransfers />
+                </AdminRoute>
+              )}
+            />
+            <Route
+              path="/billing/bank-details"
+              component={() => (
+                <AdminRoute roles={["admin", "accounts"]}>
+                  <BankDetailsSettings />
                 </AdminRoute>
               )}
             />

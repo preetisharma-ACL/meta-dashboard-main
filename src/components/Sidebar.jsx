@@ -24,6 +24,10 @@ import {
   fundRequestsBadge,
   watchFundRequestsBadge,
 } from "../stores/fundRequestsBadge";
+import {
+  bankTransfersBadge,
+  watchBankTransfersBadge,
+} from "../stores/bankTransfersBadge";
 
 // Expanded submenu group, remembered across reloads (see openMenu below).
 const OPEN_MENU_KEY = "sidebarOpenMenu";
@@ -243,6 +247,10 @@ export default function Sidebar() {
     // Fund Requests: urgent + stopped, every 60s. No-ops outside the four
     // roles that can open the page.
     watchFundRequestsBadge();
+    // Bank transfers awaiting verification, every 60s. Admin + accounts only;
+    // no-ops for every other role. A client who reported a payment is waiting
+    // on this number being noticed.
+    watchBankTransfersBadge();
   });
 
   const menuItems = createMemo(() =>
@@ -686,6 +694,25 @@ export default function Sidebar() {
               <SmallIcon d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" />
             ),
           },
+          {
+            // The badge is the whole point of this row: a client who reported
+            // a payment is waiting on somebody noticing it.
+            name: "Bank Transfers",
+            path: "/billing/bank-transfers",
+            roles: ["admin"],
+            badge: bankTransfersBadge() > 0 ? bankTransfersBadge() : null,
+            icon: () => (
+              <SmallIcon d="M3 21h18M5 21V10l7-5 7 5v11M9 21v-6h6v6" />
+            ),
+          },
+          {
+            name: "Bank Details",
+            path: "/billing/bank-details",
+            roles: ["admin"],
+            icon: () => (
+              <SmallIcon d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            ),
+          },
         ],
       },
       // ── Sales manager nav (v1.1) ──────────────────────────────────────────
@@ -786,6 +813,29 @@ export default function Sidebar() {
           <Icon d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" />
         ),
         path: "/billing/payment-links",
+      },
+      {
+        // Bank transfers + the details clients send money to. ACCOUNTS ONLY of
+        // these two roles, NOT coordination: verifying credits a balance and
+        // the details screen publishes a real bank account. Admin reaches both
+        // from inside its own "Payments Desk" group above. This is the one row
+        // in the payments feature whose role list is deliberately narrower
+        // than its neighbours'.
+        name: "Bank Transfers",
+        roles: ["accounts"],
+        badge: bankTransfersBadge() > 0 ? bankTransfersBadge() : null,
+        icon: () => (
+          <Icon d="M3 21h18M5 21V10l7-5 7 5v11M9 21v-6h6v6" />
+        ),
+        path: "/billing/bank-transfers",
+      },
+      {
+        name: "Bank Details",
+        roles: ["accounts"],
+        icon: () => (
+          <Icon d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        ),
+        path: "/billing/bank-details",
       },
       {
         // ── Campaign Manager payments desk ─────────────────────────────────

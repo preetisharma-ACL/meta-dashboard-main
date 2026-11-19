@@ -4,6 +4,8 @@ import {
   orderStatusTone,
   linkStatusLabel,
   linkStatusTone,
+  transferStatusLabel,
+  transferStatusTone,
 } from "../../services/hdfcPay";
 
 // ─── Status pills for online payments ─────────────────────────────────────────
@@ -54,6 +56,25 @@ export function OrderStatusBadge(props) {
     >
       <Pill tone={orderStatusTone(props.order?.status)}>
         {orderStatusLabel(props.order)}
+      </Pill>
+    </Show>
+  );
+}
+
+// A reported bank transfer: pending / verified / rejected.
+//
+// A THIRD vocabulary on purpose. "Pending" here means no human has looked at it
+// yet, which is nothing like an ORDER's pending (the bank has not answered).
+// Sharing a pill between the two would tell a client their money is on its way
+// when in fact nobody has checked it.
+export function TransferStatusBadge(props) {
+  return (
+    <Show
+      when={props.transfer?.status || props.transfer?.status_label}
+      fallback={<span class="text-gray-400 dark:text-gray-500">—</span>}
+    >
+      <Pill tone={transferStatusTone(props.transfer?.status)}>
+        {transferStatusLabel(props.transfer)}
       </Pill>
     </Show>
   );

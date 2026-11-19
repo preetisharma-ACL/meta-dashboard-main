@@ -29,7 +29,10 @@ import OnlinePaymentsTable from "../components/billing/OnlinePaymentsTable";
 import {
   fetchPaySummary,
   fetchPayOrders,
+  fetchBankDetails,
+  fetchBankTransfers,
   isPayEnabled,
+  isBankEnabled,
 } from "../services/hdfcPay";
 
 // --- Helpers ------------------------------------------------------------------
@@ -1493,13 +1496,44 @@ export default function Billing() {
 
   const [payOpen, setPayOpen] = createSignal(false);
 
-  // The client's own order history. Keyed on payEnabled() so it is never
-  // requested for a client the gateway is switched off for.
+  // Bank transfer / UPI — the OFFLINE half, with its own independent switch.
+  // Either, both or neither may be on, so every gate below tests the one it
+  // actually depends on rather than treating "online is off" as "no payment".
+  const [bankDetailsRes] = createResource(
+    () => (isClient() ? "bank-details" : null),
+    fetchBankDetails,
+  );
+  const bankDetails = () =>
+    (bankDetailsRes.error ? null : bankDetailsRes()) ?? null;
+  const bankEnabled = () => isBankEnabled(bankDetails());
+
+  // Either switch opens the dialog.
+  const canPayHere = () => payEnabled() || bankEnabled();
+
+  // The client's own history, one resource per source, each keyed on ITS OWN
+  // switch so neither is requested for a client it is switched off for.
   const [payOrdersRes] = createResource(
     () => (payEnabled() ? "pay-orders" : null),
     () => fetchPayOrders(),
   );
   const payOrders = () => (payOrdersRes.error ? [] : payOrdersRes()) ?? [];
+
+  const [bankTransfersRes, { refetch: refetchTransfers }] = createResource(
+    () => (bankEnabled() ? "bank-transfers" : null),
+    () => fetchBankTransfers(),
+  );
+  const bankTransfers = () =>
+    (bankTransfersRes.error ? [] : bankTransfersRes()) ?? [];
+
+  // A resource that was never started is `loading: false`, so this reads as
+  // "something is still in flight", not "both are enabled".
+  const historyLoading = () =>
+    payOrdersRes.loading || bankTransfersRes.loading;
+  // Only a source that was actually asked for can have failed.
+  const historyError = () =>
+    (payEnabled() && payOrdersRes.error) ||
+    (bankEnabled() && bankTransfersRes.error) ||
+    null;
 
   const payments = createMemo(() => {
     // An errored resource THROWS when read; a failed payments list is just an
@@ -1936,12 +1970,13 @@ export default function Billing() {
               </For>
             </nav>
 
-            {/* Pay now — client login only, and only once the server says the
-                gateway is on. Nothing here is rendered otherwise: no disabled
-                button, no explanatory note, because a client who cannot pay
-                online has nothing to be told about a feature they were never
-                offered. */}
-            <Show when={payEnabled()}>
+            {/* Pay now — client login only, and only once the server says at
+                least one way of paying is on. EITHER switch is enough: a client
+                whose gateway is off can still be offered the bank transfer tab.
+                Nothing is rendered otherwise: no disabled button, no
+                explanatory note, because a client who cannot pay here has
+                nothing to be told about a feature they were never offered. */}
+            <Show when={canPayHere()}>
               <button
                 type="button"
                 onClick={() => setPayOpen(true)}
@@ -2605,16 +2640,17 @@ export default function Billing() {
               />
             </Show>
 
-            {/* Online payments — the gateway's own orders, kept separate from
-                the receipts block above. That one is everything the accounts
-                desk has recorded (bank transfers, points, the opening balance);
-                this one is only what this client put through card or UPI, and a
-                row here opens its receipt. */}
-            <Show when={payEnabled()}>
+            {/* What the client paid from THIS page: gateway orders and the
+                bank transfers they reported, in one table. Kept separate from
+                the receipts block above, which is everything the accounts desk
+                has recorded (payments they keyed in, points, the opening
+                balance). A gateway row here opens its receipt. */}
+            <Show when={canPayHere()}>
               <OnlinePaymentsTable
                 orders={payOrders()}
-                loading={payOrdersRes.loading}
-                error={payOrdersRes.error}
+                transfers={bankTransfers()}
+                loading={historyLoading()}
+                error={historyError()}
               />
             </Show>
           </div>
@@ -2625,13 +2661,19 @@ export default function Billing() {
           onClose={() => setShowModal(false)}
           gstPct={Number(gstPct())}
         />
-        {/* Mounted only when the gateway is on, so a client it is off for never
-            has the dialog in their DOM at all. */}
-        <Show when={payEnabled()}>
+        {/* Mounted only when there is a way to pay, so a client both switches
+            are off for never has the dialog in their DOM at all. The modal
+            itself decides which tabs to show from the same two payloads. */}
+        <Show when={canPayHere()}>
           <PayNowModal
             open={payOpen()}
             onClose={() => setPayOpen(false)}
             summary={paySummary()}
+            bankDetails={bankDetails()}
+            // A reported transfer appears in the history below straight away,
+            // as "Pending verification". Without this the client submits, sees
+            // nothing change, and submits again.
+            onTransferSubmitted={() => refetchTransfers()}
           />
         </Show>
         <InvoiceModal

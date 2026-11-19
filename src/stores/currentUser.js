@@ -245,6 +245,20 @@ export const canSeePaymentLinks = () => {
   return PAYMENT_LINK_ROLES.has(role);
 };
 
+// ─── Bank transfer verification gate ──────────────────────────────────────────
+// Who may verify a reported bank transfer and edit the published bank details:
+// ADMIN AND ACCOUNTS ONLY, and deliberately NOT the same four roles as
+// [payment links]. Verifying is the single action in this feature that CREDITS
+// a client's balance with money nobody has charged, and the bank details screen
+// publishes the account real money gets sent to. Coordination and campaign
+// managers are out of both; the backend 403s them either way.
+const BANK_VERIFY_ROLES = new Set(["admin", "accounts"]);
+
+export const canVerifyBankTransfers = () => {
+  const role = currentUser.loaded ? currentUser.role : readAuth()?.role;
+  return BANK_VERIFY_ROLES.has(role);
+};
+
 // ─── Lead-replacement gates ───────────────────────────────────────────────────
 // Who may POST /leads/replacement-batches/ — admins and SENIOR (tier-1/tier-2) campaign managers
 // only. Tier-3 CMs, clients, sales, coordination and accounts must not see the
