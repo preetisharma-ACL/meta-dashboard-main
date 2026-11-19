@@ -1,4 +1,4 @@
-import { createSignal, createEffect, For, Show } from "solid-js";
+import { createSignal, createEffect, createMemo, For, Show } from "solid-js";
 import { useDialog } from "../../utils/useDialog";
 import { errorMessage, collectFieldMessages } from "../../utils/apiErrors";
 import {
@@ -141,6 +141,22 @@ export function VerifyTransferModal(props) {
     setBusy(false);
   });
 
+  // The rates the dropdown offers: the staff set (0 / 2), plus the row's OWN
+  // rate when it is not one of them.
+  //
+  // 1% was a valid submission before backend fd948f4 removed it. Without this,
+  // a transfer submitted at 1% would land on a select whose options are 0 and
+  // 2, the browser would show the first one, tdsTouched() would read that as a
+  // deliberate change from 1 to 0, and verifying would silently send tds_pct 0
+  // and credit a different amount than the client declared. The rate is shown
+  // as submitted and marked, so changing it has to be a decision.
+  const tdsOptions = createMemo(() => {
+    const own = payNum(row().tds_pct);
+    if (own === null || STAFF_TDS_OPTIONS.includes(own))
+      return STAFF_TDS_OPTIONS;
+    return [...STAFF_TDS_OPTIONS, own].sort((a, b) => a - b);
+  });
+
   const amountTouched = () => {
     const ex = payNum(row().amount_ex_gst);
     const typed = wholeRupees(amount());
@@ -232,10 +248,11 @@ export function VerifyTransferModal(props) {
               onChange={(e) => setTds(e.currentTarget.value)}
               class={FIELD + (fieldErrors().tds_pct ? " border-[#AC2334]" : "")}
             >
-              <For each={STAFF_TDS_OPTIONS}>
+              <For each={tdsOptions()}>
                 {(pct) => (
                   <option value={String(pct)}>
                     {pct === 0 ? "No TDS" : `${pct}%`}
+                    {STAFF_TDS_OPTIONS.includes(pct) ? "" : " (as submitted)"}
                   </option>
                 )}
               </For>

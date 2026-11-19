@@ -4,7 +4,8 @@ import { createPayQuote, QuoteRows, TdsPicker } from "./payQuote";
 import {
   bankQrSrc,
   submitBankTransfer,
-  tdsChoices,
+  tdsOffered,
+  tdsPctFor,
   wholeRupees,
   normaliseUtr,
   utrError,
@@ -45,13 +46,15 @@ const ERR_FIELD = "border-red-400 focus:ring-red-400/30";
 
 export default function BankTransferPanel(props) {
   const details = () => props.details ?? {};
-  const choices = createMemo(() => tdsChoices(props.summary ?? {}));
+  // Whether to OFFER the TDS box. The RATE is the TDS_PCT constant, never an
+  // array index: since backend fd948f4 only 2% exists and 1% is a 400.
+  const tdsAvailable = createMemo(() => tdsOffered(props.summary ?? {}));
   const qrSrc = createMemo(() => bankQrSrc(details()));
 
   // ── Form ──
   const [amount, setAmount] = createSignal(String(BANK_MIN_EX_GST));
+  // ONE BOOLEAN, not a rate. There is only one statutory rate to deduct.
   const [deductTds, setDeductTds] = createSignal(false);
-  const [tdsPct, setTdsPct] = createSignal(null);
   const [utr, setUtr] = createSignal("");
   const [transferDate, setTransferDate] = createSignal(localDateKey());
   const [mode, setMode] = createSignal("neft");
@@ -75,7 +78,6 @@ export default function BankTransferPanel(props) {
     if (!props.open) return;
     setAmount(String(BANK_MIN_EX_GST));
     setDeductTds(false);
-    setTdsPct(null);
     setUtr("");
     setTransferDate(localDateKey());
     setMode("neft");
@@ -89,11 +91,8 @@ export default function BankTransferPanel(props) {
     setTouched(false);
   });
 
-  const toggleTds = (on) => {
-    setDeductTds(on);
-    setTdsPct(on ? (choices()[0] ?? null) : null);
-  };
-  const effectiveTds = () => (deductTds() ? (tdsPct() ?? 0) : 0);
+  // Yields TDS_PCT or 0 and nothing else, so no path here can send a 1.
+  const effectiveTds = () => tdsPctFor(deductTds());
   const amountValue = () => wholeRupees(amount());
 
   const quote = createPayQuote({
@@ -326,12 +325,10 @@ export default function BankTransferPanel(props) {
           </div>
 
           <TdsPicker
-            choices={choices()}
+            offered={tdsAvailable()}
             checked={deductTds()}
-            value={tdsPct()}
             disabled={submitting()}
-            onToggle={toggleTds}
-            onPick={setTdsPct}
+            onToggle={setDeductTds}
           />
 
           {/* The breakdown. "Amount to transfer" rather than "You pay": the

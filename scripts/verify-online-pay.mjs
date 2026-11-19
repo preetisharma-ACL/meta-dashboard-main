@@ -108,6 +108,15 @@ const {
   REPORT_CSV_COLUMNS,
   REPORT_MAX_DAYS,
   REPORT_DEFAULT_STATUS,
+  // ── TDS 2% only + cards only (backend fd948f4) ──
+  TDS_PCT,
+  TDS_NOTE,
+  ONLINE_CARDS_NOTE,
+  ONLINE_CARDS_ONLY,
+  onlineCardsNote,
+  tdsOffered,
+  tdsPctFor,
+  payMethodLabel,
 } = await import("../src/services/hdfcPay.js");
 
 const { nextAfterLogin } = await import("../src/utils/loginNext.js");
@@ -137,16 +146,79 @@ check("negative refused", wholeRupees("-5") === null);
 check("blank refused", wholeRupees("") === null);
 check("spaces refused", wholeRupees("2 5") === null);
 
+console.log("\nTDS is 2% and ONLY 2% (backend fd948f4)");
+check("the rate is a constant, not an array index", TDS_PCT === 2);
+check("ticking the box means exactly 2", tdsPctFor(true) === 2);
+check("unticking means exactly 0", tdsPctFor(false) === 0);
+// The whole point of tdsPctFor: there is no input by which a 1 reaches the
+// wire. Anything that is not the boolean true is 0.
+check("nothing but `true` yields a rate, so 1 can never be sent",
+  [undefined, null, 0, 1, "1", "true", 2, {}, [2]].every((v) => tdsPctFor(v) === 0),
+  JSON.stringify([undefined, null, 0, 1, "1", "true", 2].map(tdsPctFor)));
+check("the staff forms offer only No TDS and 2%",
+  JSON.stringify(STAFF_TDS_OPTIONS) === "[0,2]", JSON.stringify(STAFF_TDS_OPTIONS));
+check("1% is gone from the staff options", !STAFF_TDS_OPTIONS.includes(1));
+check("the box is offered when the server lists 2",
+  tdsOffered({ tds_options: [0, 2] }) === true);
+check("hidden when the server lists no non-zero rate",
+  tdsOffered({ tds_options: [0] }) === false);
+check("hidden when tds_options is missing", tdsOffered({}) === false);
+check("hidden when the server offers a rate we do NOT send",
+  tdsOffered({ tds_options: [0, 5] }) === false,
+  "a tickable box posting 2 at a server offering 5 is a guaranteed 400");
+check("still offered if the server ever re-adds 1 beside 2",
+  tdsOffered({ tds_options: [0, 1, 2] }) === true);
+check("and even then the rate sent is 2, never the first option",
+  tdsPctFor(true) === 2);
+check("the statutory note cites the section verbatim",
+  TDS_NOTE.includes("Section 393(1)") &&
+    TDS_NOTE.includes("Table Sl. No. 6(i)") &&
+    TDS_NOTE.includes("Income-tax Act, 2025") &&
+    TDS_NOTE.includes("earlier Section 194C"), TDS_NOTE);
+check("it says to deduct on the ex-GST amount only",
+  /only on the amount excluding GST/.test(TDS_NOTE));
+check("and to share the certificate after filing",
+  /TDS certificate with our accounts team after filing/.test(TDS_NOTE));
+check("no long dash in the statutory note", !/[–—]/.test(TDS_NOTE));
+
+console.log("\nonline payment is credit cards only");
+check("credit_card reads 'Credit card', not 'Credit Card'",
+  payMethodLabel("credit_card") === "Credit card", payMethodLabel("credit_card"));
+check("upi reads 'UPI', not 'Upi'", payMethodLabel("upi") === "UPI");
+check("net_banking reads 'Net banking'",
+  payMethodLabel("net_banking") === "Net banking");
+check("an unknown rail still title-cases rather than blanking",
+  payMethodLabel("some_new_rail") === "Some New Rail", payMethodLabel("some_new_rail"));
+check("empty is null, so no blank chip renders", payMethodLabel("") === null);
+check("the live methods list renders one chip",
+  JSON.stringify(payMethodLabels({ methods: ["credit_card"] })) === '["Credit card"]',
+  JSON.stringify(payMethodLabels({ methods: ["credit_card"] })));
+check("the cards-only note names the alternative tab",
+  ONLINE_CARDS_NOTE.includes("credit cards only") &&
+    ONLINE_CARDS_NOTE.includes("Bank transfer / UPI tab"), ONLINE_CARDS_NOTE);
+check("it names UPI, debit card and net banking",
+  /UPI, debit card or net banking/.test(ONLINE_CARDS_NOTE));
+check("no long dash in the cards note", !/[–—]/.test(ONLINE_CARDS_NOTE));
+// The second sentence names a tab whose switch is independent of the gateway's.
+check("with the bank tab ON, the full note points at it",
+  onlineCardsNote(true) === ONLINE_CARDS_NOTE);
+check("with the bank tab OFF, it does NOT point at a tab that is not there",
+  onlineCardsNote(false) === ONLINE_CARDS_ONLY &&
+    !onlineCardsNote(false).includes("Bank transfer"),
+  onlineCardsNote(false));
+check("and still says cards only",
+  onlineCardsNote(false).includes("credit cards only"));
+
 console.log("\nTDS choices come from the server and are never invented");
 check("0 is dropped, it IS the unchecked state",
-  JSON.stringify(tdsChoices({ tds_options: [0, 1, 2] })) === "[1,2]",
-  JSON.stringify(tdsChoices({ tds_options: [0, 1, 2] })));
-check("strings coerce", JSON.stringify(tdsChoices({ tds_options: ["0", "1"] })) === "[1]");
+  JSON.stringify(tdsChoices({ tds_options: [0, 2] })) === "[2]",
+  JSON.stringify(tdsChoices({ tds_options: [0, 2] })));
+check("strings coerce", JSON.stringify(tdsChoices({ tds_options: ["0", "2"] })) === "[2]");
 check("no options → empty, NOT a guessed [1,2]",
   JSON.stringify(tdsChoices({})) === "[]");
 check("missing summary → empty", JSON.stringify(tdsChoices(null)) === "[]");
-check("staff form offers exactly the spec's 0/1/2",
-  JSON.stringify(STAFF_TDS_OPTIONS) === "[0,1,2]");
+check("no guessed list when the server sends none",
+  JSON.stringify(tdsChoices({ tds_options: [] })) === "[]");
 
 console.log("\nthe methods note prefers the server's wording");
 check("server note wins",
@@ -155,9 +227,10 @@ check("empty note falls back to ours",
   payMethodsNote({ other_ways_note: "   " }).startsWith("Card and UPI only."));
 check("absent note falls back to ours",
   payMethodsNote({}).includes("accounts team"));
-check("method strings title-case",
+check("method strings use the house spellings",
   JSON.stringify(payMethodLabels({ methods: ["card", "net_banking"] })) ===
-    '["Card","Net Banking"]');
+    '["Card","Net banking"]',
+  JSON.stringify(payMethodLabels({ methods: ["card", "net_banking"] })));
 check("method objects read their label",
   JSON.stringify(payMethodLabels({ methods: [{ value: "upi", label: "UPI" }] })) ===
     '["UPI"]');
@@ -553,10 +626,16 @@ console.log("\nby_method is an OBJECT, not a list");
   });
   check("both rails appear", m.length === 2);
   check("biggest first", m[0].method === "upi", JSON.stringify(m.map((x) => x.method)));
-  check("the label is title-cased", m[0].label === "Upi");
-  check("net_banking title-cases across the underscore",
+  // The report's rail names now come from the SAME map as the client's method
+  // chips, so "UPI" and "Credit card" read identically on both screens. The
+  // generic title-caser used to produce "Upi" and "Net Banking" here.
+  check("the label uses the house spelling", m[0].label === "UPI", m[0].label);
+  check("net_banking reads 'Net banking'",
     readByMethod({ by_method: { net_banking: { count: 1, paid: "5" } } })[0].label ===
-      "Net Banking");
+      "Net banking");
+  check("credit_card reads 'Credit card'",
+    readByMethod({ by_method: { credit_card: { count: 1, paid: "5" } } })[0].label ===
+      "Credit card");
   check("a missing block is empty, not a crash", readByMethod({}).length === 0);
   check("a non-object block is empty", readByMethod({ by_method: [] }).length === 0);
 }

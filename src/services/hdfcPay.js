@@ -253,14 +253,74 @@ export const fetchPaySummary = async () => {
 
 export const isPayEnabled = (summary) => summary?.enabled === true;
 
-// The TDS percentages to offer behind the "I will deduct TDS" checkbox: the
-// server's tds_options with 0 removed, because 0 IS the unchecked state. Falls
-// back to nothing rather than to a guessed [1, 2]: an invented percentage would
-// be deducted from a real payment.
+// The non-zero TDS percentages the server offers: tds_options with 0 removed,
+// because 0 IS the unchecked state. Falls back to nothing rather than to a
+// guessed list: an invented percentage would be deducted from a real payment.
 export const tdsChoices = (summary) =>
   (Array.isArray(summary?.tds_options) ? summary.tds_options : [])
     .map((v) => payNum(v))
     .filter((v) => v !== null && v > 0);
+
+// ── TDS is 2%, and only 2% (backend fd948f4) ────────────────────────────────
+// pay/summary/ now returns tds_options: [0, 2] and the backend answers 400 to
+// 1% everywhere: Pay now, payment links and bank transfers alike. So the
+// control is a plain on/off and the RATE IS NEVER DERIVED FROM USER INPUT or
+// from an array index.
+//
+// This is a hardcoded constant on purpose. The previous shape read
+// choices()[0], which happens to be 2 today and would silently become whatever
+// the server listed first if tds_options ever changed again. A rate that
+// decides how much money is withheld from a real payment should not move
+// because an array was reordered.
+export const TDS_PCT = 2;
+
+// The only two values this app may ever send. `true` means 2, anything else
+// means 0; there is no third answer and no path that takes a number.
+export const tdsPctFor = (deduct) => (deduct === true ? TDS_PCT : 0);
+
+// Whether to OFFER the checkbox at all. The server must be listing exactly the
+// rate we would send: if it ever offers some other set (say [0, 5]) the control
+// is hidden rather than ticking a box that posts a 2 the backend will refuse.
+// Hiding loses the ability to declare TDS; sending the wrong rate loses money.
+export const tdsOffered = (summary) => {
+  const choices = tdsChoices(summary);
+  if (choices.length === 0) return false;
+  if (choices.includes(TDS_PCT)) return true;
+  console.warn(
+    `[hdfcPay] pay/summary/ offers tds_options ${JSON.stringify(choices)}, ` +
+      `which does not include the ${TDS_PCT}% this app sends. Hiding the TDS ` +
+      `control rather than posting a rate the backend will refuse.`,
+  );
+  return false;
+};
+
+// The statutory note shown under the TDS checkbox on BOTH ways of paying.
+// Verbatim from the backend ticket: it cites a section of the Act and names
+// what the client has to do afterwards, so it is not ours to paraphrase.
+export const TDS_NOTE =
+  "TDS @ 2% under Section 393(1) [Table Sl. No. 6(i)] of the Income-tax Act, " +
+  "2025 (earlier Section 194C). Deduct TDS only on the amount excluding GST, " +
+  "and share the TDS certificate with our accounts team after filing.";
+
+// What the gateway actually accepts, said under the Pay button so a client who
+// wanted UPI is sent somewhere that takes it rather than to a declined card.
+//
+// TWO VERSIONS, because the second sentence names a tab that is not always
+// there. The bank transfer tab has its own independent switch, and with it off
+// the full note would tell a client to use a tab that does not exist on their
+// screen, which is worse than saying nothing about alternatives: they would go
+// looking for it. The caller picks by whether that tab is actually offered
+// (see onlineCardsNote), and the other_ways_note from pay/summary/ already
+// covers the alternatives in that case.
+export const ONLINE_CARDS_ONLY =
+  "Online payment accepts credit cards only.";
+
+export const ONLINE_CARDS_NOTE =
+  `${ONLINE_CARDS_ONLY} To pay by UPI, debit card or net banking, use the ` +
+  "Bank transfer / UPI tab.";
+
+export const onlineCardsNote = (bankTabOffered) =>
+  bankTabOffered ? ONLINE_CARDS_NOTE : ONLINE_CARDS_ONLY;
 
 // The note under the breakdown. The server's wording wins whenever it sent any;
 // ours is the default for a summary that carries an empty note.
@@ -272,21 +332,42 @@ export const payMethodsNote = (summary) => {
   return note || PAY_METHODS_NOTE;
 };
 
-// Method chips, display only. Tolerates a list of plain strings or of
-// { value, label } objects, because this is the one field on the summary whose
-// shape is not pinned down by the spec and nothing is computed from it.
+// ── Method names ────────────────────────────────────────────────────────────
+// How a payment rail is written on screen. An explicit map, because the
+// title-caser underneath gets the house spellings wrong in both directions:
+// "upi" would read "Upi" and "credit_card" would read "Credit Card" rather than
+// the "Credit card" the business writes. Anything outside the map still
+// title-cases, so a rail added server-side renders legibly instead of blank.
+const PAY_METHOD_LABELS = {
+  credit_card: "Credit card",
+  debit_card: "Debit card",
+  card: "Card",
+  upi: "UPI",
+  net_banking: "Net banking",
+  wallet: "Wallet",
+};
+
+export const payMethodLabel = (method) => {
+  const raw = String(method ?? "").trim();
+  if (!raw) return null;
+  const known = PAY_METHOD_LABELS[raw.toLowerCase()];
+  if (known) return known;
+  return raw
+    .replace(/[_-]+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+};
+
+// Method chips, display only. `methods` is a plain list of strings (backend
+// confirmed), today ["credit_card"]; the object tolerance is kept because it
+// costs nothing and this field is never computed from.
 export const payMethodLabels = (summary) =>
   (Array.isArray(summary?.methods) ? summary.methods : [])
     .map((m) =>
       m && typeof m === "object" ? (m.label ?? m.name ?? m.value ?? null) : m,
     )
-    .filter((m) => typeof m === "string" && m.trim())
-    .map((m) =>
-      m
-        .replace(/[_-]+/g, " ")
-        .trim()
-        .replace(/\b\w/g, (c) => c.toUpperCase()),
-    );
+    .map((m) => payMethodLabel(m))
+    .filter((m) => typeof m === "string" && m);
 
 // GET pay/quote/?amount=<n>&tds=<pct> → the breakdown the client approves
 // before paying: { amount_ex_gst, gst_pct, gst_amount, including_gst, tds_pct,
@@ -411,12 +492,14 @@ export const cancelPaymentLink = async (token) =>
 export const VALID_DAYS_DEFAULT = 7;
 export const VALID_DAYS_MAX = 30;
 
-// The TDS percentages the staff form offers. HARDCODED from the spec, which
-// states 0 / 1 / 2, and deliberately not inferred from anything: there is no
-// staff counterpart to pay/summary/ to read tds_options from, and a guessed
-// percentage here would be deducted from a real payment. If the backend ever
-// adds a slab this list is the one line to change.
-export const STAFF_TDS_OPTIONS = [0, 1, 2];
+// The TDS percentages the staff forms offer: none, or the single statutory
+// rate. 1% was removed in backend fd948f4 and is now a 400 everywhere, so
+// offering it would hand an operator a choice that can only fail.
+//
+// Hardcoded, like TDS_PCT above and for the same reason: there is no staff
+// counterpart to pay/summary/ to read tds_options from, and a guessed
+// percentage here is withheld from real money.
+export const STAFF_TDS_OPTIONS = [0, TDS_PCT];
 
 // Who issued a link. created_by_name is the NAME; created_by is a USER ID, so
 // it is only shown when the payload happens to carry a string there. Falling
@@ -1038,10 +1121,9 @@ export const readByMethod = (totals) => {
   return Object.entries(block)
     .map(([method, v]) => ({
       method,
-      label: String(method)
-        .replace(/[_-]+/g, " ")
-        .trim()
-        .replace(/\b\w/g, (c) => c.toUpperCase()),
+      // The same spellings the client's own method chips use, so "UPI" and
+      // "Credit card" read identically on both screens.
+      label: payMethodLabel(method) ?? method,
       count: payNum(v?.count) ?? 0,
       paid: payNum(v?.paid),
     }))

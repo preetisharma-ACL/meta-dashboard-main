@@ -6,7 +6,13 @@ import {
   Show,
 } from "solid-js";
 import { errorMessage } from "../../utils/apiErrors";
-import { fetchPayQuote, payNum, fmtRs } from "../../services/hdfcPay";
+import {
+  fetchPayQuote,
+  payNum,
+  fmtRs,
+  TDS_PCT,
+  TDS_NOTE,
+} from "../../services/hdfcPay";
 
 // ─── The live breakdown, shared by both ways of paying ────────────────────────
 // GET pay/quote/ is the SAME endpoint for the card/UPI gateway and for a bank
@@ -157,13 +163,21 @@ export function QuoteRow(props) {
   );
 }
 
-// The TDS control, shared the same way. Hidden entirely when the server offers
-// no percentages: a checkbox that reveals an empty choice is a dead control,
-// and inventing 1% / 2% would deduct an invented amount from real money.
+// The TDS control, shared by both ways of paying. A plain ON/OFF since backend
+// fd948f4: the statutory rate is 2% and the backend answers 400 to anything
+// else, so there is no rate to pick and the figure is shown as TEXT. The old
+// 1% / 2% buttons are gone rather than disabled, because a control whose only
+// other option is a guaranteed 400 is not a choice.
+//
+// Hidden entirely when the server is not offering that rate (see tdsOffered):
+// a checkbox that posts a percentage the backend refuses is worse than no
+// checkbox at all.
+//
+// Props: offered, checked, disabled, onToggle(bool)
 export function TdsPicker(props) {
   return (
-    <Show when={(props.choices ?? []).length > 0}>
-      <div class="rounded-xl border border-gray-200 dark:border-gray-700 px-4 py-3 space-y-3">
+    <Show when={props.offered}>
+      <div class="rounded-xl border border-gray-200 dark:border-gray-700 px-4 py-3 space-y-2">
         <label class="flex items-center gap-2.5 cursor-pointer">
           <input
             type="checkbox"
@@ -175,27 +189,17 @@ export function TdsPicker(props) {
           <span class="text-sm font-semibold text-gray-700 dark:text-gray-300">
             I will deduct TDS
           </span>
+          <span class="ml-auto text-xs font-bold tabular-nums text-blue-900 dark:text-blue-300">
+            TDS @ {TDS_PCT}%
+          </span>
         </label>
 
-        <Show when={props.checked}>
-          <div class="flex flex-wrap gap-2 pl-7">
-            {(props.choices ?? []).map((pct) => (
-              <button
-                type="button"
-                disabled={props.disabled}
-                onClick={() => props.onPick?.(pct)}
-                aria-pressed={props.value === pct}
-                class={`px-3.5 py-1.5 rounded-full border text-xs font-bold transition-colors ${
-                  props.value === pct
-                    ? "bg-blue-900 dark:bg-blue-700 text-white border-blue-900 dark:border-blue-700"
-                    : "border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-gray-400"
-                }`}
-              >
-                {pct}%
-              </button>
-            ))}
-          </div>
-        </Show>
+        {/* The statutory citation, verbatim from the backend ticket. Shown
+            whether or not the box is ticked: it is what a client reads to
+            decide whether to tick it. */}
+        <p class="pl-7 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">
+          {TDS_NOTE}
+        </p>
       </div>
     </Show>
   );

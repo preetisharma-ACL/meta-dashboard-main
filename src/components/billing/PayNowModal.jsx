@@ -5,7 +5,8 @@ import { createPayQuote, QuoteRows, TdsPicker } from "./payQuote";
 import BankTransferPanel from "./BankTransferPanel";
 import {
   startPayment,
-  tdsChoices,
+  tdsOffered,
+  tdsPctFor,
   payMethodsNote,
   payMethodLabels,
   isPayEnabled,
@@ -13,6 +14,7 @@ import {
   payNum,
   wholeRupees,
   fmtRs,
+  onlineCardsNote,
 } from "../../services/hdfcPay";
 
 // ─── Pay now (client) ─────────────────────────────────────────────────────────
@@ -58,7 +60,9 @@ export default function PayNowModal(props) {
 
   const minExGst = () => payNum(summary().min_ex_gst);
   const duesExGst = () => payNum(summary().dues_ex_gst);
-  const choices = createMemo(() => tdsChoices(summary()));
+  // Whether to OFFER the TDS box at all. The RATE is never read from here: it
+  // is the TDS_PCT constant, so no array ordering can change what is withheld.
+  const tdsAvailable = createMemo(() => tdsOffered(summary()));
 
   // ── Online tab state ──
   // Deliberately NOT shared with the transfer tab. The two have different
@@ -66,8 +70,10 @@ export default function PayNowModal(props) {
   // amount would carry a figure across that is valid on one tab and rejected on
   // the other, with the error appearing only after a submit.
   const [amount, setAmount] = createSignal("");
+  // ONE BOOLEAN, not a rate. Since backend fd948f4 the statutory rate is 2% and
+  // the backend 400s anything else, so the only state worth holding is whether
+  // the client is deducting it.
   const [deductTds, setDeductTds] = createSignal(false);
-  const [tdsPct, setTdsPct] = createSignal(null);
   const [starting, setStarting] = createSignal(false);
   const [startError, setStartError] = createSignal(null);
 
@@ -76,19 +82,14 @@ export default function PayNowModal(props) {
     const min = minExGst();
     setAmount(min === null ? "" : String(Math.ceil(min)));
     setDeductTds(false);
-    setTdsPct(null);
     setStartError(null);
     setStarting(false);
   });
 
-  // Ticking the box selects the LOWEST percentage the server offers; unticking
-  // it returns to 0. No invented value: with no options the box is not shown.
-  const toggleTds = (on) => {
-    setDeductTds(on);
-    setTdsPct(on ? (choices()[0] ?? null) : null);
-  };
-
-  const effectiveTds = () => (deductTds() ? (tdsPct() ?? 0) : 0);
+  // The percentage that will actually be sent. tdsPctFor() yields TDS_PCT or 0
+  // and nothing else, so there is no path by which a 1 reaches the server, and
+  // no array index that could quietly become one again.
+  const effectiveTds = () => tdsPctFor(deductTds());
   const amountValue = () => wholeRupees(amount());
 
   const quote = createPayQuote({
@@ -273,12 +274,10 @@ export default function PayNowModal(props) {
               </div>
 
               <TdsPicker
-                choices={choices()}
+                offered={tdsAvailable()}
                 checked={deductTds()}
-                value={tdsPct()}
                 disabled={starting()}
-                onToggle={toggleTds}
-                onPick={setTdsPct}
+                onToggle={setDeductTds}
               />
 
               <Show when={quote.error()}>
@@ -330,6 +329,18 @@ export default function PayNowModal(props) {
                     ? `Pay ${fmtRs(quote.payable(), 2)}`
                     : "Enter an amount to continue"}
               </button>
+
+              {/* What the gateway actually accepts, UNDER the button, where a
+                  client reads it just before leaving the app. The HDFC page
+                  itself refuses debit cards, so without this line the first
+                  anyone learns of it is a decline on somebody else's screen.
+
+                  It names the Bank transfer tab ONLY when that tab is actually
+                  on: its switch is independent, and pointing a client at a tab
+                  that is not on their screen sends them looking for it. */}
+              <p class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+                {onlineCardsNote(bankOn())}
+              </p>
             </div>
           </Show>
 
