@@ -15,6 +15,7 @@ import {
   LinkStatusBadge,
   OrderStatusBadge,
 } from "../../components/billing/payStatus";
+import { createPayQuote } from "../../components/billing/payQuote";
 import {
   fetchPayLinkClients,
   createPaymentLink,
@@ -31,6 +32,7 @@ import {
   fmtPayDate,
   fmtPayDateTime,
   isLinkOpen,
+  linkQuoteSentence,
   STAFF_TDS_OPTIONS,
   ORDER_STATUS_FILTERS,
   VALID_DAYS_DEFAULT,
@@ -38,7 +40,7 @@ import {
 } from "../../services/hdfcPay";
 
 // ─── Payment links — the staff screen ─────────────────────────────────────────
-// Issue a card / UPI payment link for one client, hand it over on WhatsApp, and
+// Issue a credit card payment link for one client, hand it over on WhatsApp, and
 // watch what comes back. Route-gated to admin / accounts / coordination /
 // campaign_manager; the BACKEND restricts a CM to their own clients and 403s
 // anything else, and that 403's own sentence is what this screen shows. There is
@@ -121,6 +123,28 @@ export default function PaymentLinks() {
     const n = wholeRupees(validDays());
     return n !== null && n <= VALID_DAYS_MAX ? n : null;
   };
+
+  // ── Live breakdown ────────────────────────────────────────────────────────
+  // The SAME GET pay/quote/ the client's own Pay modal uses, debounced 300 ms
+  // through the shared hook, so the figure an operator quotes down the phone
+  // and the figure the client is asked for cannot drift apart.
+  const quote = createPayQuote({
+    amount: amountValue,
+    tds: tdsPct,
+    active: () => amountValue() !== null,
+  });
+
+  // Gated on amountValue() as well as on the quote, NOT on the quote alone.
+  // Solid keeps a parked resource's previous value, so clearing the amount box
+  // would otherwise leave the last good breakdown sitting under an empty field,
+  // describing a number nobody can see. Same trap as the report screen's stale
+  // range.
+  const showQuote = () => amountValue() !== null && !!quote.shown();
+
+  // The sentence itself lives in the service (linkQuoteSentence) so it can be
+  // asserted: money formatting plus a sometimes-present clause is the shape
+  // that reads fine and is wrong.
+  const quoteLine = () => linkQuoteSentence(quote.shown());
 
   const canCreate = () =>
     !saving() &&
@@ -213,7 +237,7 @@ export default function PaymentLinks() {
             Payment links
           </h1>
           <p class="text-md text-[#54657E] dark:text-gray-400 max-w-2xl">
-            Issue a card or UPI link for one client, share it on WhatsApp, and
+            Issue a credit card payment link for one client, share it on WhatsApp, and
             follow what the bank sends back. Campaign managers can issue links
             only for their own clients.
           </p>
@@ -295,6 +319,35 @@ export default function PaymentLinks() {
                 "Whole rupees. GST is added by the server."
               )}
             </p>
+
+            {/* The live breakdown, straight off GET pay/quote/. Dimmed rather
+                than blanked while a newer one is in flight, so a typing
+                operator never watches the figure disappear and come back. */}
+            <Show when={showQuote()}>
+              <p
+                class={
+                  "mt-2 rounded-lg bg-[#F8FAFC] dark:bg-gray-900/40 px-3 py-2 " +
+                  "text-xs font-semibold leading-relaxed text-[#14233A] dark:text-gray-200 " +
+                  "tabular-nums transition-opacity " +
+                  (quote.stale() ? "opacity-50" : "opacity-100")
+                }
+                aria-live="polite"
+              >
+                {quoteLine()}
+              </p>
+            </Show>
+
+            {/* A quote that failed is INFORMATION, not a blocker: the link
+                endpoint takes any amount, so the Create button is deliberately
+                not gated on this. The server's own sentence is shown so an
+                operator can see why the preview is missing rather than
+                wondering whether the form is broken. */}
+            <Show when={amountValue() !== null && quote.error()}>
+              <p class="mt-2 text-xs font-medium text-[#B07A14] dark:text-yellow-300">
+                The preview is unavailable: {quote.error()} The link can still
+                be created.
+              </p>
+            </Show>
           </div>
 
           <div>

@@ -487,6 +487,25 @@ export const cancelPaymentLink = async (token) =>
     method: "POST",
   });
 
+// The one-line breakdown under the staff form's amount box, built from a
+// GET pay/quote/ payload. Pure and here rather than inline in the screen
+// because it is exactly the shape that reads fine and is wrong: money
+// formatting plus a clause that appears only sometimes.
+//
+// The TDS clause is included only when there is TDS to report, so a no-TDS
+// link does not read "minus TDS ₹0.00". Every figure is the server's and
+// nothing is derived; a null renders "—" through fmtRs rather than ₹0.
+export const linkQuoteSentence = (quote) => {
+  if (!quote) return null;
+  const tds = payNum(quote.tds_amount);
+  const tdsClause = tds !== null && tds > 0 ? `, minus TDS ${fmtRs(tds, 2)}` : "";
+  return (
+    `Client pays ${fmtRs(quote.amount_payable, 2)} ` +
+    `(${fmtRs(quote.amount_ex_gst, 2)} + GST ${fmtRs(quote.gst_amount, 2)}${tdsClause}). ` +
+    `Credited ${fmtRs(quote.credited, 2)}.`
+  );
+};
+
 // Valid-days bounds, mirrored from the spec so the form can pre-validate. The
 // server stays the authority and its message is what the operator is shown.
 export const VALID_DAYS_DEFAULT = 7;

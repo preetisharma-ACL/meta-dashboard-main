@@ -63,6 +63,7 @@ const {
   orderStatusLabel,
   orderStatusTone,
   isLinkOpen,
+  linkQuoteSentence,
   isLinkPayable,
   linkClosedMessage,
   linkCreatedBy,
@@ -358,6 +359,50 @@ check("an absolute url is refused",
 check("a bare path with no slash is refused",
   next("?next=dashboard") === "/dashboard");
 check("javascript: is refused", next("?next=javascript%3Aalert(1)") === "/dashboard");
+
+console.log("\nthe staff form's live breakdown sentence");
+{
+  const q = {
+    amount_ex_gst: "20000.00", gst_pct: "18.00", gst_amount: "3600.00",
+    including_gst: "23600.00", tds_pct: "0.00", tds_amount: "0.00",
+    amount_payable: "23600.00", credited: "23600.00",
+  };
+  const line = linkQuoteSentence(q);
+  check("it names what the client pays first",
+    line.startsWith("Client pays ₹23,600.00"), line);
+  check("it breaks that into ex GST plus GST",
+    line.includes("(₹20,000.00 + GST ₹3,600.00)"), line);
+  check("it ends with what is credited",
+    line.endsWith("Credited ₹23,600.00."), line);
+  check("NO TDS clause when there is no TDS", !line.includes("minus TDS"), line);
+  check("and no long dash", !/[–—]/.test(line), line);
+}
+{
+  const q = {
+    amount_ex_gst: "20000.00", gst_amount: "3600.00", including_gst: "23600.00",
+    tds_pct: "2.00", tds_amount: "400.00",
+    amount_payable: "23200.00", credited: "23600.00",
+  };
+  const line = linkQuoteSentence(q);
+  check("the TDS clause appears when TDS is deducted",
+    line.includes(", minus TDS ₹400.00"), line);
+  check("it sits inside the brackets, before the full stop",
+    line.includes("(₹20,000.00 + GST ₹3,600.00, minus TDS ₹400.00)."), line);
+  check("the payable figure is the post-TDS one",
+    line.startsWith("Client pays ₹23,200.00"), line);
+  // The two differ whenever TDS applies, and swapping them would tell an
+  // operator the client is credited less than they actually are.
+  check("credited stays the full incl-GST amount, not the payable one",
+    line.endsWith("Credited ₹23,600.00."), line);
+}
+check("no quote → no sentence", linkQuoteSentence(null) === null);
+check("a missing figure reads as a dash, never ₹0",
+  linkQuoteSentence({}) === "Client pays — (— + GST —). Credited —.",
+  linkQuoteSentence({}));
+check("a tds_amount of exactly 0 adds no clause",
+  !linkQuoteSentence({ tds_amount: "0.00" }).includes("minus TDS"));
+check("an absent tds_amount adds no clause",
+  !linkQuoteSentence({}).includes("minus TDS"));
 
 console.log("\nvalid-days bounds match the spec");
 check("default 7", VALID_DAYS_DEFAULT === 7);
