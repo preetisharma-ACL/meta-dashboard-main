@@ -628,24 +628,46 @@ export const fetchBankDetails = async () => {
 
 export const isBankEnabled = (details) => details?.enabled === true;
 
-// The QR's absolute address.
+// ── File URLs from the backend (qr_url, proof_url) ──────────────────────────
+// These are paths relative to the API HOST, and they CARRY THEIR OWN /api
+// SEGMENT: pay/bank-details/ sends "/api/billing/pay/bank-details/qr/?v=...".
 //
-// qr_url is a path under the API ROOT, not under the site. Confirmed on prod:
-// GET https://…/api/billing/pay/bank-details/qr/ answers 200 image/jpeg with
-// `Cache-Control: public, max-age=300` and NO Authorization header, while
-// /media/ and /api/media/ both 404. So BASE_URL (which already ends in /api) is
-// the right prefix and the <img> needs no credentials.
+// So they must be joined to the ORIGIN, not to BASE_URL. BASE_URL already ends
+// in /api, and prefixing with it produced "/api/api/billing/..." which the
+// server 404s. That was the broken QR on both the client tab and the staff
+// preview; confirmed against prod both ways (the single-/api URL answers 200
+// image/jpeg, the doubled one 404s).
 //
-// An absolute qr_url is passed through untouched rather than prefixed, which is
-// what stops a later backend change to a CDN address from producing
-// ".../api/https://cdn...".
-export const bankQrSrc = (details) => {
-  if (details?.has_qr !== true) return null;
-  const path = details?.qr_url;
+// new URL() does the join: a path resolves against the origin, and an absolute
+// URL passes through untouched, so a later move to a CDN address keeps working
+// without producing "https://host/https://cdn/...".
+const API_ORIGIN = (() => {
+  try {
+    return new URL(BASE_URL).origin;
+  } catch {
+    return "";
+  }
+})();
+
+export const apiFileUrl = (path) => {
   if (!path) return null;
-  if (/^https?:\/\//i.test(path)) return path;
-  return `${BASE_URL}${path.startsWith("/") ? "" : "/"}${path}`;
+  try {
+    return new URL(path, API_ORIGIN).href;
+  } catch {
+    return null;
+  }
 };
+
+// The QR's absolute address, joined to the API ORIGIN (see apiFileUrl). The
+// image is PUBLIC: prod serves it with `Cache-Control: public, max-age=300` and
+// no Authorization header, so a plain <img src> is correct and a blob fetch
+// would be pointless work.
+//
+// The ?v= cache-buster the backend appends rides along untouched, which is what
+// makes a re-uploaded QR appear immediately instead of sitting behind that
+// 5-minute cache.
+export const bankQrSrc = (details) =>
+  details?.has_qr === true ? apiFileUrl(details?.qr_url) : null;
 
 // The minimum a bank transfer may be reported for, ex GST. HARDCODED from the
 // spec at 50,000 and deliberately NOT read from pay/summary/.min_ex_gst, which
@@ -875,11 +897,14 @@ export const rejectBankTransfer = async (id, reason) => {
 // cannot go in an <img src> or a plain link: it is fetched with the header,
 // turned into a blob URL and opened. The caller revokes the URL.
 export const fetchProofBlobUrl = async (row) => {
-  const path = row?.proof_url;
-  if (!path) return null;
-  const url = /^https?:\/\//i.test(path)
-    ? path
-    : `${BASE_URL}${path.startsWith("/") ? "" : "/"}${path}`;
+  // Joined through apiFileUrl for the same reason the QR is: proof_url is a
+  // path under the API HOST that carries its own /api segment, so prefixing it
+  // with BASE_URL produced "/api/api/..." and a 404. The QR is what got
+  // reported, but this is the identical field shape from the identical
+  // serializer and would have failed the same way the first time anyone
+  // clicked "View proof".
+  const url = apiFileUrl(row?.proof_url);
+  if (!url) return null;
 
   const auth = JSON.parse(localStorage.getItem("auth") || "null");
   const res = await fetch(url, {

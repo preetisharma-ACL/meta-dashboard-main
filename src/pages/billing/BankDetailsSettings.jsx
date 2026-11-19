@@ -1,6 +1,7 @@
 import { createSignal, createResource, createEffect, Show } from "solid-js";
 import { A } from "@solidjs/router";
 import { showToast } from "../../components/common/SuccessToast";
+import QrViewer from "../../components/billing/QrViewer";
 import { errorMessage, collectFieldMessages } from "../../utils/apiErrors";
 import {
   fetchBankDetails,
@@ -350,13 +351,13 @@ export default function BankDetailsSettings() {
                 <p class="text-xs font-bold uppercase tracking-wider text-[#8593A8] dark:text-gray-400 mb-2">
                   Saved QR
                 </p>
-                {/* object-contain and sized by height: the uploaded image is a
-                    portrait standee, and forcing it square crops the UPI id
-                    printed under the code. */}
-                <img
+                {/* Same click-to-enlarge the client gets, so whoever uploads
+                    the QR can check at full size that it is the right one and
+                    actually scannable before clients see it. */}
+                <QrViewer
                   src={bankQrSrc(current())}
                   alt="The UPI QR clients see"
-                  class="w-full max-h-72 object-contain rounded-lg border border-[#E2E8F1] dark:border-gray-700 bg-white"
+                  thumbClass="w-full max-h-72 object-contain rounded-lg border border-[#E2E8F1] dark:border-gray-700 bg-white"
                 />
               </div>
             </Show>

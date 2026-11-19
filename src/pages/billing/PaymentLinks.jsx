@@ -702,7 +702,7 @@ export default function PaymentLinks() {
                 Online payments
               </h2>
               <p class="text-xs text-[#8593A8] dark:text-gray-400">
-                Read only. Every card or UPI payment this client has started,
+                Read only. Every online credit card payment this client has started,
                 whether from a link or from their own billing page.
               </p>
             </div>

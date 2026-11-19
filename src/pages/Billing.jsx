@@ -1477,7 +1477,7 @@ export default function Billing() {
   // ── HDFC online payments ──────────────────────────────────────────────────
   // Card / UPI, through the gateway. CLIENT LOGIN ONLY: pay/summary/ is the
   // client's own dues and an admin previewing this page must not be handed a
-  // Pay now button that charges nobody.
+  // Add funds button that charges nobody.
   //
   // `enabled` is the master switch and it is the SERVER's. Nothing about online
   // payment renders — not the button, not the history table — until the summary
@@ -1970,7 +1970,7 @@ export default function Billing() {
               </For>
             </nav>
 
-            {/* Pay now — client login only, and only once the server says at
+            {/* Add funds — client login only, and only once the server says at
                 least one way of paying is on. EITHER switch is enough: a client
                 whose gateway is off can still be offered the bank transfer tab.
                 Nothing is rendered otherwise: no disabled button, no
@@ -1994,7 +1994,7 @@ export default function Billing() {
                   <rect x="2" y="5" width="20" height="14" rx="2" />
                   <path d="M2 10h20" />
                 </svg>
-                Pay now
+                Add funds
               </button>
             </Show>
           </div>

@@ -1,6 +1,7 @@
 import { createSignal, createMemo, createEffect, For, Show } from "solid-js";
 import { errorMessage, collectFieldMessages } from "../../utils/apiErrors";
 import { createPayQuote, QuoteRows, TdsPicker } from "./payQuote";
+import QrViewer from "./QrViewer";
 import {
   bankQrSrc,
   submitBankTransfer,
@@ -251,9 +252,9 @@ export default function BankTransferPanel(props) {
         </div>
 
         {/* ════════ QR ════════
-            The uploaded image is a portrait standee, not a bare square QR, so
-            it is sized by HEIGHT with object-contain. Forcing it square would
-            crop the UPI id printed under the code.
+            Click to enlarge, because the uploaded image is a portrait standee
+            and at thumbnail size the actual code is too small to scan off a
+            monitor. Sizing and the popup live in QrViewer.
             No auth header: this path is public (verified on prod), so a plain
             <img> is correct and a blob fetch would be pointless work. */}
         <Show when={qrSrc()}>
@@ -261,24 +262,10 @@ export default function BankTransferPanel(props) {
             <h4 class="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-3">
               Or scan to pay by UPI
             </h4>
-            <img
+            <QrViewer
               src={qrSrc()}
               alt="UPI QR code for AAJneeti Connect Ltd"
-              loading="lazy"
-              class="mx-auto max-h-72 w-auto object-contain rounded-lg border border-gray-100 dark:border-gray-700 bg-white"
             />
-            <a
-              href={qrSrc()}
-              download="aajneeti-upi-qr"
-              target="_blank"
-              rel="noreferrer"
-              class="mt-3 inline-flex items-center gap-2 px-3.5 py-2 rounded-lg border border-gray-200 dark:border-gray-600 text-xs font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-            >
-              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" />
-              </svg>
-              Download QR
-            </a>
           </div>
         </Show>
 

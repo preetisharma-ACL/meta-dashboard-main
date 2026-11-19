@@ -78,6 +78,7 @@ const {
   // ── bank transfer / UPI ──
   isBankEnabled,
   bankQrSrc,
+  apiFileUrl,
   normaliseUtr,
   utrError,
   proofError,
@@ -416,14 +417,24 @@ check("enabled false", isBankEnabled({ enabled: false }) === false);
 check("a missing flag keeps it hidden", isBankEnabled({}) === false);
 check("null payload", isBankEnabled(null) === false);
 
-console.log("\nthe QR src is built off the API root (verified on prod)");
-check("relative path is prefixed with BASE_URL",
-  bankQrSrc({ has_qr: true, qr_url: "/billing/pay/bank-details/qr/" }) ===
-    "https://metadashboard.aajneeticonnectltd.com/api/billing/pay/bank-details/qr/",
-  bankQrSrc({ has_qr: true, qr_url: "/billing/pay/bank-details/qr/" }));
-check("a path without a leading slash still joins correctly",
-  bankQrSrc({ has_qr: true, qr_url: "billing/pay/bank-details/qr/" }) ===
-    "https://metadashboard.aajneeticonnectltd.com/api/billing/pay/bank-details/qr/");
+// This is the bug that broke the QR on both screens. qr_url and proof_url are
+// paths under the API HOST that CARRY THEIR OWN /api segment, so they join to
+// the ORIGIN. Prefixing with BASE_URL (which ends in /api) produced
+// "/api/api/billing/..." which prod 404s; the single-/api URL answers 200
+// image/jpeg. Both verified against prod on 19 Nov 2026.
+const HOST = "https://metadashboard.aajneeticonnectltd.com";
+console.log("\nserver file paths join to the API ORIGIN, not to BASE_URL");
+check("a qr_url carrying /api joins WITHOUT doubling it",
+  bankQrSrc({ has_qr: true, qr_url: "/api/billing/pay/bank-details/qr/" }) ===
+    `${HOST}/api/billing/pay/bank-details/qr/`,
+  bankQrSrc({ has_qr: true, qr_url: "/api/billing/pay/bank-details/qr/" }));
+check("and the result contains no /api/api",
+  !bankQrSrc({ has_qr: true, qr_url: "/api/billing/pay/bank-details/qr/" })
+    .includes("/api/api"));
+check("the ?v= cache-buster survives, so a re-upload shows at once",
+  bankQrSrc({ has_qr: true, qr_url: "/api/billing/pay/bank-details/qr/?v=abc123" }) ===
+    `${HOST}/api/billing/pay/bank-details/qr/?v=abc123`,
+  bankQrSrc({ has_qr: true, qr_url: "/api/billing/pay/bank-details/qr/?v=abc123" }));
 check("an absolute url is passed through, NOT prefixed",
   bankQrSrc({ has_qr: true, qr_url: "https://cdn.test/qr.png" }) ===
     "https://cdn.test/qr.png");
@@ -431,6 +442,12 @@ check("has_qr false → nothing to show",
   bankQrSrc({ has_qr: false, qr_url: "/x/" }) === null);
 check("has_qr true but no url → nothing to show",
   bankQrSrc({ has_qr: true }) === null);
+check("apiFileUrl handles proof_url the same way",
+  apiFileUrl("/api/billing/pay/bank-transfers/7/proof/") ===
+    `${HOST}/api/billing/pay/bank-transfers/7/proof/`,
+  apiFileUrl("/api/billing/pay/bank-transfers/7/proof/"));
+check("a null path is null, not the bare origin",
+  apiFileUrl(null) === null && apiFileUrl("") === null);
 
 console.log("\nthe bank minimum is the spec's 50,000, not the online one");
 check("50000", BANK_MIN_EX_GST === 50000);

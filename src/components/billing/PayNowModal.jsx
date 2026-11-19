@@ -17,7 +17,7 @@ import {
   onlineCardsNote,
 } from "../../services/hdfcPay";
 
-// ─── Pay now (client) ─────────────────────────────────────────────────────────
+// ─── Add funds (client) ───────────────────────────────────────────────────────
 // Two ways to pay, one dialog:
 //   ONLINE   card / UPI through the HDFC gateway, offered while
 //            GET pay/summary/ returns enabled: true
@@ -158,7 +158,7 @@ export default function PayNowModal(props) {
         ref={dialogBox}
         role="dialog"
         aria-modal="true"
-        aria-label="Pay now"
+        aria-label="Add funds"
         class={`w-full max-w-md max-h-[92vh] overflow-y-auto rounded-2xl border border-gray-200/80 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl transition-all duration-200 ${
           props.open ? "scale-100 translate-y-0" : "scale-95 translate-y-4"
         }`}
@@ -168,7 +168,7 @@ export default function PayNowModal(props) {
           <div class="flex items-start justify-between gap-3">
             <div>
               <h3 class="text-lg font-bold text-gray-900 dark:text-gray-100">
-                Pay now
+                Add funds
               </h3>
               <p class="mt-0.5 text-sm text-gray-600 dark:text-gray-400">
                 {showing() === "online"
