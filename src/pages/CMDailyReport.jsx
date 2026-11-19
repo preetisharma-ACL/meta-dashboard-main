@@ -277,7 +277,7 @@ export default function CMDailyReport() {
   // the credit for replaced leads — which is what /daily-reports loads onto
   // too. Both pages used to load onto premium_spend, and both were charging
   // service charge and GST on leads the client had already been credited for.
-  const { rowOf: rowCells, netTotalOf } = makeLedgerCells({
+  const { rowOf: rowCells, netTotalOf, billedTotalOf } = makeLedgerCells({
     hasRaw: () => true,
     clientType,
     scPct,
@@ -339,6 +339,24 @@ export default function CMDailyReport() {
       ? `Net + S.C + ${GST_PCT}% GST`
       : `Net + ${pct}% S.C + ${GST_PCT}% GST`;
   };
+
+  // ── The CPL money block ───────────────────────────────────────────────────
+  // Everything else in the money half of this table is wrapped in !iscpl(),
+  // because a CPL contract has no ad-spend or service-charge column to show.
+  // What it DOES have is a billed figure (billable leads x the fixed CPL) and
+  // GST on it, and until now neither appeared here at all, while the client's
+  // own /daily-reports printed the billed figure. Two screens, one client, one
+  // period, disagreeing about whether a column exists is the thing this page
+  // shares its cell reader to prevent, so the three columns are shown here in
+  // the same order and off the same keys.
+  //
+  // Gated on the figure actually being on the payload, the way every other
+  // column here is: a stale backend that sends no billed_amount gets no block
+  // rather than three columns of gaps.
+  const showCplBilled = () =>
+    iscpl() && reportRows().some((r) => r.billedAmount != null);
+  const gstColLabel = () => `GST ${GST_PCT}%`;
+  const gstInclColLabel = () => "Billed incl. GST";
 
   // ── Quick-pick presets (same semantics as the CM dashboard pills) ─────────
   const setPreset = (value) => {
@@ -525,10 +543,17 @@ export default function CMDailyReport() {
     const wires = ledger().rows.map((r) => r.wire);
     const sc = netTotalOf(wires, "netSpentwithSc");
     const gst = netTotalOf(wires, "netSpentwithScGst");
+    // The CPL GST pair follows the same rule as the net pair above it: the
+    // footer is the sum of the rows, not the rate charged once on the period
+    // total, so the column adds up to the figure printed under it.
+    const bGst = billedTotalOf(wires, "billedGst");
+    const bIncl = billedTotalOf(wires, "billedInclGst");
     return {
       ...t,
       netSpentwithSc: sc ?? t.netSpentwithSc,
       netSpentwithScGst: gst ?? t.netSpentwithScGst,
+      billedGst: bGst ?? t.billedGst,
+      billedInclGst: bIncl ?? t.billedInclGst,
     };
   });
 
@@ -599,6 +624,8 @@ export default function CMDailyReport() {
           showNet() ? netInclLabel() : billedInclLabel(),
         );
     }
+    if (showCplBilled())
+      cols.push("Client Billed", gstColLabel(), gstInclColLabel());
     return cols;
   };
   // Rows and the TOTAL row are the same shape, so ONE cell list serves both —
@@ -626,6 +653,8 @@ export default function CMDailyReport() {
           exp(showNet() ? r.netSpentwithScGst : r.spentwithservice_gst),
         );
     }
+    if (showCplBilled())
+      base.push(exp(r.billedAmount), exp(r.billedGst), exp(r.billedInclGst));
     return base;
   };
   const exportRow = (r) => [dateCellLabel(), r.projectName, ...exportCells(r)];
@@ -1186,6 +1215,12 @@ export default function CMDailyReport() {
                     </th>
                   </Show>
                 </Show>
+                {/* CPL: billed, the GST on it, and the two added up */}
+                <Show when={showCplBilled()}>
+                  <th class="p-3">Client Billed</th>
+                  <th class="p-3">{gstColLabel()}</th>
+                  <th class="p-3">{gstInclColLabel()}</th>
+                </Show>
               </tr>
             </thead>
 
@@ -1310,6 +1345,17 @@ export default function CMDailyReport() {
                           </td>
                         </Show>
                       </Show>
+                      <Show when={showCplBilled()}>
+                        <td class="p-3 font-semibold text-green-800 dark:text-green-300">
+                          {money(row.billedAmount)}
+                        </td>
+                        <td class="p-3 text-green-700 dark:text-green-400">
+                          {money(row.billedGst)}
+                        </td>
+                        <td class="p-3 font-semibold text-green-900 dark:text-green-400">
+                          {money(row.billedInclGst)}
+                        </td>
+                      </Show>
                     </tr>
                   )}
                 </For>
@@ -1391,6 +1437,17 @@ export default function CMDailyReport() {
                       </td>
                     </Show>
                   </Show>
+                  <Show when={showCplBilled()}>
+                    <td class="p-3 text-green-800 dark:text-green-300 font-bold">
+                      {money(totals().billedAmount)}
+                    </td>
+                    <td class="p-3 text-green-700 dark:text-green-300 font-bold">
+                      {money(totals().billedGst)}
+                    </td>
+                    <td class="p-3 text-green-900 dark:text-green-400 font-bold">
+                      {money(totals().billedInclGst)}
+                    </td>
+                  </Show>
                 </tr>
               </tfoot>
             </Show>
@@ -1430,11 +1487,16 @@ export default function CMDailyReport() {
         <Show when={reportRows().length > 0}>
           {/* Normal: CPL clients are billed per lead and have no S.C rate. */}
           <Show when={scState() === "n/a"}>
+            {/* The same sentence /daily-reports gives the client, so a CM
+                explaining the GST columns is reading off their page. Ad spend
+                still has no column on a CPL contract; the billed figure and
+                its GST do. */}
             <p class="mt-3 text-xs text-gray-400 dark:text-gray-500 leading-relaxed">
-              This client is billed per lead (CPL), so no service charge applies
-              — the rate is set only for hybrid and retainer clients at
-              onboarding. The spend and billed columns don't apply to a CPL
-              contract and aren't shown.
+              Billable leads = leads generated minus replaced.{" "}
+              <b class="font-semibold">Billed</b> = billable leads x the
+              client's fixed CPL. GST @ 18% is added on the billed amount. No
+              service charge applies to a CPL contract, so there is no spend
+              column.
             </p>
           </Show>
 
@@ -1723,6 +1785,17 @@ export default function CMDailyReport() {
                         </th>
                       </Show>
                     </Show>
+                    <Show when={showCplBilled()}>
+                      <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
+                        Client Billed
+                      </th>
+                      <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
+                        {gstColLabel()}
+                      </th>
+                      <th class="px-4 py-3 text-center text-white text-md uppercase font-semibold border-r border-white/10">
+                        {gstInclColLabel()}
+                      </th>
+                    </Show>
                   </tr>
                 </thead>
                 <tbody>
@@ -1811,6 +1884,17 @@ export default function CMDailyReport() {
                             </td>
                           </Show>
                         </Show>
+                        <Show when={showCplBilled()}>
+                          <td class="px-4 py-3 text-center text-[#1a1a1a] font-semibold text-md border-r border-[rgba(123,28,28,0.1)]">
+                            {money(row.billedAmount)}
+                          </td>
+                          <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
+                            {money(row.billedGst)}
+                          </td>
+                          <td class="px-4 py-3 text-center text-[#1a1a1a] font-semibold text-md border-r border-[rgba(123,28,28,0.1)]">
+                            {money(row.billedInclGst)}
+                          </td>
+                        </Show>
                       </tr>
                     )}
                   </For>
@@ -1889,10 +1973,33 @@ export default function CMDailyReport() {
                         </td>
                       </Show>
                     </Show>
+                    <Show when={showCplBilled()}>
+                      <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
+                        {money(totals().billedAmount)}
+                      </td>
+                      <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
+                        {money(totals().billedGst)}
+                      </td>
+                      <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
+                        {money(totals().billedInclGst)}
+                      </td>
+                    </Show>
                   </tr>
                 </tfoot>
               </table>
             </div>
+
+            {/* CPL only: what the three money columns are, in the copy the
+                client reads on their own. */}
+            <Show when={showCplBilled()}>
+              <div class="bg-white px-8 pt-4 pb-1">
+                <p class="text-[#555] text-[11.5px] leading-relaxed">
+                  Billable leads = leads generated minus replaced.{" "}
+                  <b class="font-semibold">Billed</b> = billable leads x the
+                  client's fixed CPL. GST @ 18% is added on the billed amount.
+                </p>
+              </div>
+            </Show>
 
             {/* FOOTER */}
             <div class="bg-white border-t border-[rgba(123,28,28,0.15)] px-8 py-3 flex items-center justify-between">
@@ -2042,6 +2149,17 @@ export default function CMDailyReport() {
                           </th>
                         </Show>
                       </Show>
+                      <Show when={showCplBilled()}>
+                        <th style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
+                          Client Billed
+                        </th>
+                        <th style="padding:11px 14px;text-align:center;color:#f5d9a0;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
+                          {gstColLabel()}
+                        </th>
+                        <th style="padding:11px 14px;text-align:center;color:#f5d9a0;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;">
+                          {gstInclColLabel()}
+                        </th>
+                      </Show>
                     </tr>
                   </thead>
                   <tbody>
@@ -2126,6 +2244,17 @@ export default function CMDailyReport() {
                             </td>
                           </Show>
                         </Show>
+                        <Show when={showCplBilled()}>
+                          <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:600;color:#1a1a1a;border-right:1px solid rgba(123,28,28,0.1);">
+                            {money(row.billedAmount)}
+                          </td>
+                          <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:600;color:#6b4c10;background:rgba(201,168,76,0.10);border-right:1px solid rgba(123,28,28,0.1);">
+                            {money(row.billedGst)}
+                          </td>
+                          <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:600;color:#6b4c10;background:rgba(201,168,76,0.10);">
+                            {money(row.billedInclGst)}
+                          </td>
+                        </Show>
                       </tr>
                     ))}
                     <tr style="background:#7B1C1C;">
@@ -2201,11 +2330,30 @@ export default function CMDailyReport() {
                           </td>
                         </Show>
                       </Show>
+                      <Show when={showCplBilled()}>
+                        <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
+                          {money(totals().billedAmount)}
+                        </td>
+                        <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
+                          {money(totals().billedGst)}
+                        </td>
+                        <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;">
+                          {money(totals().billedInclGst)}
+                        </td>
+                      </Show>
                     </tr>
                   </tbody>
                 </table>
               </div>
             </div>
+
+            <Show when={showCplBilled()}>
+              <p style="margin:14px 36px 0;color:#555;font-size:12px;font-family:Arial;line-height:1.6;">
+                Billable leads = leads generated minus replaced. <b>Billed</b> =
+                billable leads x the client's fixed CPL. GST @ 18% is added on
+                the billed amount.
+              </p>
+            </Show>
 
             {/* FOOTER */}
             <div style="margin:20px 36px 28px;padding-top:12px;border-top:1px solid rgba(123,28,28,0.2);display:flex;align-items:center;justify-content:space-between;">

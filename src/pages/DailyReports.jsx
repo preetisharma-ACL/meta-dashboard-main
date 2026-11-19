@@ -462,6 +462,22 @@ export default function DailyReports() {
     showReplacement() &&
     ledger().rows.some((r) => r.billedAmount != null);
 
+  // ── GST on the billed amount, for a CPL client ────────────────────────────
+  // A CPL client is billed per lead and pays no service charge, so the S.C /
+  // GST pair further right is hidden for them and the tax on their report had
+  // nowhere to appear. These two columns put it beside the figure it is
+  // charged on: Billed, GST at the flat rate, Billed incl. GST, which add
+  // across. They ride with the Billed column itself rather than taking a
+  // toggle of their own, because tax that can be switched off beside the
+  // amount it applies to is a report two people can read differently.
+  //
+  // Hybrid and retainer are untouched: their GST is already in the rightmost
+  // column, on top of the service charge, and a second GST figure would be the
+  // same money twice under two headings.
+  const showBilledGst = () => iscplReport() && showBilledAmount();
+  const gstColLabel = () => `GST ${GST_PCT}%`;
+  const gstInclColLabel = () => "Billed incl. GST";
+
   // ── The hybrid net view ───────────────────────────────────────────────────
   // A hybrid client's ad spend is billed IN FULL and the leads that were
   // replaced come back as Replaced Credit Notes, which pay down their next
@@ -545,7 +561,7 @@ export default function DailyReports() {
   // reader in services/ledgerCells: one named payload key per column, no
   // division, "—" for anything the payload didn't send. The three inputs below
   // are the only things about this table that are page-specific.
-  const { rowOf, netTotalOf } = makeLedgerCells({
+  const { rowOf, netTotalOf, billedTotalOf } = makeLedgerCells({
     // A client's own login never receives raw agency cost.
     hasRaw: hasRawSpend,
     clientType: reportClientType,
@@ -648,10 +664,17 @@ export default function DailyReports() {
     const wires = ledger().rows.map((r) => r.wire);
     const sc = netTotalOf(wires, "netSpentwithSc");
     const gst = netTotalOf(wires, "netSpentwithScGst");
+    // The CPL GST pair follows the same rule as the net pair above it: the
+    // footer is the sum of the rows, not the rate charged once on the period
+    // total, so the column adds up to the figure printed under it.
+    const bGst = billedTotalOf(wires, "billedGst");
+    const bIncl = billedTotalOf(wires, "billedInclGst");
     return {
       ...t,
       netSpentwithSc: sc ?? t.netSpentwithSc,
       netSpentwithScGst: gst ?? t.netSpentwithScGst,
+      billedGst: bGst ?? t.billedGst,
+      billedInclGst: bIncl ?? t.billedInclGst,
     };
   });
 
@@ -753,6 +776,7 @@ export default function DailyReports() {
     if (showNet()) w += 110 + 150 + 140; // Net CPL + Replaced credit + Net cost
     if (showBilled()) w += 140;
     if (showBilledAmount()) w += 140;
+    if (showBilledGst()) w += 120 + 160; // GST + Billed incl. GST
     if (showSc()) w += 175;
     if (showGst()) w += 215;
     return Math.max(900, w + 72); // + the template's 36px side padding
@@ -826,6 +850,7 @@ export default function DailyReports() {
     if (showBilled()) cols.push("Amount Spent");
     if (showNet()) cols.push("Replaced credit", "Net cost");
     if (showBilledAmount()) cols.push("Billed");
+    if (showBilledGst()) cols.push(gstColLabel(), gstInclColLabel());
     if (showSc()) cols.push(scColLabel());
     if (showGst()) cols.push(finalColLabel());
     return cols;
@@ -849,6 +874,7 @@ export default function DailyReports() {
     // columns add up to the net column beside them.
     if (showNet()) base.push(expCredit(r.replacedCredit), exp(r.netCost));
     if (showBilledAmount()) base.push(exp(r.billedAmount));
+    if (showBilledGst()) base.push(exp(r.billedGst), exp(r.billedInclGst));
     if (showSc())
       base.push(exp(showNet() ? r.netSpentwithSc : r.spentwithServiceCharge));
     if (showGst())
@@ -1323,6 +1349,11 @@ export default function DailyReports() {
                     Billed
                   </th>
                 </Show>
+                {/* CPL: GST on the billed amount, then the two added up */}
+                <Show when={showBilledGst()}>
+                  <th class="p-3">{gstColLabel()}</th>
+                  <th class="p-3">{gstInclColLabel()}</th>
+                </Show>
                 {/* S.C + GST only when the client has a service charge */}
                 <Show when={showSc()}>
                   <th class="p-3">{scColLabel()}</th>
@@ -1472,6 +1503,14 @@ export default function DailyReports() {
                             {money(row.billedAmount)}
                           </td>
                         </Show>
+                        <Show when={showBilledGst()}>
+                          <td class="p-3 text-green-700 dark:text-green-400">
+                            {money(row.billedGst)}
+                          </td>
+                          <td class="p-3 font-semibold text-green-900 dark:text-green-400">
+                            {money(row.billedInclGst)}
+                          </td>
+                        </Show>
                         <Show when={showSc()}>
                           <td class="p-3 text-green-700 dark:text-green-400">
                             {money(
@@ -1560,6 +1599,14 @@ export default function DailyReports() {
                         {money(totals().billedAmount)}
                       </td>
                     </Show>
+                    <Show when={showBilledGst()}>
+                      <td class="p-3 text-green-700 dark:text-green-300 font-bold">
+                        {money(totals().billedGst)}
+                      </td>
+                      <td class="p-3 text-green-900 dark:text-green-400 font-bold">
+                        {money(totals().billedInclGst)}
+                      </td>
+                    </Show>
                     <Show when={showSc()}>
                       <td class="p-3 text-green-700 dark:text-green-300 font-bold">
                         {money(
@@ -1629,11 +1676,26 @@ export default function DailyReports() {
           <Show
             when={showNet()}
             fallback={
-              <p class="mt-3 text-xs text-gray-400 dark:text-gray-500 leading-relaxed">
-                Billable leads = generated − replaced. CPL and utilisation stay
-                on true ad spend; <b class="font-semibold">Billed</b> is the
-                amount charged after the replacement credit.
-              </p>
+              /* CPL gets its own sentence, naming the three money columns in
+                 the order they are read. Everyone else (a retainer with a
+                 replacement on the period) keeps the note they had. */
+              <Show
+                when={iscplReport()}
+                fallback={
+                  <p class="mt-3 text-xs text-gray-400 dark:text-gray-500 leading-relaxed">
+                    Billable leads = generated − replaced. CPL and utilisation
+                    stay on true ad spend;{" "}
+                    <b class="font-semibold">Billed</b> is the amount charged
+                    after the replacement credit.
+                  </p>
+                }
+              >
+                <p class="mt-3 text-xs text-gray-400 dark:text-gray-500 leading-relaxed">
+                  Billable leads = leads generated minus replaced.{" "}
+                  <b class="font-semibold">Billed</b> = billable leads x your
+                  fixed CPL. GST @ 18% is added on the billed amount.
+                </p>
+              </Show>
             }
           >
             <p class="mt-3 text-xs text-gray-600 dark:text-gray-300 leading-relaxed">
@@ -1950,6 +2012,14 @@ export default function DailyReports() {
                       Billed
                     </th>
                   </Show>
+                  <Show when={showBilledGst()}>
+                    <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
+                      {gstColLabel()}
+                    </th>
+                    <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
+                      {gstInclColLabel()}
+                    </th>
+                  </Show>
                   <Show when={showSc()}>
                     <th class="px-4 py-3 text-center text-white text-md  uppercase font-semibold border-r border-white/10">
                       {scColLabel()}
@@ -2040,6 +2110,14 @@ export default function DailyReports() {
                           {money(row.billedAmount)}
                         </td>
                       </Show>
+                      <Show when={showBilledGst()}>
+                        <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
+                          {money(row.billedGst)}
+                        </td>
+                        <td class="px-4 py-3 text-center text-[#1a1a1a] font-semibold text-md border-r border-[rgba(123,28,28,0.1)]">
+                          {money(row.billedInclGst)}
+                        </td>
+                      </Show>
                       <Show when={showSc()}>
                         <td class="px-4 py-3 text-center text-[#333] font-medium text-md border-r border-[rgba(123,28,28,0.1)]">
                           {money(showNet() ? row.netSpentwithSc : row.spentwithServiceCharge)}
@@ -2117,6 +2195,14 @@ export default function DailyReports() {
                       {money(totals().billedAmount)}
                     </td>
                   </Show>
+                  <Show when={showBilledGst()}>
+                    <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
+                      {money(totals().billedGst)}
+                    </td>
+                    <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
+                      {money(totals().billedInclGst)}
+                    </td>
+                  </Show>
                   <Show when={showSc()}>
                     <td class="px-4 py-3 text-center text-white font-bold text-md border-r border-white/10">
                       {money(showNet() ? totals().netSpentwithSc : totals().spentwithServiceCharge)}
@@ -2142,6 +2228,19 @@ export default function DailyReports() {
                 <b class="font-semibold">Replaced Credit Notes</b>, which pay
                 your next charges. <b class="font-semibold">Net cost</b> is what
                 the period cost you after that credit.
+              </p>
+            </div>
+          </Show>
+
+          {/* CPL only, and for the same reason the hybrid note is here: this is
+              the copy the client reads on their own, and the GST columns need
+              to say what they are charged on. */}
+          <Show when={showBilledGst()}>
+            <div class="bg-white px-8 pt-4 pb-1">
+              <p class="text-[#555] text-[11.5px] leading-relaxed">
+                Billable leads = leads generated minus replaced.{" "}
+                <b class="font-semibold">Billed</b> = billable leads x your
+                fixed CPL. GST @ 18% is added on the billed amount.
               </p>
             </div>
           </Show>
@@ -2298,6 +2397,14 @@ export default function DailyReports() {
                         Billed
                       </th>
                     </Show>
+                    <Show when={showBilledGst()}>
+                      <th style="padding:11px 14px;text-align:center;color:#f5d9a0;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
+                        {gstColLabel()}
+                      </th>
+                      <th style="padding:11px 14px;text-align:center;color:#f5d9a0;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;border-right:1px solid rgba(255,255,255,0.12);">
+                        {gstInclColLabel()}
+                      </th>
+                    </Show>
                     <Show when={showSc()}>
                       <th style="padding:11px 14px;text-align:center;color:#f5d9a0;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;">
                         {scColLabel()}
@@ -2381,6 +2488,14 @@ export default function DailyReports() {
                           {money(row.billedAmount)}
                         </td>
                       </Show>
+                      <Show when={showBilledGst()}>
+                        <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:600;color:#6b4c10;background:rgba(201,168,76,0.10);border-right:1px solid rgba(123,28,28,0.1);">
+                          {money(row.billedGst)}
+                        </td>
+                        <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:600;color:#6b4c10;background:rgba(201,168,76,0.10);border-right:1px solid rgba(123,28,28,0.1);">
+                          {money(row.billedInclGst)}
+                        </td>
+                      </Show>
                       <Show when={showSc()}>
                         <td style="padding:10px 14px;text-align:center;font-size:14px;font-weight:600;color:#6b4c10;background:rgba(201,168,76,0.10);">
                           {money(showNet() ? row.netSpentwithSc : row.spentwithServiceCharge)}
@@ -2454,6 +2569,14 @@ export default function DailyReports() {
                         {money(totals().billedAmount)}
                       </td>
                     </Show>
+                    <Show when={showBilledGst()}>
+                      <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
+                        {money(totals().billedGst)}
+                      </td>
+                      <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;border-right:1px solid rgba(255,255,255,0.12);">
+                        {money(totals().billedInclGst)}
+                      </td>
+                    </Show>
                     <Show when={showSc()}>
                       <td style="padding:11px 14px;text-align:center;color:#fff;font-size:14px;font-weight:700;">
                         {money(showNet() ? totals().netSpentwithSc : totals().spentwithServiceCharge)}
@@ -2475,6 +2598,14 @@ export default function DailyReports() {
               Ad spend is billed in full. Replaced leads come back as{" "}
               <b>Replaced Credit Notes</b>, which pay your next charges.{" "}
               <b>Net cost</b> is what the period cost you after that credit.
+            </p>
+          </Show>
+
+          <Show when={showBilledGst()}>
+            <p style="margin:14px 36px 0;color:#555;font-size:12px;font-family:Arial;line-height:1.6;">
+              Billable leads = leads generated minus replaced. <b>Billed</b> =
+              billable leads x your fixed CPL. GST @ 18% is added on the billed
+              amount.
             </p>
           </Show>
 

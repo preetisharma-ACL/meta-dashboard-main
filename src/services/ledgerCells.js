@@ -229,6 +229,24 @@ export const makeLedgerCells = ({
     return round2(gross + round2((gross * gst) / 100));
   };
 
+  // ── GST on the billed amount, broken out (CPL clients) ───────────────────
+  // A CPL client pays per lead: no service charge, so the only tax on their
+  // report is GST, and it is charged on the billed figure itself. withScGst()
+  // above already returns that gross for them; this is the TAX ON ITS OWN, so
+  // the two can sit either side of the billed figure and a reader can add the
+  // three across and land on the total.
+  //
+  // One rate, one named key underneath (billed_amount, which is what the S.C
+  // columns load onto for every other client type), and the same rounding the
+  // invoice does: the charge is rounded to the paisa on its own before it is
+  // added. Null in, null out, in both directions: no tax on a billed figure
+  // nobody has, and an unresolved rate prints as a gap rather than as 0%.
+  const gstOn = (base) => {
+    const pct = gstPct();
+    if (base == null || pct == null) return null;
+    return round2((base * pct) / 100);
+  };
+
   // Rows and the TOTAL row are the same shape, so a cell written once reads
   // correctly at either level.
   //
@@ -290,12 +308,21 @@ export const makeLedgerCells = ({
     const netScGst = nothingSpent(cells.spent)
       ? null
       : less(withScGst(cells.spent), cells.replacedCreditInc);
+    // CPL only. Hybrid and retainer carry their tax in the S.C columns, and a
+    // second GST figure on the same row would be the same money twice under
+    // two headings. Both hang off billedAmount, so a row with no billed figure
+    // gets a pair of gaps rather than tax on a number nobody has.
+    const billedGst = iscpl() ? gstOn(cells.billedAmount) : null;
+    const billedInclGst =
+      billedGst == null ? null : round2(cells.billedAmount + billedGst);
     return {
       ...cells,
       spentwithServiceCharge: withSc(base),
       spentwithservice_gst: withScGst(base),
       netSpentwithSc: netSc,
       netSpentwithScGst: netScGst,
+      billedGst,
+      billedInclGst,
     };
   };
 
@@ -339,6 +366,33 @@ export const makeLedgerCells = ({
     return counted > 0 ? round2(sum) : null;
   };
 
+  // ── The two CPL GST columns on the TOTAL row ─────────────────────────────
+  // Same rule as netTotalOf, and for the same reason: the column above adds up
+  // to the sum of its own rows, so the footer prints that sum rather than the
+  // rate charged once on the period total. The two answers differ by a paisa,
+  // and only one of them survives a reader adding the column up by hand.
+  //
+  // The guard is the row's OWN billed figure rather than its spend. These two
+  // columns hang off billed_amount, so that is the thing whose presence says a
+  // row should have contributed: a row carrying a billed figure and no GST
+  // would otherwise drop out of the sum silently, and the footer would read
+  // low under a complete-looking column. Null there, and the caller falls back
+  // to charging the totals block.
+  const billedTotalOf = (wireRows, key) => {
+    let sum = 0;
+    let counted = 0;
+    for (const w of wireRows ?? []) {
+      const r = rowOf(w);
+      if (r[key] != null) {
+        sum += r[key];
+        counted += 1;
+      } else if (readKey(w, "billed_amount") != null) {
+        return null;
+      }
+    }
+    return counted > 0 ? round2(sum) : null;
+  };
+
   return {
     billedSpendOf,
     billedBaseOf,
@@ -347,5 +401,6 @@ export const makeLedgerCells = ({
     withScGst,
     rowOf,
     netTotalOf,
+    billedTotalOf,
   };
 };

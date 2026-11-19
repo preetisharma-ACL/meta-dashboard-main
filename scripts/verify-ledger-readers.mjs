@@ -1063,6 +1063,109 @@ console.log("\nTOTAL net charges: Σ of the rows, to the paisa");
   check("nothing to add → null, never 0", netTotalOf([], "netSpentwithSc") === null);
 }
 
+// ── CPL: GST broken out beside the billed amount ───────────────────────────
+// Two columns after Billed, for a CPL client only: the tax on its own, and the
+// two added up. The figures below are the live ones from Avira Homes, 1 to 31
+// Oct 2026, which is what this section is here to keep true.
+console.log("\nCPL: GST on the billed amount, and the two added up");
+{
+  const { makeLedgerCells, money, DASH } = await import(
+    "../src/services/ledgerCells.js"
+  );
+  const cpl = makeLedgerCells({
+    hasRaw: () => true,
+    clientType: () => "cpl",
+    scPct: () => null, // a CPL client has no service-charge rate BY DESIGN
+    gstPct: () => 18,
+    iscpl: () => true,
+  });
+
+  const mk = (billed) => ({
+    billed_amount: billed.toFixed(2),
+    premium_spend: billed.toFixed(2),
+  });
+  // PatliputraSignature, then two more that bring the period to 3,58,314.00.
+  const wires = [mk(237500), mk(70814), mk(50000)];
+  const patliputra = cpl.rowOf(wires[0]);
+
+  check(
+    "PatliputraSignature: 2,37,500.00 → 42,750.00 GST",
+    money(patliputra.billedGst) === "₹42,750.00",
+    `(${money(patliputra.billedGst)})`,
+  );
+  check(
+    "…and 2,80,250.00 incl. GST",
+    money(patliputra.billedInclGst) === "₹2,80,250.00",
+    `(${money(patliputra.billedInclGst)})`,
+  );
+  check(
+    "Billed + GST = Billed incl. GST, on the row",
+    parseFloat(
+      (patliputra.billedAmount + patliputra.billedGst).toFixed(2),
+    ) === patliputra.billedInclGst,
+  );
+
+  // The TOTAL row is Σ of the rows, like the net columns beside it — not the
+  // rate charged once on the period total.
+  const tGst = cpl.billedTotalOf(wires, "billedGst");
+  const tIncl = cpl.billedTotalOf(wires, "billedInclGst");
+  check(
+    "TOTAL GST = 64,496.52",
+    money(tGst) === "₹64,496.52",
+    `(${money(tGst)})`,
+  );
+  check(
+    "TOTAL incl. GST = 4,22,810.52",
+    money(tIncl) === "₹4,22,810.52",
+    `(${money(tIncl)})`,
+  );
+  check(
+    "the TOTAL cell equals the rows added up",
+    tGst ===
+      parseFloat(
+        wires
+          .map((w) => cpl.rowOf(w).billedGst)
+          .reduce((a, b) => a + b, 0)
+          .toFixed(2),
+      ),
+  );
+
+  // No billed figure → no tax on a number nobody has, in both columns.
+  const gap = cpl.rowOf({ premium_spend: "1000.00" });
+  check(
+    "no billed_amount → both columns are a gap",
+    money(gap.billedGst) === DASH && money(gap.billedInclGst) === DASH,
+  );
+  check("nothing to add → null, never 0", cpl.billedTotalOf([], "billedGst") === null);
+
+  // A hybrid client's GST lives in the S.C column and must not be duplicated
+  // here: a second GST figure on the same row is the same money twice.
+  const hybrid = makeLedgerCells({
+    hasRaw: () => true,
+    clientType: () => "hybrid",
+    scPct: () => 15,
+    gstPct: () => 18,
+    iscpl: () => false,
+  });
+  const h = hybrid.rowOf(mk(237500));
+  check(
+    "hybrid gets neither column",
+    h.billedGst === null && h.billedInclGst === null,
+  );
+  const retainer = makeLedgerCells({
+    hasRaw: () => true,
+    clientType: () => "retainer",
+    scPct: () => 13,
+    gstPct: () => 18,
+    iscpl: () => false,
+  });
+  const ret = retainer.rowOf(mk(110000));
+  check(
+    "retainer gets neither column",
+    ret.billedGst === null && ret.billedInclGst === null,
+  );
+}
+
 // ── A project with no spend charges nothing ─────────────────────────────────
 // net_cost and net_cpl come back null from the server on such a row, so the two
 // charge columns have to read "—" beside them. A ₹0.00 there reads as a charge
