@@ -94,6 +94,20 @@ const {
   TRANSFER_MAX_DAYS_BACK,
   PROOF_MAX_BYTES,
   QR_MAX_BYTES,
+  // ── reconciliation report ──
+  reportRangeError,
+  reportQuickPicks,
+  reportDefaultRange,
+  effectiveOrderDate,
+  sortReportRows,
+  orderKindLabel,
+  readByMethod,
+  buildReportCsv,
+  reportRowToCsv,
+  reportCsvFilename,
+  REPORT_CSV_COLUMNS,
+  REPORT_MAX_DAYS,
+  REPORT_DEFAULT_STATUS,
 } = await import("../src/services/hdfcPay.js");
 
 const { nextAfterLogin } = await import("../src/utils/loginNext.js");
@@ -439,6 +453,173 @@ console.log("\nmerged history: one row never mixes two sources");
 
 console.log("\nthe 60-day window matches the spec");
 check("60", TRANSFER_MAX_DAYS_BACK === 60);
+
+// ════════════ RECONCILIATION REPORT ════════════
+
+console.log("\nthe report range is capped at 92 days, counted inclusively");
+check("max is 92", REPORT_MAX_DAYS === 92);
+check("the default status is Paid", REPORT_DEFAULT_STATUS === "charged");
+check("a one-day range is 1 day, not 0",
+  reportRangeError("2026-11-19", "2026-11-19") === null);
+check("exactly 92 days is allowed",
+  reportRangeError("2026-08-20", "2026-11-19") === null,
+  reportRangeError("2026-08-20", "2026-11-19"));
+check("93 days is refused",
+  /92 days or less/.test(reportRangeError("2026-08-19", "2026-11-19") ?? ""),
+  reportRangeError("2026-08-19", "2026-11-19"));
+check("the message names the actual span",
+  /93 days/.test(reportRangeError("2026-08-19", "2026-11-19") ?? ""),
+  reportRangeError("2026-08-19", "2026-11-19"));
+check("a reversed range is caught",
+  /after the end date/.test(reportRangeError("2026-11-19", "2026-11-01") ?? ""));
+check("a missing date is caught", reportRangeError("", "2026-11-19") !== null);
+check("a leap-day span counts correctly",
+  reportRangeError("2028-02-01", "2028-03-01") === null);
+
+console.log("\nquick picks are built from LOCAL date parts");
+{
+  // 1 Jan at 11:30pm local: the UTC version of "today" is still 31 Dec, and in
+  // IST it would also be the WRONG YEAR.
+  const nye = new Date(2027, 0, 1, 23, 30);
+  const p = Object.fromEntries(reportQuickPicks(nye).map((x) => [x.key, x]));
+  check("Today is today, not yesterday in UTC",
+    p.today.from === "2027-01-01" && p.today.to === "2027-01-01",
+    JSON.stringify(p.today));
+  check("Yesterday crosses the year boundary correctly",
+    p.yesterday.from === "2026-12-31" && p.yesterday.to === "2026-12-31",
+    JSON.stringify(p.yesterday));
+  check("This month runs from the 1st to today",
+    p.this_month.from === "2027-01-01" && p.this_month.to === "2027-01-01",
+    JSON.stringify(p.this_month));
+  check("Last month is the WHOLE of last month",
+    p.last_month.from === "2026-12-01" && p.last_month.to === "2026-12-31",
+    JSON.stringify(p.last_month));
+}
+{
+  // A 31-day month following a 30-day one, to catch an end-of-month slip.
+  const d = new Date(2026, 6, 15); // 15 Jul 2026
+  const p = Object.fromEntries(reportQuickPicks(d).map((x) => [x.key, x]));
+  check("Last month ends on the 30th for June",
+    p.last_month.from === "2026-06-01" && p.last_month.to === "2026-06-30",
+    JSON.stringify(p.last_month));
+  check("every quick pick is inside the 92-day cap",
+    reportQuickPicks(d).every((x) => reportRangeError(x.from, x.to) === null));
+}
+{
+  const r = reportDefaultRange(new Date(2026, 10, 19));
+  check("the default range is the 1st to today",
+    r.from === "2026-11-01" && r.to === "2026-11-19", JSON.stringify(r));
+}
+
+console.log("\nthe date column shows WHICH date, because the server mixes them");
+check("a paid order uses paid_on",
+  effectiveOrderDate({ paid_on: "2026-11-18T10:00:00Z", created_at: "2026-11-17T09:00:00Z" })
+    .field === "paid_on");
+check("an unpaid order falls back to created_at AND says so",
+  effectiveOrderDate({ paid_on: null, created_at: "2026-11-17T09:00:00Z" }).field ===
+    "created_at");
+check("the fallback carries the created value",
+  effectiveOrderDate({ created_at: "2026-11-17T09:00:00Z" }).value ===
+    "2026-11-17T09:00:00Z");
+check("neither → no field, so the cell cannot claim a date it has not got",
+  effectiveOrderDate({}).field === null);
+
+console.log("\nsorting is newest first on the date the server filtered by");
+{
+  const rows = [
+    { order_id: "A", paid_on: "2026-11-10T10:00:00Z" },
+    { order_id: "B", paid_on: null, created_at: "2026-11-18T10:00:00Z" },
+    { order_id: "C", paid_on: "2026-11-15T10:00:00Z" },
+    { order_id: "D" },
+  ];
+  const s = sortReportRows(rows).map((r) => r.order_id);
+  check("newest first across BOTH date fields",
+    JSON.stringify(s.slice(0, 3)) === '["B","C","A"]', JSON.stringify(s));
+  check("an undated row is kept, not dropped", s.length === 4);
+  check("and sinks to the bottom", s[3] === "D", JSON.stringify(s));
+  check("the input array is not mutated",
+    rows[0].order_id === "A", JSON.stringify(rows.map((r) => r.order_id)));
+}
+
+console.log("\nkind reads as the two things the desk calls them");
+check("client → Pay now", orderKindLabel({ kind: "client" }) === "Pay now");
+check("link → Link", orderKindLabel({ kind: "link" }) === "Link");
+check("missing → dash", orderKindLabel({}) === "—");
+
+console.log("\nby_method is an OBJECT, not a list");
+{
+  const m = readByMethod({
+    by_method: { card: { count: 2, paid: "1000.00" }, upi: { count: 9, paid: "9000.00" } },
+  });
+  check("both rails appear", m.length === 2);
+  check("biggest first", m[0].method === "upi", JSON.stringify(m.map((x) => x.method)));
+  check("the label is title-cased", m[0].label === "Upi");
+  check("net_banking title-cases across the underscore",
+    readByMethod({ by_method: { net_banking: { count: 1, paid: "5" } } })[0].label ===
+      "Net Banking");
+  check("a missing block is empty, not a crash", readByMethod({}).length === 0);
+  check("a non-object block is empty", readByMethod({ by_method: [] }).length === 0);
+}
+
+console.log("\nthe CSV is for a spreadsheet, so amounts are PLAIN numbers");
+{
+  const row = {
+    order_id: "ORD-1",
+    client: "Rosemont",
+    paid_on: "2026-11-18T10:05:00Z",
+    created_at: "2026-11-18T09:00:00Z",
+    method: "UPI",
+    bank_ref: "HDFC998877",
+    kind: "client",
+    amount_paid: "5900.00",
+    tds_amount: "0.00",
+    credited: "5900.00",
+    status: "charged",
+    status_label: "Charged",
+  };
+  const cells = reportRowToCsv(row);
+  check("the column count matches the header",
+    cells.length === REPORT_CSV_COLUMNS.length,
+    `${cells.length} vs ${REPORT_CSV_COLUMNS.length}`);
+  check("amounts carry no ₹ and no grouping",
+    cells.includes("5900") || cells.includes("5900.00"), JSON.stringify(cells));
+  check("no rupee sign anywhere in the row",
+    !cells.join(",").includes("₹"), JSON.stringify(cells));
+  check("a real 0 is written as 0, not blank",
+    cells[REPORT_CSV_COLUMNS.indexOf("TDS")] === "0", JSON.stringify(cells));
+  check("the date field is named so a created date cannot pass as paid",
+    cells[REPORT_CSV_COLUMNS.indexOf("Date field")] === "paid_on",
+    JSON.stringify(cells));
+}
+{
+  const cells = reportRowToCsv({ order_id: "ORD-2", created_at: "2026-11-18T09:00:00Z" });
+  check("an unpaid row is marked created_at in the CSV",
+    cells[REPORT_CSV_COLUMNS.indexOf("Date field")] === "created_at",
+    JSON.stringify(cells));
+  check("a MISSING amount is an empty cell, not 0",
+    cells[REPORT_CSV_COLUMNS.indexOf("Amount received")] === "",
+    JSON.stringify(cells));
+  check("and never a dash, which a spreadsheet cannot sum",
+    !cells.join(",").includes("—"), JSON.stringify(cells));
+}
+{
+  // A client name with a comma and a quote is the classic CSV corruption.
+  const csv = buildReportCsv([
+    { order_id: "A", client: 'Lions "Property", Delhi', amount_paid: "1.50" },
+  ]);
+  const lines = csv.split("\r\n");
+  check("the header is the column list",
+    lines[0].startsWith("Paid on,Date field,Client"), lines[0]);
+  check("a comma in a name is quoted",
+    lines[1].includes('"Lions ""Property"", Delhi"'), lines[1]);
+  check("rows are CRLF separated", csv.includes("\r\n"));
+  check("an empty row list still writes a header",
+    buildReportCsv([]).split("\r\n").length === 1);
+}
+check("the file name carries the range",
+  reportCsvFilename("2026-11-01", "2026-11-19") ===
+    "online-payments_2026-11-01_2026-11-19.csv",
+  reportCsvFilename("2026-11-01", "2026-11-19"));
 
 console.log(
   failures === 0

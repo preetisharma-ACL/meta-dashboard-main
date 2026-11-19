@@ -79,6 +79,7 @@ import ClientBilling from "./pages/billing/ClientBilling";
 import AdditionalServices from "./pages/billing/AdditionalServices";
 import PaymentLinks from "./pages/billing/PaymentLinks";
 import BankTransfers from "./pages/billing/BankTransfers";
+import OnlinePaymentsReport from "./pages/billing/OnlinePaymentsReport";
 import BankDetailsSettings from "./pages/billing/BankDetailsSettings";
 import PaymentResult from "./pages/billing/PaymentResult";
 import PaymentLinkPay from "./pages/billing/PaymentLinkPay";
@@ -446,6 +447,19 @@ function App() {
               component={() => (
                 <AdminRoute roles={["admin", "accounts"]}>
                   <BankDetailsSettings />
+                </AdminRoute>
+              )}
+            />
+            {/* The gateway reconciliation report: every client's orders over a
+                date range, to check against the HDFC settlement report. Admin +
+                accounts, the same gate as the two screens above. The backend
+                scopes a CM to their own clients if this is ever widened, so
+                that would be a roles change here and nothing more. */}
+            <Route
+              path="/billing/online-payments"
+              component={() => (
+                <AdminRoute roles={["admin", "accounts"]}>
+                  <OnlinePaymentsReport />
                 </AdminRoute>
               )}
             />

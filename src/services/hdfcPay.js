@@ -875,6 +875,265 @@ export const mergeHistory = (orders, transfers) =>
     return tb - ta;
   });
 
+// ═══ ONLINE PAYMENTS REPORT (accounts reconciliation) ════════════════════════
+// GET pay/orders/report/ — every client's gateway orders over a date range, for
+// reconciling against the HDFC settlement report. Verb set confirmed by an
+// unauthenticated OPTIONS probe against prod (GET, HEAD, OPTIONS; 401 without a
+// token).
+//
+// WHICH DATE A ROW IS FILTERED BY DEPENDS ON ITS STATUS: paid orders by their
+// PAID date, everything else by their CREATED date. That asymmetry is the
+// server's and it drives the sort and the date column here too (see
+// effectiveOrderDate), because a table sorted on a key that is not the one the
+// server filtered on puts rows in an order nobody can reconcile against.
+
+export const REPORT_STATUSES = [
+  { value: "charged", label: "Paid" },
+  { value: "pending", label: "Pending" },
+  { value: "created", label: "Created" },
+  { value: "failed", label: "Failed" },
+  { value: "mismatch", label: "Mismatch" },
+  { value: "expired", label: "Expired" },
+  { value: "all", label: "All statuses" },
+];
+
+export const REPORT_DEFAULT_STATUS = "charged";
+
+// kind is ADMIN ONLY and exists to separate real client payments from test
+// links. Absent means both.
+export const REPORT_KINDS = [
+  { value: "", label: "All" },
+  { value: "client", label: "Pay now" },
+  { value: "link", label: "Link" },
+];
+
+// "Pay now" / "Link" for a row. The server sends kind: client | link.
+export const orderKindLabel = (row) => {
+  const k = String(row?.kind ?? "").toLowerCase();
+  if (k === "client") return "Pay now";
+  if (k === "link") return "Link";
+  return "—";
+};
+
+// The server caps the span. Mirrored so an obviously doomed request never
+// leaves the browser; the server stays the authority and ITS message is what
+// the operator is shown when one slips through.
+export const REPORT_MAX_DAYS = 92;
+
+// Whole days between two "YYYY-MM-DD" keys, inclusive of both ends. Parsed from
+// the parts into a UTC instant purely for the subtraction, which is safe here
+// because BOTH sides are built the same way and no local date is derived back
+// out of it.
+const daysBetweenInclusive = (from, to) => {
+  const [fy, fm, fd] = String(from).split("-").map(Number);
+  const [ty, tm, td] = String(to).split("-").map(Number);
+  if (!fy || !fm || !fd || !ty || !tm || !td) return null;
+  const a = Date.UTC(fy, fm - 1, fd);
+  const b = Date.UTC(ty, tm - 1, td);
+  return Math.floor((b - a) / 86_400_000) + 1;
+};
+
+export const reportRangeError = (from, to) => {
+  if (!from || !to) return "Pick both dates.";
+  if (from > to) return "The start date is after the end date.";
+  const days = daysBetweenInclusive(from, to);
+  if (days === null) return "Pick both dates.";
+  if (days > REPORT_MAX_DAYS)
+    return `Pick a range of ${REPORT_MAX_DAYS} days or less. This one is ${days} days.`;
+  return null;
+};
+
+// ── Quick picks ─────────────────────────────────────────────────────────────
+// Every bound is built from LOCAL date parts through localDateKey(), never
+// toISOString(): in IST the UTC version rolls to the previous day for most of
+// the evening, so "Today" would ask the server for yesterday.
+const monthStart = (d) => new Date(d.getFullYear(), d.getMonth(), 1);
+
+export const reportQuickPicks = (today = new Date()) => {
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+  return [
+    { key: "today", label: "Today", from: localDateKey(today), to: localDateKey(today) },
+    {
+      key: "yesterday",
+      label: "Yesterday",
+      from: localDateKey(yesterday),
+      to: localDateKey(yesterday),
+    },
+    {
+      key: "this_month",
+      label: "This month",
+      from: localDateKey(monthStart(today)),
+      to: localDateKey(today),
+    },
+    {
+      key: "last_month",
+      label: "Last month",
+      from: localDateKey(monthStart(lastMonthEnd)),
+      to: localDateKey(lastMonthEnd),
+    },
+  ];
+};
+
+// The default the screen opens on: 1st of this month to today, which is also
+// the server's default when from/to are omitted.
+export const reportDefaultRange = (today = new Date()) => ({
+  from: localDateKey(monthStart(today)),
+  to: localDateKey(today),
+});
+
+export const fetchPayOrdersReport = async ({
+  from,
+  to,
+  status,
+  clientNomen,
+  kind,
+} = {}) => {
+  const params = [];
+  if (from) params.push(`from=${encodeURIComponent(from)}`);
+  if (to) params.push(`to=${encodeURIComponent(to)}`);
+  if (status) params.push(`status=${encodeURIComponent(status)}`);
+  if (clientNomen !== undefined && clientNomen !== null && clientNomen !== "")
+    params.push(`client_nomen=${encodeURIComponent(clientNomen)}`);
+  if (kind) params.push(`kind=${encodeURIComponent(kind)}`);
+  const qs = params.length ? `?${params.join("&")}` : "";
+  const res = await api(`${PAY}/orders/report/${qs}`, { method: "GET" });
+  return res?.data ?? null;
+};
+
+// The date a row is ordered and shown by: its PAID date when it has one, its
+// CREATED date otherwise. That is exactly the axis the server filtered it on,
+// so the two always agree.
+//
+// It returns WHICH field it used as well as the value, because the cell has to
+// say so: a created date sitting silently under a "Paid on" heading is a
+// settlement date that is not a settlement date, which is the one thing a
+// reconciliation screen must never print.
+export const effectiveOrderDate = (row) => {
+  if (row?.paid_on) return { value: row.paid_on, field: "paid_on" };
+  if (row?.created_at) return { value: row.created_at, field: "created_at" };
+  return { value: null, field: null };
+};
+
+// Newest first. Rows with no date at all sink to the bottom rather than being
+// dropped: a payment the gateway took is never hidden because a date is
+// missing.
+export const sortReportRows = (rows) =>
+  [...(Array.isArray(rows) ? rows : [])].sort((a, b) => {
+    const ta = Date.parse(effectiveOrderDate(a).value ?? "");
+    const tb = Date.parse(effectiveOrderDate(b).value ?? "");
+    if (Number.isNaN(ta) && Number.isNaN(tb)) return 0;
+    if (Number.isNaN(ta)) return 1;
+    if (Number.isNaN(tb)) return -1;
+    return tb - ta;
+  });
+
+// by_method is an OBJECT keyed by method, not a list: { upi: {count, paid} }.
+// Returned sorted by amount so the biggest rail reads first, with the method
+// title-cased the same way the client's method chips are.
+export const readByMethod = (totals) => {
+  const block = totals?.by_method;
+  if (!block || typeof block !== "object") return [];
+  return Object.entries(block)
+    .map(([method, v]) => ({
+      method,
+      label: String(method)
+        .replace(/[_-]+/g, " ")
+        .trim()
+        .replace(/\b\w/g, (c) => c.toUpperCase()),
+      count: payNum(v?.count) ?? 0,
+      paid: payNum(v?.paid),
+    }))
+    .sort((a, b) => (b.paid ?? 0) - (a.paid ?? 0));
+};
+
+// ── CSV ─────────────────────────────────────────────────────────────────────
+// The columns on screen, in the same order, with AMOUNTS AS PLAIN NUMBERS:
+// this file is opened in a spreadsheet and reconciled against HDFC's own
+// export, so "₹5,900.00" would have to be un-formatted again by hand before it
+// could be summed. A missing value is an EMPTY cell, never "—" and never 0.
+export const REPORT_CSV_COLUMNS = [
+  "Paid on",
+  "Date field",
+  "Client",
+  "Order ID",
+  "Bank ref",
+  "Method",
+  "Kind",
+  "Amount received",
+  "TDS",
+  "Credited",
+  "Status",
+];
+
+// Plain number for a money cell: the server's string passed through once it is
+// confirmed numeric. Null/absent becomes "" so the column stays summable.
+const csvNum = (v) => {
+  const n = payNum(v);
+  return n === null ? "" : String(n);
+};
+
+// Excel reads a bare YYYY-MM-DDTHH:MM:SSZ inconsistently across locales, so the
+// timestamp is written as "YYYY-MM-DD HH:MM" in LOCAL time, which is the same
+// instant the operator is reading off the screen.
+const csvDateTime = (v) => {
+  if (!v) return "";
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return String(v);
+  const p = (n) => String(n).padStart(2, "0");
+  return (
+    `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ` +
+    `${p(d.getHours())}:${p(d.getMinutes())}`
+  );
+};
+
+const csvEscape = (v) => {
+  const s = v === null || v === undefined ? "" : String(v);
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+};
+
+export const reportRowToCsv = (row) => {
+  const d = effectiveOrderDate(row);
+  return [
+    csvDateTime(d.value),
+    // Which field that timestamp came from, so a reconciliation against the
+    // settlement report never silently treats a created date as a paid date.
+    d.field === "paid_on" ? "paid_on" : d.field === "created_at" ? "created_at" : "",
+    row?.client ?? "",
+    row?.order_id ?? "",
+    row?.bank_ref ?? "",
+    row?.method ?? "",
+    orderKindLabel(row) === "—" ? "" : orderKindLabel(row),
+    csvNum(row?.amount_paid),
+    csvNum(row?.tds_amount),
+    csvNum(row?.credited),
+    row?.status_label || row?.status || "",
+  ];
+};
+
+export const buildReportCsv = (rows) =>
+  [
+    REPORT_CSV_COLUMNS.map(csvEscape).join(","),
+    ...(rows ?? []).map((r) => reportRowToCsv(r).map(csvEscape).join(",")),
+  ].join("\r\n");
+
+export const reportCsvFilename = (from, to) =>
+  `online-payments_${from}_${to}.csv`;
+
+// Download helper. The BOM is what makes Excel read the ₹ in a client name as
+// UTF-8 rather than mojibake; the rest of the app's exports do the same.
+export const downloadCsv = (filename, csv) => {
+  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 0);
+};
+
 // ── Staff client roster (NOMEN ids) ─────────────────────────────────────────
 // THE ID IS THE THING TO GET RIGHT. POST pay/links/ takes `client_nomen`, the
 // NOMEN id — the same id POST /payments/add-funds/ wants, and NOT the Client PK
