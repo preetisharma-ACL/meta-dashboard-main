@@ -142,7 +142,7 @@ export default function RevokeServiceModal(props) {
                 when={reasonError()}
                 fallback={
                   <p class="text-xs text-[#8593A8] mt-1">
-                    Required. Kept on the record — the client never sees it.
+                    Required. Kept on the record. The client never sees it.
                   </p>
                 }
               >

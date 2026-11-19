@@ -238,7 +238,7 @@ export default function AdditionalServices() {
             <circle cx="12" cy="12" r="9" />
             <path d="M12 16v-4M12 8h.01" />
           </svg>
-          Read-only — adding, editing and revoking is for admin, accounts,
+          Read-only. Adding, editing and revoking is for admin, accounts,
           coordination and team leads.
         </p>
       </Show>
@@ -271,9 +271,9 @@ export default function AdditionalServices() {
                   fallback={
                     <p class="px-3 py-3 text-sm text-[#8593A8]">
                       {rosterPkMissing()
-                        ? "The client list loaded but carries no client id this screen can bill against. Tell an admin — do not work around it; the other id on that payload belongs to a different client."
+                        ? "The client list loaded but carries no client id this screen can bill against. Tell an admin, and do not work around it; the other id on that payload belongs to a different client."
                         : rosterFailed()
-                          ? "The client list could not be loaded for your account. Ask an admin to check your access — this is not a client with nothing recorded."
+                          ? "The client list could not be loaded for your account. Ask an admin to check your access. This is not a client with nothing recorded."
                           : rosterEmpty()
                             ? "No clients available to you."
                             : "No clients match."}
@@ -533,7 +533,7 @@ export default function AdditionalServices() {
               </p>
               <p class="mt-1 text-sm text-[#8593A8] dark:text-gray-400">
                 {selectedClient()?.name
-                  ? `${selectedClient().name} has no non-ad charges recorded${includeRevoked() ? "" : " — revoked entries are hidden"}.`
+                  ? `${selectedClient().name} has no non-ad charges recorded${includeRevoked() ? "" : ", and revoked entries are hidden"}.`
                   : "Nothing recorded for this client."}
               </p>
             </div>

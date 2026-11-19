@@ -18,7 +18,7 @@ import {
 
 // ─── Add funds (client) ───────────────────────────────────────────────────────
 // Two ways to pay, one dialog:
-//   ONLINE   card / UPI through the HDFC gateway, offered while
+//   ONLINE   credit card through the HDFC gateway, offered while
 //            GET pay/summary/ returns enabled: true
 //   TRANSFER NEFT / RTGS / IMPS / UPI the client makes themselves and then
 //            REPORTS, offered while GET pay/bank-details/ returns enabled: true
@@ -204,7 +204,7 @@ export default function PayNowModal(props) {
                 disabled={busy()}
                 onClick={() => setTab("online")}
               >
-                Card / UPI
+                Credit card
               </TabButton>
               <TabButton
                 active={showing() === "bank"}

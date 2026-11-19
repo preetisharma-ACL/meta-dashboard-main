@@ -314,7 +314,7 @@ export default function ClientBilling() {
             </A>
           </Show>
 
-          {/* Payment links — the HDFC card/UPI link an operator sends a client
+          {/* Payment links — the HDFC credit card link an operator sends a client
               who owes money. Gated on the same roles as that screen's route;
               sales read this ledger but never collect against it, so the button
               is hidden from them the same way Additional services is. An

@@ -4,7 +4,7 @@ import { fmtPayDate, fmtRs, mergeHistory } from "../../services/hdfcPay";
 import { OrderStatusBadge, TransferStatusBadge } from "./payStatus";
 
 // ─── Payments you made here (client) ──────────────────────────────────────────
-// ONE table for both ways of paying: card/UPI orders through the gateway
+// ONE table for both ways of paying: credit card orders through the gateway
 // (GET pay/orders/) and bank transfers the client reported (GET
 // pay/bank-transfers/). They are merged newest-first by mergeHistory(), which
 // normalises each source into the same row shape.
@@ -40,7 +40,7 @@ export default function OnlinePaymentsTable(props) {
           Payments you made here
         </h3>
         <p class="text-xs text-gray-500 dark:text-gray-400">
-          Card, UPI and bank transfers you reported
+          Credit card payments and bank transfers you reported
         </p>
       </div>
 

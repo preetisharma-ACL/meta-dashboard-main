@@ -341,6 +341,12 @@ console.log("\nthe WhatsApp message carries the link and no long dashes");
   check("opens the contact picker (no number)",
     whatsappShareUrl({ url: "u" }).startsWith("https://wa.me/?text="));
   check("the url is in the body", msg.includes("https://x.test/pay/abc"));
+  // A payment link is a CREDIT CARD link, so the share message must not
+  // promise UPI: a client told otherwise follows it to a decline.
+  check("it says payable by credit card",
+    msg.includes("Payable by credit card."), msg);
+  check("and no longer promises UPI",
+    !/UPI/i.test(msg), msg);
   check("the client is named", msg.includes("Rosemont"));
   check("the amount is stated", msg.includes("₹11,800.00"), msg);
   check("the note is carried", msg.includes("October service charge"));

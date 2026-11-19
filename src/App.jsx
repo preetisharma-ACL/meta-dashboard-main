@@ -400,7 +400,7 @@ function App() {
                 </AdminRoute>
               )}
             />
-            {/* Payment links — issue a card/UPI link for one client and watch
+            {/* Payment links — issue a credit card link for one client and watch
                 what the bank sends back.
 
                 Gated to the same four staff roles the spec names. Sales are out

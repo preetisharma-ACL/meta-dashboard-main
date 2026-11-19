@@ -1342,7 +1342,7 @@ export default function Billing() {
   const { ishybrid, isRetainer, iscpl } = clientRole();
 
   // ── HDFC online payments ──────────────────────────────────────────────────
-  // Card / UPI, through the gateway. CLIENT LOGIN ONLY: pay/summary/ is the
+  // Credit card, through the gateway. CLIENT LOGIN ONLY: pay/summary/ is the
   // client's own dues and an admin previewing this page must not be handed a
   // Add funds button that charges nobody.
   //

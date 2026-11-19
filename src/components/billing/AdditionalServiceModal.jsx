@@ -304,7 +304,7 @@ export default function AdditionalServiceModal(props) {
                 filling this in is exactly the person who would assume they do. */}
             <div class="rounded-lg border border-[#E2E8F1] dark:border-gray-700 bg-[#F8FAFC] dark:bg-gray-800/60 px-3.5 py-3 text-xs text-[#54657E] dark:text-gray-400">
               No service charge is added on an additional service, and Replaced
-              Credit Notes never pay for one — they cover ads only. The amount
+              Credit Notes never pay for one, they cover ads only. The amount
               plus GST comes off the client's main balance in the month of the
               charge date.
             </div>
@@ -361,7 +361,7 @@ export default function AdditionalServiceModal(props) {
                 fallback={
                   <Show when={needsServiceName(form().service_type)}>
                     <p class="text-xs text-[#8593A8] mt-1">
-                      Required for “Other” — it is what the client will see on
+                      Required for “Other”. It is what the client will see on
                       their bill.
                     </p>
                   </Show>
@@ -539,7 +539,7 @@ export default function AdditionalServiceModal(props) {
                 when={err("notes")}
                 fallback={
                   <p class="text-xs text-[#8593A8] mt-1">
-                    Required. Internal — the client never sees the note.
+                    Required. Internal. The client never sees the note.
                   </p>
                 }
               >

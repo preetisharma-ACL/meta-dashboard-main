@@ -3,7 +3,7 @@ import { fetchPaymentClients } from "./payments";
 import { fetchClientRosterWithStatus } from "./leadReplacement";
 
 // ─── HDFC online payments ─────────────────────────────────────────────────────
-// Card / UPI collection through the HDFC gateway, backend 3d5995a + 202e494.
+// Credit card collection through the HDFC gateway, backend 3d5995a + 202e494.
 // Everything lives under /billing/pay/ and speaks the same ok/fail envelope as
 // the rest of /billing/: { success, message, error:{ code, detail, fields },
 // data }. api() already lifts that into a thrown Error, so the authenticated
@@ -573,7 +573,7 @@ export const whatsappShareUrl = ({ url, clientName, amountPayable, note }) => {
   if (amount !== null) lines.push("", `Amount payable: ${fmtRs(amount, 2)}`);
   const trimmed = String(note ?? "").trim();
   if (trimmed) lines.push("", trimmed);
-  lines.push("", "Card and UPI are both accepted.");
+  lines.push("", "Payable by credit card.");
   return `https://wa.me/?text=${encodeURIComponent(lines.join("\n"))}`;
 };
 

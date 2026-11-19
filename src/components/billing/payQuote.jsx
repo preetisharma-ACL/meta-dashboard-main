@@ -15,7 +15,7 @@ import {
 } from "../../services/hdfcPay";
 
 // ─── The live breakdown, shared by both ways of paying ────────────────────────
-// GET pay/quote/ is the SAME endpoint for the card/UPI gateway and for a bank
+// GET pay/quote/ is the SAME endpoint for the credit card gateway and for a bank
 // transfer the client reports, and the figures must agree to the paisa: the
 // only difference is what the payable row is CALLED ("You pay" when the gateway
 // is about to charge it, "Amount to transfer" when the client is about to move

@@ -209,8 +209,7 @@ export default function PaymentLinkPay() {
                       : `Pay ${fmtRs(payable(), 2)}`}
                 </button>
                 <p class="text-xs text-[#8593A8] dark:text-gray-400 text-center">
-                  Secure payment through HDFC Bank. Card and UPI are both
-                  accepted.
+                  Secure payment through HDFC Bank. Credit cards only.
                 </p>
               </Show>
             </div>

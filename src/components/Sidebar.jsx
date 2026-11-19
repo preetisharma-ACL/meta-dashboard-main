@@ -685,7 +685,7 @@ export default function Sidebar() {
             ),
           },
           {
-            // HDFC card/UPI links. Admin-only here, so it never asks to widen
+            // HDFC credit card links. Admin-only here, so it never asks to widen
             // past this group's roles.
             name: "Payment Links",
             path: "/billing/payment-links",
