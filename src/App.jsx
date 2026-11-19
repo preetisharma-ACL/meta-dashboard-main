@@ -77,6 +77,9 @@ import LeadReplacements from "./pages/leads/LeadReplacements";
 import LeadDisqualifications from "./pages/leads/LeadDisqualifications";
 import ClientBilling from "./pages/billing/ClientBilling";
 import AdditionalServices from "./pages/billing/AdditionalServices";
+import PaymentLinks from "./pages/billing/PaymentLinks";
+import PaymentResult from "./pages/billing/PaymentResult";
+import PaymentLinkPay from "./pages/billing/PaymentLinkPay";
 import OnboardingWizard from "./pages/onboarding/OnboardingWizard";
 import Assignments from "./pages/assignments/Assignments";
 import PaymentsList from "./pages/payments/PaymentsList";
@@ -195,6 +198,25 @@ function App() {
               "/" only ever matches this route. */}
           <Route path="/login" component={Login} />
           <Route path="/" component={ReportingIntro} />
+
+          {/* ── HDFC online payments: the two PUBLIC pages ─────────────────
+              Both sit out here on purpose, outside ProtectedRoute AND outside
+              Layout. The person reading either one may hold nothing but a
+              WhatsApp message: a payment link has no login behind it, and the
+              gateway returns the browser to /payment-result with the link token
+              in `t` rather than a session.
+
+              /payment-result WITHOUT a `t` does need a login, and the page
+              itself sends that caller to /login?next=<this url> so they come
+              back to the same receipt. Guarding the ROUTE instead would bounce
+              every link holder to a login screen they have no account for.
+
+              A static first segment outranks a dynamic one in the router's
+              scoring, so "/payment-result" always wins over the
+              "/:client-nomen-name" client route inside the protected branch
+              below. "/pay/:token" is two segments and never competes with it. */}
+          <Route path="/payment-result" component={PaymentResult} />
+          <Route path="/pay/:token" component={PaymentLinkPay} />
 
           {/*  All protected routes share ONE Layout instance via nesting.
                Header and Sidebar mount once and never remount on navigation. */}
@@ -372,6 +394,31 @@ function App() {
                   ]}
                 >
                   <AdditionalServices />
+                </AdminRoute>
+              )}
+            />
+            {/* Payment links — issue a card/UPI link for one client and watch
+                what the bank sends back.
+
+                Gated to the same four staff roles the spec names. Sales are out
+                (they onboard clients, they don't collect from them) and a
+                CLIENT must never reach it: they pay from their own Billing page
+                and never see another client's links. The BACKEND restricts a CM
+                to their own clients and 403s anything else, so this gate only
+                decides whether the screen is offered; the page shows the API's
+                own sentence when it refuses. */}
+            <Route
+              path="/billing/payment-links"
+              component={() => (
+                <AdminRoute
+                  roles={[
+                    "admin",
+                    "accounts",
+                    "coordination",
+                    "campaign_manager",
+                  ]}
+                >
+                  <PaymentLinks />
                 </AdminRoute>
               )}
             />

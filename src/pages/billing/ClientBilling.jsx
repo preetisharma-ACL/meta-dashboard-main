@@ -21,6 +21,7 @@ import ClientTypeFilter, {
 import {
   currentUser,
   canSeeAdditionalServices,
+  canSeePaymentLinks,
 } from "../../stores/currentUser";
 
 // ─── Client Payments — the single payments-overview screen ────────────────────
@@ -310,6 +311,32 @@ export default function ClientBilling() {
                 <path d="M10 21h4M7 3h10a2 2 0 012 2v4a7 7 0 01-7 7 7 7 0 01-7-7V5a2 2 0 012-2zm5 13v5" />
               </svg>
               Additional services
+            </A>
+          </Show>
+
+          {/* Payment links — the HDFC card/UPI link an operator sends a client
+              who owes money. Gated on the same roles as that screen's route;
+              sales read this ledger but never collect against it, so the button
+              is hidden from them the same way Additional services is. An
+              operator looking at a client in the red is already on this page,
+              which is why the entry point lives here. */}
+          <Show when={canSeePaymentLinks()}>
+            <A
+              href="/billing/payment-links"
+              class="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-[#E2E8F1] dark:border-gray-600 bg-white dark:bg-gray-800 text-sm font-semibold text-[#54657E] dark:text-gray-300 hover:bg-[#F6F9FC] dark:hover:bg-gray-700 transition-colors whitespace-nowrap"
+            >
+              <svg
+                class="w-4 h-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" />
+              </svg>
+              Payment links
             </A>
           </Show>
 

@@ -24,6 +24,13 @@ import {
   fmtChargeDate,
 } from "../services/additionalServices";
 import { readLeadBreakdown, showsReplacement } from "../services/leadReplacement";
+import PayNowModal from "../components/billing/PayNowModal";
+import OnlinePaymentsTable from "../components/billing/OnlinePaymentsTable";
+import {
+  fetchPaySummary,
+  fetchPayOrders,
+  isPayEnabled,
+} from "../services/hdfcPay";
 
 // --- Helpers ------------------------------------------------------------------
 // API returns decimals as strings; we only format for display (no further math),
@@ -1464,6 +1471,36 @@ export default function Billing() {
   //              ad-spend/SC/GST sub-rows and without the closing row
   const { ishybrid, isRetainer, iscpl } = clientRole();
 
+  // ── HDFC online payments ──────────────────────────────────────────────────
+  // Card / UPI, through the gateway. CLIENT LOGIN ONLY: pay/summary/ is the
+  // client's own dues and an admin previewing this page must not be handed a
+  // Pay now button that charges nobody.
+  //
+  // `enabled` is the master switch and it is the SERVER's. Nothing about online
+  // payment renders — not the button, not the history table — until the summary
+  // comes back with enabled: true, so the feature can be turned off backend-side
+  // without a deploy here. The summary is read once per page load; it is a
+  // switch and a minimum, not a live figure.
+  const { isClient } = useRole();
+  const [paySummaryRes] = createResource(
+    () => (isClient() ? "pay-summary" : null),
+    fetchPaySummary,
+  );
+  // An errored resource throws when read, and a summary that failed to load is
+  // just "no online payment offered", not a broken billing page.
+  const paySummary = () => (paySummaryRes.error ? null : paySummaryRes()) ?? null;
+  const payEnabled = () => isPayEnabled(paySummary());
+
+  const [payOpen, setPayOpen] = createSignal(false);
+
+  // The client's own order history. Keyed on payEnabled() so it is never
+  // requested for a client the gateway is switched off for.
+  const [payOrdersRes] = createResource(
+    () => (payEnabled() ? "pay-orders" : null),
+    () => fetchPayOrders(),
+  );
+  const payOrders = () => (payOrdersRes.error ? [] : payOrdersRes()) ?? [];
+
   const payments = createMemo(() => {
     // An errored resource THROWS when read; a failed payments list is just an
     // empty history, not a broken page.
@@ -1881,22 +1918,51 @@ export default function Billing() {
               · {monthLabel()}
             </span>
           </h1>
-          <nav class="flex gap-6 text-md font-medium">
-            <For each={tabs}>
-              {(t) => (
-                <button
-                  onClick={() => setTab(t.id)}
-                  class={`pb-1.5 border-b-2 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 focus-visible:outline-offset-4 ${
-                    tab() === t.id
-                      ? "border-blue-900 dark:border-blue-400 text-gray-900 dark:text-gray-100"
-                      : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
-                  }`}
+          <div class="flex flex-wrap items-center gap-5">
+            <nav class="flex gap-6 text-md font-medium">
+              <For each={tabs}>
+                {(t) => (
+                  <button
+                    onClick={() => setTab(t.id)}
+                    class={`pb-1.5 border-b-2 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 focus-visible:outline-offset-4 ${
+                      tab() === t.id
+                        ? "border-blue-900 dark:border-blue-400 text-gray-900 dark:text-gray-100"
+                        : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                )}
+              </For>
+            </nav>
+
+            {/* Pay now — client login only, and only once the server says the
+                gateway is on. Nothing here is rendered otherwise: no disabled
+                button, no explanatory note, because a client who cannot pay
+                online has nothing to be told about a feature they were never
+                offered. */}
+            <Show when={payEnabled()}>
+              <button
+                type="button"
+                onClick={() => setPayOpen(true)}
+                class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-900 dark:bg-blue-700 text-white text-sm font-bold hover:bg-blue-800 dark:hover:bg-blue-600 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 focus-visible:outline-offset-2"
+              >
+                <svg
+                  class="w-4 h-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
                 >
-                  {t.label}
-                </button>
-              )}
-            </For>
-          </nav>
+                  <rect x="2" y="5" width="20" height="14" rx="2" />
+                  <path d="M2 10h20" />
+                </svg>
+                Pay now
+              </button>
+            </Show>
+          </div>
         </header>
 
         {/* ══ OVERVIEW TAB ══ */}
@@ -2538,6 +2604,19 @@ export default function Billing() {
                 }}
               />
             </Show>
+
+            {/* Online payments — the gateway's own orders, kept separate from
+                the receipts block above. That one is everything the accounts
+                desk has recorded (bank transfers, points, the opening balance);
+                this one is only what this client put through card or UPI, and a
+                row here opens its receipt. */}
+            <Show when={payEnabled()}>
+              <OnlinePaymentsTable
+                orders={payOrders()}
+                loading={payOrdersRes.loading}
+                error={payOrdersRes.error}
+              />
+            </Show>
           </div>
         </Show>
 
@@ -2546,6 +2625,15 @@ export default function Billing() {
           onClose={() => setShowModal(false)}
           gstPct={Number(gstPct())}
         />
+        {/* Mounted only when the gateway is on, so a client it is off for never
+            has the dialog in their DOM at all. */}
+        <Show when={payEnabled()}>
+          <PayNowModal
+            open={payOpen()}
+            onClose={() => setPayOpen(false)}
+            summary={paySummary()}
+          />
+        </Show>
         <InvoiceModal
           open={showInvoiceModal()}
           invoice={selectedInvoice()}

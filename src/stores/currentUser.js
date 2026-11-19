@@ -219,6 +219,32 @@ export const canWriteAdditionalServices = () => {
   return isSeniorCM();
 };
 
+// ─── HDFC payment-link gate ───────────────────────────────────────────────────
+// Who is OFFERED the payment-links screen: admin, accounts, coordination and
+// campaign managers, exactly as the backend spec names them. Sales are out —
+// they read the payments ledger but never collect against it — and a CLIENT
+// pays from their own Billing page and must never see another client's links.
+//
+// Its own set rather than a reuse of ADDL_SERVICE_READ_ROLES, which happens to
+// hold the same four today: the two features are gated by different backend
+// permissions and a change to one must not silently move the other.
+//
+// NO TIER LEG. Every CM tier may issue a link, and the backend restricts each
+// of them to their OWN clients regardless — folding a tier check in here would
+// hide the screen from managers the API serves. There is no separate write gate
+// for the same reason: on this screen reading and issuing are the same role set.
+const PAYMENT_LINK_ROLES = new Set([
+  "admin",
+  "accounts",
+  "coordination",
+  "campaign_manager",
+]);
+
+export const canSeePaymentLinks = () => {
+  const role = currentUser.loaded ? currentUser.role : readAuth()?.role;
+  return PAYMENT_LINK_ROLES.has(role);
+};
+
 // ─── Lead-replacement gates ───────────────────────────────────────────────────
 // Who may POST /leads/replacement-batches/ — admins and SENIOR (tier-1/tier-2) campaign managers
 // only. Tier-3 CMs, clients, sales, coordination and accounts must not see the

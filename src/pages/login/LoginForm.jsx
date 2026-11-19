@@ -2,6 +2,7 @@ import { createSignal, onMount } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { loginUser } from "../../services/login-service";
 import { clearAllCache } from "../../cacheStore/appStore";
+import { nextAfterLogin } from "../../utils/loginNext";
 
 // ✅ Decode JWT expiry
 const getTokenExpiry = (token) => {
@@ -43,7 +44,7 @@ export default function Login() {
     if (auth?.token && auth?.refreshToken) {
       // Both tokens present — safe to continue session
       setIsLoggedIn(true);
-      navigate("/dashboard", { replace: true });
+      navigate(nextAfterLogin(), { replace: true });
     } else if (auth?.token && !auth?.refreshToken) {
       // Access token only, no refresh token — clear and re-login
       console.warn("No refresh token found — clearing session");
@@ -150,7 +151,10 @@ export default function Login() {
       // every component initialises from scratch with the new auth token
       // and an empty cache — exactly what handleLogout already does.
 
-      window.location.href = "/dashboard";
+      // nextAfterLogin() keeps the full-reload behaviour above and only changes
+      // WHERE it lands, so a client sent here from /payment-result returns to
+      // that receipt instead of the dashboard.
+      window.location.href = nextAfterLogin();
     } catch (err) {
       console.error(err);
       setError(err.message || "Login failed. Please try again.");

@@ -676,6 +676,16 @@ export default function Sidebar() {
               <SmallIcon d="M10 21h4M7 3h10a2 2 0 012 2v4a7 7 0 01-7 7 7 7 0 01-7-7V5a2 2 0 012-2zm5 13v5" />
             ),
           },
+          {
+            // HDFC card/UPI links. Admin-only here, so it never asks to widen
+            // past this group's roles.
+            name: "Payment Links",
+            path: "/billing/payment-links",
+            roles: ["admin"],
+            icon: () => (
+              <SmallIcon d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" />
+            ),
+          },
         ],
       },
       // ── Sales manager nav (v1.1) ──────────────────────────────────────────
@@ -764,6 +774,20 @@ export default function Sidebar() {
         path: "/billing/additional-services",
       },
       {
+        // Payment links, top-level for the same two roles and for the same
+        // reason as the row above: accounts' desk is a flat list and
+        // coordination has no "Payments Desk" group to hold it, and a
+        // sub-item's `roles` never widen past its parent group's. Admin and CMs
+        // get it inside their own groups. Sales are out and CLIENTS ARE NEVER
+        // HERE: a client pays from their own Billing page.
+        name: "Payment Links",
+        roles: ["accounts", "coordination"],
+        icon: () => (
+          <Icon d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" />
+        ),
+        path: "/billing/payment-links",
+      },
+      {
         // ── Campaign Manager payments desk ─────────────────────────────────
         // The four CM payment screens folded into one group. Additional
         // Services is listed at ROLE level on purpose — a tier-2 CM lands on a
@@ -791,6 +815,18 @@ export default function Sidebar() {
             roles: ["campaign_manager"],
             icon: () => (
               <SmallIcon d="M10 21h4M7 3h10a2 2 0 012 2v4a7 7 0 01-7 7 7 7 0 01-7-7V5a2 2 0 012-2zm5 13v5" />
+            ),
+          },
+          {
+            // Listed at ROLE level with no tier `when`: the spec gates payment
+            // links on role alone, and the backend already restricts a CM to
+            // their OWN clients whatever their tier. A tier check here would
+            // hide the screen from managers the API serves.
+            name: "Payment Links",
+            path: "/billing/payment-links",
+            roles: ["campaign_manager"],
+            icon: () => (
+              <SmallIcon d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" />
             ),
           },
           {
