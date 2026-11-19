@@ -237,7 +237,7 @@ const listRows = (res) =>
         ? res.results
         : [];
 
-// ── 1. Client: the Pay now flow ─────────────────────────────────────────────
+// ── 1. Client: the Add funds flow ───────────────────────────────────────────
 
 // GET pay/summary/ → { enabled, dues_ex_gst, min_ex_gst, min_including_gst,
 //                      gst_pct, tds_options, methods, other_ways_note }
@@ -263,7 +263,7 @@ export const tdsChoices = (summary) =>
 
 // ── TDS is 2%, and only 2% (backend fd948f4) ────────────────────────────────
 // pay/summary/ now returns tds_options: [0, 2] and the backend answers 400 to
-// 1% everywhere: Pay now, payment links and bank transfers alike. So the
+// 1% everywhere: Add funds, payment links and bank transfers alike. So the
 // control is a plain on/off and the RATE IS NEVER DERIVED FROM USER INPUT or
 // from an array index.
 //
@@ -302,34 +302,33 @@ export const TDS_NOTE =
   "2025 (earlier Section 194C). Deduct TDS only on the amount excluding GST, " +
   "and share the TDS certificate with our accounts team after filing.";
 
-// What the gateway actually accepts, said under the Pay button so a client who
-// wanted UPI is sent somewhere that takes it rather than to a declined card.
+// ── The note under the method chip ──────────────────────────────────────────
+// What the gateway accepts, and where to go for anything else. ONE note on the
+// online tab, not two: it used to be duplicated under the Pay button, and the
+// same sentence printed twice on one short dialog reads as a bug.
 //
-// TWO VERSIONS, because the second sentence names a tab that is not always
-// there. The bank transfer tab has its own independent switch, and with it off
-// the full note would tell a client to use a tab that does not exist on their
-// screen, which is worse than saying nothing about alternatives: they would go
-// looking for it. The caller picks by whether that tab is actually offered
-// (see onlineCardsNote), and the other_ways_note from pay/summary/ already
-// covers the alternatives in that case.
-export const ONLINE_CARDS_ONLY =
-  "Online payment accepts credit cards only.";
+// TWO ENDINGS, because the second sentence names a destination that is not
+// always there. The Bank transfer / UPI tab has its own independent switch, so
+// with it off the note points at the accounts team instead. Telling a client to
+// use a tab that is not on their screen sends them looking for it.
+export const ONLINE_CARDS_ONLY = "Online payment accepts credit cards only.";
 
-export const ONLINE_CARDS_NOTE =
-  `${ONLINE_CARDS_ONLY} To pay by UPI, debit card or net banking, use the ` +
-  "Bank transfer / UPI tab.";
+const CARDS_ELSEWHERE = "To pay by UPI, debit card or net banking,";
+
+export const ONLINE_CARDS_NOTE_TAB =
+  `${ONLINE_CARDS_ONLY} ${CARDS_ELSEWHERE} use the Bank transfer / UPI tab.`;
+
+export const ONLINE_CARDS_NOTE_ACCOUNTS =
+  `${ONLINE_CARDS_ONLY} ${CARDS_ELSEWHERE} please contact our accounts team.`;
 
 export const onlineCardsNote = (bankTabOffered) =>
-  bankTabOffered ? ONLINE_CARDS_NOTE : ONLINE_CARDS_ONLY;
+  bankTabOffered ? ONLINE_CARDS_NOTE_TAB : ONLINE_CARDS_NOTE_ACCOUNTS;
 
-// The note under the breakdown. The server's wording wins whenever it sent any;
-// ours is the default for a summary that carries an empty note.
-export const PAY_METHODS_NOTE =
-  "Card and UPI only. For net banking or bank transfer, please contact our accounts team.";
-
-export const payMethodsNote = (summary) => {
+// The server's wording still wins whenever it sent any; ours is the default for
+// a summary carrying an empty other_ways_note.
+export const payMethodsNote = (summary, bankTabOffered) => {
   const note = String(summary?.other_ways_note ?? "").trim();
-  return note || PAY_METHODS_NOTE;
+  return note || onlineCardsNote(bankTabOffered);
 };
 
 // ── Method names ────────────────────────────────────────────────────────────
@@ -1030,14 +1029,17 @@ export const REPORT_DEFAULT_STATUS = "charged";
 // links. Absent means both.
 export const REPORT_KINDS = [
   { value: "", label: "All" },
-  { value: "client", label: "Pay now" },
+  { value: "client", label: "Add funds" },
   { value: "link", label: "Link" },
 ];
 
-// "Pay now" / "Link" for a row. The server sends kind: client | link.
+// What the desk calls each kind of order. The server sends kind: client | link.
+// "Add funds" matches the button a client actually pressed to make it; it was
+// "Pay now" until that button was renamed, and a report column naming a control
+// that no longer exists is how a reconciliation gets queried.
 export const orderKindLabel = (row) => {
   const k = String(row?.kind ?? "").toLowerCase();
-  if (k === "client") return "Pay now";
+  if (k === "client") return "Add funds";
   if (k === "link") return "Link";
   return "—";
 };

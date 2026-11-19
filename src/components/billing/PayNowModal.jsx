@@ -14,7 +14,6 @@ import {
   payNum,
   wholeRupees,
   fmtRs,
-  onlineCardsNote,
 } from "../../services/hdfcPay";
 
 // ─── Add funds (client) ───────────────────────────────────────────────────────
@@ -303,8 +302,12 @@ export default function PayNowModal(props) {
                     </For>
                   </div>
                 </Show>
-                <p class="text-xs text-gray-500 dark:text-gray-400">
-                  {payMethodsNote(summary())}
+                {/* ONE note, here under the chip. It names the Bank transfer
+                    tab only when that tab is actually on (its switch is
+                    independent), and the server's other_ways_note overrides
+                    both wordings when it sent one. */}
+                <p class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+                  {payMethodsNote(summary(), bankOn())}
                 </p>
               </div>
 
@@ -329,18 +332,6 @@ export default function PayNowModal(props) {
                     ? `Pay ${fmtRs(quote.payable(), 2)}`
                     : "Enter an amount to continue"}
               </button>
-
-              {/* What the gateway actually accepts, UNDER the button, where a
-                  client reads it just before leaving the app. The HDFC page
-                  itself refuses debit cards, so without this line the first
-                  anyone learns of it is a decline on somebody else's screen.
-
-                  It names the Bank transfer tab ONLY when that tab is actually
-                  on: its switch is independent, and pointing a client at a tab
-                  that is not on their screen sends them looking for it. */}
-              <p class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">
-                {onlineCardsNote(bankOn())}
-              </p>
             </div>
           </Show>
 

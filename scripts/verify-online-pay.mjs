@@ -113,7 +113,8 @@ const {
   // ── TDS 2% only + cards only (backend fd948f4) ──
   TDS_PCT,
   TDS_NOTE,
-  ONLINE_CARDS_NOTE,
+  ONLINE_CARDS_NOTE_TAB,
+  ONLINE_CARDS_NOTE_ACCOUNTS,
   ONLINE_CARDS_ONLY,
   onlineCardsNote,
   tdsOffered,
@@ -195,21 +196,31 @@ check("empty is null, so no blank chip renders", payMethodLabel("") === null);
 check("the live methods list renders one chip",
   JSON.stringify(payMethodLabels({ methods: ["credit_card"] })) === '["Credit card"]',
   JSON.stringify(payMethodLabels({ methods: ["credit_card"] })));
-check("the cards-only note names the alternative tab",
-  ONLINE_CARDS_NOTE.includes("credit cards only") &&
-    ONLINE_CARDS_NOTE.includes("Bank transfer / UPI tab"), ONLINE_CARDS_NOTE);
-check("it names UPI, debit card and net banking",
-  /UPI, debit card or net banking/.test(ONLINE_CARDS_NOTE));
-check("no long dash in the cards note", !/[–—]/.test(ONLINE_CARDS_NOTE));
-// The second sentence names a tab whose switch is independent of the gateway's.
-check("with the bank tab ON, the full note points at it",
-  onlineCardsNote(true) === ONLINE_CARDS_NOTE);
-check("with the bank tab OFF, it does NOT point at a tab that is not there",
-  onlineCardsNote(false) === ONLINE_CARDS_ONLY &&
-    !onlineCardsNote(false).includes("Bank transfer"),
+// ONE note on the online tab, with two endings. The second sentence names a
+// destination whose switch is independent of the gateway's, so pointing at a
+// tab that is not on the client's screen would send them looking for it.
+check("both wordings open with cards only",
+  ONLINE_CARDS_NOTE_TAB.startsWith("Online payment accepts credit cards only.") &&
+    ONLINE_CARDS_NOTE_ACCOUNTS.startsWith("Online payment accepts credit cards only."));
+check("both name UPI, debit card and net banking",
+  /UPI, debit card or net banking/.test(ONLINE_CARDS_NOTE_TAB) &&
+    /UPI, debit card or net banking/.test(ONLINE_CARDS_NOTE_ACCOUNTS));
+check("with the bank tab ON it points at that tab",
+  onlineCardsNote(true) === ONLINE_CARDS_NOTE_TAB &&
+    onlineCardsNote(true).endsWith("use the Bank transfer / UPI tab."),
+  onlineCardsNote(true));
+check("with the bank tab OFF it points at the accounts team instead",
+  onlineCardsNote(false) === ONLINE_CARDS_NOTE_ACCOUNTS &&
+    onlineCardsNote(false).endsWith("please contact our accounts team."),
   onlineCardsNote(false));
-check("and still says cards only",
-  onlineCardsNote(false).includes("credit cards only"));
+check("and never names a tab that is not there",
+  !onlineCardsNote(false).includes("Bank transfer"), onlineCardsNote(false));
+check("the retired 'Card and UPI only' wording is gone",
+  !onlineCardsNote(true).includes("Card and UPI only") &&
+    !onlineCardsNote(false).includes("Card and UPI only"));
+check("no long dash in either wording",
+  !/[–—]/.test(ONLINE_CARDS_NOTE_TAB) &&
+    !/[–—]/.test(ONLINE_CARDS_NOTE_ACCOUNTS));
 
 console.log("\nTDS choices come from the server and are never invented");
 check("0 is dropped, it IS the unchecked state",
@@ -223,12 +234,14 @@ check("no guessed list when the server sends none",
   JSON.stringify(tdsChoices({ tds_options: [] })) === "[]");
 
 console.log("\nthe methods note prefers the server's wording");
-check("server note wins",
-  payMethodsNote({ other_ways_note: "Call us on 1800" }) === "Call us on 1800");
-check("empty note falls back to ours",
-  payMethodsNote({ other_ways_note: "   " }).startsWith("Card and UPI only."));
-check("absent note falls back to ours",
-  payMethodsNote({}).includes("accounts team"));
+check("server note wins, whichever tab state",
+  payMethodsNote({ other_ways_note: "Call us on 1800" }, true) === "Call us on 1800" &&
+    payMethodsNote({ other_ways_note: "Call us on 1800" }, false) === "Call us on 1800");
+check("a whitespace-only note falls back to ours",
+  payMethodsNote({ other_ways_note: "   " }, true) === ONLINE_CARDS_NOTE_TAB);
+check("an absent note falls back to ours, following the tab switch",
+  payMethodsNote({}, true) === ONLINE_CARDS_NOTE_TAB &&
+    payMethodsNote({}, false) === ONLINE_CARDS_NOTE_ACCOUNTS);
 check("method strings use the house spellings",
   JSON.stringify(payMethodLabels({ methods: ["card", "net_banking"] })) ===
     '["Card","Net banking"]',
@@ -677,7 +690,11 @@ console.log("\nsorting is newest first on the date the server filtered by");
 }
 
 console.log("\nkind reads as the two things the desk calls them");
-check("client → Pay now", orderKindLabel({ kind: "client" }) === "Pay now");
+check("client → Add funds, matching the button that made it",
+  orderKindLabel({ kind: "client" }) === "Add funds",
+  orderKindLabel({ kind: "client" }));
+check("the retired 'Pay now' label is gone",
+  orderKindLabel({ kind: "client" }) !== "Pay now");
 check("link → Link", orderKindLabel({ kind: "link" }) === "Link");
 check("missing → dash", orderKindLabel({}) === "—");
 

@@ -473,138 +473,6 @@ function PaymentHistory(props) {
   );
 }
 
-// --- Add Funds Modal ----------------------------------------------------------
-function AddFundsModal(props) {
-  const [amount, setAmount] = createSignal("");
-  const [method, setMethod] = createSignal("UPI");
-  const quickAmounts = [50000, 100000, 200000, 500000];
-  const methods = ["UPI", "Bank Transfer", "Credit Card", "Cheque"];
-  // GST on a top-up the client types in, NOT on spend — no replacement credit
-  // applies to money being added. The RATE still comes from the API through a
-  // prop: 1.18 was hardcoded here while the page above already had gst_pct per
-  // client, so a client on any other slab was quoted a figure they would not be
-  // charged.
-  const gstPct = () => Number(props.gstPct) || 0;
-  const totalWithGST = () =>
-    amount() ? Math.round(Number(amount()) * (1 + gstPct() / 100)) : null;
-
-  const handleBackdrop = (e) => {
-    if (e.target === e.currentTarget) props.onClose();
-  };
-  // Stays mounted while closed (for the fade); inert keeps it out of the Tab
-  // order then. Esc closes it and focus returns to the opener.
-  let dialogBox;
-  useDialog(() => props.open, () => props.onClose(), () => dialogBox);
-
-  return (
-    <div
-      class={`fixed inset-0 z-50 flex items-center justify-center p-4 transition-all duration-200 ${props.open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
-      style={{ background: "rgba(0,0,0,0.45)", "backdrop-filter": "blur(4px)" }}
-      onClick={handleBackdrop}
-      inert={props.open ? undefined : true}
-      aria-hidden={props.open ? undefined : "true"}
-    >
-      <div
-        ref={dialogBox}
-        role="dialog"
-        aria-modal="true"
-        class={`w-full max-w-md transition-all duration-200 ${props.open ? "scale-100 translate-y-0" : "scale-95 translate-y-4"}`}
-      >
-        <Card class="p-6 space-y-5 shadow-sm">
-          <div class="flex items-start justify-between">
-            <div>
-              <h3 class="font-bold text-gray-900 dark:text-gray-100 text-lg">
-                Add Funds
-              </h3>
-              <p class="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
-                Powered by HDFC Payment Gateway
-              </p>
-            </div>
-            <button
-              onClick={props.onClose}
-              class="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-            >
-              <svg
-                class="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
-            </button>
-          </div>
-          <div class="space-y-1.5">
-            <label class="text-sm font-semibold text-gray-600 dark:text-gray-400">
-              Amount (INR, ex-GST)
-            </label>
-            <div class="relative">
-              <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-400 font-bold select-none">
-                ₹
-              </span>
-              <input
-                type="number"
-                placeholder="0"
-                value={amount()}
-                onInput={(e) => setAmount(e.currentTarget.value)}
-                class="w-full pl-8 pr-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-lg focus:outline-none focus:ring-2 focus:ring-gray-400 dark:focus:ring-gray-600 placeholder-gray-300 dark:placeholder-gray-700"
-              />
-            </div>
-            <p class="text-sm text-gray-600 dark:text-gray-400">
-              +{gstPct()}% GST · You pay:{" "}
-              <span class="font-semibold text-gray-700 dark:text-gray-400">
-                {totalWithGST() ? fmt(totalWithGST()) : "—"}
-              </span>
-            </p>
-          </div>
-          <div class="flex flex-wrap gap-2">
-            <For each={quickAmounts}>
-              {(a) => (
-                <button
-                  onClick={() => setAmount(String(a))}
-                  class={`text-sm font-semibold px-3 py-1.5 rounded-lg border transition-colors ${String(amount()) === String(a) ? "bg-gray-800 dark:bg-gray-100 text-white dark:text-gray-900 border-transparent" : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-400"}`}
-                >
-                  {fmt(a)}
-                </button>
-              )}
-            </For>
-          </div>
-          <div class="space-y-1.5">
-            <label class="text-sm font-semibold text-gray-600 dark:text-gray-400">
-              Payment Method
-            </label>
-            <div class="grid grid-cols-4 gap-2">
-              <For each={methods}>
-                {(m) => (
-                  <button
-                    onClick={() => setMethod(m)}
-                    class={`text-[11px] font-semibold py-2 px-1 rounded-xl border transition-colors text-center ${method() === m ? "bg-gray-800 dark:bg-gray-100 text-white dark:text-gray-900 border-transparent" : "border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400"}`}
-                  >
-                    {m}
-                  </button>
-                )}
-              </For>
-            </div>
-          </div>
-          <button
-            disabled={!amount() || Number(amount()) <= 0}
-            class="w-full py-3 rounded-2xl bg-gray-800 dark:bg-gray-100 text-white dark:text-gray-900 font-bold text-sm hover:opacity-85 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            {totalWithGST()
-              ? `Proceed to Pay ${fmt(totalWithGST())} →`
-              : "Enter Amount to Continue"}
-          </button>
-        </Card>
-      </div>
-    </div>
-  );
-}
-
 function InvoiceModal(props) {
   const gst = () => props.invoice?.gstAmount || 0;
   const total = () => props.invoice?.amount || 0;
@@ -1131,7 +999,7 @@ function CplProjectTable(props) {
                         }
                       >
                         <span class="text-amber-600 dark:text-amber-400">
-                          — rate not set
+                          Rate not set
                         </span>
                       </Show>
                     </td>
@@ -1243,7 +1111,7 @@ function CplProjectTable(props) {
             <p class="text-xs text-gray-500 dark:text-gray-400">
               A rate marked{" "}
               <span class="font-medium uppercase tracking-wide">avg</span> is
-              the average contracted rate across the month's rated days — that
+              the average contracted rate across the month's rated days. That
               project ran on more than one contracted rate, listed beneath it.
             </p>
           </Show>
@@ -1462,7 +1330,6 @@ function HybridProjectTable(props) {
 // --- Root Component -----------------------------------------------------------
 export default function Billing() {
   const [tab, setTab] = createSignal("overview");
-  const [showModal, setShowModal] = createSignal(false);
   const [selectedInvoice, setSelectedInvoice] = createSignal(null);
   const [showInvoiceModal, setShowInvoiceModal] = createSignal(false);
   const [paymentsData] = createResource(fetchPaymentsDetails);
@@ -2188,7 +2055,7 @@ export default function Billing() {
                 note={
                   cnMode()
                     ? "Replaced leads are added to your Replaced Credit Notes, which pay your charges before your main balance."
-                    : "Replaced leads are credited back — the amounts in the statement below are already net of that credit."
+                    : "Replaced leads are credited back. The amounts in the statement below are already net of that credit."
                 }
               />
             </Show>
@@ -2656,11 +2523,6 @@ export default function Billing() {
           </div>
         </Show>
 
-        <AddFundsModal
-          open={showModal()}
-          onClose={() => setShowModal(false)}
-          gstPct={Number(gstPct())}
-        />
         {/* Mounted only when there is a way to pay, so a client both switches
             are off for never has the dialog in their DOM at all. The modal
             itself decides which tabs to show from the same two payloads. */}
