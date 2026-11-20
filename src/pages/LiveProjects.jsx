@@ -92,9 +92,9 @@ export default function LiveProjects() {
             </div>
 
             {/* Table */}
-            <div class="overflow-x-auto">
+            <div class="overflow-auto max-h-[calc(100vh-16rem)]">
                 <table class="min-w-full text-sm">
-                    <thead class="bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-400">
+                    <thead class="sticky top-0 z-20 bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-400">
                         <tr>
                             <th class="px-4 py-3 text-left">
                                 <input type="checkbox" disabled />

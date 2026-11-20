@@ -1330,12 +1330,12 @@ export default function ProjectDisplayConfig() {
         </span>
       </div>
       {/* Table — unchanged from original */}
-      <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 overflow-x-auto">
+      <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 overflow-auto max-h-[calc(100vh-16rem)]">
         <table class="min-w-full text-sm">
           {/* Table Head */}
-          <thead>
+          <thead class="sticky top-0 z-20">
             <tr
-              class="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60
+              class="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800
                        text-gray-500 dark:text-gray-400 uppercase text-xs tracking-wider"
             >
               <th class="p-3 text-center whitespace-nowrap w-12">S.No</th>
@@ -2157,9 +2157,9 @@ export default function ProjectDisplayConfig() {
                     </span>
                   </p>
 
-                  <div class="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+                  <div class="overflow-auto max-h-[calc(100vh-16rem)] rounded-lg border border-gray-200 dark:border-gray-700">
                     <table class="min-w-full text-sm">
-                      <thead>
+                      <thead class="sticky top-0 z-20">
                         <tr class="bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider">
                           <th class="p-2.5 text-left">Window</th>
                           <th class="p-2.5 text-right">Raw CPL</th>

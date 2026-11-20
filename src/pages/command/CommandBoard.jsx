@@ -836,9 +836,9 @@ export default function CommandBoard() {
       </Show>
 
       {/* ══ Table ══ */}
-      <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 overflow-x-auto">
+      <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 overflow-auto max-h-[calc(100vh-16rem)]">
         <table class="min-w-full text-sm">
-          <thead>
+          <thead class="sticky top-0 z-20 bg-white dark:bg-gray-900">
             {/* ── Which clock each column runs on ──────────────────────────
                 The mismatch this page invites is a five-column block governed
                 by the date filter sitting next to a balance that is always the
@@ -1772,9 +1772,9 @@ function AdAccountList(props) {
       <p class="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2">
         Ad accounts · as they stand now
       </p>
-      <div class="max-w-4xl overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+      <div class="max-w-4xl overflow-auto max-h-[calc(100vh-16rem)] rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
         <table class="min-w-full text-[13px]">
-          <thead>
+          <thead class="sticky top-0 z-20 bg-white dark:bg-gray-900">
             <tr class="border-b border-gray-100 dark:border-gray-800">
               <th class={ATH}>Account</th>
               <th class={ATH}>Portfolio</th>

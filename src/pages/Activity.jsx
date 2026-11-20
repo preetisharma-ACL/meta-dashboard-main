@@ -606,8 +606,12 @@ const TABLE_SHELL =
   "bg-white dark:bg-gray-800 rounded-2xl border border-[#E2E8F1] dark:border-gray-700 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)]";
 const TH =
   "p-3 text-left whitespace-nowrap sticky top-0 z-10 bg-[#F8FAFC] dark:bg-gray-800";
+// Both panels using this sit in their own bounded scroller, so the header
+// sticks to the panel it belongs to. The background is the card's own and must
+// stay opaque — these rows have no background of their own, so a translucent
+// header would show the sign-ins scrolling straight through it.
 const THEAD =
-  "border-b border-[#D4DDE9] dark:border-gray-700 text-[#54657E] dark:text-gray-300 uppercase text-xs font-bold tracking-wider";
+  "sticky top-0 z-20 bg-white dark:bg-gray-900 border-b border-[#D4DDE9] dark:border-gray-700 text-[#54657E] dark:text-gray-300 uppercase text-xs font-bold tracking-wider";
 
 function LoginsPanel(props) {
   const [userSearch, setUserSearch] = createSignal("");
@@ -1547,11 +1551,11 @@ export default function Activity() {
 
       {/* Table */}
       <div class="bg-white dark:bg-gray-800 rounded-2xl border border-[#E2E8F1]
-                  dark:border-gray-700 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] overflow-x-auto">
+                  dark:border-gray-700 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] overflow-auto max-h-[calc(100vh-16rem)]">
         <table class="min-w-full text-sm">
-          <thead>
+          <thead class="sticky top-0 z-20">
             <tr class="border-b border-[#D4DDE9] dark:border-gray-700 bg-[#F8FAFC]
-                       dark:bg-gray-800/60 text-[#54657E] dark:text-gray-300
+                       dark:bg-gray-800 text-[#54657E] dark:text-gray-300
                        uppercase text-xs font-bold tracking-wider">
               <th class="p-3 text-left whitespace-nowrap">Time</th>
               <th class="p-3 text-left whitespace-nowrap">User</th>

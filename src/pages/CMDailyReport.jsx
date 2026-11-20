@@ -1715,9 +1715,9 @@ export default function CMDailyReport() {
             </div>
 
             {/* TABLE */}
-            <div class="overflow-x-auto bg-white">
+            <div class="overflow-auto max-h-[calc(100vh-16rem)] bg-white">
               <table class="w-full text-sm border-collapse">
-                <thead>
+                <thead class="sticky top-0 z-20">
                   <tr class="bg-[#7B1C1C]">
                     <th class="px-4 py-3 text-left text-white text-md uppercase font-semibold border-r border-white/10">
                       Date

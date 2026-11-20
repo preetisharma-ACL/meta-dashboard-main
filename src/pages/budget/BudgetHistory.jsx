@@ -481,10 +481,10 @@ export default function BudgetHistory(props) {
 
       {/* ── CLIENT / MANAGER table ── */}
       <Show when={!res.loading && !res.error && groupBy() !== "overall"}>
-        <div class="bg-gray-50 dark:bg-gray-900 rounded-2xl border border-[#E2E8F1] dark:border-gray-700 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] overflow-x-auto">
+        <div class="bg-gray-50 dark:bg-gray-900 rounded-2xl border border-[#E2E8F1] dark:border-gray-700 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] overflow-auto max-h-[calc(100vh-16rem)]">
           <table class="min-w-full text-sm border-separate border-spacing-0">
-            <thead>
-              <tr class="bg-[#F8FAFC] dark:bg-gray-800/60 text-[#8593A8] dark:text-gray-400 uppercase text-[10px] font-bold tracking-[0.09em]">
+            <thead class="sticky top-0 z-20">
+              <tr class="bg-[#F8FAFC] dark:bg-gray-800 text-[#8593A8] dark:text-gray-400 uppercase text-[10px] font-bold tracking-[0.09em]">
                 <th class="pl-5 pr-2 py-3 text-center whitespace-nowrap w-12 border-b border-[#D4DDE9] dark:border-gray-700">#</th>
                 <th class="px-3 py-3 text-left whitespace-nowrap min-w-[220px] border-b border-[#D4DDE9] dark:border-gray-700">{groupBy() === "manager" ? "Manager" : "Client"}</th>
                 <th class="p-3.5 text-right whitespace-nowrap border-b border-[#D4DDE9] dark:border-gray-700">

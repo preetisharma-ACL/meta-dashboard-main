@@ -131,10 +131,10 @@ function ResultTable(props) {
     return seen;
   });
   return (
-    <div class="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+    <div class="overflow-auto max-h-[calc(100vh-16rem)] rounded-lg border border-gray-200 dark:border-gray-700">
       <table class="min-w-full text-sm">
-        <thead>
-          <tr class="bg-gray-50 dark:bg-gray-800/60 text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400 text-left">
+        <thead class="sticky top-0 z-20">
+          <tr class="bg-gray-50 dark:bg-gray-800 text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400 text-left">
             <For each={cols()}>{(c) => <th class="p-2.5 whitespace-nowrap">{c.replace(/_/g, " ")}</th>}</For>
           </tr>
         </thead>

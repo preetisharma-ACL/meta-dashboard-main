@@ -548,7 +548,7 @@ export default function ControlChangeList() {
               or the scrolled columns show through. */}
           <div class={`${CARD} overflow-auto max-h-[calc(100dvh-11rem)] min-h-[10rem]`}>
             <table class="min-w-full text-sm border-separate border-spacing-0">
-              <thead>
+              <thead class="sticky top-0 z-20 bg-white dark:bg-gray-900">
                 <tr class="text-gray-500 dark:text-gray-400 uppercase text-xs tracking-wider">
                   <th class={`${TH} ${PIN_TH} left-0 w-12 min-w-[3rem] !p-0`}>
                     <label class="flex h-10 w-12 items-center justify-center cursor-pointer">

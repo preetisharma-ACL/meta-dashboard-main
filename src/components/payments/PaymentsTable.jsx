@@ -189,9 +189,9 @@ export default function PaymentsTable(props) {
 
   return (
     <div>
-      <div class="overflow-x-auto rounded-2xl border border-[#E2E8F1] dark:border-gray-700 bg-white dark:bg-gray-800 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)]">
+      <div class="overflow-auto max-h-[calc(100vh-16rem)] rounded-2xl border border-[#E2E8F1] dark:border-gray-700 bg-white dark:bg-gray-800 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)]">
         <table class="w-full min-w-[1100px]">
-          <thead class="bg-[#E8EEF6] dark:bg-gray-900/80 border-b border-[#D3DDEA] dark:border-gray-700">
+          <thead class="sticky top-0 z-20 bg-[#E8EEF6] dark:bg-gray-900 border-b border-[#D3DDEA] dark:border-gray-700">
             <tr>
               <For each={COLUMNS}>
                 {(col) => (

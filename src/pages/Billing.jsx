@@ -877,9 +877,9 @@ function CplProjectTable(props) {
           </div>
         }
       >
-        <div class="overflow-x-auto">
+        <div class="overflow-auto max-h-[calc(100vh-16rem)]">
           <table class="w-full text-sm">
-            <thead>
+            <thead class="sticky top-0 z-20 bg-white dark:bg-gray-900">
               <tr class="border-y border-gray-200 dark:border-gray-700 text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
                 <th class="px-6 py-2.5 text-left font-medium">Project</th>
                 <th class={`hidden sm:table-cell ${numHead}`}>Generated</th>
@@ -1157,9 +1157,9 @@ function AdditionalServicesTable(props) {
         </p>
       </div>
 
-      <div class="overflow-x-auto">
+      <div class="overflow-auto max-h-[calc(100vh-16rem)]">
         <table class="w-full text-sm">
-          <thead>
+          <thead class="sticky top-0 z-20 bg-white dark:bg-gray-900">
             <tr class="border-y border-gray-200 dark:border-gray-700 text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
               <th class="px-6 py-2.5 text-left font-medium">Service</th>
               <th class="hidden sm:table-cell px-3 py-2.5 text-left font-medium">
@@ -1269,9 +1269,9 @@ function HybridProjectTable(props) {
           </div>
         }
       >
-        <div class="overflow-x-auto">
+        <div class="overflow-auto max-h-[calc(100vh-16rem)]">
           <table class="w-full text-sm">
-            <thead>
+            <thead class="sticky top-0 z-20 bg-white dark:bg-gray-900">
               <tr class="border-y border-gray-200 dark:border-gray-700 text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
                 <th class="px-6 py-2.5 text-left font-medium">Project</th>
                 <th class={`hidden sm:table-cell ${numHead}`}>Generated</th>

@@ -67,10 +67,10 @@ export default function OnlinePaymentsTable(props) {
               </p>
             }
           >
-            <div class="overflow-x-auto">
+            <div class="overflow-auto max-h-[calc(100vh-16rem)]">
               <table class="w-full text-sm">
-                <thead>
-                  <tr class="text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/40">
+                <thead class="sticky top-0 z-20">
+                  <tr class="text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900">
                     <th class="px-5 py-3">Date</th>
                     <th class="px-5 py-3">Reference</th>
                     <th class="px-5 py-3">Method</th>

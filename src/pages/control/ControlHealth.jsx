@@ -170,11 +170,11 @@ export default function ControlHealth() {
         </div>
 
         {/* ── Scheduled tasks ── */}
-        <section class={`${CARD} mt-4 overflow-x-auto`}>
+        <section class={`${CARD} mt-4 overflow-auto max-h-[calc(100vh-16rem)]`}>
           <h2 class="px-5 pt-4 pb-2 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Scheduled tasks</h2>
           <table class="min-w-full text-sm">
-            <thead>
-              <tr class="border-y border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider text-left">
+            <thead class="sticky top-0 z-20">
+              <tr class="border-y border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider text-left">
                 <th class="p-3">Name</th>
                 <th class="p-3">Task</th>
                 <th class="p-3">Schedule</th>
@@ -224,11 +224,11 @@ export default function ControlHealth() {
         </section>
 
         {/* ── Meta credentials ── */}
-        <section class={`${CARD} mt-4 overflow-x-auto`}>
+        <section class={`${CARD} mt-4 overflow-auto max-h-[calc(100vh-16rem)]`}>
           <h2 class="px-5 pt-4 pb-2 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Meta credentials</h2>
           <table class="min-w-full text-sm">
-            <thead>
-              <tr class="border-y border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider text-left">
+            <thead class="sticky top-0 z-20">
+              <tr class="border-y border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider text-left">
                 <th class="p-3">Label</th>
                 <th class="p-3">Kind</th>
                 <th class="p-3">Token</th>

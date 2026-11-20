@@ -1473,9 +1473,9 @@ export default function ProjectDetails() {
       </div>
 
       {/* ================= TABLE ================= */}
-      <div class="overflow-x-auto border rounded-xl">
+      <div class="overflow-auto max-h-[calc(100vh-16rem)] border rounded-xl">
         <table class="min-w-full text-sm">
-          <thead class="bg-gray-100 dark:bg-gray-800">
+          <thead class="sticky top-0 z-20 bg-gray-100 dark:bg-gray-800">
             <tr class="[&_th]:text-center [&_th]:cursor-pointer [&_th]:whitespace-nowrap [&_th:first-child]:text-left">
               {isInternalView() && (
                 <th class="p-3" onClick={() => handleSort("id")}>

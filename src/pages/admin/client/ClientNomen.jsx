@@ -253,12 +253,12 @@ export default function ClientNomen() {
       </div>
 
       {/* Table */}
-      <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 overflow-x-auto">
+      <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 overflow-auto max-h-[calc(100vh-16rem)]">
         <table class="min-w-full text-sm">
           {/* Table Head */}
-          <thead>
+          <thead class="sticky top-0 z-20">
             <tr
-              class="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60
+              class="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800
                        text-gray-500 dark:text-gray-400 uppercase text-xs tracking-wider"
             >
               <th

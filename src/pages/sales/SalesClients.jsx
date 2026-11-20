@@ -287,9 +287,9 @@ export default function SalesClients() {
             }
           >
             {/* ── Desktop / tablet: table ── */}
-            <div class="hidden md:block overflow-x-auto bg-gray-50 dark:bg-gray-800 rounded-xl border border-[#E2E8F1] dark:border-gray-700 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)]">
+            <div class="hidden md:block overflow-auto max-h-[calc(100vh-16rem)] bg-gray-50 dark:bg-gray-800 rounded-xl border border-[#E2E8F1] dark:border-gray-700 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)]">
               <table class="w-full text-sm table-auto">
-                <thead class="bg-[#F8FAFC] dark:bg-gray-800">
+                <thead class="sticky top-0 z-20 bg-[#F8FAFC] dark:bg-gray-800">
                   <tr class="[&_th]:whitespace-nowrap [&_th]:text-xs [&_th]:uppercase [&_th]:tracking-wider [&_th]:font-bold [&_th]:px-4 [&_th]:py-3.5 text-[#54657E] dark:text-gray-300 border-b border-[#D4DDE9] dark:border-gray-700">
                     <th class="text-center w-12">S.No</th>
                     <th class="text-left">

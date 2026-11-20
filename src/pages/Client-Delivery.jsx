@@ -155,9 +155,9 @@ export default function ClientDelivery() {
               <Stat label="Total Project" value={projects.length} />
             </div>
 
-            <div class="px-6 pb-6 overflow-x-auto">
+            <div class="px-6 pb-6 overflow-auto max-h-[calc(100vh-16rem)]">
               <table class="w-full text-sm">
-                <thead class="text-gray-400 border-b border-gray-300 dark:border-gray-700">
+                <thead class="sticky top-0 z-20 bg-white dark:bg-gray-900 text-gray-400 border-b border-gray-300 dark:border-gray-700">
                   <tr>
                     <th class="text-left py-3">Project</th>
                     <th>Leads</th>
@@ -222,9 +222,9 @@ export default function ClientDelivery() {
               <Stat label="Remaining Balance" value={`₹${Math.round(remainingBalance()).toLocaleString()}`} />
             </div>
 
-            <div class="overflow-x-auto">
+            <div class="overflow-auto max-h-[calc(100vh-16rem)]">
               <table class="w-full text-sm">
-                <thead class="text-gray-400 border-b border-gray-300 dark:border-gray-700">
+                <thead class="sticky top-0 z-20 bg-white dark:bg-gray-900 text-gray-400 border-b border-gray-300 dark:border-gray-700">
                   <tr>
                     <th class="text-left py-3 px-4">Project</th>
                     <th>Commitment Leads</th>
@@ -302,9 +302,9 @@ export default function ClientDelivery() {
               <Stat label="Projects active" value={hybrid_projects.length} />
             </div>
 
-            <div class="overflow-x-auto">
+            <div class="overflow-auto max-h-[calc(100vh-16rem)]">
               <table class="w-full text-sm">
-                <thead class="text-gray-400 border-b border-gray-300 dark:border-gray-700">
+                <thead class="sticky top-0 z-20 bg-white dark:bg-gray-900 text-gray-400 border-b border-gray-300 dark:border-gray-700">
                   <tr>
                     <th class="text-left py-3 px-4">Project</th>
                     <th>Total Leads</th>

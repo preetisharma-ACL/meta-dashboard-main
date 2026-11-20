@@ -265,11 +265,11 @@ const Leads = () => {
                 </div>
 
                 {/* DESKTOP TABLE */}
-                <div class="hidden md:block bg-white dark:bg-gray-800 rounded-xl shadow overflow-hidden">
+                <div class="hidden md:block bg-white dark:bg-gray-800 rounded-xl shadow overflow-auto max-h-[calc(100vh-16rem)]">
                     <table class="w-full text-sm border dark:border-gray-700">
 
                         {/* Table Head */}
-                        <thead class="bg-gray-100 dark:bg-gray-800">
+                        <thead class="sticky top-0 z-20 bg-gray-100 dark:bg-gray-800">
                             <tr class="[&_th]:text-center [&_th]:whitespace-nowrap [&_th:first-child]:text-left border-b border-gray-200 dark:border-gray-700">
                                 <th class="p-3">Name</th>
                                 <th class="p-3">Contact No</th>

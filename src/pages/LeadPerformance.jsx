@@ -192,9 +192,9 @@ const LeadsPage = () => {
 
     // ─── Reusable Lead Table ─────────────────────────────────────────────────
     const LeadTable = ({ leadList }) => (
-        <div class="hidden md:block bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <div class="hidden md:block bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 overflow-auto max-h-[calc(100vh-16rem)]">
             <table class="w-full text-sm">
-                <thead class="bg-gray-50 dark:bg-gray-800">
+                <thead class="sticky top-0 z-20 bg-gray-50 dark:bg-gray-800">
                     <tr class="border-b border-gray-200 dark:border-gray-700 [&_th]:text-center [&_th]:whitespace-nowrap [&_th:first-child]:text-left">
                         <th class="p-3 font-medium text-gray-600 dark:text-gray-400">Name</th>
                         <th class="p-3 font-medium text-gray-600 dark:text-gray-400">Contact No</th>

@@ -194,10 +194,10 @@ export default function ClientAIInsightButton(props) {
                         <p class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-2">
                           Per project
                         </p>
-                        <div class="overflow-x-auto rounded-lg border border-gray-100 dark:border-gray-800">
+                        <div class="overflow-auto max-h-[calc(100vh-16rem)] rounded-lg border border-gray-100 dark:border-gray-800">
                           <table class="w-full text-sm">
-                            <thead>
-                              <tr class="text-left text-[11px] uppercase tracking-wide text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-800/60">
+                            <thead class="sticky top-0 z-20">
+                              <tr class="text-left text-[11px] uppercase tracking-wide text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-800">
                                 <th class="px-3 py-2 font-medium">Project</th>
                                 <th class="px-3 py-2 font-medium text-right">Spend</th>
                                 <th class="px-3 py-2 font-medium text-right">Leads</th>

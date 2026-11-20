@@ -435,9 +435,9 @@ export default function OnlinePaymentsReport() {
               </p>
             }
           >
-            <div class="overflow-x-auto">
+            <div class="overflow-auto max-h-[calc(100vh-16rem)]">
               <table class="w-full">
-                <thead class="bg-[#F8FAFC] dark:bg-gray-900/40">
+                <thead class="sticky top-0 z-20 bg-[#F8FAFC] dark:bg-gray-900">
                   <tr>
                     <th class={TH}>Paid on</th>
                     <th class={TH}>Client</th>

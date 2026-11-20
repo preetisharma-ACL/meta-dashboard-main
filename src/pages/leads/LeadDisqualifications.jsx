@@ -389,9 +389,9 @@ export default function LeadDisqualifications() {
 
       {/* Table */}
       <div class="rounded-xl border border-[#E2E8F1] dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
-        <div class="overflow-x-auto">
+        <div class="overflow-auto max-h-[calc(100vh-16rem)]">
           <table class="w-full text-sm">
-            <thead class="bg-[#F8FAFC] dark:bg-gray-900/60 border-b border-[#E2E8F1] dark:border-gray-700">
+            <thead class="sticky top-0 z-20 bg-[#F8FAFC] dark:bg-gray-900 border-b border-[#E2E8F1] dark:border-gray-700">
               <tr>
                 <th class={`${TH} w-12 text-center`}>S.No</th>
                 {/* The batch id keeps its own column: it's the handle the revoke

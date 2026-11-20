@@ -294,9 +294,9 @@ export default function BuilderForm(props) {
         {/* Per-project breakdown, only when there is more than one project.
             The _f values arrive formatted ("1,100"). */}
         <Show when={displayLines().length > 1}>
-          <div class="mt-3 overflow-x-auto rounded-lg border border-[#E2E8F1] dark:border-gray-700">
+          <div class="mt-3 overflow-auto max-h-[calc(100vh-16rem)] rounded-lg border border-[#E2E8F1] dark:border-gray-700">
             <table class="w-full text-xs">
-              <thead class="bg-[#F8FAFC] dark:bg-gray-800 text-[#54657E] dark:text-gray-400">
+              <thead class="sticky top-0 z-20 bg-[#F8FAFC] dark:bg-gray-800 text-[#54657E] dark:text-gray-400">
                 <tr class="[&_th]:px-2.5 [&_th]:py-2 [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wider [&_th]:whitespace-nowrap">
                   <th class="text-left">Project</th>
                   <th class="text-right">Leads</th>

@@ -1428,10 +1428,10 @@ export default function AllowedBudget() {
 
         <Show when={audit.error}><div class="bg-[#FBEEF0] dark:bg-red-900/20 border border-[#AC2334]/25 dark:border-red-800 rounded-xl p-4 mb-4 text-sm font-medium text-[#AC2334] dark:text-red-400">Failed to load requests.</div></Show>
 
-        <div class="bg-gray-50 dark:bg-gray-900 rounded-2xl border border-[#E2E8F1] dark:border-gray-700 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] overflow-x-auto">
+        <div class="bg-gray-50 dark:bg-gray-900 rounded-2xl border border-[#E2E8F1] dark:border-gray-700 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_14px_rgba(16,29,49,.04)] overflow-auto max-h-[calc(100vh-16rem)]">
           <table class="min-w-full text-sm border-separate border-spacing-0">
-            <thead>
-              <tr class="bg-[#F8FAFC] dark:bg-gray-800/60 text-[#8593A8] dark:text-gray-400 uppercase text-[10px] font-bold tracking-[0.09em]">
+            <thead class="sticky top-0 z-20">
+              <tr class="bg-[#F8FAFC] dark:bg-gray-800 text-[#8593A8] dark:text-gray-400 uppercase text-[10px] font-bold tracking-[0.09em]">
                 <th class="pl-5 pr-3.5 py-3 text-left whitespace-nowrap border-b border-[#D4DDE9] dark:border-gray-700">Client</th>
                 <th class="p-3.5 text-left whitespace-nowrap border-b border-[#D4DDE9] dark:border-gray-700">Kind</th>
                 <th class="p-3.5 text-right whitespace-nowrap border-b border-[#D4DDE9] dark:border-gray-700">Current → Requested</th>

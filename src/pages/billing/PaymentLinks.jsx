@@ -583,9 +583,9 @@ export default function PaymentLinks() {
                   </p>
                 }
               >
-                <div class="overflow-x-auto">
+                <div class="overflow-auto max-h-[calc(100vh-16rem)]">
                   <table class="w-full">
-                    <thead class="bg-[#F8FAFC] dark:bg-gray-900/40">
+                    <thead class="sticky top-0 z-20 bg-[#F8FAFC] dark:bg-gray-900">
                       <tr>
                         <th class={TH}>Created</th>
                         <th class={`${TH} text-right`}>Amount payable</th>
@@ -756,9 +756,9 @@ export default function PaymentLinks() {
                   </p>
                 }
               >
-                <div class="overflow-x-auto">
+                <div class="overflow-auto max-h-[calc(100vh-16rem)]">
                   <table class="w-full">
-                    <thead class="bg-[#F8FAFC] dark:bg-gray-900/40">
+                    <thead class="sticky top-0 z-20 bg-[#F8FAFC] dark:bg-gray-900">
                       <tr>
                         <th class={TH}>Created</th>
                         <th class={TH}>Order ID</th>

@@ -246,9 +246,9 @@ export default function CplPromiseBackfill() {
       </div>
 
       {/* Rows */}
-      <div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+      <div class="overflow-auto max-h-[calc(100vh-16rem)] rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
         <table class="min-w-full text-sm">
-          <thead>
+          <thead class="sticky top-0 z-20">
             <tr class="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-left text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">
               <th class="p-3">Client</th>
               <th class="p-3">Project</th>

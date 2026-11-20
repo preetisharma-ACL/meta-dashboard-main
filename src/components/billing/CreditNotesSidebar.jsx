@@ -167,9 +167,9 @@ export default function CreditNotesSidebar(props) {
                   when={months().length > 0}
                   fallback={<Empty>No months yet.</Empty>}
                 >
-                  <div class="overflow-x-auto">
+                  <div class="overflow-auto max-h-[calc(100vh-16rem)]">
                     <table class="w-full text-sm">
-                      <thead>
+                      <thead class="sticky top-0 z-20 bg-white dark:bg-gray-900">
                         <tr class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
                           <th class="py-2 text-left font-medium">Month</th>
                           <th class="py-2 px-2 text-right font-medium">Opening</th>

@@ -319,12 +319,12 @@ export default function Dashboard() {
             </div>
 
             {/* Table */}
-            <div class="overflow-x-auto overflow-y-auto  scrollbar-thin
+            <div class="overflow-auto max-h-[calc(100vh-16rem)] overflow-y-auto  scrollbar-thin
     scrollbar-thumb-green-100 dark:scrollbar-thumb-gray-700
     scrollbar-track-transparent
     hover:scrollbar-thumb-green-900 dark:hover:scrollbar-thumb-gray-800 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl">
                 <table class="min-w-full text-sm">
-                    <thead class="bg-primary-50 dark:bg-gray-800 text-primary-900 dark:text-gray-400">
+                    <thead class="sticky top-0 z-20 bg-primary-50 dark:bg-gray-800 text-primary-900 dark:text-gray-400">
                         <tr class="[&_th]:whitespace-nowrap [&_th]:text-center">
                             <th class="px-4 py-3 text-left">Number</th>
                             <th class="px-4 py-3 text-left">Campaign Name</th>

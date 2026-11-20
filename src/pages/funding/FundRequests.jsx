@@ -1635,7 +1635,7 @@ function Register(props) {
 
       <div class={`overflow-auto max-h-[calc(100vh-10rem)] rounded-2xl border border-[#E2E8F1] dark:border-gray-700 bg-white dark:bg-gray-900 transition-opacity ${loading() ? "opacity-60" : ""}`}>
         <table class="min-w-full text-sm border-separate border-spacing-0">
-          <thead>
+          <thead class="sticky top-0 z-20 bg-white dark:bg-gray-900">
             <tr>
               <th class={`${TH} text-left`}><SortBtn col="date" label="Date" sort={sort()} onSort={onSort} /></th>
               <th class={`${TH} text-left`}><SortBtn col="account" label="Ad account" sort={sort()} onSort={onSort} /></th>
@@ -1938,7 +1938,7 @@ function Topups(props) {
 
       <div class={`overflow-auto max-h-[calc(100vh-10rem)] rounded-2xl border border-[#E2E8F1] dark:border-gray-700 bg-white dark:bg-gray-900 transition-opacity ${loading() ? "opacity-60" : ""}`}>
         <table class="min-w-full text-sm border-separate border-spacing-0">
-          <thead>
+          <thead class="sticky top-0 z-20 bg-white dark:bg-gray-900">
             <tr>
               <th class={TH}>Time (IST)</th>
               <th class={TH}>Ad account</th>
@@ -2203,7 +2203,7 @@ export default function FundRequests() {
       {/* 2. Queue */}
       <div class="overflow-auto max-h-[calc(100vh-10rem)] rounded-2xl border border-[#E2E8F1] dark:border-gray-700 bg-white dark:bg-gray-900 shadow-[0_1px_2px_rgba(16,29,49,.05)]">
         <table class="min-w-full text-sm border-separate border-spacing-0">
-          <thead>
+          <thead class="sticky top-0 z-20 bg-white dark:bg-gray-900">
             <tr>
               <th class={TH}><SortBtn col="priority" label="Priority" sort={queueSort()} onSort={onQueueSort} /></th>
               <th class={TH}><SortBtn col="account" label="Ad account" sort={queueSort()} onSort={onQueueSort} /></th>
@@ -2398,7 +2398,7 @@ export default function FundRequests() {
         <Show when={showClosed()}>
           <div class="mt-2 overflow-auto max-h-[calc(100vh-10rem)] rounded-2xl border border-[#E2E8F1] dark:border-gray-700 bg-white dark:bg-gray-900">
             <table class="min-w-full text-sm border-separate border-spacing-0">
-              <thead>
+              <thead class="sticky top-0 z-20 bg-white dark:bg-gray-900">
                 <tr>
                   <th class={TH}><SortBtn col="account" label="Ad account" sort={closedSort()} onSort={onClosedSort} /></th>
                   <th class={`${TH} !text-right`}><SortBtn col="ask" label="Ask" sort={closedSort()} onSort={onClosedSort} /></th>

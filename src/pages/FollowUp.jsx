@@ -113,10 +113,10 @@ const FollowUp = () => {
 
             {/* TABLE */}
             <div class="p-6">
-                <div class="bg-white dark:bg-gray-900 rounded-2xl shadow border border-gray-200 dark:border-gray-800 overflow-hidden">
+                <div class="bg-white dark:bg-gray-900 rounded-2xl shadow border border-gray-200 dark:border-gray-800 overflow-auto max-h-[calc(100vh-16rem)]">
                     <table class="w-full text-sm border dark:border-gray-700">
 
-                        <thead>
+                        <thead class="sticky top-0 z-20">
                             <tr class="[&_th]:text-center [&_th]:whitespace-nowrap [&_th:first-child]:text-left bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300">
                                 <th class="p-4">Name</th>
                                 <th class="p-4">Contact</th>

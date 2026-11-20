@@ -370,9 +370,9 @@ export default function AccountMonitor() {
 
           {/* Desktop ledger */}
           <div class="hidden md:block bg-gray-50 dark:bg-gray-900 rounded-2xl border border-[#E2E8F1] dark:border-gray-700 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_16px_rgba(16,29,49,.05)] overflow-hidden">
-            <div class="overflow-x-auto">
+            <div class="overflow-auto max-h-[calc(100vh-16rem)]">
               <table class="min-w-full text-sm border-separate border-spacing-0">
-                <thead>
+                <thead class="sticky top-0 z-20">
                   <tr class="bg-[#F2F5FA] dark:bg-gray-800 text-gray-600 dark:text-gray-400 uppercase text-[12px] font-bold tracking-[0.12em]">
                     <th class="p-4 text-center whitespace-nowrap w-16 border-b border-[#E3E8F0] dark:border-gray-700">ID</th>
                     <Th align="left" class="min-w-[220px]" sortKey="name">Account</Th>
@@ -558,9 +558,9 @@ function ProjectDrill(props) {
       >
         <Show when={!data()?.error} fallback={<div class="py-4 text-[12.5px] text-[#AC2334] dark:text-red-400">Couldn't load this client's projects. Collapse and try again.</div>}>
           <Show when={projects().length > 0} fallback={<div class="py-4 text-[12.5px] text-[#8593A8] dark:text-gray-500">No projects to show for this window.</div>}>
-            <div class="overflow-x-auto rounded-lg border border-[#E2E8F1] dark:border-gray-700 bg-white dark:bg-gray-900">
+            <div class="overflow-auto max-h-[calc(100vh-16rem)] rounded-lg border border-[#E2E8F1] dark:border-gray-700 bg-white dark:bg-gray-900">
               <table class="min-w-full text-[13px] border-separate border-spacing-0">
-                <thead>
+                <thead class="sticky top-0 z-20">
                   <tr class="bg-[#F2F5FA] dark:bg-gray-800 text-gray-600 dark:text-gray-400 uppercase text-[10.5px] font-bold tracking-[0.1em]">
                     <th class="px-3 py-2 text-left whitespace-nowrap min-w-[200px] border-b border-[#E3E8F0] dark:border-gray-700">Project</th>
                     <th class="px-3 py-2 text-right whitespace-nowrap border-b border-[#E3E8F0] dark:border-gray-700">Campaigns</th>
@@ -722,9 +722,9 @@ function ClientRollup() {
 
       {/* Desktop ledger */}
       <div class="hidden md:block bg-gray-50 dark:bg-gray-900 rounded-2xl border border-[#E2E8F1] dark:border-gray-700 shadow-[0_1px_2px_rgba(16,29,49,.05),0_4px_16px_rgba(16,29,49,.05)] overflow-hidden">
-        <div class="overflow-x-auto">
+        <div class="overflow-auto max-h-[calc(100vh-16rem)]">
           <table class="min-w-full text-sm border-separate border-spacing-0">
-            <thead>
+            <thead class="sticky top-0 z-20">
               <tr class="bg-[#F2F5FA] dark:bg-gray-800 text-gray-600 dark:text-gray-400 uppercase text-[12px] font-bold tracking-[0.12em]">
                 <th class="p-4 text-center whitespace-nowrap w-16 border-b border-[#E3E8F0] dark:border-gray-700">#</th>
                 <th class="p-4 text-left whitespace-nowrap min-w-[220px] border-b border-[#E3E8F0] dark:border-gray-700">Client</th>

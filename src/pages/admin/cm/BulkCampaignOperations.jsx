@@ -1673,9 +1673,9 @@ function HistoryPanel(props) {
 
   return (
     <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-sm overflow-hidden">
-      <div class="overflow-x-auto">
+      <div class="overflow-auto max-h-[calc(100vh-16rem)]">
         <table class="w-full border-collapse min-w-[720px]">
-          <thead>
+          <thead class="sticky top-0 z-20 bg-white dark:bg-gray-900">
             <tr>
               <For
                 each={[

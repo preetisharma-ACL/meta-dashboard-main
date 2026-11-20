@@ -187,10 +187,10 @@ export default function ControlAudit() {
 
       <Banner>{log.error ? parseControlError(log.error, "Couldn't load the audit log.").message : ""}</Banner>
 
-      <div class={`${CARD} overflow-x-auto`}>
+      <div class={`${CARD} overflow-auto max-h-[calc(100vh-16rem)]`}>
         <table class="min-w-full text-sm">
-          <thead>
-            <tr class="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400 uppercase text-xs tracking-wider text-left">
+          <thead class="sticky top-0 z-20">
+            <tr class="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-500 dark:text-gray-400 uppercase text-xs tracking-wider text-left">
               <th class="p-3">When</th>
               <th class="p-3">Actor</th>
               <th class="p-3">Category</th>
