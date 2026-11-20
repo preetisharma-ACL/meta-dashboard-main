@@ -99,7 +99,13 @@ const TH =
 // Columns the reader scans for size read better right-aligned and tabular.
 const NUM = "p-3 text-right tabular-nums whitespace-nowrap";
 
-const COLS = 13;
+const COLS = 14;
+
+// One ad account's identity, as both the picker and the Ad account column key
+// it: the Meta account_id, falling back to our PK. One account can serve
+// several clients, so the Meta id — not the client row — is what makes it the
+// same account in two places.
+const acctKey = (a) => String(a?.account_id ?? a?.id ?? "");
 
 // A value the records simply don't carry yet. Rendered as absence, not as text:
 // sales person is empty for 79 of 186 clients and lead destination for all 186,
@@ -335,7 +341,6 @@ export default function CommandBoard() {
   // the page doesn't hold the whole set. Keyed on the Meta account_id (falling
   // back to our PK), since one account can serve several clients.
   const [adAccount, setAdAccount] = createSignal("");
-  const acctKey = (a) => String(a.account_id ?? a.id ?? "");
   const accountOptions = createMemo(() => {
     const byKey = new Map();
     for (const r of rows()) {
@@ -847,7 +852,7 @@ export default function CommandBoard() {
                 budget only, so grouping it under the range would claim
                 something the endpoint never promised. */}
             <tr class="border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/60">
-              <th colspan="6" />
+              <th colspan="7" />
               <th
                 colspan="5"
                 class="px-3 pt-2.5 pb-1 text-center text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 whitespace-nowrap border-x border-gray-200 dark:border-gray-700"
@@ -878,6 +883,15 @@ export default function CommandBoard() {
               <th class={TH}>Sales person</th>
               <th class={TH}>Team</th>
               <th class={TH}>Projects</th>
+              {/* Ad account — like Live, current state rather than anything the
+                  date filter governs, which is why it sits left of the range
+                  block. */}
+              <th
+                class={TH}
+                title="The Meta ad account each client runs on, as it stands now — the date filter does not govern this column"
+              >
+                Ad account
+              </th>
               <th
                 class={`${TH} text-right`}
                 title="Active campaigns / ad accounts, as they stand now — the date filter does not govern this column"
@@ -1222,6 +1236,20 @@ export default function CommandBoard() {
                                 </span>
                               </button>
                             </Show>
+                          </td>
+
+                          {/* Ad account — named, not just counted. The Live
+                              column has always carried the number; the desk
+                              works from WHICH account, so it's spelled out
+                              here and the count beside it stays the way into
+                              the full list. */}
+                          <td class="p-3">
+                            <AdAccountCell
+                              accounts={r.ad_account_list}
+                              picked={adAccount()}
+                              open={acctsOpen()}
+                              onOpen={() => toggleExpand(key, "accounts")}
+                            />
                           </td>
 
                           {/* Live: campaigns over ad accounts. Current state,
@@ -1669,6 +1697,67 @@ function AdAccountPicker(props) {
         </div>
       </Show>
     </div>
+  );
+}
+
+// ── Ad account, in the row ────────────────────────────────────────────────────
+// Names the account the client runs on, where the Live column only counted it.
+// A client can hold several, and the cell must not imply otherwise: one of them
+// is named and the rest are offered as "+N more", which opens the same drawer
+// the count does. When the ad account filter is on, the named one is the
+// filtered one — otherwise the column would disagree with the filter above it.
+function AdAccountCell(props) {
+  const accounts = () => props.accounts ?? [];
+  const lead = () => {
+    const list = accounts();
+    const k = props.picked;
+    return (k && list.find((a) => acctKey(a) === k)) || list[0] || null;
+  };
+  const extra = () => accounts().length - 1;
+  const st = () => adAccountStatus(lead()?.account_status);
+  return (
+    <Show
+      when={lead()}
+      fallback={<Missing>No ad account</Missing>}
+    >
+      <button
+        type="button"
+        onClick={() => props.onOpen()}
+        aria-expanded={props.open}
+        title={`${lead().name ?? lead().account_id ?? "Ad account"} — ${st().label}. Click for status and balance.`}
+        class="group block max-w-[190px] text-left"
+      >
+        <span class="flex items-center gap-1 min-w-0">
+          <Show when={!st().ok}>
+            <span
+              class="flex-none text-[11px] text-[#B07A14] dark:text-yellow-300"
+              aria-hidden="true"
+            >
+              ⚠
+            </span>
+          </Show>
+          <span
+            class={`truncate text-[13px] font-medium group-hover:underline ${
+              st().ok
+                ? "text-gray-800 dark:text-gray-100"
+                : "text-[#8A6410] dark:text-yellow-200"
+            }`}
+          >
+            {lead().name || lead().account_id || "Unnamed account"}
+          </span>
+        </span>
+        <span class="flex items-center gap-1.5">
+          <span class="truncate text-[11px] tabular-nums text-gray-400 dark:text-gray-400">
+            {lead().account_id || DASH}
+          </span>
+          <Show when={extra() > 0}>
+            <span class="flex-none text-[10px] font-semibold text-[#3E6FB0] dark:text-blue-300">
+              +{extra()} more
+            </span>
+          </Show>
+        </span>
+      </button>
+    </Show>
   );
 }
 
