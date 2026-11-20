@@ -10,6 +10,7 @@ import { scopeKey, ownScope } from "../stores/cmScope";
 import { lookupManager, managerColor } from "../stores/cmManagerMap";
 import { canWriteCampaigns } from "../stores/currentUser";
 import CampaignStatusControl from "./CampaignStatusControl";
+import { nodeKey, adAccountName, adAccountMapFor } from "./cmHierarchyKeys";
 
 // ─── Formatters ───────────────────────────────────────────────────────────────
 const money = (v) => {
@@ -26,11 +27,7 @@ const cplFmt = (v) => {
 const num = (v) => (Number(v) || 0).toLocaleString("en-IN");
 // client/project nodes expose avg_cpl; campaign leaves expose cpl.
 const cplOf = (g) => (g?.cpl != null ? g.cpl : g?.avg_cpl);
-// The ad account's name off a campaign row, whichever shape it arrives in:
-// /campaigns/ flattens it to ad_account_name, and the hierarchy leaf may or may
-// not carry it at all (hence the fallback fetch in loadAdAccounts).
-const adAccountName = (c) =>
-  c?.ad_account_name ?? c?.ad_account?.name ?? c?.account_name ?? null;
+// adAccountName / nodeKey / adAccountMapFor live in ./cmHierarchyKeys.
 
 const TYPE_CHIP = {
   hybrid: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300",
@@ -169,8 +166,16 @@ export default function CMHierarchy(props) {
   const [openProjects, setOpenProjects] = createSignal({});
   // id → { loading, error, data }
   const [projectsByClient, setProjectsByClient] = createSignal({});
+  // ── Why these two are keyed by client AND project ──────────────────────────
+  // A project can sit under many clients at once (project 410 "Prestige150" is
+  // shared by 13 of them), and each client row shows only ITS campaigns on that
+  // project. Keyed by project_id alone, the first client row to be expanded
+  // filled the cache and every other row then rendered that list — three rows
+  // reading 1, 2 and 5 campaigns all showed the same 5 — and the open/closed
+  // state collided too, so the rows expanded and collapsed together. The key
+  // itself is nodeKey(clientNomenId, projectId), from ./cmHierarchyKeys.
   const [campaignsByProject, setCampaignsByProject] = createSignal({});
-  // project_id → { campaign_id → ad account name }. Only populated when the
+  // nodeKey → { campaign_id → ad account name }. Only populated when the
   // hierarchy leaf itself doesn't carry the name (see loadCampaigns).
   const [adAccountsByProject, setAdAccountsByProject] = createSignal({});
 
@@ -227,52 +232,68 @@ export default function CMHierarchy(props) {
   // drop campaigns that had no delivery in the window, and the account a
   // campaign belongs to is a fixed attribute, not a per-day value. Failure is
   // silent — the row just loses its subtitle, it never blocks the numbers.
-  const loadAdAccounts = async (projectId) => {
+  //
+  // Scoped to the parent client two ways over, because a shared project returns
+  // other clients' campaigns here: client_nomen_id on the request, and the leaf
+  // ids as the only keys written into the map. The second is what guarantees it
+  // — the ids come from the hierarchy leaf, which is already the right client's.
+  //
+  // The narrowing param is sent but never trusted: /campaigns/ filters on its
+  // own client_nomen_id (campaigns.js), and whether that is the same id space as
+  // the hierarchy's client_nomen_id is NOT verified here. If it isn't, the
+  // scoped request comes back with nothing that matches the leaf and the
+  // subtitles would quietly vanish — so an empty intersection retries unscoped,
+  // where the leaf-id filter alone still keeps the rows honest.
+  const loadAdAccounts = async (projectId, clientNomenId, leafCampaigns) => {
+    const key = nodeKey(clientNomenId, projectId);
+    const rowsOf = (res) => res?.data?.results ?? (Array.isArray(res?.data) ? res.data : []);
     try {
-      const res = await fetchCampaignsScoped({ project: projectId });
-      const rows = res?.data?.results ?? (Array.isArray(res?.data) ? res.data : []);
-      const map = {};
-      for (const r of rows) {
-        const name = adAccountName(r);
-        if (r?.id != null && name) map[String(r.id)] = name;
+      let map = adAccountMapFor(
+        rowsOf(await fetchCampaignsScoped({ project: projectId, clientNomenId })),
+        leafCampaigns,
+      );
+      if (Object.keys(map).length === 0) {
+        map = adAccountMapFor(rowsOf(await fetchCampaignsScoped({ project: projectId })), leafCampaigns);
       }
-      setAdAccountsByProject((p) => ({ ...p, [projectId]: map }));
+      setAdAccountsByProject((p) => ({ ...p, [key]: map }));
     } catch (err) {
       console.error("[CMHierarchy] ad accounts failed:", err);
-      setAdAccountsByProject((p) => ({ ...p, [projectId]: {} }));
+      setAdAccountsByProject((p) => ({ ...p, [key]: {} }));
     }
   };
 
   const loadCampaigns = async (projectId, clientNomenId) => {
-    setCampaignsByProject((p) => ({ ...p, [projectId]: { loading: true, error: false, data: [] } }));
+    const key = nodeKey(clientNomenId, projectId);
+    setCampaignsByProject((p) => ({ ...p, [key]: { loading: true, error: false, data: [] } }));
     try {
       const res = await fetchHierarchyCampaigns(projectId, clientNomenId, dateArgs());
       const data = Array.isArray(res?.data) ? res.data : [];
       setCampaignsByProject((p) => ({
         ...p,
-        [projectId]: { loading: false, error: false, data },
+        [key]: { loading: false, error: false, data },
       }));
       // Only pay for the extra call when the leaf didn't already answer it —
       // if the backend starts sending the name, this quietly stops firing.
-      if (data.length > 0 && !data.some(adAccountName)) loadAdAccounts(projectId);
+      if (data.length > 0 && !data.some(adAccountName))
+        loadAdAccounts(projectId, clientNomenId, data);
     } catch (err) {
       console.error("[CMHierarchy] campaigns failed:", err);
       const notFound = isNotFound(err);
       setCampaignsByProject((p) => ({
         ...p,
-        [projectId]: { loading: false, error: !notFound, notFound, data: [] },
+        [key]: { loading: false, error: !notFound, notFound, data: [] },
       }));
     }
   };
 
   // Reflect a confirmed pause/resume on the campaign leaf without a refetch.
-  const updateCampaignStatus = (projectId, campaignId, newStatus) =>
+  const updateCampaignStatus = (key, campaignId, newStatus) =>
     setCampaignsByProject((p) => {
-      const entry = p[projectId];
+      const entry = p[key];
       if (!entry) return p;
       return {
         ...p,
-        [projectId]: {
+        [key]: {
           ...entry,
           data: entry.data.map((c) =>
             c.campaign_id === campaignId ? { ...c, status: newStatus } : c,
@@ -289,10 +310,11 @@ export default function CMHierarchy(props) {
   };
 
   const toggleProject = (project, clientNomenId) => {
-    const id = project.project_id;
-    const isOpen = !!openProjects()[id];
-    setOpenProjects((o) => ({ ...o, [id]: !isOpen }));
-    if (!isOpen && !campaignsByProject()[id]) loadCampaigns(id, clientNomenId);
+    const key = nodeKey(clientNomenId, project.project_id);
+    const isOpen = !!openProjects()[key];
+    setOpenProjects((o) => ({ ...o, [key]: !isOpen }));
+    if (!isOpen && !campaignsByProject()[key])
+      loadCampaigns(project.project_id, clientNomenId);
   };
 
   return (
@@ -395,7 +417,10 @@ export default function CMHierarchy(props) {
                       <For each={projState()?.data ?? []}>
                         {(project) => {
                           const pid = project.project_id;
-                          const campState = () => campaignsByProject()[pid];
+                          // This project UNDER THIS CLIENT — see nodeKey. Never key by pid alone
+                          // here: the same project row appears under several clients.
+                          const nkey = nodeKey(id, pid);
+                          const campState = () => campaignsByProject()[nkey];
                           return (
                             <div>
                               {/* Project header */}
@@ -404,7 +429,7 @@ export default function CMHierarchy(props) {
                                 class="w-full flex flex-col sm:flex-row sm:items-center gap-3 px-3 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
                               >
                                 <div class="flex items-start gap-2 flex-1 min-w-0">
-                                  <span class="mt-0.5"><Chevron open={!!openProjects()[pid]} /></span>
+                                  <span class="mt-0.5"><Chevron open={!!openProjects()[nkey]} /></span>
                                   <div class="min-w-0">
                                     <div class="flex items-center gap-2 flex-wrap">
                                       <span class="font-medium text-gray-700 dark:text-gray-200 truncate">{project.project_name}</span>
@@ -419,7 +444,7 @@ export default function CMHierarchy(props) {
                               </button>
 
                               {/* Campaigns (lazy leaf) */}
-                              <Show when={openProjects()[pid]}>
+                              <Show when={openProjects()[nkey]}>
                                 <div class="pl-5 sm:pl-8 border-l-2 border-gray-100 dark:border-gray-800 ml-3 sm:ml-4">
                                   <Show when={campState()?.loading}>
                                     <LoadingRow label="Loading campaigns…" />
@@ -443,7 +468,7 @@ export default function CMHierarchy(props) {
                                         // Leaf field first, list lookup second.
                                         const adAccount = () =>
                                           adAccountName(c) ??
-                                          adAccountsByProject()[pid]?.[String(c.campaign_id)] ??
+                                          adAccountsByProject()[nkey]?.[String(c.campaign_id)] ??
                                           null;
                                         return (
                                         <div class="flex flex-col sm:flex-row sm:items-center gap-3 px-3 py-2.5 hover:bg-gray-50/70 dark:hover:bg-gray-800/40 transition-colors">
@@ -487,7 +512,7 @@ export default function CMHierarchy(props) {
                                               campaignName={c.campaign_name}
                                               status={c.status}
                                               size="sm"
-                                              onChanged={(s) => updateCampaignStatus(pid, c.campaign_id, s)}
+                                              onChanged={(s) => updateCampaignStatus(nkey, c.campaign_id, s)}
                                             />
                                           </Show>
                                           <TwoNumbers raw={c.raw} billed={c.client_facing} />

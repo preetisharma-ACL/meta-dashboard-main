@@ -16,6 +16,7 @@ export const fetchCampaignsScoped = async ({
   endDate,
   status,
   project,
+  clientNomenId,
   search,
   sort,
 } = {}) => {
@@ -24,6 +25,12 @@ export const fetchCampaignsScoped = async ({
   url += `&end_date=${endDate || today()}`;
   if (status && status !== "all") url += `&status=${encodeURIComponent(status)}`;
   if (project && project !== "all") url += `&project=${encodeURIComponent(project)}`;
+  // A project can belong to MANY clients (project 410 "Prestige150" is shared by
+  // 13), and this endpoint filters on client_nomen_id — the id form, not the
+  // name. A caller showing one client's campaigns on a shared project must send
+  // it or it gets every client's rows back.
+  if (clientNomenId != null && clientNomenId !== "")
+    url += `&client_nomen_id=${encodeURIComponent(clientNomenId)}`;
   if (search) url += `&search=${encodeURIComponent(search)}`;
   if (sort) url += `&sort=${encodeURIComponent(sort)}`;
   url += scopeQuery();
