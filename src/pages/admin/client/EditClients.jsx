@@ -30,6 +30,21 @@ const TYPE_COLORS = {
   retainer: "bg-sky-100 text-sky-700 ring-1 ring-sky-300",
 };
 
+// The sales-owner filter's values are either one of these buckets or a literal
+// user id. Kept as a set so the id comparison below can say "not a bucket"
+// rather than listing the buckets it isn't — the way a new bucket silently
+// becomes an id to compare against, and empties the table.
+const OWNER_BUCKETS = new Set(["all", "attributed", "unattributed"]);
+
+// ── Sticky header ─────────────────────────────────────────────────────────────
+// The background and the z-index sit on the CELLS, not on the row. A <tr>
+// background does not paint under cells that have become positioned boxes, so a
+// sticky header built on the row's bg shows the rows scrolling through it.
+const TH_SORTABLE =
+  "px-4 py-3 cursor-pointer select-none whitespace-nowrap hover:text-blue-900 dark:hover:text-gray-200";
+const TH_STICKY =
+  "sticky top-0 z-20 bg-gray-50 dark:bg-gray-800 shadow-[0_1px_0_0_rgba(16,29,49,.10)] dark:shadow-[0_1px_0_0_rgba(255,255,255,.07)]";
+
 const fmtType = (t) =>
   String(t ?? "")
     .charAt(0)
@@ -56,7 +71,7 @@ export default function EditClients() {
   const [search, setSearch] = createSignal("");
   const [typeFilter, setTypeFilter] = createSignal("all");
   const [activeFilter, setActiveFilter] = createSignal("all");
-  // "all" | "none" | "<user id>"
+  // "all" | "attributed" | "unattributed" | "<user id>"
   const [ownerFilter, setOwnerFilter] = createSignal("all");
 
   const [page, setPage] = createSignal(1);
@@ -110,9 +125,29 @@ export default function EditClients() {
     return [...seen.values()].sort((a, b) => a.email.localeCompare(b.email));
   });
 
+  // The two halves of "is anyone accountable for this client". Counted off the
+  // same predicate the filter uses, so the number in the dropdown and the rows
+  // it produces can't drift apart.
+  const isUnattributed = (c) => ownerId(c) == null;
+
   const unattributedCount = createMemo(
-    () => (clients() ?? []).filter((c) => ownerId(c) == null).length,
+    () => (clients() ?? []).filter(isUnattributed).length,
   );
+  const attributedCount = createMemo(
+    () => (clients() ?? []).filter((c) => !isUnattributed(c)).length,
+  );
+
+  // The tabs and the dropdown are one control in two shapes — both write this
+  // same signal, so they can never disagree about what the table is showing.
+  // The counts are of the WHOLE roster, not of what the other filters have
+  // left: "how much of the book is unowned" is a fact about the book, and a
+  // number that moved every time someone typed in the search box would be
+  // answering a different question each time it was read.
+  const ownerTabs = createMemo(() => [
+    { value: "all", label: "All", count: (clients() ?? []).length },
+    { value: "attributed", label: "Attributed", count: attributedCount() },
+    { value: "unattributed", label: "Unattributed", count: unattributedCount() },
+  ]);
 
   // ── sort ───────────────────────────────────────────────────────────────────
   // Half these columns are derived rather than raw fields — the client label
@@ -162,11 +197,14 @@ export default function EditClients() {
       if (type !== "all" && String(c.client_type ?? "") !== type) return false;
       if (active === "active" && !c.is_active) return false;
       if (active === "inactive" && c.is_active) return false;
-      // "none" is a real bucket, not the absence of a filter — a client owned by
-      // nobody is invisible to every sales dashboard, which is the whole reason
-      // this control exists.
-      if (owner === "none" && ownerId(c) != null) return false;
-      if (owner !== "all" && owner !== "none" && String(ownerId(c) ?? "") !== owner)
+      // "unattributed" is a real bucket, not the absence of a filter — a client
+      // owned by nobody is invisible to every sales dashboard, which is the
+      // whole reason this control exists. "attributed" is its complement:
+      // everything that IS owned, by anyone, without picking a person.
+      if (owner === "unattributed" && !isUnattributed(c)) return false;
+      if (owner === "attributed" && isUnattributed(c)) return false;
+      // Anything that isn't a bucket is a literal user id.
+      if (!OWNER_BUCKETS.has(owner) && String(ownerId(c) ?? "") !== owner)
         return false;
       if (!q) return true;
       return [
@@ -325,7 +363,10 @@ export default function EditClients() {
 
         {/* Unattributed is first and counted, because it is the reason this
             control exists rather than one option among many: a client with no
-            sales person is invisible to every sales dashboard. */}
+            sales person is invisible to every sales dashboard. Assigned is its
+            complement, for the opposite sweep — everything that IS owned,
+            without having to pick each person out of the list in turn. The two
+            counts partition the roster, so they should always sum to it. */}
         <select
           value={ownerFilter()}
           onChange={(e) => {
@@ -337,8 +378,13 @@ export default function EditClients() {
                  focus:outline-none focus:ring-1 focus:ring-purple-400 cursor-pointer max-w-[16rem]"
         >
           <option value="all">All Sales People</option>
-          <option value="none">
-            No sales person{unattributedCount() ? ` (${unattributedCount()})` : ""}
+          {/* Named for the chip the column actually shows, so the filter and
+              the cell it filters on use one word for one thing. */}
+          <option value="unattributed">
+            Unattributed{unattributedCount() ? ` (${unattributedCount()})` : ""}
+          </option>
+          <option value="attributed">
+            Attributed — anyone{attributedCount() ? ` (${attributedCount()})` : ""}
           </option>
           <For each={owners()}>
             {(o) => (
@@ -372,49 +418,105 @@ export default function EditClients() {
 
       </div>
 
-      {/* Table */}
-      <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 overflow-x-auto">
+      {/* Attribution tabs — the same signal the Sales People dropdown writes,
+          surfaced as a split because "who has no owner" is the question this
+          screen gets opened for, and a bucket buried in a list of twenty
+          people reads as one more person rather than as half the roster.
+
+          Picking a specific person in the dropdown leaves every tab inactive,
+          which is the honest state: the table is then showing neither half,
+          and lighting "All" would claim otherwise. */}
+      <div
+        role="tablist"
+        aria-label="Filter by sales attribution"
+        class="flex items-center gap-1 mb-4 p-1 w-fit max-w-full overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
+      >
+        <For each={ownerTabs()}>
+          {(t) => {
+            const on = () => ownerFilter() === t.value;
+            return (
+              <button
+                role="tab"
+                aria-selected={on()}
+                onClick={() => {
+                  setOwnerFilter(t.value);
+                  setPage(1);
+                }}
+                class={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors ${
+                  on()
+                    ? "bg-[#FBEEF0] text-[#AC2334] font-semibold ring-1 ring-[#AC2334]/25 dark:bg-[#AC2334]/20 dark:text-red-300 dark:ring-[#AC2334]/40"
+                    : "text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800"
+                }`}
+              >
+                {t.label}
+                <span
+                  class={`inline-flex items-center justify-center min-w-[1.5rem] px-1.5 py-[1px] rounded-full text-[11px] font-semibold tabular-nums ${
+                    on()
+                      ? "bg-white/80 text-[#AC2334] dark:bg-gray-900/50 dark:text-red-300"
+                      : "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"
+                  }`}
+                >
+                  {t.count}
+                </span>
+              </button>
+            );
+          }}
+        </For>
+      </div>
+
+      {/* Table.
+
+          The wrapper has to be the thing that scrolls vertically for the
+          header to stick. It was overflow-x-auto, which per spec already made
+          it a scroll container on BOTH axes (an auto on one axis computes the
+          other's `visible` to `auto`) — but with a content-driven height it
+          never scrolled vertically, so a sticky header would have resolved
+          against a scrollport that never moves and never stuck to anything.
+          Bounding the height is what gives the header something to stick to;
+          the horizontal scroll the pinned Action column depends on is
+          unchanged. */}
+      <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 overflow-auto max-h-[calc(100vh-20rem)] min-h-[18rem]">
         <table class="min-w-full text-sm">
           <thead>
-            <tr class="bg-gray-50 dark:bg-gray-800 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+            <tr class="text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
               <th
-                class="px-4 py-3 cursor-pointer select-none whitespace-nowrap hover:text-blue-900 dark:hover:text-gray-200"
+                class={`${TH_SORTABLE} ${TH_STICKY}`}
                 onClick={() => toggleSort("client")}
               >
                 Client {sortIcon("client")}
               </th>
               <th
-                class="px-4 py-3 cursor-pointer select-none whitespace-nowrap hover:text-blue-900 dark:hover:text-gray-200"
+                class={`${TH_SORTABLE} ${TH_STICKY}`}
                 onClick={() => toggleSort("email")}
               >
                 Email {sortIcon("email")}
               </th>
               <th
-                class="px-4 py-3 cursor-pointer select-none whitespace-nowrap hover:text-blue-900 dark:hover:text-gray-200"
+                class={`${TH_SORTABLE} ${TH_STICKY}`}
                 onClick={() => toggleSort("organization_name")}
               >
                 Organisation {sortIcon("organization_name")}
               </th>
               <th
-                class="px-4 py-3 cursor-pointer select-none whitespace-nowrap hover:text-blue-900 dark:hover:text-gray-200"
+                class={`${TH_SORTABLE} ${TH_STICKY}`}
                 onClick={() => toggleSort("owner")}
               >
                 Sales person {sortIcon("owner")}
               </th>
               <th
-                class="px-4 py-3 cursor-pointer select-none whitespace-nowrap hover:text-blue-900 dark:hover:text-gray-200"
+                class={`${TH_SORTABLE} ${TH_STICKY}`}
                 onClick={() => toggleSort("client_type")}
               >
                 Type {sortIcon("client_type")}
               </th>
               <th
-                class="px-4 py-3 cursor-pointer select-none whitespace-nowrap hover:text-blue-900 dark:hover:text-gray-200"
+                class={`${TH_SORTABLE} ${TH_STICKY}`}
                 onClick={() => toggleSort("is_active")}
               >
                 Login {sortIcon("is_active")}
               </th>
               <th
-                class="px-4 py-3 cursor-pointer select-none whitespace-nowrap hover:text-blue-900 dark:hover:text-gray-200"
+                class={`${TH_SORTABLE} ${TH_STICKY}`}
                 onClick={() => toggleSort("created_at")}
               >
                 Onboarded {sortIcon("created_at")}
@@ -423,8 +525,14 @@ export default function EditClients() {
                   reach however far the table is scrolled sideways. Opaque
                   backgrounds (matching the row, hover included) stop the
                   scrolled cells showing through; the left shadow marks the
-                  seam. */}
-              <th class="sticky right-0 z-10 px-4 py-3 text-right bg-gray-50 dark:bg-gray-800 shadow-[-8px_0_10px_-8px_rgba(16,29,49,0.18)]">
+                  seam.
+
+                  This one is the corner: it sticks on both axes, so it has to
+                  outrank the other header cells (z-20) AND the body's pinned
+                  Action cells (z-[1]), or whichever it loses to scrolls over
+                  it. Both seams are drawn in a single shadow — a second
+                  shadow declaration would replace the first, not add to it. */}
+              <th class="sticky right-0 top-0 z-30 px-4 py-3 text-right bg-gray-50 dark:bg-gray-800 shadow-[-8px_0_10px_-8px_rgba(16,29,49,0.18),0_1px_0_0_rgba(16,29,49,.10)]">
                 Action
               </th>
             </tr>
