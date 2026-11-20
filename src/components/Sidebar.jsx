@@ -1516,9 +1516,25 @@ export default function Sidebar() {
                     </Show>
                   </button>
 
-                  {/* Animated submenu */}
+                  {/* Animated submenu.
+
+                      The indent below is the expanded rail's: ml-4 + pl-3 +
+                      the rule itself. On the 80px collapsed rail that left a
+                      16px icon 3px to sit in, and flex-shrink-0 meant it
+                      overflowed the row instead of shrinking — the aside's
+                      overflow-hidden then cropped it, off the centre axis the
+                      top-level glyphs sit on. So the indent, the rule and the
+                      row padding are all expanded-only, and a collapsed
+                      sub-row centres its glyph in the same 56px the top-level
+                      rows centre theirs in. */}
                   <AnimatedCollapse open={openMenu() === item.name}>
-                    <div class="mt-1 ml-4 pl-3 border-l border-[#E2E8F1] dark:border-gray-700 space-y-0.5 pb-1">
+                    <div
+                      class={`mt-1 space-y-0.5 pb-1 ${
+                        isCollapsed()
+                          ? ""
+                          : "ml-4 pl-3 border-l border-[#E2E8F1] dark:border-gray-700"
+                      }`}
+                    >
                       <For
                         each={item.subMenus.filter(
                           (sub) =>
@@ -1529,32 +1545,57 @@ export default function Sidebar() {
                         {(sub) => (
                           <A
                             href={sub.path}
-                            class={`group relative flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-all duration-150 outline-none focus-visible:ring-2 focus-visible:ring-[#AC2334]/30
+                            // Collapsed, the label is gone, so the glyph is all
+                            // there is to go on — it names itself on hover, the
+                            // way the top-level rows do.
+                            title={isCollapsed() ? sub.name : undefined}
+                            class={`group relative flex items-center rounded-lg text-sm transition-all duration-150 outline-none focus-visible:ring-2 focus-visible:ring-[#AC2334]/30 ${
+                              isCollapsed()
+                                ? "justify-center px-0 py-2"
+                                : "gap-2.5 px-3 py-2"
+                            }
                               ${
                                 isActive(sub.path)
                                   ? "bg-[#FBEEF0] text-[#AC2334] dark:bg-[#AC2334]/20 dark:text-red-300 font-semibold"
-                                  : "text-[#54657E] dark:text-gray-400 hover:bg-[#F6F9FC] dark:hover:bg-gray-800/70 hover:text-[#14233A] dark:hover:text-gray-200 hover:translate-x-0.5"
+                                  : `text-[#54657E] dark:text-gray-400 hover:bg-[#F6F9FC] dark:hover:bg-gray-800/70 hover:text-[#14233A] dark:hover:text-gray-200 ${
+                                      // The nudge is a reading cue next to a
+                                      // label; on the rail it would just shove
+                                      // a centred glyph off centre on hover.
+                                      isCollapsed() ? "" : "hover:translate-x-0.5"
+                                    }`
                               }`}
                           >
-                            {/* Ties the row back to the group's rule on the left */}
-                            <Show when={isActive(sub.path)}>
+                            {/* Ties the row back to the group's rule on the
+                                left — which only exists when expanded. */}
+                            <Show when={isActive(sub.path) && !isCollapsed()}>
                               <span class="absolute -left-[13px] top-1/2 -translate-y-1/2 w-[2px] h-5 rounded-full bg-[#AC2334]" />
                             </Show>
 
                             <span
-                              class={`flex-shrink-0 transition-colors duration-150 ${isActive(sub.path) ? "text-[#AC2334] dark:text-red-300" : "text-[#8593A8] group-hover:text-[#AC2334] dark:group-hover:text-red-300"}`}
+                              class={`relative flex-shrink-0 transition-colors duration-150 ${isActive(sub.path) ? "text-[#AC2334] dark:text-red-300" : "text-[#8593A8] group-hover:text-[#AC2334] dark:group-hover:text-red-300"}`}
                             >
                               {sub.icon?.()}
+                              {/* The counter below sits in the label row, which
+                                  the rail doesn't render — so it becomes a dot
+                                  on the glyph, the same trade the top-level
+                                  rows make. Anchored on the glyph rather than
+                                  pushed out with ml-auto, which would shunt a
+                                  centred icon sideways. */}
+                              <Show when={isCollapsed() && sub.badge}>
+                                <span class="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-[#AC2334] ring-2 ring-white dark:ring-gray-900" />
+                              </Show>
                             </span>
-                            <span>{sub.name}</span>
-                            <Show when={sub.badge}>
-                              <span class="ml-auto inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-bold leading-none text-white bg-[#AC2334] rounded-full shadow-[0_1px_2px_rgba(172,35,52,.35)]">
-                                {sub.badge}
-                              </span>
-                            </Show>
-                            {/* Active dot */}
-                            <Show when={isActive(sub.path) && !sub.badge}>
-                              <span class="ml-auto w-1.5 h-1.5 rounded-full bg-[#D89A2B]" />
+                            <Show when={!isCollapsed()}>
+                              <span>{sub.name}</span>
+                              <Show when={sub.badge}>
+                                <span class="ml-auto inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-bold leading-none text-white bg-[#AC2334] rounded-full shadow-[0_1px_2px_rgba(172,35,52,.35)]">
+                                  {sub.badge}
+                                </span>
+                              </Show>
+                              {/* Active dot */}
+                              <Show when={isActive(sub.path) && !sub.badge}>
+                                <span class="ml-auto w-1.5 h-1.5 rounded-full bg-[#D89A2B]" />
+                              </Show>
                             </Show>
                           </A>
                         )}
