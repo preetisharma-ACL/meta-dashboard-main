@@ -19,6 +19,24 @@ export const nodeKey = (clientNomenId, projectId) => `${clientNomenId}:${project
 export const adAccountName = (c) =>
   c?.ad_account_name ?? c?.ad_account?.name ?? c?.account_name ?? null;
 
+// Did `client_nomen=<id>` actually narrow /campaigns/ to the one client?
+//
+// Returns the nomens the response disagrees on — empty means every row that
+// names a client names this one. The endpoint ignores an undeclared filter
+// silently rather than erroring, so this is the only way the call tells us it
+// worked; callers log the mismatch, they don't act on it (adAccountMapFor keeps
+// the rows honest either way). Rows that carry no nomen field at all are not
+// evidence of anything and are skipped.
+export const foreignNomens = (rows, clientNomenId) => {
+  const mine = String(clientNomenId);
+  const seen = new Set();
+  for (const r of Array.isArray(rows) ? rows : []) {
+    const n = r?.client_nomen ?? r?.client_nomen_id ?? null;
+    if (n != null && String(n) !== mine) seen.add(String(n));
+  }
+  return [...seen];
+};
+
 // campaign_id → ad account name, for the subtitles under ONE client's rows.
 //
 // `rows` comes from /campaigns/?project=N, which can return other clients'

@@ -14,6 +14,7 @@ import {
   nodeKey,
   adAccountName,
   adAccountMapFor,
+  foreignNomens,
 } from "../src/components/cmHierarchyKeys.js";
 
 let failures = 0;
@@ -123,6 +124,31 @@ console.log("\nad-account subtitles never borrow another client's rows");
   check("undefined inputs → empty map", Object.keys(adAccountMapFor(undefined, undefined)).length === 0);
   check("a row with no account name is skipped", adAccountMapFor([{ id: 16860 }], RAMAN_LEAF)["16860"] === undefined);
   check("adAccountName on an empty row is null", adAccountName({}) === null);
+}
+
+console.log("\nthe response says whether client_nomen=<id> actually bit");
+{
+  const SCOPED = [
+    { id: 16767, client_nomen: SHADAB },
+    { id: 16833, client_nomen: SHADAB },
+  ];
+  const UNSCOPED = [...SCOPED, { id: 16860, client_nomen: RAMAN }, { id: 16901, client_nomen: BHAVYA }];
+
+  check("a scoped response disagrees with nobody", foreignNomens(SCOPED, SHADAB).length === 0);
+  check(
+    "an ignored filter is caught, and names the intruders",
+    foreignNomens(UNSCOPED, SHADAB).sort().join(",") === [String(RAMAN), String(BHAVYA)].sort().join(","),
+    foreignNomens(UNSCOPED, SHADAB).join(","),
+  );
+  // The id arrives as a number on the row and often a string in the URL/state;
+  // a type mismatch must not read as a different client.
+  check("102 and \"102\" are the same client", foreignNomens([{ client_nomen: 102 }], "102").length === 0);
+  check("the id-named field is read too", foreignNomens([{ client_nomen_id: RAMAN }], SHADAB).length === 1);
+  // A row with no nomen field proves nothing either way — it must not be read
+  // as a foreign client, or the warning would fire on every project.
+  check("a row with no nomen field is not evidence", foreignNomens([{ id: 16767 }], SHADAB).length === 0);
+  check("no rows → nothing to disagree about", foreignNomens([], SHADAB).length === 0);
+  check("undefined rows → no throw", foreignNomens(undefined, SHADAB).length === 0);
 }
 
 console.log(

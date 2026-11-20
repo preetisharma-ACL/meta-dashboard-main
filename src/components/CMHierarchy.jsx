@@ -10,7 +10,12 @@ import { scopeKey, ownScope } from "../stores/cmScope";
 import { lookupManager, managerColor } from "../stores/cmManagerMap";
 import { canWriteCampaigns } from "../stores/currentUser";
 import CampaignStatusControl from "./CampaignStatusControl";
-import { nodeKey, adAccountName, adAccountMapFor } from "./cmHierarchyKeys";
+import {
+  nodeKey,
+  adAccountName,
+  adAccountMapFor,
+  foreignNomens,
+} from "./cmHierarchyKeys";
 
 // ─── Formatters ───────────────────────────────────────────────────────────────
 const money = (v) => {
@@ -234,28 +239,27 @@ export default function CMHierarchy(props) {
   // silent — the row just loses its subtitle, it never blocks the numbers.
   //
   // Scoped to the parent client two ways over, because a shared project returns
-  // other clients' campaigns here: client_nomen_id on the request, and the leaf
-  // ids as the only keys written into the map. The second is what guarantees it
-  // — the ids come from the hierarchy leaf, which is already the right client's.
-  //
-  // The narrowing param is sent but never trusted: /campaigns/ filters on its
-  // own client_nomen_id (campaigns.js), and whether that is the same id space as
-  // the hierarchy's client_nomen_id is NOT verified here. If it isn't, the
-  // scoped request comes back with nothing that matches the leaf and the
-  // subtitles would quietly vanish — so an empty intersection retries unscoped,
-  // where the leaf-id filter alone still keeps the rows honest.
+  // other clients' campaigns here: client_nomen=<nomen id> on the request, and
+  // the leaf ids as the only keys written into the map. The second is the safety
+  // net — the ids come from the hierarchy leaf, which is already the right
+  // client's — because the first can fail silently: an undeclared filter on this
+  // endpoint is ignored, not rejected, so an unscoped response arrives looking
+  // exactly like a scoped one. foreignNomens() is that check, logged for whoever
+  // next changes the param; nothing branches on it.
   const loadAdAccounts = async (projectId, clientNomenId, leafCampaigns) => {
     const key = nodeKey(clientNomenId, projectId);
     const rowsOf = (res) => res?.data?.results ?? (Array.isArray(res?.data) ? res.data : []);
     try {
-      let map = adAccountMapFor(
-        rowsOf(await fetchCampaignsScoped({ project: projectId, clientNomenId })),
-        leafCampaigns,
-      );
-      if (Object.keys(map).length === 0) {
-        map = adAccountMapFor(rowsOf(await fetchCampaignsScoped({ project: projectId })), leafCampaigns);
+      const rows = rowsOf(await fetchCampaignsScoped({ project: projectId, clientNomenId }));
+      const foreign = foreignNomens(rows, clientNomenId);
+      if (foreign.length > 0) {
+        console.warn(
+          `[CMHierarchy] /campaigns/?client_nomen=${clientNomenId} came back unscoped ` +
+            `on project ${projectId} — also saw nomen(s) ${foreign.join(", ")}. ` +
+            `Subtitles are still correct (filtered against the leaf), but the filter isn't biting.`,
+        );
       }
-      setAdAccountsByProject((p) => ({ ...p, [key]: map }));
+      setAdAccountsByProject((p) => ({ ...p, [key]: adAccountMapFor(rows, leafCampaigns) }));
     } catch (err) {
       console.error("[CMHierarchy] ad accounts failed:", err);
       setAdAccountsByProject((p) => ({ ...p, [key]: {} }));

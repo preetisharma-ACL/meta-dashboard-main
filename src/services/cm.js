@@ -26,11 +26,15 @@ export const fetchCampaignsScoped = async ({
   if (status && status !== "all") url += `&status=${encodeURIComponent(status)}`;
   if (project && project !== "all") url += `&project=${encodeURIComponent(project)}`;
   // A project can belong to MANY clients (project 410 "Prestige150" is shared by
-  // 13), and this endpoint filters on client_nomen_id — the id form, not the
-  // name. A caller showing one client's campaigns on a shared project must send
-  // it or it gets every client's rows back.
+  // 13), so a caller showing one client's campaigns on a shared project has to
+  // narrow it or it gets every client's rows back.
+  //
+  // The filter this endpoint declares is `client_nomen`, and the value it wants
+  // is the nomen ID — the same id the hierarchy calls client_nomen_id. Sending
+  // `client_nomen_id=` instead is not a declared filter: it is ignored, and the
+  // response comes back unscoped with no error to show for it.
   if (clientNomenId != null && clientNomenId !== "")
-    url += `&client_nomen_id=${encodeURIComponent(clientNomenId)}`;
+    url += `&client_nomen=${encodeURIComponent(clientNomenId)}`;
   if (search) url += `&search=${encodeURIComponent(search)}`;
   if (sort) url += `&sort=${encodeURIComponent(sort)}`;
   url += scopeQuery();
