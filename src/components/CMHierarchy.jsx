@@ -239,13 +239,15 @@ export default function CMHierarchy(props) {
   // silent — the row just loses its subtitle, it never blocks the numbers.
   //
   // Scoped to the parent client two ways over, because a shared project returns
-  // other clients' campaigns here: client_nomen=<nomen id> on the request, and
-  // the leaf ids as the only keys written into the map. The second is the safety
-  // net — the ids come from the hierarchy leaf, which is already the right
-  // client's — because the first can fail silently: an undeclared filter on this
-  // endpoint is ignored, not rejected, so an unscoped response arrives looking
-  // exactly like a scoped one. foreignNomens() is that check, logged for whoever
-  // next changes the param; nothing branches on it.
+  // other clients' campaigns here: client_nomen_id=<nomen id> on the request,
+  // and the leaf ids as the only keys written into the map. The second is the
+  // safety net — the ids come from the hierarchy leaf, which is already the
+  // right client's — because a wrong filter here fails quietly either way: the
+  // id sent to /campaigns/'s name filter (client_nomen) matches nothing and
+  // empties the response, and a filter it doesn't declare at all is ignored and
+  // leaves it unscoped. Neither raises. foreignNomens() catches the unscoped
+  // case in the console for whoever next touches the param; nothing branches on
+  // it, and the emptied case shows up as subtitles going missing.
   const loadAdAccounts = async (projectId, clientNomenId, leafCampaigns) => {
     const key = nodeKey(clientNomenId, projectId);
     const rowsOf = (res) => res?.data?.results ?? (Array.isArray(res?.data) ? res.data : []);
@@ -254,7 +256,7 @@ export default function CMHierarchy(props) {
       const foreign = foreignNomens(rows, clientNomenId);
       if (foreign.length > 0) {
         console.warn(
-          `[CMHierarchy] /campaigns/?client_nomen=${clientNomenId} came back unscoped ` +
+          `[CMHierarchy] /campaigns/?client_nomen_id=${clientNomenId} came back unscoped ` +
             `on project ${projectId} — also saw nomen(s) ${foreign.join(", ")}. ` +
             `Subtitles are still correct (filtered against the leaf), but the filter isn't biting.`,
         );

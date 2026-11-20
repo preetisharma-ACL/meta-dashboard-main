@@ -29,12 +29,13 @@ export const fetchCampaignsScoped = async ({
   // 13), so a caller showing one client's campaigns on a shared project has to
   // narrow it or it gets every client's rows back.
   //
-  // The filter this endpoint declares is `client_nomen`, and the value it wants
-  // is the nomen ID — the same id the hierarchy calls client_nomen_id. Sending
-  // `client_nomen_id=` instead is not a declared filter: it is ignored, and the
-  // response comes back unscoped with no error to show for it.
+  // CampaignFilter has BOTH, matching different things: `client_nomen` is the
+  // client NAME (client_nomen__name__iexact) and `client_nomen_id` is the id.
+  // So an id belongs in client_nomen_id — send it to client_nomen and the name
+  // comparison matches nothing and the response is empty, which here means the
+  // ad-account subtitles silently go blank.
   if (clientNomenId != null && clientNomenId !== "")
-    url += `&client_nomen=${encodeURIComponent(clientNomenId)}`;
+    url += `&client_nomen_id=${encodeURIComponent(clientNomenId)}`;
   if (search) url += `&search=${encodeURIComponent(search)}`;
   if (sort) url += `&sort=${encodeURIComponent(sort)}`;
   url += scopeQuery();

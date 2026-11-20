@@ -19,20 +19,30 @@ export const nodeKey = (clientNomenId, projectId) => `${clientNomenId}:${project
 export const adAccountName = (c) =>
   c?.ad_account_name ?? c?.ad_account?.name ?? c?.account_name ?? null;
 
-// Did `client_nomen=<id>` actually narrow /campaigns/ to the one client?
+// Did `client_nomen_id=<id>` actually narrow /campaigns/ to the one client?
 //
-// Returns the nomens the response disagrees on — empty means every row that
-// names a client names this one. The endpoint ignores an undeclared filter
-// silently rather than erroring, so this is the only way the call tells us it
-// worked; callers log the mismatch, they don't act on it (adAccountMapFor keeps
-// the rows honest either way). Rows that carry no nomen field at all are not
-// evidence of anything and are skipped.
+// Returns the foreign nomen IDS the response carries — empty means every row
+// that identifies its client by id identifies this one. Callers log it, they
+// never act on it (adAccountMapFor keeps the rows honest either way).
+//
+// Compares ids against ids only. A row's `client_nomen` is the client's NAME,
+// not its id (that is the whole difference between CampaignFilter's two
+// filters), so comparing it to an id would mark every single row foreign and
+// the warning would cry wolf on every project. Hence: `client_nomen_id`, and
+// `client_nomen` only on the rare row that puts a bare id there. A row that
+// identifies its client in neither form is no evidence either way, and skipped.
+const idLike = (v) => v != null && v !== "" && /^\d+$/.test(String(v));
+
 export const foreignNomens = (rows, clientNomenId) => {
   const mine = String(clientNomenId);
   const seen = new Set();
   for (const r of Array.isArray(rows) ? rows : []) {
-    const n = r?.client_nomen ?? r?.client_nomen_id ?? null;
-    if (n != null && String(n) !== mine) seen.add(String(n));
+    const id = idLike(r?.client_nomen_id)
+      ? r.client_nomen_id
+      : idLike(r?.client_nomen)
+        ? r.client_nomen
+        : null;
+    if (id != null && String(id) !== mine) seen.add(String(id));
   }
   return [...seen];
 };

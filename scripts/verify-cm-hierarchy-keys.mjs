@@ -126,26 +126,41 @@ console.log("\nad-account subtitles never borrow another client's rows");
   check("adAccountName on an empty row is null", adAccountName({}) === null);
 }
 
-console.log("\nthe response says whether client_nomen=<id> actually bit");
+console.log("\nthe response says whether client_nomen_id=<id> actually bit");
 {
+  // Rows as /campaigns/ sends them: the id under client_nomen_id, and the NAME
+  // under client_nomen — CampaignFilter's two filters match those two things,
+  // which is why only the id side may be compared to an id.
   const SCOPED = [
-    { id: 16767, client_nomen: SHADAB },
-    { id: 16833, client_nomen: SHADAB },
+    { id: 16767, client_nomen_id: SHADAB, client_nomen: "ShadabAhmadTrueGrowthRealtyLLP" },
+    { id: 16833, client_nomen_id: SHADAB, client_nomen: "ShadabAhmadTrueGrowthRealtyLLP" },
   ];
-  const UNSCOPED = [...SCOPED, { id: 16860, client_nomen: RAMAN }, { id: 16901, client_nomen: BHAVYA }];
+  const UNSCOPED = [
+    ...SCOPED,
+    { id: 16860, client_nomen_id: RAMAN, client_nomen: "RamanRujbhoomiRealtech" },
+    { id: 16901, client_nomen_id: BHAVYA, client_nomen: "BhavyaPaarthPromoters" },
+  ];
 
   check("a scoped response disagrees with nobody", foreignNomens(SCOPED, SHADAB).length === 0);
   check(
-    "an ignored filter is caught, and names the intruders",
+    "an unscoped response is caught, and names the intruders",
     foreignNomens(UNSCOPED, SHADAB).sort().join(",") === [String(RAMAN), String(BHAVYA)].sort().join(","),
     foreignNomens(UNSCOPED, SHADAB).join(","),
   );
+  // The regression this guards: a client NAME compared against an id marks
+  // every row foreign and the warning fires on every project in the tree.
+  check(
+    "a name in client_nomen is never read as a foreign id",
+    foreignNomens(
+      [{ id: 16767, client_nomen: "ShadabAhmadTrueGrowthRealtyLLP" }],
+      SHADAB,
+    ).length === 0,
+  );
   // The id arrives as a number on the row and often a string in the URL/state;
   // a type mismatch must not read as a different client.
-  check("102 and \"102\" are the same client", foreignNomens([{ client_nomen: 102 }], "102").length === 0);
-  check("the id-named field is read too", foreignNomens([{ client_nomen_id: RAMAN }], SHADAB).length === 1);
-  // A row with no nomen field proves nothing either way — it must not be read
-  // as a foreign client, or the warning would fire on every project.
+  check("102 and \"102\" are the same client", foreignNomens([{ client_nomen_id: 102 }], "102").length === 0);
+  check("a bare id under client_nomen still counts", foreignNomens([{ client_nomen: RAMAN }], SHADAB).length === 1);
+  // A row identifying its client in neither form proves nothing either way.
   check("a row with no nomen field is not evidence", foreignNomens([{ id: 16767 }], SHADAB).length === 0);
   check("no rows → nothing to disagree about", foreignNomens([], SHADAB).length === 0);
   check("undefined rows → no throw", foreignNomens(undefined, SHADAB).length === 0);
