@@ -574,22 +574,22 @@ export default function DailyReports() {
   });
 
   const reportRows = createMemo(() => {
-    const led = ledger();
     const rows = [];
 
-    for (const project of projects()) {
-      const row = led.byProject[String(project.id)];
-
+    // Rows come from the LEDGER, not from the /projects/ list. They used to be
+    // the /projects/?client_id= list joined to the ledger, which silently
+    // dropped any project the ledger counted but that list didn't return.
+    // Projects are shared across clients, so that happens: MayankShuklaAdvikEstate,
+    // 1–25 Nov, ledger 2 rows (LucknowPlots + ACEMahagunMedalleo, 16 leads), table 1,
+    // with "filtered to 1" under it while the status filter was on All. The CM
+    // Daily Report already iterated ledger rows and showed both. One source.
+    for (const row of ledger().rows) {
       // ── Status filter ──────────────────────────────────────────────────
       // A campaign's active/paused state is NOT date-dependent, so the ledger's
-      // campaign counts drive it — the same rule the dashboard uses. Falls back
-      // to the projects API's own (stale) status before the ledger lands.
+      // campaign counts drive it — the same rule the dashboard and the CM
+      // Daily Report use.
       if (statusFilter() !== "all") {
-        const status = row
-          ? row.campaignsActive > 0
-            ? "active"
-            : "paused"
-          : (project.status ?? "").toLowerCase();
+        const status = row.campaignsActive > 0 ? "active" : "paused";
         if (statusFilter() !== status) continue;
       }
 
@@ -599,11 +599,10 @@ export default function DailyReports() {
       // than a client-side date sweep — which is what used to let a July block
       // through an August filter.
       const active =
-        !!row &&
-        (row.totalLeads > 0 ||
-          row.spend > 0 ||
-          row.impressions > 0 ||
-          row.clicks > 0);
+        row.totalLeads > 0 ||
+        row.spend > 0 ||
+        row.impressions > 0 ||
+        row.clicks > 0;
       if (!active) continue;
 
       // ── Every figure on this row, TAKEN from that one payload row ───────
@@ -621,9 +620,8 @@ export default function DailyReports() {
       // numbers a reader subtracted had never met, and 621 − 40 showed 381.
       // Anything that reintroduces a second source here reintroduces that.
       rows.push({
-        projectId: project.id,
-        projectName: project.name,
-        projectStatus: project.status,
+        projectId: row.projectId,
+        projectName: row.projectName,
         ...rowOf(row.wire),
       });
     }
@@ -689,9 +687,9 @@ export default function DailyReports() {
   // did not add up.
   //
   // What makes the footer genuinely wider than the table is a row that was
-  // hidden AND has something on it: the status filter dropping a live project,
-  // or a project the ledger counted that the projects list didn't return. So
-  // that is the test.
+  // hidden AND has something on it: the status filter dropping a live project.
+  // (Rows are built from the ledger itself, so a project missing from some
+  // other list can no longer be the cause.) So that is the test.
   const rowHasActivity = (r) =>
     r.totalLeads > 0 || r.spend > 0 || r.impressions > 0 || r.clicks > 0;
   const hiddenActiveCount = () => {
@@ -1133,9 +1131,9 @@ export default function DailyReports() {
             value={statusFilter()}
             onChange={(e) => setStatusFilter(e.target.value)}
           >
-            <option value="all">All Projects</option>
-            <option value="active">Active Projects</option>
-            <option value="paused">Paused Projects</option>
+            <option value="all">All Status</option>
+            <option value="active">Active</option>
+            <option value="paused">Paused</option>
           </select>
           <div class="pointer-events-none absolute inset-y-0 right-3 flex items-center">
             <svg
@@ -1645,7 +1643,7 @@ export default function DailyReports() {
               sent and the table skipped — which adds nothing to the footer —
               doesn't raise a discrepancy that isn't there.
             • never on a client's own login. The filters that cause this are
-              internal tools (the status filter, the project list); a client
+              an internal tool (the status filter); a client
               reads a finished report, and a note about their totals not adding
               up reads as an admission that the figures are unreliable. */}
         <Show
