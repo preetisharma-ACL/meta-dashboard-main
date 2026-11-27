@@ -375,8 +375,11 @@ export default function ProjectDetails() {
   // selectedClientId is the Client PK. It is NOT selectedClientNomenId (the nomen
   // id) — those differ for all but one client, and passing a nomen id here 404s
   // "Target client not found or inactive" → 0 leads / ₹0.
+  // Coordination previews exactly as admin does (same admin roster, same PK).
   const previewClientId = () =>
-    userRole() === "admin" ? localStorage.getItem("selectedClientId") : null;
+    userRole() === "admin" || userRole() === "coordination"
+      ? localStorage.getItem("selectedClientId")
+      : null;
 
   // ── Client scope for internal viewers ──────────────────────────────────────
   // A client's token is scoped server-side to their own nomen, so their calls
@@ -388,6 +391,7 @@ export default function ProjectDetails() {
   // the badge, ClientDashboard and DailyReports read.
   const needsClientScope = () =>
     userRole() === "admin" ||
+    userRole() === "coordination" ||
     userRole() === "campaign_manager" ||
     userRole() === "sales";
 

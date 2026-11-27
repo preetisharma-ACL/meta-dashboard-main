@@ -16,7 +16,9 @@ const getClientNomen = () => {
   if (
     auth?.role === "admin" ||
     auth?.role === "campaign_manager" ||
-    auth?.role === "sales"
+    auth?.role === "sales" ||
+    // Coordination previews clients exactly as admin does.
+    auth?.role === "coordination"
   ) {
     return localStorage.getItem("selectedClientNomen") || null;
   }

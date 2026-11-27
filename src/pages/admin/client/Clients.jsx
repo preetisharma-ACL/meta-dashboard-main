@@ -112,6 +112,13 @@ const authRole = (() => {
 })();
 const isCampaignManager = () => authRole === "campaign_manager";
 const isAdmin = () => authRole === "admin";
+// Coordination reads the same admin roster (`id` = Client PK) and previews
+// clients exactly as admin does, but the admin-only controls stay admin-only.
+const isCoordination = () => authRole === "coordination";
+// The engagement-status endpoints (board, PATCH, history) are documented for
+// admin + CM only. Coordination reads the status off the roster row instead and
+// gets the badge without the popover, so nothing it can see 403s.
+const canUseStatusEndpoints = () => isAdmin() || isCampaignManager();
 
 // The admin clients endpoint is 403 for CMs, so CMs are sourced from the
 // CM-scoped hierarchy endpoint instead. That payload is smaller — this maps it
@@ -174,7 +181,7 @@ export default function Clients() {
   // alike and gives us the reason caption the badge needs.
   // Keyed on the dead toggle: the board hides dead clients too, so with the
   // toggle on it must be asked for them or their badges fall back to the row.
-  const [statusBoard, { mutate: mutateBoard }] = createResource(() => ({ dead: deadOnly() }), async ({ dead }) => {
+  const [statusBoard, { mutate: mutateBoard }] = createResource(() => (canUseStatusEndpoints() ? { dead: deadOnly() } : null), async ({ dead }) => {
     try {
       return await fetchStatusBoard(undefined, { dead });
     } catch (err) {
@@ -374,9 +381,10 @@ export default function Clients() {
   // `client_id` on this payload. (This used to be rebuilt from the
   // manager-performance roster + per-manager own-client lists, which dropped
   // every client whose manager wasn't in that roster, e.g. new Tier 3s.)
-  // The column is admin-only (CMs never render it), so CMs skip the fetch.
+  // The column is admin-only (CMs and coordination never render it), so only
+  // admin fetches.
   const [assignRes] = createResource(
-    () => !isCampaignManager(),
+    () => isAdmin(),
     async () => {
       try {
         return await fetchAssignmentsByClient();
@@ -768,11 +776,13 @@ export default function Clients() {
     localStorage.setItem("selectedClientNomenId", client.client_nomen); // nomen id
     // Client PK — what as_client_id expects. Distinct from the nomen id above for
     // all but one client, and the backend 404s if handed a nomen id.
-    // Admin only: `client.id` is the Client PK only on the admin roster. For CMs
-    // the rows come from /cm/hierarchy/clients/ via adaptHierarchyClient, whose
-    // `id` is the NOMEN id (66, not PK 6) — writing it here would send a nomen as
-    // as_client_id and 403 "This client is not in your scope" → silent zeros.
-    if (isAdmin()) localStorage.setItem("selectedClientId", String(client.id));
+    // Admin and coordination only: `client.id` is the Client PK only on the
+    // admin roster, which both read. For CMs the rows come from
+    // /cm/hierarchy/clients/ via adaptHierarchyClient, whose `id` is the NOMEN
+    // id (66, not PK 6) — writing it here would send a nomen as as_client_id and
+    // 403 "This client is not in your scope" → silent zeros.
+    if (isAdmin() || isCoordination())
+      localStorage.setItem("selectedClientId", String(client.id));
     localStorage.setItem("selectedClientName", client.organization_name);
 
     setProjectsCache({
@@ -931,8 +941,8 @@ export default function Clients() {
           </select>
 
           {/* Assignment + Campaign-manager filters are admin-only: they depend on
-              the manager roster, which CMs can't read. Hidden for CMs. */}
-          <Show when={!isCampaignManager()}>
+              the assignments read, which only admin makes here. */}
+          <Show when={isAdmin()}>
             <div class="flex items-center gap-0.5 h-11 p-1 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
               <For each={ASSIGN_OPTIONS}>
                 {(o) => {
@@ -1146,7 +1156,7 @@ export default function Clients() {
               >
                 Client Nomen {sortIcon("client_nomen_name")}
               </th>
-              <Show when={!isCampaignManager()}>
+              <Show when={isAdmin()}>
                 <th class="p-3 text-left whitespace-nowrap">
                   Campaign Manager
                 </th>
@@ -1323,8 +1333,8 @@ export default function Clients() {
                       </div>
                     </td>
 
-                    {/* Assigned campaign manager */}
-                    <Show when={!isCampaignManager()}>
+                    {/* Assigned campaign manager (admin only) */}
+                    <Show when={isAdmin()}>
                       <td class="p-3" onClick={(e) => e.stopPropagation()}>
                         <Show
                           when={cmReady()}
@@ -1380,6 +1390,7 @@ export default function Clients() {
                         dashboard, and opening the popover must not do that. */}
                     <td class="p-3 align-top" onClick={(e) => e.stopPropagation()}>
                       <ClientStatusControl
+                        readOnly={!canUseStatusEndpoints()}
                         clientId={pkOf(client)}
                         status={statusOf(client)}
                         latestChange={changeOf(client)}
@@ -1492,7 +1503,7 @@ export default function Clients() {
                       onClick={(e) => e.stopPropagation()}
                     >
                       <Show
-                        when={pkOf(client) != null}
+                        when={pkOf(client) != null && canUseStatusEndpoints()}
                         fallback={
                           <span class="text-gray-300 dark:text-gray-400">—</span>
                         }
@@ -1520,7 +1531,7 @@ export default function Clients() {
                 <tr>
                   <td
                     colspan={
-                      (isCampaignManager() ? 10 : 11) +
+                      (isAdmin() ? 11 : 10) +
                       (canSeeValueTier() ? 1 : 0)
                     }
                     class="py-16 text-center text-gray-400 dark:text-gray-400"
@@ -1550,7 +1561,7 @@ export default function Clients() {
             <tr class="border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60">
               <td
                 colspan={
-                  (isCampaignManager() ? 8 : 9) + (canSeeValueTier() ? 1 : 0)
+                  (isAdmin() ? 9 : 8) + (canSeeValueTier() ? 1 : 0)
                 }
                 class="px-4 py-2.5 text-xs text-gray-500 dark:text-gray-400"
               >

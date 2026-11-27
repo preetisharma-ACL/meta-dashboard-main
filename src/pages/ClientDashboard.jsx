@@ -159,13 +159,19 @@ const slugify = (name) =>
 //
 // Returns { ok, changed }: ok=false when the slug matches no client; changed=true
 // when localStorage was actually rewritten (so callers must bust the cache).
+// Admin and coordination share the "preview a client" context: the admin
+// roster, the Client PK in selectedClientId, as_client_id on preview calls.
+const isAdminLike = (role) => role === "admin" || role === "coordination";
+
 const ensureClientContextFromRoute = async (routeSlug) => {
   const auth = JSON.parse(localStorage.getItem("auth") || "{}");
   const role = auth?.role;
-  // Only admin + sales carry a switchable client context reconciled from the
-  // URL. Real client logins are scoped server-side by their own nomen and never
+  // Only admin, coordination and sales carry a switchable client context
+  // reconciled from the URL. Coordination takes the admin path below: it reads
+  // the same admin roster and previews with the Client PK exactly as admin does.
+  // Real client logins are scoped server-side by their own nomen and never
   // touch these keys.
-  if (role !== "admin" && role !== "sales") return { ok: true, changed: false };
+  if (!isAdminLike(role) && role !== "sales") return { ok: true, changed: false };
 
   // Not the dynamic client route (a static route, or "/") → nothing to reconcile.
   if (!routeSlug) return { ok: true, changed: false };
@@ -325,10 +331,19 @@ export default function MainDashboard() {
   const needsInitialSweep = () =>
     isAllProjectsCacheStale() || !hasRenderedProjectData();
 
+  // Bumped when the async route reconcile REWRITES the client context. The
+  // accessors below read localStorage, which no signal tracks, and they track
+  // location.pathname, which does not change when the reconcile lands after
+  // the first render. Without this a direct-URL visit keyed the ledger (and the
+  // badge, the AI insight, the Drive card) on whatever was stored before, often
+  // nothing, and never re-keyed it: an unscoped ledger under one client's URL.
+  const [ctxTick, setCtxTick] = createSignal(0);
+
   // Recompute on navigation so the "Viewing Client" badge clears when the
   // client context is removed on the Main Dashboard.
   const selectedClientNomen = () => {
     location.pathname; // track route changes
+    ctxTick();
     return localStorage.getItem("selectedClientNomen");
   };
 
@@ -337,6 +352,7 @@ export default function MainDashboard() {
   // removed on the Main Dashboard.
   const selectedClientNomenId = () => {
     location.pathname; // track route changes
+    ctxTick();
     return localStorage.getItem("selectedClientNomenId");
   };
 
@@ -351,15 +367,12 @@ export default function MainDashboard() {
   };
 
   // ── Google Drive card: whose folder ─────────────────────────────────────────
-  // The nomen id lives in localStorage, which no signal tracks, and admin/sales
-  // only write it AFTER the async route reconcile, so a direct-URL visit would
-  // read nothing (or the previous client) at first render. The tick is bumped
-  // once the reconcile settles. The slug check is for CMs and coordination,
-  // whose context isn't reconciled from the URL: if the stored nomen isn't the
-  // client in the address bar, show no card rather than someone else's Drive.
-  const [driveCtxTick, setDriveCtxTick] = createSignal(0);
+  // Re-reads after the route reconcile via ctxTick (above). The slug check is
+  // for CMs, whose context isn't reconciled from the URL: if the stored nomen
+  // isn't the client in the address bar, show no card rather than someone
+  // else's Drive.
   const driveNomenId = () => {
-    driveCtxTick();
+    ctxTick();
     location.pathname;
     const routeSlug = params["client-nomen-name"];
     if (!routeSlug || !canSeeDrive()) return null;
@@ -383,7 +396,7 @@ export default function MainDashboard() {
   // (no client selected) is meant to be all-clients, and real client logins are
   // force-scoped server-side by their own nomen — so both return ready = true.
   const clientContextReady = () => {
-    if (userRole() !== "admin") return true; // clients are server-scoped
+    if (!isAdminLike(userRole())) return true; // clients are server-scoped
     if (location.pathname === HOME_PATH) return true; // admin's own dashboard
     return !!selectedClientId(); // previewing a client → need the Client PK
   };
@@ -407,7 +420,7 @@ export default function MainDashboard() {
         // HOME_PATH branch below only ever fires for admin; the client-route
         // branch runs for both and ensureClientContextFromRoute handles the
         // sales roster.
-        if (auth?.role !== "admin" && auth?.role !== "sales") return;
+        if (!isAdminLike(auth?.role) && auth?.role !== "sales") return;
 
         const bustAndReload = () => {
           // Cancel any still-in-flight loads so they can't overwrite the data
@@ -478,8 +491,10 @@ export default function MainDashboard() {
           return;
         }
         setClientRouteError(null);
-        setDriveCtxTick((n) => n + 1);
-        if (ctx.changed) bustAndReload();
+        if (ctx.changed) {
+          setCtxTick((n) => n + 1);
+          bustAndReload();
+        }
       },
     ),
   );
@@ -492,8 +507,9 @@ export default function MainDashboard() {
 
     const auth = JSON.parse(localStorage.getItem("auth"));
 
-    // Admin returning to their own dashboard — clear client context AND cache
-    if (auth?.role === "admin" && window.location.pathname === HOME_PATH) {
+    // Admin (or coordination, whose home is this same dashboard) returning to
+    // their own dashboard — clear client context AND cache
+    if (isAdminLike(auth?.role) && window.location.pathname === HOME_PATH) {
       const wasViewingClient = localStorage.getItem("selectedClientNomenId");
 
       localStorage.removeItem("selectedClientNomen");
@@ -545,8 +561,8 @@ export default function MainDashboard() {
       return;
     }
     setClientRouteError(null);
-    setDriveCtxTick((n) => n + 1);
     if (ctx.changed) {
+      setCtxTick((n) => n + 1);
       bumpLoadToken();
       setProjectsCache("lastFetched", 0);
       setProjectsCache("lastFetchedAll", 0);
@@ -2278,7 +2294,7 @@ export default function MainDashboard() {
         </div>
         <Show
           when={
-            (userRole() === "admin" ||
+            (isAdminLike(userRole()) ||
               userRole() === "campaign_manager" ||
               userRole() === "sales") &&
             selectedClientNomen()

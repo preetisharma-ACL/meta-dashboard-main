@@ -56,7 +56,8 @@ const getUserRole = () => {
 const handleLogoClick = () => {
   try {
     const role = JSON.parse(localStorage.getItem("auth") || "{}")?.role;
-    if (role === "admin") clearClientDashboardContext();
+    // Coordination's home is the same dashboard, so it resets the same way.
+    if (role === "admin" || role === "coordination") clearClientDashboardContext();
   } catch {
     /* ignore malformed auth */
   }
@@ -205,7 +206,7 @@ export default function Sidebar() {
   const goToDashboard = () => {
     const role = JSON.parse(localStorage.getItem("auth") || "{}")?.role;
 
-    if (role === "admin") {
+    if (role === "admin" || role === "coordination") {
       clearClientDashboardContext();
     }
 
@@ -291,8 +292,12 @@ export default function Sidebar() {
       },
      
       {
+        // Coordination gets the group for the Clients list itself. Its other
+        // rows stay admin + CM: Edit Clients, Project Display Config, CPL
+        // Promise % and Bulk Campaign Ops are coordination's own top-level rows
+        // (no duplicates), and every other route here refuses coordination.
         name: "Clients",
-        roles: ["admin", "campaign_manager"],
+        roles: ["admin", "coordination", "campaign_manager"],
         icon: () => (
           <Icon d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0h-6m6 0a3 3 0 01-5.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M9 7a4 4 0 11-8 0 4 4 0 018 0zm0 0a4 4 0 015.536 3.536M15.536 10.536A5.967 5.967 0 0121 16.941M16.536 10.536A5.973 5.973 0 0012 16c0 .132 0 .263.012.391M12 16a5.973 5.973 0 00-4.536-2.464" />
         ),
@@ -300,7 +305,7 @@ export default function Sidebar() {
           {
             name: "Clients",
             path: "/clients",
-            roles: ["admin", "campaign_manager"],
+            roles: ["admin", "coordination", "campaign_manager"],
             icon: () => (
               <SmallIcon d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
             ),

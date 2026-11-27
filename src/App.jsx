@@ -624,7 +624,7 @@ function App() {
             <Route
               path="/clients"
               component={() => (
-                <AdminRoute roles={["admin", "campaign_manager"]}>
+                <AdminRoute roles={["admin", "coordination", "campaign_manager"]}>
                   <Clients />
                 </AdminRoute>
               )}
