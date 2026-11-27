@@ -636,9 +636,9 @@ function App() {
                 which is wider than the write set on purpose: every CM, tier-2
                 included, may look up the rule their client is billed at. The
                 page hides Add/Edit/Close behind canWriteConfigs() so a tier-2
-                is never handed a control that 403s. Coordination is here
-                because 2f81a1f gave them read AND write; before that they
-                could not even open the screen. */}
+                is never handed a control that 403s. Coordination is OUT: every
+                /clients/admin/configs/ endpoint except the CPL Promise ones
+                403s it, so a direct URL sends it home. */}
             {/* CPL Promise % backfill — temporary. Rows are scoped server-side (CM:
                 own + team); can_edit on the response decides writing (tier 3 reads). */}
             <Route
@@ -652,9 +652,7 @@ function App() {
             <Route
               path="/project-display-config"
               component={() => (
-                <AdminRoute
-                  roles={["admin", "coordination", "campaign_manager"]}
-                >
+                <AdminRoute roles={["admin", "campaign_manager"]}>
                   <ProjectDisplayConfig />
                 </AdminRoute>
               )}

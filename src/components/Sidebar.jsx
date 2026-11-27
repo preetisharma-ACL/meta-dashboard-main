@@ -295,10 +295,11 @@ export default function Sidebar() {
      
       {
         // Coordination gets the group for the Clients list itself. Its other
-        // rows stay admin + CM: Edit Clients, Project Display Config, CPL
-        // Promise % are coordination's own top-level rows (no duplicates), and
-        // every other route here refuses coordination (Bulk Campaign Ops 403s
-        // coordination since backend 5eae138).
+        // rows stay admin + CM: Edit Clients and CPL Promise % are
+        // coordination's own top-level rows (no duplicates), and every other
+        // route here refuses coordination (Bulk Campaign Ops since backend
+        // 5eae138; Project Display Config since the configs endpoints started
+        // 403ing coordination).
         name: "Clients",
         roles: ["admin", "coordination", "campaign_manager"],
         icon: () => (
@@ -512,19 +513,6 @@ export default function Sidebar() {
           <Icon d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
         ),
         path: "/edit-clients",
-      },
-      {
-        // Top-level for the same reason as Onboarding and Value Tier:
-        // coordination does not get the "Clients" group (admin+CM) that holds
-        // the admin/CM copy of this row, and 2f81a1f made them writers here —
-        // before it they could not even read a config. Coordination only;
-        // admin and CMs reach the same screen from inside that group.
-        name: "Project Display Config",
-        roles: ["coordination"],
-        icon: () => (
-          <Icon d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-        ),
-        path: "/project-display-config",
       },
       {
         // Same reason as the row above: coordination has no "Clients" group.

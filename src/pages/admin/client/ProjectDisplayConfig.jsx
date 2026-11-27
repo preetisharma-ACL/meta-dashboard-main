@@ -21,7 +21,6 @@ import { readUserFlag, writeUserFlag } from "../../../utils/userPref";
 import {
   isAdmin,
   isSeniorTier,
-  isCoordination,
   canWriteConfigs, // ← create/edit/close gate
 } from "../../../stores/currentUser";
 import SuccessToast, {
@@ -309,21 +308,14 @@ export default function ProjectDisplayConfig() {
     () => !isRetainer() && ruleTypeChoices().length === 1,
   );
 
-  // Who may pick a custom validity window: admins, coordination and Tier-1/Tier-2 CMs.
+  // Who may pick a custom validity window: admins and Tier-1/Tier-2 CMs.
   // Tier-3 CMs keep the existing behavior (no date fields → backend auto-stamps
   // "starts now, open-ended"), and the backend 403s a Tier-3 that sends dates
   // anyway.
-  //
-  // Coordination is on this list as of 628d344: _is_privileged_for_dates was
-  // admin + Tier-1, so a coordination user sending valid_from would have 403ed
-  // exactly like a Tier-2 — which would have made them writers who could create
-  // a config but never backdate one, and backdating valid_from is how a gap in
-  // the billing history gets closed.
-  const canSetValidity = createMemo(
-    () => isAdmin() || isCoordination() || isSeniorTier(),
-  );
+  // (Coordination was on this list from 628d344 until it lost config access.)
+  const canSetValidity = createMemo(() => isAdmin() || isSeniorTier());
 
-  // Who may create, edit or close a config: admin, coordination, or a tier-1/tier-2
+  // Who may create, edit or close a config: admin or a tier-1/tier-2
   // CM (2f81a1f). READING is open to every CM, so a tier-3 still gets the whole
   // screen — the list, the filters, the history — minus the three controls that
   // would 403. A plain function, not a memo, so it re-reads currentUser when

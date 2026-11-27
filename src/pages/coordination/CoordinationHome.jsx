@@ -15,6 +15,10 @@ import { openClientPage } from "../../utils/openClientPage";
 // Link mapping (the destinations read these params):
 //   billing gap      → /project-display-config?client_id=<PK>&project_id=<id>
 //   no_rate_config   → /project-display-config?client_id=<PK>
+//                      Both config links are for roles that can read configs
+//                      (admin, CMs). Coordination can't: every configs endpoint
+//                      but the CPL Promise ones 403s it, so for coordination
+//                      the button is gone and the chip is plain text.
 //   no_login         → /edit-clients?client_id=<PK>     (opens that client's drawer)
 //   no_cm            → /assignments?client_id=<PK>      (Clients tab, client selected)
 //   no_drive_folder, no delivery, drive → the client's page via openClientPage,
@@ -56,6 +60,16 @@ const CARDS = [
   { key: "project_info", label: "Project info", sub: "Missing city or type" },
   { key: "drive", label: "Drive", sub: "No Drive folder" },
 ];
+
+// Who may open Project Display Config (its route roles). Read per call.
+const canOpenConfigs = () => {
+  try {
+    const role = JSON.parse(localStorage.getItem("auth") || "{}")?.role;
+    return role === "admin" || role === "campaign_manager";
+  } catch {
+    return false;
+  }
+};
 
 const qs = (params) => {
   const sp = new URLSearchParams();
@@ -135,7 +149,7 @@ export default function CoordinationHome() {
     if (gap === "no_login") return () => go("/edit-clients", { client_id: r.client_id });
     if (gap === "no_cm") return () => go("/assignments", { client_id: r.client_id });
     if (gap === "no_drive_folder") return () => openClient(r);
-    if (gap === "no_rate_config")
+    if (gap === "no_rate_config" && canOpenConfigs())
       return () => go("/project-display-config", { client_id: r.client_id });
     return null;
   };
@@ -205,7 +219,17 @@ export default function CoordinationHome() {
         </div>
 
         {/* 1. Billing gaps */}
-        <Section id="billing_gaps" title="Spend with no rate config" total={total("billing_gaps")} rows={rows("billing_gaps")}>
+        <Section
+          id="billing_gaps"
+          title="Spend with no rate config"
+          note={
+            canOpenConfigs()
+              ? null
+              : "Spend with no rate config. Admin or a Tier 1 CM adds the config, please flag it to them."
+          }
+          total={total("billing_gaps")}
+          rows={rows("billing_gaps")}
+        >
           <thead>
             <tr>
               <th class={TH}>Client</th>
@@ -215,7 +239,9 @@ export default function CoordinationHome() {
               <th class={THR}>Uncovered days</th>
               <th class={THR}>Uncovered spend</th>
               <th class={TH}>From – to</th>
-              <th class={TH}></th>
+              <Show when={canOpenConfigs()}>
+                <th class={TH}></th>
+              </Show>
             </tr>
           </thead>
           <tbody>
@@ -231,15 +257,17 @@ export default function CoordinationHome() {
                   <td class={`${TD} whitespace-nowrap text-gray-600 dark:text-gray-400`}>
                     {istDate(r.first_uncovered) ?? DASH} – {istDate(r.last_uncovered) ?? DASH}
                   </td>
-                  <td class={`${TD} text-right`}>
-                    <button
-                      type="button"
-                      class={LINK_BTN}
-                      onClick={() => go("/project-display-config", { client_id: r.client_id, project_id: r.project_id })}
-                    >
-                      Open config
-                    </button>
-                  </td>
+                  <Show when={canOpenConfigs()}>
+                    <td class={`${TD} text-right`}>
+                      <button
+                        type="button"
+                        class={LINK_BTN}
+                        onClick={() => go("/project-display-config", { client_id: r.client_id, project_id: r.project_id })}
+                      >
+                        Open config
+                      </button>
+                    </td>
+                  </Show>
                 </tr>
               )}
             </For>
@@ -268,6 +296,17 @@ export default function CoordinationHome() {
                       <For each={Array.isArray(r.gaps) ? r.gaps : []}>
                         {(g) => {
                           const act = gapAction(g, r);
+                          // No action = a plain chip (today: no_rate_config for
+                          // coordination, which can't open the configs screen).
+                          if (!act)
+                            return (
+                              <span
+                                title={g === "no_rate_config" ? "Admin or Tier 1 CM adds rate configs" : ""}
+                                class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-600 ring-1 ring-gray-200 cursor-help dark:bg-gray-800 dark:text-gray-300 dark:ring-gray-700"
+                              >
+                                {GAP_LABEL[g] ?? g}
+                              </span>
+                            );
                           return (
                             <button
                               type="button"

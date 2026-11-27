@@ -7,6 +7,15 @@ import {
 } from "../services/projectDisplayConfig";
 import { loadErrorMessage } from "../../../utils/apiErrors";
 
+// Read per render, not once at import: the role can change without a reload.
+const isCoordinationViewer = () => {
+  try {
+    return JSON.parse(localStorage.getItem("auth") || "{}")?.role === "coordination";
+  } catch {
+    return false;
+  }
+};
+
 // ─── CPL Promise % backfill (/cpl-promise) ────────────────────────────────────
 // TEMPORARY — for the days it takes to give every active CPL rate a promised
 // qualification %. From Oct 2026 an unset promise bills on qualified leads, so
@@ -346,7 +355,8 @@ export default function CplPromiseBackfill() {
                         <Show when={st().error}>
                           <p class="mt-1 text-xs text-red-600 dark:text-red-400" role="alert">
                             {st().error}
-                            <Show when={/Project Display Config/.test(st().error)}>
+                            {/* Coordination can't open that screen (configs 403 it). */}
+                            <Show when={/Project Display Config/.test(st().error) && !isCoordinationViewer()}>
                               {" "}
                               <A href="/project-display-config" class="underline">Open</A>
                             </Show>

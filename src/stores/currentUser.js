@@ -346,20 +346,22 @@ export const canWriteCmProfiles = () => {
 };
 
 // ─── Project display config gate (per-project billing rules) ──────────────────
-// WRITE (create / edit / close) on /clients/admin/configs/ is admin,
-// coordination, or an ACTIVE tier-1/tier-2 CM (2f81a1f). READ is wider — every CM,
+// WRITE (create / edit / close) on /clients/admin/configs/ is admin or an
+// ACTIVE tier-1/tier-2 CM (2f81a1f). READ is wider — every CM,
 // tier included — which is why the route's `roles` array in App.jsx is not this
 // set: a tier-3 CM opens the page, reads every rule, and simply isn't handed a
 // control that always 403s.
 //
-// Coordination is new on BOTH sides: before 2f81a1f they could not even read,
-// which is why the route had to widen as well.
+// Coordination is OUT on BOTH sides again: the configs endpoints (list,
+// detail, create/edit/close, matrix, audit-log, effective, resolve, preview)
+// 403 it. Only the CPL Promise % endpoints (promise-backfill,
+// missing-promise, <id>/promise/) stay open to coordination.
 //
 // The CM leg is isActiveSeniorCM(), not isSeniorCM(): the endpoint wants an
 // ACTIVE tier-1/tier-2 profile, and is_active is now confirmed to arrive on /auth/me
 // and is mirrored into the auth blob, so the deactivated case can be answered
 // here instead of being left to a 403.
-const CONFIG_WRITE_ROLES = new Set(["admin", "coordination"]);
+const CONFIG_WRITE_ROLES = new Set(["admin"]);
 
 export const canWriteConfigs = () => {
   const role = currentUser.loaded ? currentUser.role : readAuth()?.role;
