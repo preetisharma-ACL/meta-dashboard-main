@@ -17,6 +17,7 @@ import DateTimePicker from "../../../components/DateTimePicker";
 import { fetchProjectsByClient } from "../services/fetchProjectsByClient"; // ← NEW
 import { fetchAllowedBudgetClients, engagementLabel } from "../../../services/allowedBudget"; // ← CM-scoped client source
 import { loadErrorMessage } from "../../../utils/apiErrors";
+import BillingGapsPanel from "../../../components/billingGaps/BillingGapsPanel";
 import { readUserFlag, writeUserFlag } from "../../../utils/userPref";
 import {
   isAdmin,
@@ -173,6 +174,10 @@ const authRole = (() => {
   }
 })();
 const isCampaignManager = () => authRole === "campaign_manager";
+// The "Spend with no rate config" panel is admin only: its endpoint
+// (/clients/coordination/home/) is admin + coordination, and coordination can't
+// open this page at all. CMs never render it, so never call it.
+const isAdminViewer = () => authRole === "admin";
 
 export default function ProjectDisplayConfig() {
   const [configs, setConfigs] = createSignal([]);
@@ -793,6 +798,44 @@ export default function ProjectDisplayConfig() {
     });
   };
 
+  // ── Add config from a billing-gap row (admin panel) ───────────────────────
+  // Same steps the form takes when a person picks the client and then the
+  // project, in the same order, so the client type, the project list and the
+  // server-resolved rule all land exactly as they would by hand.
+  let refreshGaps = null;
+  const openAddFor = async (gap) => {
+    if (!canWrite()) return;
+    setEditingConfig(null);
+    openSidebar();
+    const client = clients().find((c) => String(c.id) === String(gap.client_id));
+    handleInputChange("client_id", gap.client_id);
+    setClientSearch(client?.email ?? gap.client_nomen ?? "");
+    setShowClientDropdown(false);
+    const projectsLoaded = loadProjectsForClient(gap.client_id);
+    applyClientType(client ?? { id: gap.client_id, client_type: gap.client_type });
+    await projectsLoaded;
+    const project = projects().find((p) => String(p.id) === String(gap.project_id));
+    setProjectSearch(project?.name ?? gap.project_name ?? "");
+    setShowProjectDropdown(false);
+    clearPreview();
+    // Set before resolving: /resolve/ fills project_id too, but returns nothing
+    // for a pair it can't resolve, and the pick must stand either way.
+    handleInputChange("project_id", gap.project_id);
+    await resolveRuleForPair(gap.client_id, gap.project_id);
+  };
+  // not_covered with an open config: the fix is that config's dates, so show
+  // it through the same ?client_id=&project_id= filter the deep link uses.
+  const showGapConfig = (gap) => {
+    setSearchParams({ client_id: gap.client_id, project_id: gap.project_id });
+    setPage(1);
+    // The filtered table sits below a tall panel; bring it into view.
+    requestAnimationFrame(() =>
+      document
+        .getElementById("pdc-deep-link")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" }),
+    );
+  };
+
   // ── CHANGED: async, pre-loads projects for the client being edited ────────
   const handleEdit = async (cfg) => {
     if (!canWrite()) return;
@@ -1003,6 +1046,9 @@ export default function ProjectDisplayConfig() {
     const res = await fetchProjectDisplayConfig();
     setConfigs(res.data ?? []);
     loadMissingPromise();
+    // A saved config can close a billing gap; ask for a fresh panel so the
+    // row drops off (admin only, the only role that renders it).
+    refreshGaps?.();
     closeSidebar();
     showToast(message, "Configuration saved");
   };
@@ -1150,6 +1196,13 @@ export default function ProjectDisplayConfig() {
         </Show>
        
       </div>
+      <Show when={isAdminViewer()}>
+        <BillingGapsPanel
+          registerRefresh={(fn) => (refreshGaps = fn)}
+          onAdd={openAddFor}
+          onFix={showGapConfig}
+        />
+      </Show>
       <Show when={loadError()}>
         <div
           role="alert"
@@ -1314,7 +1367,7 @@ export default function ProjectDisplayConfig() {
       </div>
 
       <Show when={deepClientId() || deepProjectId()}>
-        <div class="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-[#3E6FB0]/30 bg-[#ECF2FA] dark:bg-blue-900/20 dark:border-blue-800 px-4 py-2.5 text-sm text-[#14233A] dark:text-blue-100">
+        <div id="pdc-deep-link" class="mb-3 scroll-mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-[#3E6FB0]/30 bg-[#ECF2FA] dark:bg-blue-900/20 dark:border-blue-800 px-4 py-2.5 text-sm text-[#14233A] dark:text-blue-100">
           <span>
             Showing only <span class="font-semibold">{deepLabel()}</span>
             <Show when={!loading() && deepLinked().length === 0}>

@@ -8,17 +8,20 @@ import { loadErrorMessage } from "../../utils/apiErrors";
 import { openClientPage } from "../../utils/openClientPage";
 
 // ─── Coordination desk ────────────────────────────────────────────────────────
-// Coordination's /dashboard: five work queues from
-// GET /clients/coordination/home/ (see services/coordinationHome.js). Read-only:
-// every action is a link to the screen where the fix is made.
+// Coordination's /dashboard: work queues from GET /clients/coordination/home/
+// (see services/coordinationHome.js). Read-only: every action is a link to the
+// screen where the fix is made.
+//
+// Rate config data is NOT in coordination's payload (backend 26a3ce0): no
+// billing_gaps key, no billing_gaps count, no "no_rate_config" setup gap. So the
+// Billing gaps card and section render only when data.billing_gaps is there,
+// and coordination sees four cards. Admin reads billing gaps on Project Display
+// Config instead (BillingGapsPanel).
 //
 // Link mapping (the destinations read these params):
 //   billing gap      → /project-display-config?client_id=<PK>&project_id=<id>
-//   no_rate_config   → /project-display-config?client_id=<PK>
-//                      Both config links are for roles that can read configs
-//                      (admin, CMs). Coordination can't: every configs endpoint
-//                      but the CPL Promise ones 403s it, so for coordination
-//                      the button is gone and the chip is plain text.
+//                      (only if the payload has billing_gaps AND the viewer can
+//                      open that page)
 //   no_login         → /edit-clients?client_id=<PK>     (opens that client's drawer)
 //   no_cm            → /assignments?client_id=<PK>      (Clients tab, client selected)
 //   no_drive_folder, no delivery, drive → the client's page via openClientPage,
@@ -36,7 +39,6 @@ const GAP_LABEL = {
   no_login: "No login",
   no_cm: "No CM",
   no_drive_folder: "No Drive folder",
-  no_rate_config: "No rate config",
 };
 const KIND_LABEL = {
   no_config: "No config",
@@ -139,6 +141,10 @@ export default function CoordinationHome() {
   onCleanup(() => clearInterval(tick));
 
   const rows = (key) => (Array.isArray(data()?.[key]) ? data()[key] : []);
+  // A queue the payload doesn't carry for this role (billing_gaps for
+  // coordination) gets no card and no section, not an "All clear".
+  const hasQueue = (key) => Array.isArray(data()?.[key]);
+  const cards = () => CARDS.filter((c) => hasQueue(c.key));
   const total = (key) => data()?.counts?.[key] ?? rows(key).length;
 
   const openClient = (r) =>
@@ -149,8 +155,6 @@ export default function CoordinationHome() {
     if (gap === "no_login") return () => go("/edit-clients", { client_id: r.client_id });
     if (gap === "no_cm") return () => go("/assignments", { client_id: r.client_id });
     if (gap === "no_drive_folder") return () => openClient(r);
-    if (gap === "no_rate_config" && canOpenConfigs())
-      return () => go("/project-display-config", { client_id: r.client_id });
     return null;
   };
 
@@ -197,8 +201,12 @@ export default function CoordinationHome() {
 
       <Show when={data()} fallback={<Show when={loading()}><p class="text-sm text-gray-400">Loading...</p></Show>}>
         {/* Count cards */}
-        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-8">
-          <For each={CARDS}>
+        <div
+          class={`grid grid-cols-2 gap-3 mb-8 ${
+            cards().length === 4 ? "lg:grid-cols-4" : "sm:grid-cols-3 lg:grid-cols-5"
+          }`}
+        >
+          <For each={cards()}>
             {(c) => (
               <button
                 type="button"
@@ -218,15 +226,11 @@ export default function CoordinationHome() {
           </For>
         </div>
 
-        {/* 1. Billing gaps */}
+        {/* 1. Billing gaps (absent from coordination's payload) */}
+        <Show when={hasQueue("billing_gaps")}>
         <Section
           id="billing_gaps"
           title="Spend with no rate config"
-          note={
-            canOpenConfigs()
-              ? null
-              : "Spend with no rate config. Admin or a Tier 1 CM adds the config, please flag it to them."
-          }
           total={total("billing_gaps")}
           rows={rows("billing_gaps")}
         >
@@ -273,6 +277,7 @@ export default function CoordinationHome() {
             </For>
           </tbody>
         </Section>
+        </Show>
 
         {/* 2. Setup gaps */}
         <Section id="setup_gaps" title="New or incomplete client setup" total={total("setup_gaps")} rows={rows("setup_gaps")}>
@@ -296,23 +301,18 @@ export default function CoordinationHome() {
                       <For each={Array.isArray(r.gaps) ? r.gaps : []}>
                         {(g) => {
                           const act = gapAction(g, r);
-                          // No action = a plain chip (today: no_rate_config for
-                          // coordination, which can't open the configs screen).
+                          // A gap this page has no screen for: plain chip.
                           if (!act)
                             return (
-                              <span
-                                title={g === "no_rate_config" ? "Admin or Tier 1 CM adds rate configs" : ""}
-                                class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-600 ring-1 ring-gray-200 cursor-help dark:bg-gray-800 dark:text-gray-300 dark:ring-gray-700"
-                              >
+                              <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-600 ring-1 ring-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:ring-gray-700">
                                 {GAP_LABEL[g] ?? g}
                               </span>
                             );
                           return (
                             <button
                               type="button"
-                              disabled={!act}
-                              onClick={() => act?.()}
-                              title={act ? "Open where this is fixed" : ""}
+                              onClick={() => act()}
+                              title="Open where this is fixed"
                               class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-[#FBEEF0] text-[#AC2334] ring-1 ring-[#AC2334]/20 hover:bg-[#AC2334] hover:text-white disabled:hover:bg-[#FBEEF0] disabled:hover:text-[#AC2334] disabled:cursor-default dark:bg-red-900/30 dark:text-red-300"
                             >
                               {GAP_LABEL[g] ?? g}

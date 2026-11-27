@@ -20,6 +20,9 @@ import { api } from "../api/api";
 //   drive:        [{ client_id, nomen_id, client_nomen, client_type, status,
 //                    message, refreshed_at }],
 // }
+// ROLE SHAPES (backend 26a3ce0): coordination's payload has NO billing_gaps key,
+// no billing_gaps count, and its setup_gaps never carry "no_rate_config". Only
+// admin gets billing_gaps (read on Project Display Config, BillingGapsPanel).
 // Money fields are 2-decimal strings. Each list arrives sorted (most important
 // first) and capped at 300, so the page keeps the order and never re-sorts.
 // client_id is the Client PK, nomen_id the client_nomen id.
