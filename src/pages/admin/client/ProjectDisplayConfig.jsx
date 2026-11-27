@@ -1,4 +1,5 @@
 import { createSignal, createMemo, onMount, For, Show } from "solid-js";
+import { useSearchParams } from "@solidjs/router";
 import {
   fetchProjectDisplayConfig,
   createProjectDisplayConfig,
@@ -178,6 +179,15 @@ export default function ProjectDisplayConfig() {
   const [configs, setConfigs] = createSignal([]);
   const [loading, setLoading] = createSignal(true);
   const [search, setSearch] = createSignal("");
+  // Deep link (from the Coordination desk): ?client_id=<Client PK>
+  // [&project_id=<id>] narrows the list to that client / project by id. The
+  // search box can't do it: it matches the client's EMAIL, and the desk only
+  // knows the client by PK and nomen. Cleared by "Show all" / "Clear All".
+  const [searchParams, setSearchParams] = useSearchParams();
+  const deepClientId = () => searchParams.client_id || null;
+  const deepProjectId = () => searchParams.project_id || null;
+  const clearDeepLink = () =>
+    setSearchParams({ client_id: undefined, project_id: undefined });
   const [typeFilter, setTypeFilter] = createSignal("all");
   const [activeFilter, setActiveFilter] = createSignal("All");
   const [sortKey, setSortKey] = createSignal("id");
@@ -650,10 +660,30 @@ export default function ProjectDisplayConfig() {
   // The search alone. Both pill rows count from here (each also applying the
   // OTHER row's pick), so every number on a pill is exactly how many rows
   // picking it would show.
+  const deepLinked = createMemo(() => {
+    const cid = deepClientId();
+    const pid = deepProjectId();
+    if (!cid && !pid) return configs();
+    return configs().filter(
+      (c) =>
+        (!cid || String(c.client_id) === String(cid)) &&
+        (!pid || String(c.project_id) === String(pid)),
+    );
+  });
+  // Names for the deep-link banner, read off the configs it matched. A link
+  // for a project with NO config matches nothing, so there is no name to show.
+  const deepLabel = () => {
+    const hit = deepLinked()[0];
+    const parts = [];
+    if (deepClientId()) parts.push(hit?.client_email || `client #${deepClientId()}`);
+    if (deepProjectId()) parts.push(hit?.project_name || `project #${deepProjectId()}`);
+    return parts.join(" · ");
+  };
+
   const searched = createMemo(() => {
     const q = search().trim().toLowerCase();
-    if (!q) return configs();
-    return configs().filter(
+    if (!q) return deepLinked();
+    return deepLinked().filter(
       (c) =>
         c.client_email?.toLowerCase().includes(q) ||
         c.project_name?.toLowerCase().includes(q),
@@ -1291,6 +1321,24 @@ export default function ProjectDisplayConfig() {
         </For>
       </div>
 
+      <Show when={deepClientId() || deepProjectId()}>
+        <div class="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-[#3E6FB0]/30 bg-[#ECF2FA] dark:bg-blue-900/20 dark:border-blue-800 px-4 py-2.5 text-sm text-[#14233A] dark:text-blue-100">
+          <span>
+            Showing only <span class="font-semibold">{deepLabel()}</span>
+            <Show when={!loading() && deepLinked().length === 0}>
+              {". "}No config exists for this yet.
+            </Show>
+          </span>
+          <button
+            type="button"
+            onClick={clearDeepLink}
+            class="ml-auto text-xs font-semibold text-[#3E6FB0] dark:text-blue-300 hover:underline"
+          >
+            Show all configs
+          </button>
+        </div>
+      </Show>
+
       {/* Filters Bar */}
       <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-4 mb-4 flex flex-wrap items-center gap-3">
         <div class="relative flex w-[500px]">
@@ -1315,6 +1363,7 @@ export default function ProjectDisplayConfig() {
         <button
           onClick={() => {
             setSearch("");
+            clearDeepLink();
             setTypeFilter("all");
             setActiveFilter("All");
             setSortKey("id");

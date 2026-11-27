@@ -1,4 +1,12 @@
-import { createSignal, createMemo, createResource, For, Show } from "solid-js";
+import {
+  createSignal,
+  createMemo,
+  createResource,
+  createEffect,
+  For,
+  Show,
+} from "solid-js";
+import { useSearchParams } from "@solidjs/router";
 import { SquarePen } from "lucide-solid";
 import RowsPerPageSelect from "../../../components/common/RowsPerPageSelect";
 import SuccessToast, {
@@ -94,6 +102,24 @@ export default function EditClients() {
   });
 
   const [editing, setEditing] = createSignal(null);
+
+  // Deep link (from the Coordination desk): ?client_id=<Client PK>. Once the
+  // roster is in, narrow the list to that client and open its drawer, then
+  // drop the param so a reload or Back doesn't open it again. Roster rows are
+  // keyed by Client PK (`id`). A client not on the roster (e.g. dead) just
+  // leaves the page as it is.
+  const [searchParams, setSearchParams] = useSearchParams();
+  createEffect(() => {
+    const want = searchParams.client_id;
+    const rows = clients.error ? null : clients();
+    if (!want || !rows) return;
+    const hit = rows.find((c) => String(c.id) === String(want));
+    if (hit) {
+      setSearch(hit.client_nomen_name || hit.email || "");
+      setEditing(hit);
+    }
+    setSearchParams({ client_id: undefined });
+  });
 
   // ── Sales owner ────────────────────────────────────────────────────────────
   // The rows carry `onboarded_by` (id) and `onboarded_by_email` since fa8dcc4 —

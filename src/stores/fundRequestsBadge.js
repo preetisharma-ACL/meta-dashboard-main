@@ -8,8 +8,9 @@ import { fetchFundBadge } from "../services/fundRequests";
 // (a vanished badge reads as "nothing waiting").
 //
 // Gated on the role in localStorage: the sidebar starts this before /auth/me
-// lands, and every other role would just collect 403s.
-const ROLES = ["admin", "accounts", "coordination", "campaign_manager"];
+// lands, and every other role would just collect 403s. Coordination is out:
+// backend 5eae138 403s it on Fund Requests.
+const ROLES = ["admin", "accounts", "campaign_manager"];
 
 const [fundRequestsBadge, setFundRequestsBadge] = createSignal(0);
 export { fundRequestsBadge };

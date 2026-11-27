@@ -1,4 +1,12 @@
-import { createSignal, createMemo, createResource, For, Show } from "solid-js";
+import {
+  createSignal,
+  createMemo,
+  createResource,
+  createEffect,
+  For,
+  Show,
+} from "solid-js";
+import { useSearchParams } from "@solidjs/router";
 import Swal from "sweetalert2";
 
 import {
@@ -305,6 +313,25 @@ export default function Assignments() {
   const selectedClient = createMemo(() =>
     clients().find((c) => c.clientId === selectedClientId()),
   );
+
+  // Deep link (from the Coordination desk): ?client_id=<Client PK>. Once the
+  // assignments are in, switch to the Clients tab, select that client and
+  // search for it, then drop the param so a reload doesn't re-select it.
+  const [searchParams, setSearchParams] = useSearchParams();
+  createEffect(() => {
+    const want = searchParams.client_id;
+    const rows = data.error ? null : data();
+    if (!want || !rows) return;
+    const hit = (rows.byClient ?? []).find(
+      (c) => String(c.clientId) === String(want),
+    );
+    setTab("client");
+    if (hit) {
+      setSelectedClientId(hit.clientId);
+      setClientSearch(hit.nomen || hit.email || "");
+    }
+    setSearchParams({ client_id: undefined });
+  });
 
   const filteredManagers = createMemo(() =>
     managers().filter((m) => matches([m.email, m.name], cmSearch())),

@@ -269,8 +269,10 @@ export default function Sidebar() {
         action: goToDashboard,
       },
       {
+        // CMs land on the CM dashboard, coordination on its Coordination desk
+        // (RoleHome picks the page; neither carries a client context to clear).
         name: "Dashboard",
-        roles: ["campaign_manager"],
+        roles: ["campaign_manager", "coordination"],
         icon: () => (
           <Icon d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
         ),
@@ -294,8 +296,9 @@ export default function Sidebar() {
       {
         // Coordination gets the group for the Clients list itself. Its other
         // rows stay admin + CM: Edit Clients, Project Display Config, CPL
-        // Promise % and Bulk Campaign Ops are coordination's own top-level rows
-        // (no duplicates), and every other route here refuses coordination.
+        // Promise % are coordination's own top-level rows (no duplicates), and
+        // every other route here refuses coordination (Bulk Campaign Ops 403s
+        // coordination since backend 5eae138).
         name: "Clients",
         roles: ["admin", "coordination", "campaign_manager"],
         icon: () => (
@@ -591,17 +594,6 @@ export default function Sidebar() {
             icon: () => <SmallIcon d="M3 12l2-2 4 4 6-6 4 4 2-2" />,
           },
         ],
-      },
-      {
-        // Coordination's own row: the Accounts & Funding group above is not
-        // theirs, and a sub-item can never widen past its group's roles.
-        name: "Fund Requests",
-        roles: ["coordination"],
-        icon: () => (
-          <Icon d="M12 8v4l2.5 2.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-        ),
-        path: "/fund-requests",
-        badge: fundRequestsBadge() > 0 ? fundRequestsBadge() : null,
       },
       {
         name: "Allowed Budget",
@@ -1065,16 +1057,6 @@ export default function Sidebar() {
             ),
           },
         ],
-      },
-      {
-        name: "Bulk Campaign Ops",
-        // Coordination only — admin and CMs reach this from inside the
-        // "Clients" group, which coordination doesn't get.
-        roles: ["coordination"],
-        icon: () => (
-          <Icon d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-        ),
-        path: "/bulk-campaign-operations",
       },
       {
         name: "CPL Rules & Alerts",

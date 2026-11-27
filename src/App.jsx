@@ -35,6 +35,7 @@ import ValueTierBoard from "./pages/clients/ValueTierBoard";
 import CommandBoard from "./pages/command/CommandBoard";
 import DeadClients from "./pages/clients/DeadClients";
 import DriveAdmin from "./pages/drive/DriveAdmin";
+import CoordinationHome from "./pages/coordination/CoordinationHome";
 import GateRoute from "./utils/GateRoute";
 import NoticeToast from "./components/common/NoticeToast";
 import { canSeeCampaignAnalysis } from "./stores/currentUser";
@@ -117,6 +118,8 @@ function RoleHome() {
   })();
   if (role === "campaign_manager") return <CMDashboard />;
   if (role === "sales") return <SalesDashboard />;
+  // Coordination's home is its work queue, not the admin ledger.
+  if (role === "coordination") return <CoordinationHome />;
   // The accounts desk's primary screen is the payments ledger, not the client
   // dashboard — it's the surface they work out of all day.
   if (role === "accounts") return <PaymentsList />;
@@ -248,7 +251,7 @@ function App() {
               path="/fund-requests"
               component={() => (
                 <AdminRoute
-                  roles={["admin", "accounts", "coordination", "campaign_manager"]}
+                  roles={["admin", "accounts", "campaign_manager"]}
                 >
                   <FundRequests />
                 </AdminRoute>
@@ -329,7 +332,7 @@ function App() {
               path="/bulk-campaign-operations"
               component={() => (
                 <AdminRoute
-                  roles={["admin", "coordination", "campaign_manager"]}
+                  roles={["admin", "campaign_manager"]}
                 >
                   <BulkCampaignOperations />
                 </AdminRoute>
