@@ -113,12 +113,16 @@ const authRole = (() => {
 const isCampaignManager = () => authRole === "campaign_manager";
 const isAdmin = () => authRole === "admin";
 // Coordination reads the same admin roster (`id` = Client PK) and previews
-// clients exactly as admin does, but the admin-only controls stay admin-only.
+// clients exactly as admin does.
 const isCoordination = () => authRole === "coordination";
 // The engagement-status endpoints (board, PATCH, history) are documented for
 // admin + CM only. Coordination reads the status off the roster row instead and
 // gets the badge without the popover, so nothing it can see 403s.
 const canUseStatusEndpoints = () => isAdmin() || isCampaignManager();
+// /cm/assignments/by-client/ serves admin + coordination (the Assignments
+// screen reads it for both), so both get the Campaign Manager column and the
+// Assignment / Campaign-manager filters built on it. CMs never do.
+const canSeeAssignments = () => isAdmin() || isCoordination();
 
 // The admin clients endpoint is 403 for CMs, so CMs are sourced from the
 // CM-scoped hierarchy endpoint instead. That payload is smaller — this maps it
@@ -381,10 +385,10 @@ export default function Clients() {
   // `client_id` on this payload. (This used to be rebuilt from the
   // manager-performance roster + per-manager own-client lists, which dropped
   // every client whose manager wasn't in that roster, e.g. new Tier 3s.)
-  // The column is admin-only (CMs and coordination never render it), so only
-  // admin fetches.
+  // The column is admin + coordination only (CMs never render it), so only
+  // they fetch.
   const [assignRes] = createResource(
-    () => isAdmin(),
+    () => canSeeAssignments(),
     async () => {
       try {
         return await fetchAssignmentsByClient();
@@ -940,9 +944,9 @@ export default function Clients() {
             <option value="No">Inactive</option>
           </select>
 
-          {/* Assignment + Campaign-manager filters are admin-only: they depend on
-              the assignments read, which only admin makes here. */}
-          <Show when={isAdmin()}>
+          {/* Assignment + Campaign-manager filters: admin + coordination, the
+              two roles that make the assignments read. */}
+          <Show when={canSeeAssignments()}>
             <div class="flex items-center gap-0.5 h-11 p-1 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
               <For each={ASSIGN_OPTIONS}>
                 {(o) => {
@@ -1156,7 +1160,7 @@ export default function Clients() {
               >
                 Client Nomen {sortIcon("client_nomen_name")}
               </th>
-              <Show when={isAdmin()}>
+              <Show when={canSeeAssignments()}>
                 <th class="p-3 text-left whitespace-nowrap">
                   Campaign Manager
                 </th>
@@ -1333,8 +1337,8 @@ export default function Clients() {
                       </div>
                     </td>
 
-                    {/* Assigned campaign manager (admin only) */}
-                    <Show when={isAdmin()}>
+                    {/* Assigned campaign manager (admin + coordination) */}
+                    <Show when={canSeeAssignments()}>
                       <td class="p-3" onClick={(e) => e.stopPropagation()}>
                         <Show
                           when={cmReady()}
@@ -1531,7 +1535,7 @@ export default function Clients() {
                 <tr>
                   <td
                     colspan={
-                      (isAdmin() ? 11 : 10) +
+                      (canSeeAssignments() ? 11 : 10) +
                       (canSeeValueTier() ? 1 : 0)
                     }
                     class="py-16 text-center text-gray-400 dark:text-gray-400"
@@ -1561,7 +1565,7 @@ export default function Clients() {
             <tr class="border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60">
               <td
                 colspan={
-                  (isAdmin() ? 9 : 8) + (canSeeValueTier() ? 1 : 0)
+                  (canSeeAssignments() ? 9 : 8) + (canSeeValueTier() ? 1 : 0)
                 }
                 class="px-4 py-2.5 text-xs text-gray-500 dark:text-gray-400"
               >
