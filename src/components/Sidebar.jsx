@@ -449,6 +449,17 @@ export default function Sidebar() {
         path: "/client-value-tier",
       },
       {
+        // Drive create log + clients without a folder. Top-level for the same
+        // reason as Value Tier: coordination has no Clients group. Both
+        // endpoints are admin + coordination only.
+        name: "Google Drive",
+        roles: ["admin", "coordination"],
+        icon: () => (
+          <Icon d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+        ),
+        path: "/google-drive",
+      },
+      {
         // Coordination only — admin reaches this from inside the "Campaign
         // Managers" group, which coordination doesn't get. It sits next to
         // Onboarding here because creating a user and deciding what that user

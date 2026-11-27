@@ -49,6 +49,7 @@ import {
 } from "../../../services/campaignActivity";
 import FilterGroup, { AXIS_ICON } from "../../../components/filters/FilterGroup";
 import FilterPill from "../../../components/filters/FilterPill";
+import { canSeeDrive, fetchDriveLinks } from "../../../services/drive";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -675,6 +676,33 @@ export default function Clients() {
   const hasPrev = () => currentPage() > 1;
   const hasNext = () => currentPage() < totalPages();
 
+  // ── Google Drive folder links ─────────────────────────────────────────────
+  // ONE call for the rows on screen (GET /clients/drive/links/?nomen_ids=…),
+  // never one per row. Answers are kept, so paging back costs nothing; only
+  // ids not asked about yet go out. A null value = no folder = no icon.
+  const [driveLinks, setDriveLinks] = createSignal({});
+  const driveAsked = new Set();
+  createEffect(
+    on(paginated, (rows) => {
+      if (!canSeeDrive()) return;
+      const ids = rows
+        .map((c) => c.client_nomen)
+        .filter((id) => id != null && id !== "" && !driveAsked.has(String(id)))
+        .map(String);
+      if (!ids.length) return;
+      ids.forEach((id) => driveAsked.add(id));
+      fetchDriveLinks(ids)
+        .then((map) => setDriveLinks((prev) => ({ ...prev, ...map })))
+        .catch((err) => {
+          // Quiet: the icon is a shortcut, not the page. Let a later page view retry.
+          ids.forEach((id) => driveAsked.delete(id));
+          console.warn("[clients] drive links failed:", err?.message);
+        });
+    }),
+  );
+  const driveLinkFor = (client) =>
+    client.client_nomen != null ? driveLinks()[String(client.client_nomen)] ?? null : null;
+
   // Snap back to page 1 when the result set changes underneath us.
   createEffect(
     on(
@@ -1258,7 +1286,26 @@ export default function Clients() {
 
                     {/* client_nomen_name */}
                     <td class="p-3 text-gray-700 dark:text-gray-300 font-medium">
-                      {client.client_nomen_name}
+                      <div class="flex items-center gap-2">
+                        <span>{client.client_nomen_name}</span>
+                        <Show when={driveLinkFor(client)}>
+                          {(url) => (
+                            <a
+                              href={url()}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              title="Open Google Drive folder"
+                              aria-label="Open Google Drive folder"
+                              class="inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md text-[#1A73E8] hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-blue-900/30"
+                            >
+                              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+                              </svg>
+                            </a>
+                          )}
+                        </Show>
+                      </div>
                     </td>
 
                     {/* Assigned campaign manager */}

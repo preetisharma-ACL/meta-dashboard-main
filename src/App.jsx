@@ -34,6 +34,7 @@ import ClientStatusBoard from "./pages/clients/ClientStatusBoard";
 import ValueTierBoard from "./pages/clients/ValueTierBoard";
 import CommandBoard from "./pages/command/CommandBoard";
 import DeadClients from "./pages/clients/DeadClients";
+import DriveAdmin from "./pages/drive/DriveAdmin";
 import GateRoute from "./utils/GateRoute";
 import NoticeToast from "./components/common/NoticeToast";
 import { canSeeCampaignAnalysis } from "./stores/currentUser";
@@ -785,6 +786,16 @@ function App() {
               component={() => (
                 <AdminRoute roles={["admin", "coordination", "campaign_manager"]}>
                   <DeadClients />
+                </AdminRoute>
+              )}
+            />
+            {/* Google Drive: create log + clients without a folder. Admin +
+                coordination only, same as the endpoints. */}
+            <Route
+              path="/google-drive"
+              component={() => (
+                <AdminRoute roles={["admin", "coordination"]}>
+                  <DriveAdmin />
                 </AdminRoute>
               )}
             />

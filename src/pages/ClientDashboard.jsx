@@ -56,6 +56,8 @@ import RowsPerPageSelect from "../components/common/RowsPerPageSelect";
 import CountUp from "../components/CountUp";
 import SpendGauge from "../components/SpendGauge";
 import ClientAIInsightButton from "../components/ClientAIInsightButton";
+import DriveCard from "../components/drive/DriveCard";
+import { canSeeDrive } from "../services/drive";
 import {
   projectsCache,
   setProjectsCache,
@@ -348,6 +350,24 @@ export default function MainDashboard() {
     return localStorage.getItem("selectedClientId");
   };
 
+  // ── Google Drive card: whose folder ─────────────────────────────────────────
+  // The nomen id lives in localStorage, which no signal tracks, and admin/sales
+  // only write it AFTER the async route reconcile, so a direct-URL visit would
+  // read nothing (or the previous client) at first render. The tick is bumped
+  // once the reconcile settles. The slug check is for CMs and coordination,
+  // whose context isn't reconciled from the URL: if the stored nomen isn't the
+  // client in the address bar, show no card rather than someone else's Drive.
+  const [driveCtxTick, setDriveCtxTick] = createSignal(0);
+  const driveNomenId = () => {
+    driveCtxTick();
+    location.pathname;
+    const routeSlug = params["client-nomen-name"];
+    if (!routeSlug || !canSeeDrive()) return null;
+    const nomen = localStorage.getItem("selectedClientNomen");
+    if (!nomen || slugify(nomen) !== routeSlug) return null;
+    return localStorage.getItem("selectedClientNomenId") || null;
+  };
+
   const { isRetainer, iscpl, ishybrid, isAdmin } = clientRole();
   const { handleSort, getSortIcon, sortData, resetSort } = useColumnSort();
 
@@ -458,6 +478,7 @@ export default function MainDashboard() {
           return;
         }
         setClientRouteError(null);
+        setDriveCtxTick((n) => n + 1);
         if (ctx.changed) bustAndReload();
       },
     ),
@@ -524,6 +545,7 @@ export default function MainDashboard() {
       return;
     }
     setClientRouteError(null);
+    setDriveCtxTick((n) => n + 1);
     if (ctx.changed) {
       bumpLoadToken();
       setProjectsCache("lastFetched", 0);
@@ -2320,6 +2342,10 @@ export default function MainDashboard() {
           endDate={toDate()}
         />
       </Show>
+
+      {/* Google Drive: admin, coordination, and CMs on their own clients (the
+          backend 404s a CM elsewhere and the card hides itself). */}
+      <DriveCard nomenId={driveNomenId()} clientName={selectedClientNomen()} />
 
       {/* Record Replacement — admin + TIER-1 CM only. Tier-2 CMs, clients,
           sales and accounts never see it (the endpoint 403s them anyway).
