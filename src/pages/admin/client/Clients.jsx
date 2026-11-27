@@ -679,7 +679,8 @@ export default function Clients() {
   // ── Google Drive folder links ─────────────────────────────────────────────
   // ONE call for the rows on screen (GET /clients/drive/links/?nomen_ids=…),
   // never one per row. Answers are kept, so paging back costs nothing; only
-  // ids not asked about yet go out. A null value = no folder = no icon.
+  // ids not asked about yet go out. A url = blue link; null = no folder yet,
+  // drawn as a grey icon; an id not in the map yet (in flight) = nothing.
   const [driveLinks, setDriveLinks] = createSignal({});
   const driveAsked = new Set();
   createEffect(
@@ -700,8 +701,9 @@ export default function Clients() {
         });
     }),
   );
+  // undefined = not answered yet, null = no folder, string = folder url.
   const driveLinkFor = (client) =>
-    client.client_nomen != null ? driveLinks()[String(client.client_nomen)] ?? null : null;
+    client.client_nomen != null ? driveLinks()[String(client.client_nomen)] : undefined;
 
   // Snap back to page 1 when the result set changes underneath us.
   createEffect(
@@ -1288,6 +1290,19 @@ export default function Clients() {
                     <td class="p-3 text-gray-700 dark:text-gray-300 font-medium">
                       <div class="flex items-center gap-2">
                         <span>{client.client_nomen_name}</span>
+                        {/* Answered null = no folder yet: a grey, inert icon.
+                            Not answered yet = nothing. */}
+                        <Show when={driveLinkFor(client) === null}>
+                          <span
+                            title="No Google Drive folder yet"
+                            aria-label="No Google Drive folder yet"
+                            class="inline-flex h-6 w-6 flex-shrink-0 items-center justify-center text-gray-300 dark:text-gray-600"
+                          >
+                            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                              <path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+                            </svg>
+                          </span>
+                        </Show>
                         <Show when={driveLinkFor(client)}>
                           {(url) => (
                             <a

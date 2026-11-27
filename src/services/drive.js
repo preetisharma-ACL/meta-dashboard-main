@@ -36,32 +36,39 @@ const authRole = () => {
 export const canSeeDrive = () => DRIVE_ROLES.includes(authRole());
 export const canSeeDriveAdmin = () => DRIVE_ADMIN_ROLES.includes(authRole());
 
-// The card and the links map are plain objects. If the server ever wraps them
-// in the usual { success, data } envelope, take the inner object; nothing in
-// either payload carries its own `success` key, so this can't misfire.
-const unwrap = (res) =>
-  res && typeof res === "object" && "success" in res && res.data !== undefined
-    ? res.data
-    : res;
+// ── The envelope, confirmed on prod for every drive endpoint ────────────────
+//   { success, message, data }
+// The card is `data`; the links map is `data`; the missing and logs rows are
+// `data` as an array. Nothing else is read: if the shape moves, fail loudly
+// rather than find something plausible somewhere else.
+const dataOf = (res, what) => {
+  if (res && typeof res === "object" && "data" in res) return res.data;
+  console.error(`[drive] ${what}: expected { success, message, data }, got:`, res);
+  return null;
+};
 
-const readList = (res) => {
-  const d = unwrap(res);
+const rowsOf = (res, what) => {
+  const d = dataOf(res, what);
   if (Array.isArray(d)) return d;
-  if (Array.isArray(d?.results)) return d.results;
-  console.error("[drive] expected a list of rows, got:", d);
+  console.error(`[drive] ${what}: data is not an array of rows:`, d);
   return [];
 };
 
 const base = (nomenId) => `/clients/drive/${encodeURIComponent(nomenId)}/`;
 
-export const fetchDriveCard = async (nomenId) => unwrap(await api(base(nomenId)));
+// Card data keys (exact): nomen_id, client_nomen, status, status_text,
+// folder_url, files, file_count, refreshed_at, job, last_result, can_create,
+// configured.
+export const fetchDriveCard = async (nomenId) =>
+  dataOf(await api(base(nomenId)), "card");
 
 const post = async (nomenId, path, body) =>
-  unwrap(
+  dataOf(
     await api(`${base(nomenId)}${path}/`, {
       method: "POST",
       body: JSON.stringify(body ?? {}),
     }),
+    path,
   );
 
 export const refreshDrive = (nomenId) => post(nomenId, "refresh");
@@ -71,41 +78,51 @@ export const createDriveFolder = (nomenId) => post(nomenId, "create-folder");
 export const createDriveSheet = (nomenId) =>
   post(nomenId, "create-sheet", { confirm: true });
 
-// { "<nomen_id>": url | null }. One call for a whole page of rows.
+// data = { "<nomen_id>": url | null }. One call for a whole page of rows.
 export const fetchDriveLinks = async (nomenIds) => {
   const ids = [...new Set(nomenIds.filter((x) => x != null && x !== "").map(String))];
   if (!ids.length) return {};
   const out = {};
   for (let i = 0; i < ids.length; i += LINKS_MAX) {
     const chunk = ids.slice(i, i + LINKS_MAX);
-    const res = unwrap(
+    const d = dataOf(
       await api(`/clients/drive/links/?nomen_ids=${chunk.join(",")}`),
+      "links",
     );
-    Object.assign(out, res && typeof res === "object" ? res : {});
+    if (d && typeof d === "object") Object.assign(out, d);
   }
   return out;
 };
 
+// Row keys (the model's fields): nomen_name, user_email, action, state,
+// status_code, message, result_url, created_at, finished_at.
 export const fetchDriveLogs = async ({ limit = 100, nomenId } = {}) => {
   const sp = new URLSearchParams({ limit: String(limit) });
   if (nomenId != null && nomenId !== "") sp.set("nomen_id", String(nomenId));
-  return readList(await api(`/clients/drive/logs/?${sp}`));
+  return rowsOf(await api(`/clients/drive/logs/?${sp}`), "logs");
 };
 
+// Row keys (exact): nomen_id, client_nomen, status, message, refreshed_at.
 export const fetchDriveMissing = async () =>
-  readList(await api("/clients/drive/missing/"));
+  rowsOf(await api("/clients/drive/missing/"), "missing");
 
 // ── Display helpers ───────────────────────────────────────────────────────────
-export const ACTION_LABEL = {
+// Action names follow the POST paths; hyphen and underscore spellings read the
+// same so the label doesn't depend on which one the job record stores.
+const actionKey = (a) => String(a ?? "").replace(/-/g, "_");
+const WORKING = {
   refresh: "Refreshing",
   create_folder: "Creating folder",
-  "create-folder": "Creating folder",
   create_sheet: "Creating sheet",
-  "create-sheet": "Creating sheet",
 };
-export const workingLabel = (action) =>
-  ACTION_LABEL[action] ??
-  (action ? String(action).replace(/[_-]+/g, " ") : "Working");
+const DONE = {
+  refresh: "Refresh",
+  create_folder: "Create folder",
+  create_sheet: "Create sheet",
+};
+// Unknown actions are shown as sent, never renamed.
+export const workingLabel = (a) => WORKING[actionKey(a)] ?? (a ? String(a) : "Working");
+export const actionLabel = (a) => DONE[actionKey(a)] ?? (a ? String(a) : "");
 
 // The button errors. `detail` is what the backend says; the fallbacks only
 // cover a body without one.

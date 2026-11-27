@@ -3,7 +3,7 @@ import { useNavigate } from "@solidjs/router";
 import {
   fetchDriveLogs,
   fetchDriveMissing,
-  workingLabel,
+  actionLabel,
 } from "../../services/drive";
 import { istDateTime } from "../../services/deadClients";
 import { loadErrorMessage } from "../../utils/apiErrors";
@@ -16,43 +16,15 @@ import { openClientPage } from "../../utils/openClientPage";
 // Both endpoints are admin + coordination only; the route gate only decides
 // whether the screen is offered.
 //
-// Row fields named in the backend note: logs → created_at, user, client,
-// action, state (ok / failed / pending), message, result_url; missing →
-// client, status, message, last checked. `client` / `user` may arrive as a
-// plain string or an object, so they are read through clientOf / who.
+// Row keys, confirmed on prod (rows are `data` of { success, message, data }):
+//   missing → nomen_id, client_nomen, status, message, refreshed_at
+//   logs    → nomen_name, user_email, action, state, status_code, message,
+//             result_url, created_at, finished_at
+// The log row carries no nomen id, so its client is plain text, not a link.
 
 const TH =
   "p-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 whitespace-nowrap";
 const TD = "p-3 align-top";
-
-const who = (x) =>
-  typeof x === "string"
-    ? x
-    : (x?.name ?? x?.full_name ?? x?.username ?? x?.email ?? "");
-
-// { name, nomenId } for a row's client, whichever way it is served.
-const clientOf = (r) => {
-  const c = r?.client;
-  const obj = c && typeof c === "object" ? c : null;
-  const name =
-    (typeof c === "string" ? c : null) ??
-    obj?.name ??
-    obj?.client_nomen_name ??
-    obj?.client_name ??
-    r?.client_name ??
-    r?.client_nomen_name ??
-    "";
-  const nomenId =
-    r?.nomen_id ??
-    r?.client_nomen_id ??
-    obj?.nomen_id ??
-    obj?.client_nomen_id ??
-    (typeof c === "number" ? c : null);
-  return { name, nomenId };
-};
-
-const lastChecked = (r) =>
-  r?.last_checked ?? r?.last_checked_at ?? r?.checked_at ?? r?.refreshed_at ?? null;
 
 const STATE_PILL = {
   ok: "bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300 dark:ring-emerald-800",
@@ -66,14 +38,6 @@ const STATUS_PILL = {
 };
 const NEUTRAL_PILL =
   "bg-gray-50 text-gray-600 ring-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:ring-gray-700";
-
-const actionLabel = (a) => {
-  const l = workingLabel(a);
-  // "Creating sheet" reads as a job in flight; in a log it is the action.
-  return (
-    { Refreshing: "Refresh", "Creating folder": "Create folder", "Creating sheet": "Create sheet" }[l] ?? l
-  );
-};
 
 function Pill(props) {
   return (
@@ -116,22 +80,8 @@ export default function DriveAdmin() {
     ({ nomenId }) => fetchDriveLogs({ limit: 100, nomenId }),
   );
 
-  const openClient = (c) => {
-    if (!c.name) return;
-    openClientPage(navigate, { nomen: c.name, nomenId: c.nomenId });
-  };
-
-  const ClientLink = (p) => (
-    <Show when={p.c.name} fallback={<Missing />}>
-      <button
-        type="button"
-        class="text-left font-medium text-[#AC2334] dark:text-red-300 hover:underline"
-        onClick={() => openClient(p.c)}
-      >
-        {p.c.name}
-      </button>
-    </Show>
-  );
+  const openClient = (r) =>
+    openClientPage(navigate, { nomen: r.client_nomen, nomenId: r.nomen_id });
 
   const reloadBtn = (fn) => (
     <button
@@ -186,31 +136,36 @@ export default function DriveAdmin() {
                 }>
                   <For each={missing()}>
                     {(r) => {
-                      const c = clientOf(r);
                       return (
                         <tr class="border-t border-gray-100 dark:border-gray-800">
-                          <td class={TD}><ClientLink c={c} /></td>
+                          <td class={TD}>
+                            <button
+                              type="button"
+                              class="text-left font-medium text-[#AC2334] dark:text-red-300 hover:underline"
+                              onClick={() => openClient(r)}
+                            >
+                              {r.client_nomen}
+                            </button>
+                          </td>
                           <td class={TD}>
                             <Show when={r.status} fallback={<Missing />}>
                               <Pill class={STATUS_PILL[r.status] ?? NEUTRAL_PILL}>{r.status}</Pill>
                             </Show>
                           </td>
                           <td class={`${TD} text-gray-700 dark:text-gray-300 max-w-[420px]`}>
-                            {r.message ?? r.status_text ?? ""}
+                            {r.message}
                           </td>
                           <td class={`${TD} whitespace-nowrap text-gray-600 dark:text-gray-400`}>
-                            {istDateTime(lastChecked(r)) ?? <Missing />}
+                            {istDateTime(r.refreshed_at) ?? <Missing />}
                           </td>
                           <td class={`${TD} text-right`}>
-                            <Show when={c.nomenId != null}>
-                              <button
-                                type="button"
-                                class="text-xs text-[#3E6FB0] hover:underline whitespace-nowrap"
-                                onClick={() => setLogFor({ nomenId: c.nomenId, name: c.name })}
-                              >
-                                View log
-                              </button>
-                            </Show>
+                            <button
+                              type="button"
+                              class="text-xs text-[#3E6FB0] hover:underline whitespace-nowrap"
+                              onClick={() => setLogFor({ nomenId: r.nomen_id, name: r.client_nomen })}
+                            >
+                              View log
+                            </button>
                           </td>
                         </tr>
                       );
@@ -226,7 +181,7 @@ export default function DriveAdmin() {
       {/* ── Drive create log ── */}
       <Section
         title="Drive create log"
-        sub={logFor() ? `Latest 100 for ${logFor().name || `client ${logFor().nomenId}`}` : "Latest 100 actions"}
+        sub={logFor() ? `Latest 100 for ${logFor().name}` : "Latest 100 actions"}
         actions={
           <div class="flex items-center gap-2">
             <Show when={logFor()}>
@@ -264,7 +219,7 @@ export default function DriveAdmin() {
                 </td></tr>
               }>
                 <Show when={logs()?.length} fallback={
-                  <tr><td colSpan={7} class="p-6 text-center text-xs text-gray-400">No create actions yet.</td></tr>
+                  <tr><td colSpan={7} class="p-6 text-center text-xs text-gray-400">No folders or sheets created from the dashboard yet.</td></tr>
                 }>
                   <For each={logs()}>
                     {(r) => (
@@ -273,9 +228,9 @@ export default function DriveAdmin() {
                           {istDateTime(r.created_at) ?? <Missing />}
                         </td>
                         <td class={`${TD} text-gray-700 dark:text-gray-300`}>
-                          {who(r.user) || <Missing />}
+                          {r.user_email || <Missing />}
                         </td>
-                        <td class={TD}><ClientLink c={clientOf(r)} /></td>
+                        <td class={`${TD} font-medium text-gray-700 dark:text-gray-300`}>{r.nomen_name || <Missing />}</td>
                         <td class={`${TD} whitespace-nowrap text-gray-700 dark:text-gray-300`}>
                           {r.action ? actionLabel(r.action) : <Missing />}
                         </td>
@@ -285,7 +240,7 @@ export default function DriveAdmin() {
                           </Show>
                         </td>
                         <td class={`${TD} text-gray-700 dark:text-gray-300 max-w-[420px]`}>
-                          {r.message ?? ""}
+                          {r.message}
                         </td>
                         <td class={TD}>
                           <Show when={r.result_url} fallback={<Missing />}>

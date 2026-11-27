@@ -179,10 +179,11 @@ export default function DriveCard(props) {
   const onCreateFolder = () => run(createDriveFolder);
   const onCreateSheet = async () => {
     if (busy()) return;
-    const name = props.clientName || "this client";
+    // The name from the card itself, so the dialog can only name the client
+    // whose folder the sheet will land in.
     const { isConfirmed } = await Swal.fire({
       title: "Create a new sheet?",
-      text: `Create a new Google Sheet for ${name}?`,
+      text: `Create a new Google Sheet for ${card()?.client_nomen}?`,
       icon: "question",
       showCancelButton: true,
       confirmButtonText: "Create sheet",
@@ -196,8 +197,12 @@ export default function DriveCard(props) {
   };
 
   const status = () => card()?.status;
+  const connected = () => card()?.configured === true;
   const files = () => (Array.isArray(card()?.files) ? card().files : []);
-  const fileCount = () => card()?.file_count ?? files().length;
+  const fileCount = () => card()?.file_count;
+  // Create buttons follow can_create and nothing else: the server switches
+  // creating on and off, never the role on this side.
+  const canCreate = () => card()?.can_create === true;
   const refreshedAgo = () => timeAgo(card()?.refreshed_at, now());
 
   return (
@@ -216,15 +221,16 @@ export default function DriveCard(props) {
                 Google Drive
               </h3>
               <p class="text-xs text-[#54657E] dark:text-gray-400">
-                <Show when={status() === "found"} fallback={<span>&nbsp;</span>}>
+                <Show when={status() === "found"}>
                   {fileCount()} file{fileCount() === 1 ? "" : "s"}
-                  <Show when={refreshedAgo()}>
-                    {" · "}
-                    <span title={istDateTime(card()?.refreshed_at) ?? ""}>
-                      Last refreshed {refreshedAgo()}
-                    </span>
-                  </Show>
+                  <Show when={refreshedAgo()}>{" · "}</Show>
                 </Show>
+                <Show when={refreshedAgo()}>
+                  <span title={istDateTime(card()?.refreshed_at) ?? ""}>
+                    Last refreshed {refreshedAgo()}
+                  </span>
+                </Show>
+                <Show when={status() !== "found" && !refreshedAgo()}>&nbsp;</Show>
               </p>
             </div>
           </div>
@@ -243,17 +249,17 @@ export default function DriveCard(props) {
                 </svg>
               </a>
             </Show>
-            <Show when={status() === "found" && card()?.can_create}>
+            <Show when={status() === "found" && canCreate()}>
               <button type="button" class={BTN_GHOST} disabled={busy()} onClick={onCreateSheet}>
                 Create new sheet
               </button>
             </Show>
-            <Show when={status() === "missing" && card()?.can_create}>
+            <Show when={status() === "missing" && canCreate()}>
               <button type="button" class={BTN_SOLID} disabled={busy()} onClick={onCreateFolder}>
                 Create folder
               </button>
             </Show>
-            <Show when={card()}>
+            <Show when={card() && connected()}>
               <button type="button" class={BTN_GHOST} disabled={busy()} onClick={onRefresh}>
                 <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -331,14 +337,20 @@ export default function DriveCard(props) {
                 </button>
               </div>
             </Match>
+            <Match when={!connected()}>
+              <div class="rounded-lg bg-gray-50 dark:bg-gray-700/40 px-3 py-2 text-xs text-[#54657E] dark:text-gray-300 ring-1 ring-gray-200 dark:ring-gray-600">
+                Drive not connected
+              </div>
+            </Match>
+            {/* From here on the status line is the server's status_text, as sent. */}
             <Match when={status() === "unknown"}>
               <div class="flex items-center gap-2 text-xs text-[#54657E] dark:text-gray-400 py-2">
-                <Spinner class="w-3.5 h-3.5" /> Checking Google Drive...
+                <Spinner class="w-3.5 h-3.5" /> {card()?.status_text}
               </div>
             </Match>
             <Match when={status() === "missing" || status() === "conflict" || status() === "error"}>
               <div class="rounded-lg bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-xs text-amber-800 dark:text-amber-200 ring-1 ring-amber-200 dark:ring-amber-800">
-                {card()?.status_text || "Google Drive folder not available."}
+                {card()?.status_text}
               </div>
             </Match>
             <Match when={status() === "found"}>
@@ -380,7 +392,7 @@ export default function DriveCard(props) {
             <Match when={card()}>
               {/* A status this card doesn't know: say what the server said. */}
               <div class="rounded-lg bg-gray-50 dark:bg-gray-700/40 px-3 py-2 text-xs text-[#54657E] dark:text-gray-300">
-                {card()?.status_text || `Google Drive status: ${status() ?? "unavailable"}`}
+                {card()?.status_text}
               </div>
             </Match>
           </Switch>

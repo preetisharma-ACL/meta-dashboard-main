@@ -2345,7 +2345,7 @@ export default function MainDashboard() {
 
       {/* Google Drive: admin, coordination, and CMs on their own clients (the
           backend 404s a CM elsewhere and the card hides itself). */}
-      <DriveCard nomenId={driveNomenId()} clientName={selectedClientNomen()} />
+      <DriveCard nomenId={driveNomenId()} />
 
       {/* Record Replacement — admin + TIER-1 CM only. Tier-2 CMs, clients,
           sales and accounts never see it (the endpoint 403s them anyway).
