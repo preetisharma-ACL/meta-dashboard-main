@@ -6,6 +6,7 @@ import { istDate } from "../../services/deadClients";
 import { timeAgo } from "../../services/drive";
 import { loadErrorMessage } from "../../utils/apiErrors";
 import { openClientPage } from "../../utils/openClientPage";
+import { nomenIssuesOpen, refreshNomenIssuesCount } from "../../stores/nomenIssuesCount";
 
 // ─── Coordination desk ────────────────────────────────────────────────────────
 // Coordination's /dashboard: work queues from GET /clients/coordination/home/
@@ -62,6 +63,23 @@ const CARDS = [
   { key: "project_info", label: "Project info", sub: "Missing city or type" },
   { key: "drive", label: "Drive", sub: "No Drive folder" },
 ];
+
+// Not a queue on this page: its own count (GET /campaigns/nomen-issues/
+// ?state=open, shared with the sidebar badge) and its own screen.
+const NOMEN_CARD = {
+  key: "nomen_issues",
+  label: "Wrong campaign names",
+  sub: "Fix in Ads Manager",
+  href: "/nomen-issues",
+  value: () => nomenIssuesOpen(),
+};
+
+// Tailwind needs whole class names, so the column count is looked up.
+const GRID_COLS = {
+  4: "lg:grid-cols-4",
+  5: "sm:grid-cols-3 lg:grid-cols-5",
+  6: "sm:grid-cols-3 lg:grid-cols-6",
+};
 
 // Who may open Project Display Config (its route roles). Read per call.
 const canOpenConfigs = () => {
@@ -136,7 +154,10 @@ export default function CoordinationHome() {
       setLoading(false);
     }
   };
-  onMount(() => load(false));
+  onMount(() => {
+    load(false);
+    refreshNomenIssuesCount();
+  });
   const tick = setInterval(() => setNow(Date.now()), 60_000);
   onCleanup(() => clearInterval(tick));
 
@@ -144,7 +165,8 @@ export default function CoordinationHome() {
   // A queue the payload doesn't carry for this role (billing_gaps for
   // coordination) gets no card and no section, not an "All clear".
   const hasQueue = (key) => Array.isArray(data()?.[key]);
-  const cards = () => CARDS.filter((c) => hasQueue(c.key));
+  const cards = () => [...CARDS.filter((c) => hasQueue(c.key)), NOMEN_CARD];
+  const cardValue = (c) => (c.value ? c.value() : total(c.key));
   const total = (key) => data()?.counts?.[key] ?? rows(key).length;
 
   const openClient = (r) =>
@@ -203,22 +225,27 @@ export default function CoordinationHome() {
         {/* Count cards */}
         <div
           class={`grid grid-cols-2 gap-3 mb-8 ${
-            cards().length === 4 ? "lg:grid-cols-4" : "sm:grid-cols-3 lg:grid-cols-5"
+            GRID_COLS[cards().length] ?? "sm:grid-cols-3 lg:grid-cols-5"
           }`}
         >
           <For each={cards()}>
             {(c) => (
               <button
                 type="button"
-                onClick={() => scrollTo(c.key)}
+                onClick={() => (c.href ? navigate(c.href) : scrollTo(c.key))}
                 class="text-left rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-3 hover:border-[#AC2334]/40 hover:shadow-sm transition"
               >
                 <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">{c.label}</div>
                 <Show
-                  when={total(c.key) > 0}
-                  fallback={<div class="mt-1 text-lg font-bold text-emerald-600 dark:text-emerald-400">All clear</div>}
+                  when={cardValue(c) != null}
+                  fallback={<div class="mt-1 text-2xl font-bold text-gray-300">…</div>}
                 >
-                  <div class="mt-1 text-2xl font-bold text-[#AC2334] dark:text-red-300 tabular-nums">{count(total(c.key))}</div>
+                  <Show
+                    when={cardValue(c) > 0}
+                    fallback={<div class="mt-1 text-lg font-bold text-emerald-600 dark:text-emerald-400">All clear</div>}
+                  >
+                    <div class="mt-1 text-2xl font-bold text-[#AC2334] dark:text-red-300 tabular-nums">{count(cardValue(c))}</div>
+                  </Show>
                 </Show>
                 <div class="text-[11px] text-gray-400 dark:text-gray-500">{c.sub}</div>
               </button>

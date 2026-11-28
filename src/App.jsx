@@ -36,6 +36,8 @@ import CommandBoard from "./pages/command/CommandBoard";
 import DeadClients from "./pages/clients/DeadClients";
 import DriveAdmin from "./pages/drive/DriveAdmin";
 import CoordinationHome from "./pages/coordination/CoordinationHome";
+import NomenIssues from "./pages/nomen/NomenIssues";
+import { NOMEN_ISSUE_ROLES } from "./services/nomenIssues";
 import GateRoute from "./utils/GateRoute";
 import NoticeToast from "./components/common/NoticeToast";
 import { canSeeCampaignAnalysis } from "./stores/currentUser";
@@ -778,6 +780,17 @@ function App() {
                 <GateRoute allow={canSeeCampaignAnalysis}>
                   <CommandBoard />
                 </GateRoute>
+              )}
+            />
+            {/* Wrong campaign names. Admin, coordination and every CM tier; the
+                server scopes Tier 2/3 to their own clients / ad accounts and
+                403s every other role. */}
+            <Route
+              path="/nomen-issues"
+              component={() => (
+                <AdminRoute roles={NOMEN_ISSUE_ROLES}>
+                  <NomenIssues />
+                </AdminRoute>
               )}
             />
             {/* Dead clients — every CM tier sees it; the server scopes Tier 2/3

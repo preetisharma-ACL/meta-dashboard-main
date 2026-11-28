@@ -1,5 +1,6 @@
-import { createSignal, createResource, createMemo, For, Show } from "solid-js";
+import { createSignal, createResource, createMemo, createEffect, on, For, Show } from "solid-js";
 import { A } from "@solidjs/router";
+import { nomenIssuesOpen, refreshNomenIssuesCount } from "../stores/nomenIssuesCount";
 import Swal from "sweetalert2";
 import { DateRangeFilter } from "../components/DateRangeFilter";
 import Avatar from "../components/common/Avatar";
@@ -825,8 +826,28 @@ export default function CMDashboard() {
     </tbody>
   );
 
+  // Wrong campaign names in this CM's scope (Tier 2/3: their own clients).
+  // Re-asked on the "Viewing" switch, which rides along on every CM GET.
+  createEffect(on(scopeKey, () => refreshNomenIssuesCount()));
+
   return (
     <section class="w-full px-1 sm:px-6  py-6 bg-gray-50 dark:bg-gray-900 min-h-screen">
+      <Show when={nomenIssuesOpen() > 0}>
+        <div
+          role="alert"
+          class="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-[#AC2334]/30 bg-[#FBEEF0] px-4 py-2 text-sm font-medium text-[#AC2334] dark:bg-red-900/30 dark:border-red-800 dark:text-red-200"
+        >
+          <span>
+            {nomenIssuesOpen() === 1
+              ? "1 of your campaigns has a wrong name."
+              : `${nomenIssuesOpen()} of your campaigns have wrong names.`}{" "}
+            Fix them in Ads Manager.
+          </span>
+          <A href="/nomen-issues" class="ml-auto font-bold underline hover:no-underline">
+            View
+          </A>
+        </div>
+      </Show>
       {/* ════════ HEADER ════════ */}
       <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-6">
         <div>

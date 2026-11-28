@@ -28,6 +28,10 @@ import {
   bankTransfersBadge,
   watchBankTransfersBadge,
 } from "../stores/bankTransfersBadge";
+import {
+  nomenIssuesOpen,
+  refreshNomenIssuesCount,
+} from "../stores/nomenIssuesCount";
 
 // Expanded submenu group, remembered across reloads (see openMenu below).
 const OPEN_MENU_KEY = "sidebarOpenMenu";
@@ -252,6 +256,9 @@ export default function Sidebar() {
     // no-ops for every other role. A client who reported a payment is waiting
     // on this number being noticed.
     watchBankTransfersBadge();
+    // Wrong campaign names: once per session, no poll. No-ops outside admin,
+    // coordination and CMs (everyone else 403s).
+    refreshNomenIssuesCount();
   });
 
   const menuItems = createMemo(() =>
@@ -291,6 +298,17 @@ export default function Sidebar() {
         when: canSeeCampaignAnalysis,
         icon: () => <Icon d="M3 12h4l3 8 4-16 3 8h4" />,
         path: "/campaign-analysis",
+      },
+      {
+        // Wrong campaign names. Every CM tier: the server scopes Tier 2/3 to
+        // their own clients, so their count is their own.
+        name: "Nomen issues",
+        roles: ["admin", "coordination", "campaign_manager"],
+        icon: () => (
+          <Icon d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+        ),
+        path: "/nomen-issues",
+        badge: nomenIssuesOpen() > 0 ? nomenIssuesOpen() : null,
       },
      
       {
